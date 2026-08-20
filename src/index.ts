@@ -24,5 +24,7 @@ export * from './sensors/WorldSensors';
 
 export * from './world/events';
 export * from './world/InMemoryEventStore';
+export * from './world/InMemoryMemoryStore';
+export * from './world/memory';
 export * from './world/types';
 export * from './world/WorldEngine';

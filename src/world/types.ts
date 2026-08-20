@@ -28,46 +28,42 @@ export interface MemoryRecord {
   worldId: string;
   agentId: string;
   createdAt: number;
-  kind:
-    | 'interaction'
-    | 'reflection'
-    | 'world_event';
+  kind: 'interaction' | 'reflection' | 'world_event';
   summary: string;
   importance: number;
+  valence: number;
   relatedAgentIds: string[];
 }
 
 export interface WorldEnvironment {
   resourcePool: number;
+  resourceRegenerationRate: number;
 
-  // Environment-level opportunity.
-  // This does not force agents to socialize.
+  // Baseline opportunity. Temporary signals can modify it without rewriting
+  // agent relationships or forcing social behavior.
   socialOpportunity: number;
 
-  // Environment-level support.
-  // It does not directly rewrite agent relationships.
+  // Baseline environmental support. Temporary signals can modify it.
   safetySupport: number;
+}
+
+export interface WorldDeterminismState {
+  rngState: number;
+  eventSequence: number;
 }
 
 export interface WorldState {
   id: string;
   now: number;
 
-  environment:
-    WorldEnvironment;
+  environment: WorldEnvironment;
+  determinism: WorldDeterminismState;
 
-  agents:
-    Record<
-      string,
-      AgentState
-    >;
-
-  relationships:
-    Record<
-      string,
-      RelationshipState
-    >;
-
-  memories:
-    MemoryRecord[];
+  agents: Record<string, AgentState>;
+  relationships: Record<string, RelationshipState>;
 }
+
+export type WorldDisturbanceKind =
+  | 'resource_shock'
+  | 'social_barrier'
+  | 'safety_shock';

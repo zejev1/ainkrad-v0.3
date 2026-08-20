@@ -1,42 +1,36 @@
 import type {
+  ClaimedInput,
   InputBus,
   PublishResult,
 } from './InputBus';
+import type { InputEnvelope } from './types';
 
-import type {
-  InputEnvelope,
-} from './types';
+interface ClaimState {
+  consumerId: string;
+  claimToken: string;
+  leaseUntil: number;
+}
 
 interface QueueItem {
   event: InputEnvelope;
-  acknowledged: boolean;
+  claim?: ClaimState;
 }
 
-export class InMemoryInputBus
-implements InputBus {
-  private readonly queues =
-    new Map<string, QueueItem[]>();
+export class InMemoryInputBus implements InputBus {
+  private readonly queues = new Map<string, QueueItem[]>();
+  private readonly itemIndex = new Map<string, Map<string, QueueItem>>();
+  private readonly seenKeys = new Map<string, number>();
+  private claimSequence = 0;
 
-  private readonly seenKeys =
-    new Set<string>();
-
-  async publish(
-    event: InputEnvelope,
-  ): Promise<PublishResult> {
-    const eventKey =
-      `${event.worldId}:event:${event.eventId}`;
-
-    const dedupeKey =
-      event.deduplicationKey
-        ? `${event.worldId}:dedupe:${event.deduplicationKey}`
-        : undefined;
+  async publish(event: InputEnvelope): Promise<PublishResult> {
+    const eventKey = this.eventKey(event.worldId, event.eventId);
+    const dedupeKey = event.deduplicationKey
+      ? `${event.worldId}:dedupe:${event.deduplicationKey}`
+      : undefined;
 
     if (
       this.seenKeys.has(eventKey) ||
-      (
-        dedupeKey !== undefined &&
-        this.seenKeys.has(dedupeKey)
-      )
+      (dedupeKey !== undefined && this.seenKeys.has(dedupeKey))
     ) {
       return {
         accepted: false,
@@ -44,25 +38,23 @@ implements InputBus {
       };
     }
 
-    this.seenKeys.add(eventKey);
-
+    const recordedAt = Date.now();
+    this.seenKeys.set(eventKey, recordedAt);
     if (dedupeKey) {
-      this.seenKeys.add(dedupeKey);
+      this.seenKeys.set(dedupeKey, recordedAt);
     }
 
-    const queue =
-      this.queues.get(event.worldId) ??
-      [];
+    const item: QueueItem = {
+      event: structuredClone(event),
+    };
 
-    queue.push({
-      event,
-      acknowledged: false,
-    });
+    const queue = this.queues.get(event.worldId) ?? [];
+    queue.push(item);
+    this.queues.set(event.worldId, queue);
 
-    this.queues.set(
-      event.worldId,
-      queue,
-    );
+    const worldIndex = this.itemIndex.get(event.worldId) ?? new Map<string, QueueItem>();
+    worldIndex.set(event.eventId, item);
+    this.itemIndex.set(event.worldId, worldIndex);
 
     return {
       accepted: true,
@@ -70,90 +62,138 @@ implements InputBus {
     };
   }
 
-  async take(
+  async claim(
     worldId: string,
+    consumerId: string,
     limit: number,
-  ): Promise<InputEnvelope[]> {
-    if (
-      !Number.isInteger(limit) ||
-      limit < 1 ||
-      limit > 1000
-    ) {
-      throw new Error(
-        'InputBus take limit must be an integer from 1 to 1000.',
-      );
+    now: number,
+    leaseMs: number,
+  ): Promise<ClaimedInput[]> {
+    if (!consumerId.trim()) {
+      throw new Error('InputBus consumerId must not be empty.');
+    }
+    if (!Number.isInteger(limit) || limit < 1 || limit > 1000) {
+      throw new Error('InputBus claim limit must be an integer from 1 to 1000.');
+    }
+    if (!Number.isFinite(leaseMs) || leaseMs <= 0) {
+      throw new Error('InputBus leaseMs must be greater than zero.');
     }
 
-    const queue =
-      this.queues.get(worldId) ??
-      [];
+    const queue = this.queues.get(worldId) ?? [];
+    const claimed: ClaimedInput[] = [];
 
-    return queue
-      .filter(
-        (item) =>
-          !item.acknowledged,
-      )
-      .slice(0, limit)
-      .map(
-        (item) =>
-          structuredClone(item.event),
-      );
+    for (const item of queue) {
+      if (claimed.length >= limit) {
+        break;
+      }
+      if (item.claim && item.claim.leaseUntil > now) {
+        continue;
+      }
+
+      this.claimSequence += 1;
+      const claimToken = [
+        'claim',
+        worldId,
+        item.event.eventId,
+        consumerId,
+        now.toString(36),
+        this.claimSequence.toString(36),
+      ].join(':');
+
+      item.claim = {
+        consumerId,
+        claimToken,
+        leaseUntil: now + leaseMs,
+      };
+
+      claimed.push({
+        event: structuredClone(item.event),
+        claimToken,
+        consumerId,
+        leaseUntil: now + leaseMs,
+      });
+    }
+
+    return claimed;
   }
 
   async acknowledge(
-    eventId: string,
-  ): Promise<void> {
-    for (
-      const queue of
-      this.queues.values()
-    ) {
-      const item =
-        queue.find(
-          (candidate) =>
-            candidate.event.eventId ===
-            eventId,
-        );
-
-      if (item) {
-        item.acknowledged = true;
-        return;
-      }
-    }
-  }
-
-  pruneAcknowledged(
     worldId: string,
-    maxItems = 1000,
-  ): number {
-    const queue =
-      this.queues.get(worldId);
+    eventId: string,
+    consumerId: string,
+    claimToken: string,
+    _acknowledgedAt: number,
+  ): Promise<void> {
+    const item = this.findItem(worldId, eventId);
 
-    if (!queue) {
-      return 0;
+    // A repeated acknowledgement after successful technical cleanup is safe.
+    if (!item && this.seenKeys.has(this.eventKey(worldId, eventId))) {
+      return;
     }
 
-    let removed = 0;
+    if (!item) {
+      throw new Error(`Input ${eventId} was not found in world ${worldId}.`);
+    }
 
-    const kept =
-      queue.filter(
-        (item) => {
-          if (
-            item.acknowledged &&
-            removed < maxItems
-          ) {
-            removed += 1;
-            return false;
-          }
+    this.assertClaim(item, consumerId, claimToken);
 
-          return true;
-        },
-      );
-
+    // Queue rows are purely technical. Once acknowledged, remove immediately.
+    // Dedupe tombstones remain until their explicit bounded cleanup window.
+    const queue = this.queues.get(worldId) ?? [];
     this.queues.set(
       worldId,
-      kept,
+      queue.filter((candidate) => candidate !== item),
     );
+    this.itemIndex.get(worldId)?.delete(eventId);
+  }
 
+  async release(
+    worldId: string,
+    eventId: string,
+    consumerId: string,
+    claimToken: string,
+  ): Promise<void> {
+    const item = this.findItem(worldId, eventId);
+    if (!item) {
+      return;
+    }
+
+    this.assertClaim(item, consumerId, claimToken);
+    item.claim = undefined;
+  }
+
+  // Dedupe tombstones are technical data. A persistent adapter should use an
+  // explicit bounded idempotency window rather than growing forever.
+  pruneDeduplication(before: number): number {
+    let removed = 0;
+    for (const [key, recordedAt] of this.seenKeys) {
+      if (recordedAt <= before) {
+        this.seenKeys.delete(key);
+        removed += 1;
+      }
+    }
     return removed;
+  }
+
+  private findItem(worldId: string, eventId: string): QueueItem | undefined {
+    return this.itemIndex.get(worldId)?.get(eventId);
+  }
+
+  private eventKey(worldId: string, eventId: string): string {
+    return `${worldId}:event:${eventId}`;
+  }
+
+  private assertClaim(
+    item: QueueItem,
+    consumerId: string,
+    claimToken: string,
+  ): void {
+    if (
+      !item.claim ||
+      item.claim.consumerId !== consumerId ||
+      item.claim.claimToken !== claimToken
+    ) {
+      throw new Error(`Input ${item.event.eventId} is not owned by this claim.`);
+    }
   }
 }

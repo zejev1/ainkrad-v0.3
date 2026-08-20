@@ -96,9 +96,9 @@ Cardinal is intentionally divided into independent roles.
 
 ### Cardinal Observer
 
-Reads world telemetry and history.
+Reads world telemetry and history through read-only capabilities.
 
-The Observer must not mutate agents, relationships, world state or agent cognition.
+The Observer must not receive a world-mutation capability and must not mutate agents, relationships, world state or agent cognition.
 
 ### Cardinal Core
 
@@ -108,9 +108,9 @@ The Core does not directly execute interventions.
 
 ### Intervention Gateway
 
-An architecturally separate component decides whether a proposed intervention is allowed.
+An architecturally separate component decides whether a proposed intervention is allowed **and performs the authorized simulation mutation itself**.
 
-The Core cannot modify or bypass this gateway.
+The Core can propose. It cannot directly execute, modify or bypass the gateway.
 
 ### Cardinal Auditor
 
@@ -174,6 +174,16 @@ Cardinal may propose minimal interventions.
 Execution still requires authorization by an independent gateway.
 
 The same world rules and agent capabilities operate in every mode.
+
+### Control-world fairness
+
+The control world must not be intentionally crippled so that Cardinal appears useful.
+
+Any basic recovery capability required for society to survive — resource renewal, cooperation, adaptation, conflict recovery, social exploration — must exist independently of Cardinal.
+
+Cardinal may alter conditions through minimal authorized interventions, but it must not be the only mechanism capable of keeping the world alive.
+
+Under the same seed and disturbances, **OFF and OBSERVER must produce the same autonomous world state**. If observation changes the world, the experiment is contaminated.
 
 ---
 

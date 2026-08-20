@@ -1,6 +1,4 @@
-import type {
-  JsonObject,
-} from '../core/json';
+import type { JsonObject } from '../core/json';
 
 export type WorldEventSource =
   | 'agent'
@@ -18,29 +16,27 @@ export interface WorldEvent {
   occurredAt: number;
   payload: JsonObject;
 
-  // Active influence lifetime.
-  // This is NOT a delete-after timestamp.
+  // If present, this event is also an active signal until this time.
+  // Expiration only ends current influence. The historical event remains.
   activeUntil?: number;
 
   correlationId?: string;
 }
 
-export interface EventStore {
-  append(
-    event: WorldEvent,
-  ): Promise<void>;
-
-  history(
-    worldId: string,
-  ): Promise<WorldEvent[]>;
-
-  recent(
-    worldId: string,
-    limit: number,
-  ): Promise<WorldEvent[]>;
-
-  active(
-    worldId: string,
-    now: number,
-  ): Promise<WorldEvent[]>;
+export interface AppendEventResult {
+  appended: boolean;
+  duplicate: boolean;
 }
+
+// Cardinal sensors receive this read-only capability, never EventStore itself.
+export interface EventReader {
+  history(worldId: string): Promise<WorldEvent[]>;
+  recent(worldId: string, limit: number): Promise<WorldEvent[]>;
+  activeSignals(worldId: string, now: number): Promise<WorldEvent[]>;
+}
+
+export interface EventWriter {
+  append(event: WorldEvent): Promise<AppendEventResult>;
+}
+
+export interface EventStore extends EventReader, EventWriter {}
