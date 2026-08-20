@@ -2,18 +2,51 @@ import type { CardinalMetrics } from '../sensors/types';
 
 export type CardinalMode = 'off' | 'observer' | 'intervene';
 
+export type CardinalProblemKind =
+  | 'resource_fragility'
+  | 'social_fragmentation'
+  | 'conflict_overload';
+
 export type InterventionKind =
   | 'resource_relief'
   | 'open_shared_space'
   | 'safety_support';
 
+export type CardinalPredictionMetric =
+  | 'resourcePressure'
+  | 'socialIsolation'
+  | 'averageStress';
+
+export interface FalsifiablePrediction {
+  metric: CardinalPredictionMetric;
+  direction: 'decrease';
+  minimumImprovement: number;
+  horizon: number;
+  statement: string;
+}
+
+export interface CardinalProblemAssessment {
+  hypothesisId: string;
+  kind: CardinalProblemKind;
+  severity: number;
+  persistence: number;
+  trend: 'rising' | 'stable' | 'falling';
+  confidence: number;
+  supportingEvaluationIds: string[];
+  priorOutcomeIds: string[];
+  claim: string;
+  falsifier: string;
+}
+
 export interface InterventionProposal {
   proposalId: string;
   worldId: string;
+  hypothesisId: string;
   kind: InterventionKind;
   magnitude: number;
   reason: string;
   expectedOutcome: string;
+  prediction: FalsifiablePrediction;
 }
 
 export interface CardinalEvaluation {
@@ -23,12 +56,16 @@ export interface CardinalEvaluation {
   observedWorldRevision: number;
   sensorVersion: string;
   policyVersion: string;
+  researchVersion: string;
+  researchContextFingerprint: string;
   mode: Exclude<CardinalMode, 'off'>;
   metrics: CardinalMetrics;
   evidenceEventIds: string[];
   uncertaintyNotes: string[];
-  decision: 'no_action' | 'propose';
+  detectedProblem?: CardinalProblemAssessment;
+  decision: 'no_action' | 'defer' | 'propose';
   rationale: string;
+  reasoningFactors: string[];
   proposal?: InterventionProposal;
   hypotheticalOnly: boolean;
 }
@@ -71,6 +108,9 @@ export interface InterventionOutcomeRecord {
   socialIsolationDelta: number;
   conflictPressureDelta: number;
   resourcePressureDelta: number;
+  predictionMetric: CardinalPredictionMetric;
+  predictedMinimumImprovement: number;
+  observedPredictionDelta: number;
   expectedDirectionObserved: boolean;
   causalClaim: 'observational_only';
 }

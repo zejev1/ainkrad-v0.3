@@ -2,6 +2,7 @@ import type { WorldState } from '../world/types';
 import { CardinalCore } from './CardinalCore';
 import type { CardinalJournal } from './CardinalJournal';
 import { CardinalObserver } from './CardinalObserver';
+import { buildCardinalResearchContext } from './CardinalResearch';
 import type { CardinalEvaluation, CardinalMode } from './types';
 
 // CardinalRuntime can observe, reason and journal. It deliberately has no
@@ -23,7 +24,14 @@ export class CardinalRuntime {
     }
 
     const observation = await this.observer.observe(world, now);
-    const evaluation = this.core.evaluate(mode, observation);
+    const research = await buildCardinalResearchContext(
+      this.journal,
+      observation.worldId,
+      observation.observedAt,
+      this.core.policyVersion,
+      observation.sensorVersion,
+    );
+    const evaluation = this.core.evaluate(mode, observation, research);
     await this.journal.appendEvaluation(evaluation);
     return evaluation;
   }

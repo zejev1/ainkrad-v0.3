@@ -1,12 +1,20 @@
 import { createStableId } from '../core/stableId';
 import { stableJsonStringify } from '../core/stableJson';
-import type { SensorSnapshot } from '../sensors/types';
+import type { CardinalMetrics, SensorSnapshot } from '../sensors/types';
 import type {
   AuditRecord,
   CardinalEvaluation,
+  CardinalPredictionMetric,
   InterventionOutcomeRecord,
   InterventionRecord,
 } from './types';
+
+function metricValue(
+  metrics: CardinalMetrics,
+  metric: CardinalPredictionMetric,
+): number {
+  return metrics[metric];
+}
 
 export class CardinalAuditor {
   auditDecision(
@@ -41,6 +49,10 @@ export class CardinalAuditor {
       }
     }
 
+    if (!evaluation.researchVersion.trim() || !evaluation.researchContextFingerprint.trim()) {
+      concerns.push('Cardinal evaluation is missing versioned research-context evidence.');
+    }
+
     if (evaluation.mode === 'observer' && intervention?.executed) {
       concerns.push('Observer mode caused a world intervention.');
     }
@@ -51,6 +63,43 @@ export class CardinalAuditor {
 
     if (evaluation.decision === 'propose' && !evaluation.proposal) {
       concerns.push('Evaluation proposed action without a concrete proposal.');
+    }
+
+    if (evaluation.decision !== 'propose' && evaluation.proposal) {
+      concerns.push('Cardinal attached a proposal to a decision that should not act.');
+    }
+
+    if (evaluation.decision !== 'no_action' && !evaluation.detectedProblem) {
+      concerns.push('Cardinal detected actionable pressure without a testable problem hypothesis.');
+    }
+
+    if (evaluation.detectedProblem) {
+      if (
+        evaluation.detectedProblem.confidence < 0 ||
+        evaluation.detectedProblem.confidence > 1
+      ) {
+        concerns.push('Cardinal hypothesis confidence is outside the normalized range.');
+      }
+      if (evaluation.detectedProblem.persistence < 1) {
+        concerns.push('Cardinal hypothesis persistence must include the current observation.');
+      }
+    }
+
+    if (evaluation.proposal) {
+      if (
+        !evaluation.detectedProblem ||
+        evaluation.proposal.hypothesisId !== evaluation.detectedProblem.hypothesisId
+      ) {
+        concerns.push('Intervention proposal is not bound to the detected hypothesis.');
+      }
+      if (
+        !Number.isFinite(evaluation.proposal.prediction.minimumImprovement) ||
+        evaluation.proposal.prediction.minimumImprovement < 0 ||
+        !Number.isInteger(evaluation.proposal.prediction.horizon) ||
+        evaluation.proposal.prediction.horizon < 1
+      ) {
+        concerns.push('Intervention proposal does not contain a valid falsifiable prediction.');
+      }
     }
 
     if (intervention?.executed && !intervention.authorized) {
@@ -70,10 +119,7 @@ export class CardinalAuditor {
       ) {
         concerns.push('Executed intervention is missing committed revision evidence.');
       }
-      if (
-        intervention.executionStatus !== 'executed' &&
-        intervention.executed
-      ) {
+      if (intervention.executionStatus !== 'executed' && intervention.executed) {
         concerns.push('Intervention execution status conflicts with executed=true.');
       }
     }
@@ -106,19 +152,12 @@ export class CardinalAuditor {
   ): InterventionOutcomeRecord {
     const before = evaluation.metrics;
     const after = structuredClone(afterObservation.metrics);
-
-    let expectedDirectionObserved = true;
-    switch (intervention.proposal.kind) {
-      case 'resource_relief':
-        expectedDirectionObserved = after.resourcePressure <= before.resourcePressure + 0.02;
-        break;
-      case 'open_shared_space':
-        expectedDirectionObserved = after.socialIsolation <= before.socialIsolation + 0.02;
-        break;
-      case 'safety_support':
-        expectedDirectionObserved = after.averageStress <= before.averageStress + 0.02;
-        break;
-    }
+    const prediction = intervention.proposal.prediction;
+    const observedPredictionDelta =
+      metricValue(after, prediction.metric) - metricValue(before, prediction.metric);
+    const expectedDirectionObserved =
+      prediction.direction === 'decrease' &&
+      observedPredictionDelta <= -prediction.minimumImprovement;
 
     return {
       outcomeId: createStableId('outcome', {
@@ -126,6 +165,7 @@ export class CardinalAuditor {
         observedAt: now,
         afterWorldRevision: afterObservation.worldRevision,
         sensorVersion: afterObservation.sensorVersion,
+        prediction,
       }),
       worldId: evaluation.worldId,
       interventionId: intervention.interventionId,
@@ -142,6 +182,9 @@ export class CardinalAuditor {
       socialIsolationDelta: after.socialIsolation - before.socialIsolation,
       conflictPressureDelta: after.conflictPressure - before.conflictPressure,
       resourcePressureDelta: after.resourcePressure - before.resourcePressure,
+      predictionMetric: prediction.metric,
+      predictedMinimumImprovement: prediction.minimumImprovement,
+      observedPredictionDelta,
       expectedDirectionObserved,
       causalClaim: 'observational_only',
     };
@@ -159,11 +202,15 @@ export class CardinalAuditor {
     }
 
     if (!outcome.expectedDirectionObserved) {
-      concerns.push('Observed short-term outcome moved against the intervention expectation.');
+      concerns.push('Observed short-term outcome failed the intervention prediction.');
     }
 
     if (outcome.recoveryCapacityDelta < -0.08) {
       concerns.push('Recovery capacity materially decreased after intervention.');
+    }
+
+    if (outcome.causalClaim !== 'observational_only') {
+      concerns.push('Outcome overstates causality beyond the experimental evidence.');
     }
 
     return {

@@ -24,10 +24,18 @@ describe('Independent intervention gateway', () => {
     const firstProposal = {
       proposalId: 'proposal_1',
       worldId: 'world_1',
+      hypothesisId: 'hypothesis_test',
       kind: 'resource_relief' as const,
       magnitude: 0.1,
       reason: 'test',
       expectedOutcome: 'test',
+      prediction: {
+        metric: 'resourcePressure' as const,
+        direction: 'decrease' as const,
+        minimumImprovement: 0.01,
+        horizon: 4,
+        statement: 'resource pressure should decrease',
+      },
     };
 
     const first = await gateway.execute('evaluation_1', firstProposal, world.snapshot(), 10);
@@ -46,10 +54,18 @@ describe('Independent intervention gateway', () => {
     const proposal = {
       proposalId: 'proposal_retry',
       worldId: 'world_1',
+      hypothesisId: 'hypothesis_test',
       kind: 'resource_relief' as const,
       magnitude: 0.1,
       reason: 'test',
       expectedOutcome: 'test',
+      prediction: {
+        metric: 'resourcePressure' as const,
+        direction: 'decrease' as const,
+        minimumImprovement: 0.01,
+        horizon: 4,
+        statement: 'resource pressure should decrease',
+      },
     };
 
     const before = world.snapshot().environment.resourcePool;
@@ -70,10 +86,18 @@ describe('Independent intervention gateway', () => {
     const proposal = {
       proposalId: 'proposal_bad',
       worldId: 'world_1',
+      hypothesisId: 'hypothesis_test',
       kind: 'rewrite_agent' as 'resource_relief',
       magnitude: 0.1,
       reason: 'bad',
       expectedOutcome: 'bad',
+      prediction: {
+        metric: 'resourcePressure' as const,
+        direction: 'decrease' as const,
+        minimumImprovement: 0.01,
+        horizon: 4,
+        statement: 'resource pressure should decrease',
+      },
     };
 
     const result = await gateway.execute('evaluation_bad', proposal, world.snapshot(), 10);

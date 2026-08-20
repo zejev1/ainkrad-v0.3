@@ -20,7 +20,7 @@ import type {
 export const ABSOLUTE_MAX_INTERVENTION_MAGNITUDE = 0.25;
 export const ABSOLUTE_MAX_INTERVENTION_DURATION = 32;
 export const INTERVENTION_GATEWAY_POLICY_VERSION =
-  'ainkrad-intervention-gateway-0.3.4';
+  'ainkrad-intervention-gateway-0.3.5';
 
 const ALLOWED_INTERVENTION_KINDS = new Set<string>([
   'resource_relief',
@@ -267,6 +267,34 @@ export class IndependentInterventionGateway {
       return {
         authorized: false,
         reason: 'Proposal kind is not in the independent gateway allowlist.',
+      };
+    }
+
+    if (!proposal.hypothesisId?.trim()) {
+      return {
+        authorized: false,
+        reason: 'Proposal is not bound to a Cardinal hypothesis.',
+      };
+    }
+
+    const prediction = proposal.prediction;
+    if (
+      !prediction ||
+      !['resourcePressure', 'socialIsolation', 'averageStress'].includes(
+        prediction.metric as string,
+      ) ||
+      prediction.direction !== 'decrease' ||
+      !Number.isFinite(prediction.minimumImprovement) ||
+      prediction.minimumImprovement < 0 ||
+      !Number.isInteger(prediction.horizon) ||
+      prediction.horizon < 1 ||
+      prediction.horizon > 16 ||
+      typeof prediction.statement !== 'string' ||
+      !prediction.statement.trim()
+    ) {
+      return {
+        authorized: false,
+        reason: 'Proposal does not contain a valid bounded falsifiable prediction.',
       };
     }
 

@@ -133,3 +133,24 @@ These rules convert failures from the previous implementation into tests and str
 95. The experiment manifest records the intervention-gateway policy version in addition to world, sensor and Cardinal policy versions.
 96. A durable `AppendOnlyLog` adapter must make each compare-and-append atomic (or recoverably equivalent); a torn record is never accepted as committed evidence.
 97. Compaction or indexing of Cardinal/gateway logs may improve storage efficiency but may not erase experimental evidence or alter stable identities.
+
+## Audit round 5 additions
+
+98. Cardinal longitudinal reasoning is reconstructed from append-only research evidence; a private mutable belief store is not the source of truth.
+99. A Cardinal cycle uses only strictly earlier logical-time evaluations as prior research evidence, so an exact retry cannot count itself as a new observation.
+100. The bounded active research window has an explicit fingerprint; bounding a hot read is not permission to delete the historical records behind it.
+101. Prior evaluations contribute to current persistence reasoning only when Cardinal policy and sensor versions are compatible.
+102. A non-critical systemic condition normally produces `defer` until it persists across at least three compatible observations; one-tick noise must not automatically trigger intervention.
+103. Critical-threshold bypass of the persistence window is explicit, policy-versioned and auditable.
+104. A continuing problem hypothesis keeps a stable hypothesis ID across consecutive compatible supporting observations; a broken support chain starts a new hypothesis.
+105. Every intervention proposal is bound to the exact hypothesis that justified it.
+106. Every intervention proposal contains a falsifiable prediction: target metric, direction, minimum improvement and bounded logical horizon.
+107. The independent gateway validates the serialized hypothesis/prediction contract at runtime and fails closed for malformed or unbounded predictions.
+108. Intervention outcome timing comes from the proposal's recorded prediction horizon rather than an unrelated hidden timer.
+109. Outcome evidence records the prediction metric, required improvement and actual observed delta.
+110. A failed prediction is evidence that the stated expectation was not observed; it is not automatically evidence that the intervention caused the failure.
+111. Recent failed predictions may make Cardinal defer repeating a non-critical intervention, but this caution must remain distinguishable from a causal conclusion.
+112. OBSERVER may use Cardinal research memory for analysis but still has no world-mutation path; research memory must not contaminate OFF/OBSERVER world equivalence.
+113. Experiment manifests record the Cardinal research-semantics version in addition to world, sensor, Cardinal policy and gateway policy versions.
+114. Cardinal reasoning factors stored for audit are concise decision factors, not an unverifiable hidden chain of thought; the reproducible evidence and policy are the authoritative basis.
+115. Restarting Cardinal over the same durable journal must reproduce the same compatible research context and the same next logical evaluation for identical observation evidence.

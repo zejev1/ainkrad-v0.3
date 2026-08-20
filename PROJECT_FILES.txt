@@ -8,6 +8,7 @@ Files:
 - SPCK_IMPORT.md
 - docs/ARCHITECTURE_INVARIANTS.md
 - docs/CARDINAL_RECOVERY.md
+- docs/CARDINAL_RESEARCH.md
 - docs/EXTERNAL_BOUNDARY.md
 - docs/MIGRATION_RULES.md
 - docs/PERSISTENCE_CONTRACT.md
@@ -18,6 +19,7 @@ Files:
 - src/cardinal/CardinalJournal.ts
 - src/cardinal/CardinalObserver.ts
 - src/cardinal/CardinalRecovery.ts
+- src/cardinal/CardinalResearch.ts
 - src/cardinal/CardinalRuntime.ts
 - src/cardinal/InMemoryCardinalJournal.ts
 - src/cardinal/InterventionGateway.ts
@@ -52,6 +54,7 @@ Files:
 - tests/auditor.test.ts
 - tests/cardinalCore.test.ts
 - tests/cardinalJournal.test.ts
+- tests/cardinalResearch.test.ts
 - tests/experimentIntegrity.test.ts
 - tests/externalGateway.test.ts
 - tests/gatewayRecovery.test.ts

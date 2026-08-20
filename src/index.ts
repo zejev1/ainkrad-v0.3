@@ -3,6 +3,7 @@ export * from './boundary/ExternalGateway';
 export * from './cardinal/CardinalAuditor';
 export * from './cardinal/CardinalCore';
 export * from './cardinal/CardinalRecovery';
+export * from './cardinal/CardinalResearch';
 export * from './cardinal/CardinalJournal';
 export * from './cardinal/CardinalObserver';
 export * from './cardinal/CardinalRuntime';

@@ -48,10 +48,18 @@ function proposal(id: string) {
   return {
     proposalId: id,
     worldId: 'world_gateway_recovery',
+    hypothesisId: 'hypothesis_test',
     kind: 'resource_relief' as const,
     magnitude: 0.1,
     reason: 'test',
     expectedOutcome: 'test',
+    prediction: {
+      metric: 'resourcePressure' as const,
+      direction: 'decrease' as const,
+      minimumImprovement: 0.01,
+      horizon: 4,
+      statement: 'resource pressure should decrease',
+    },
   };
 }
 

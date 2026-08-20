@@ -1,22 +1,104 @@
 import { createStableId } from '../core/stableId';
-import type { SensorSnapshot } from '../sensors/types';
+import type { CardinalMetrics, SensorSnapshot } from '../sensors/types';
+import {
+  CARDINAL_RESEARCH_VERSION,
+  emptyCardinalResearchContext,
+  type CardinalResearchContext,
+} from './CardinalResearch';
 import type {
   CardinalEvaluation,
   CardinalMode,
+  CardinalPredictionMetric,
+  CardinalProblemAssessment,
+  CardinalProblemKind,
   InterventionKind,
   InterventionProposal,
 } from './types';
 
-export const CARDINAL_POLICY_VERSION = 'ainkrad-cardinal-policy-0.3.3';
+export const CARDINAL_POLICY_VERSION = 'ainkrad-cardinal-policy-0.3.4';
+export const DEFAULT_CARDINAL_PREDICTION_HORIZON = 4;
+export const MAX_CARDINAL_PREDICTION_HORIZON = 16;
 
+const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const clampMagnitude = (value: number) =>
   Math.max(0.05, Math.min(0.25, value));
 
-interface Candidate {
-  kind: InterventionKind;
-  severity: number;
+interface CandidateDefinition {
+  problemKind: CardinalProblemKind;
+  interventionKind: InterventionKind;
+  severity(metrics: CardinalMetrics): number;
+  qualifies(metrics: CardinalMetrics): boolean;
+  critical(metrics: CardinalMetrics): boolean;
+  trendMetric: keyof CardinalMetrics;
+  predictionMetric: CardinalPredictionMetric;
   reason: string;
   expectedOutcome: string;
+  claim: string;
+  falsifier: string;
+}
+
+const CANDIDATES: readonly CandidateDefinition[] = [
+  {
+    problemKind: 'resource_fragility',
+    interventionKind: 'resource_relief',
+    severity: (metrics) => metrics.resourcePressure - 0.65,
+    qualifies: (metrics) =>
+      metrics.resourcePressure > 0.72 && metrics.recoveryCapacity < 0.45,
+    critical: (metrics) =>
+      metrics.resourcePressure > 0.92 && metrics.recoveryCapacity < 0.25,
+    trendMetric: 'resourcePressure',
+    predictionMetric: 'resourcePressure',
+    reason: 'Resource pressure is high while recovery capacity is weak.',
+    expectedOutcome:
+      'Restore enough resource slack for agents to recover through their own decisions.',
+    claim:
+      'The world is experiencing persistent resource fragility that its current recovery mechanisms are not resolving quickly enough.',
+    falsifier:
+      'The hypothesis weakens if resource pressure falls or recovery capacity rises without Cardinal assistance.',
+  },
+  {
+    problemKind: 'social_fragmentation',
+    interventionKind: 'open_shared_space',
+    severity: (metrics) => metrics.socialIsolation - 0.65,
+    qualifies: (metrics) =>
+      metrics.socialIsolation > 0.72 && metrics.populationActivity < 0.55,
+    critical: (metrics) =>
+      metrics.socialIsolation > 0.92 && metrics.populationActivity < 0.3,
+    trendMetric: 'socialIsolation',
+    predictionMetric: 'socialIsolation',
+    reason: 'Persistent isolation coincides with low meaningful activity.',
+    expectedOutcome:
+      'Increase opportunity for voluntary interaction without forcing relationships.',
+    claim:
+      'The society is entering persistent social fragmentation rather than a temporary low-interaction period.',
+    falsifier:
+      'The hypothesis weakens if isolation falls or meaningful activity recovers without Cardinal intervention.',
+  },
+  {
+    problemKind: 'conflict_overload',
+    interventionKind: 'safety_support',
+    severity: (metrics) =>
+      (metrics.conflictPressure + metrics.averageStress) / 2 - 0.55,
+    qualifies: (metrics) =>
+      metrics.conflictPressure > 0.7 && metrics.averageStress > 0.6,
+    critical: (metrics) =>
+      metrics.conflictPressure > 0.9 && metrics.averageStress > 0.8,
+    trendMetric: 'averageStress',
+    predictionMetric: 'averageStress',
+    reason: 'High conflict and stress are reducing recovery capacity.',
+    expectedOutcome:
+      'Reduce environmental pressure without rewriting agent beliefs or relationships.',
+    claim:
+      'Conflict and stress are persistently overwhelming the society\'s endogenous recovery capacity.',
+    falsifier:
+      'The hypothesis weakens if stress or conflict pressure recedes through autonomous adaptation.',
+  },
+];
+
+function trendFromDelta(delta: number): 'rising' | 'stable' | 'falling' {
+  if (delta > 0.04) return 'rising';
+  if (delta < -0.04) return 'falling';
+  return 'stable';
 }
 
 export class CardinalCore {
@@ -31,54 +113,75 @@ export class CardinalCore {
   evaluate(
     mode: Exclude<CardinalMode, 'off'>,
     observation: SensorSnapshot,
+    research: CardinalResearchContext = emptyCardinalResearchContext(),
   ): CardinalEvaluation {
-    const { metrics } = observation;
-    const candidates: Candidate[] = [];
-
-    if (metrics.resourcePressure > 0.72 && metrics.recoveryCapacity < 0.45) {
-      candidates.push({
-        kind: 'resource_relief',
-        severity: metrics.resourcePressure - 0.65,
-        reason: 'Resource pressure is high while recovery capacity is weak.',
-        expectedOutcome:
-          'Restore enough resource slack for agents to recover through their own decisions.',
-      });
+    if (research.researchVersion !== CARDINAL_RESEARCH_VERSION) {
+      throw new Error(
+        `Cardinal research version ${research.researchVersion} is incompatible with ${CARDINAL_RESEARCH_VERSION}.`,
+      );
     }
 
-    if (metrics.socialIsolation > 0.72 && metrics.populationActivity < 0.55) {
-      candidates.push({
-        kind: 'open_shared_space',
-        severity: metrics.socialIsolation - 0.65,
-        reason: 'Persistent isolation coincides with low meaningful activity.',
-        expectedOutcome:
-          'Increase opportunity for voluntary interaction without forcing relationships.',
-      });
-    }
+    const qualified = CANDIDATES
+      .filter((candidate) => candidate.qualifies(observation.metrics))
+      .map((candidate) => ({
+        candidate,
+        severity: Math.max(0, candidate.severity(observation.metrics)),
+      }))
+      .sort((a, b) => b.severity - a.severity);
 
-    if (metrics.conflictPressure > 0.7 && metrics.averageStress > 0.6) {
-      candidates.push({
-        kind: 'safety_support',
-        severity:
-          (metrics.conflictPressure + metrics.averageStress) / 2 - 0.55,
-        reason: 'High conflict and stress are reducing recovery capacity.',
-        expectedOutcome:
-          'Reduce environmental pressure without rewriting agent beliefs or relationships.',
-      });
-    }
+    const selected = qualified[0];
+    let detectedProblem: CardinalProblemAssessment | undefined;
+    let decision: CardinalEvaluation['decision'] = 'no_action';
+    let rationale = 'No systemic condition currently justifies intervention.';
+    const reasoningFactors: string[] = [];
 
-    candidates.sort((a, b) => b.severity - a.severity);
-    const selected = candidates[0];
+    if (selected) {
+      detectedProblem = this.assessProblem(selected.candidate, selected.severity, observation, research);
+      const isCritical = selected.candidate.critical(observation.metrics);
+      const recentAdverseOutcomes = this.recentAdverseOutcomes(
+        selected.candidate.interventionKind,
+        research,
+      );
+
+      reasoningFactors.push(
+        `problem=${detectedProblem.kind}`,
+        `severity=${detectedProblem.severity.toFixed(3)}`,
+        `persistence=${detectedProblem.persistence}`,
+        `trend=${detectedProblem.trend}`,
+        `confidence=${detectedProblem.confidence.toFixed(3)}`,
+        `recent_adverse_outcomes=${recentAdverseOutcomes.length}`,
+      );
+
+      if (!isCritical && detectedProblem.persistence < 3) {
+        decision = 'defer';
+        rationale =
+          `${selected.candidate.reason} Cardinal is deferring because the condition has not yet persisted across three compatible observations.`;
+      } else if (!isCritical && recentAdverseOutcomes.length >= 2) {
+        decision = 'defer';
+        rationale =
+          `${selected.candidate.reason} Cardinal is deferring because two recent post-intervention observations for the same action failed its stated prediction; this is caution, not a causal conclusion.`;
+      } else {
+        decision = 'propose';
+        rationale = isCritical
+          ? `${selected.candidate.reason} The condition crossed the critical threshold, so Cardinal may propose a minimal intervention without waiting for the normal persistence window.`
+          : `${selected.candidate.reason} The condition persisted across multiple observations, so a minimal falsifiable intervention may be tested.`;
+      }
+    }
 
     const evaluationId = createStableId('evaluation', {
       worldId: observation.worldId,
       worldRevision: observation.worldRevision,
       sensorVersion: observation.sensorVersion,
       policyVersion: this.policyVersion,
+      researchVersion: research.researchVersion,
+      researchContextFingerprint: research.fingerprint,
       observedAt: observation.observedAt,
       mode,
       metrics: observation.metrics,
       evidenceEventIds: observation.evidenceEventIds,
       limitations: observation.limitations,
+      detectedProblem,
+      decision,
     });
 
     const evaluation: CardinalEvaluation = {
@@ -88,34 +191,140 @@ export class CardinalCore {
       observedWorldRevision: observation.worldRevision,
       sensorVersion: observation.sensorVersion,
       policyVersion: this.policyVersion,
+      researchVersion: research.researchVersion,
+      researchContextFingerprint: research.fingerprint,
       mode,
-      metrics: structuredClone(metrics),
+      metrics: structuredClone(observation.metrics),
       evidenceEventIds: [...observation.evidenceEventIds],
       uncertaintyNotes: [...observation.limitations],
-      decision: selected ? 'propose' : 'no_action',
-      rationale:
-        selected?.reason ??
-        'No systemic condition currently justifies intervention.',
+      detectedProblem,
+      decision,
+      rationale,
+      reasoningFactors,
       hypotheticalOnly: mode === 'observer',
     };
 
-    if (selected) {
+    if (selected && detectedProblem && decision === 'propose') {
+      const magnitude = clampMagnitude(
+        Math.min(selected.severity, 0.08 + detectedProblem.confidence * 0.12),
+      );
       const proposal: InterventionProposal = {
         proposalId: createStableId('proposal', {
           evaluationId,
-          kind: selected.kind,
-          magnitude: clampMagnitude(selected.severity),
+          hypothesisId: detectedProblem.hypothesisId,
+          kind: selected.candidate.interventionKind,
+          magnitude,
         }),
         worldId: observation.worldId,
-        kind: selected.kind,
-        magnitude: clampMagnitude(selected.severity),
-        reason: selected.reason,
-        expectedOutcome: selected.expectedOutcome,
+        hypothesisId: detectedProblem.hypothesisId,
+        kind: selected.candidate.interventionKind,
+        magnitude,
+        reason: selected.candidate.reason,
+        expectedOutcome: selected.candidate.expectedOutcome,
+        prediction: {
+          metric: selected.candidate.predictionMetric,
+          direction: 'decrease',
+          minimumImprovement: 0.01,
+          horizon: DEFAULT_CARDINAL_PREDICTION_HORIZON,
+          statement:
+            `${selected.candidate.predictionMetric} should decrease by at least 0.01 within ${DEFAULT_CARDINAL_PREDICTION_HORIZON} logical ticks.`,
+        },
       };
 
       evaluation.proposal = proposal;
     }
 
     return evaluation;
+  }
+
+  private assessProblem(
+    definition: CandidateDefinition,
+    severity: number,
+    observation: SensorSnapshot,
+    research: CardinalResearchContext,
+  ): CardinalProblemAssessment {
+    const compatibleHistory = research.priorEvaluations.filter(
+      (evaluation) =>
+        evaluation.policyVersion === this.policyVersion &&
+        evaluation.sensorVersion === observation.sensorVersion,
+    );
+
+    const supporting: CardinalEvaluation[] = [];
+    for (let index = compatibleHistory.length - 1; index >= 0; index -= 1) {
+      const evaluation = compatibleHistory[index];
+      if (!definition.qualifies(evaluation.metrics)) {
+        break;
+      }
+      supporting.unshift(evaluation);
+    }
+
+    const previousMetric = supporting.at(-1)?.metrics[definition.trendMetric];
+    const currentMetric = observation.metrics[definition.trendMetric];
+    const trend = trendFromDelta(
+      typeof previousMetric === 'number' ? currentMetric - previousMetric : 0,
+    );
+
+    const priorHypothesis = [...supporting]
+      .reverse()
+      .map((evaluation) => evaluation.detectedProblem)
+      .find((problem) => problem?.kind === definition.problemKind)?.hypothesisId;
+
+    const hypothesisId =
+      priorHypothesis ??
+      createStableId('hypothesis', {
+        worldId: observation.worldId,
+        problemKind: definition.problemKind,
+        firstObservedAt: observation.observedAt,
+        firstWorldRevision: observation.worldRevision,
+        sensorVersion: observation.sensorVersion,
+        policyVersion: this.policyVersion,
+      });
+
+    const relevantInterventionIds = new Set(
+      research.priorInterventions
+        .filter((item) => item.proposal.kind === definition.interventionKind)
+        .map((item) => item.interventionId),
+    );
+    const priorOutcomeIds = research.priorOutcomes
+      .filter((outcome) => relevantInterventionIds.has(outcome.interventionId))
+      .slice(-3)
+      .map((outcome) => outcome.outcomeId);
+
+    const limitationPenalty = Math.min(0.3, observation.limitations.length * 0.08);
+    const confidence = clamp01(
+      0.35 + Math.min(0.45, (supporting.length + 1) * 0.15) - limitationPenalty,
+    );
+
+    return {
+      hypothesisId,
+      kind: definition.problemKind,
+      severity: clamp01(severity),
+      persistence: supporting.length + 1,
+      trend,
+      confidence,
+      supportingEvaluationIds: supporting.map((evaluation) => evaluation.evaluationId),
+      priorOutcomeIds,
+      claim: definition.claim,
+      falsifier: definition.falsifier,
+    };
+  }
+
+  private recentAdverseOutcomes(
+    interventionKind: InterventionKind,
+    research: CardinalResearchContext,
+  ) {
+    const relevantInterventionIds = new Set(
+      research.priorInterventions
+        .filter(
+          (intervention) =>
+            intervention.executed && intervention.proposal.kind === interventionKind,
+        )
+        .map((intervention) => intervention.interventionId),
+    );
+
+    return research.priorOutcomes
+      .filter((outcome) => relevantInterventionIds.has(outcome.interventionId))
+      .slice(-2)
+      .filter((outcome) => !outcome.expectedDirectionObserved);
   }
 }

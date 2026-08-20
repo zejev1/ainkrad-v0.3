@@ -106,6 +106,18 @@ Evaluates observations and may produce a minimal intervention proposal.
 
 The Core does not directly execute interventions.
 
+### Cardinal Research Memory
+
+Cardinal is not allowed to be a one-tick threshold reflex with hidden mutable beliefs. Its research memory is reconstructed from the append-only journal of prior evaluations, interventions and outcomes. The active reasoning window may be bounded for performance, but the underlying evidence is not deleted.
+
+A systemic problem is represented as an explicit hypothesis with persistence, trend, confidence, supporting evaluation IDs, prior outcome IDs, a claim and a falsifier. Non-critical pressure is normally observed across multiple compatible observations before Cardinal proposes action. A critical condition may bypass that waiting period, but the exception is explicit and auditable.
+
+Every intervention proposal is bound to the hypothesis that justified it and carries a falsifiable prediction: which metric should move, in which direction, by how much and within what logical horizon. A later before/after observation can fail that prediction without being mislabeled as proof of causation.
+
+Exact retries must reconstruct the same research context. A Cardinal cycle may not count its own already-journaled evaluation as fresh supporting evidence after a restart.
+
+This gives Cardinal memory without giving it a private reality that the Auditor cannot inspect.
+
 ### Intervention Gateway
 
 An architecturally separate component decides whether a proposed intervention is allowed **and performs the authorized simulation mutation itself**.
@@ -455,9 +467,13 @@ Every meaningful Cardinal evaluation should eventually record:
 - metrics;
 - evidence;
 - uncertainty;
-- detected problem;
+- research-context version and fingerprint;
+- detected problem hypothesis;
+- persistence, trend and confidence;
+- explicit falsifier;
 - proposed action;
 - reason;
+- falsifiable prediction and horizon;
 - expected outcome;
 - requested magnitude;
 - authorization result;
@@ -531,8 +547,9 @@ AINKRAD
 ├── Cardinal
 │   ├── Observer
 │   ├── Core
+│   ├── Research Memory / Hypotheses
 │   ├── Journal
-│   ├── Intervention Proposal
+│   ├── Intervention Proposal + Prediction
 │   └── Auditor
 │
 ├── Intervention Gateway

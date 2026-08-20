@@ -55,3 +55,8 @@ Rejected adapter designs include:
 - resuming an old snapshot under changed world rules without explicit migration;
 - using transport wall-clock timestamps as autonomous simulation time;
 - allowing retry-generated Cardinal rows to inflate the apparent amount of research evidence.
+
+
+## Cardinal research-version changes
+
+A change to Cardinal hypothesis/persistence semantics is an experiment interpretation change, even if the world rules themselves did not change. Persisted evidence remains historical evidence, but new Cardinal research logic must carry a new policy/research version and must not silently treat incompatible old evaluations as a continuous persistence chain.

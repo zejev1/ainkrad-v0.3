@@ -108,3 +108,12 @@ Unknown/transient execution failures leave the intent pending so a restart canno
 The generic `AppendOnlyLog` port uses compare-and-append per stream. Implementations should partition streams by world and purpose; they must not recreate a single global hot sequence for all worlds or all evidence.
 
 A durable adapter must make each compare-and-append atomic, or use an equivalent recoverable transaction. If its physical medium can produce a torn final record, recovery must detect and reject/truncate that incomplete tail before exposing the stream.
+
+
+## Cardinal cognitive memory is derived from evidence
+
+Cardinal's longitudinal research memory is reconstructed from append-only evaluation/intervention/outcome evidence rather than stored as an opaque mutable belief blob.
+
+The active reasoning window may be bounded, but the evidence that produced it is retained. A restart over the same durable journal must reconstruct the same compatible context for the same logical observation. The current cycle excludes records from its own logical observation time so a retry cannot inflate persistence by counting itself twice.
+
+Research context compatibility is versioned. A change to sensor meaning, Cardinal policy or research-context semantics must be reflected in experiment metadata rather than silently mixing unlike evidence.

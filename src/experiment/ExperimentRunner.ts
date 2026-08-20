@@ -1,5 +1,9 @@
 import { CardinalAuditor } from '../cardinal/CardinalAuditor';
-import { CardinalCore } from '../cardinal/CardinalCore';
+import {
+  CardinalCore,
+  MAX_CARDINAL_PREDICTION_HORIZON,
+} from '../cardinal/CardinalCore';
+import { CARDINAL_RESEARCH_VERSION } from '../cardinal/CardinalResearch';
 import { reconcileGatewayJournal } from '../cardinal/CardinalRecovery';
 import { LogBackedCardinalJournal } from '../cardinal/LogBackedCardinalJournal';
 import { CardinalObserver } from '../cardinal/CardinalObserver';
@@ -38,6 +42,7 @@ export interface ExperimentManifest {
   worldRulesVersion: string;
   sensorVersion: string;
   cardinalPolicyVersion: string;
+  cardinalResearchVersion: string;
   interventionGatewayPolicyVersion: string;
   disturbancesFingerprint: string;
 }
@@ -88,7 +93,6 @@ export interface ControlledComparisonResult {
   analysis: ControlledComparisonAnalysis;
 }
 
-const outcomeHorizon = 4;
 
 function metricDeltas(a: CardinalMetrics, b: CardinalMetrics): MetricDeltas {
   return {
@@ -169,7 +173,11 @@ export async function runExperiment(
   const observeDueOutcomes = async (tick: number): Promise<void> => {
     const unresolved = await unresolvedExecutedInterventions();
     for (const pending of unresolved) {
-      if (pending.intervention.requestedAt + outcomeHorizon > tick) {
+      if (
+        pending.intervention.requestedAt +
+          pending.intervention.proposal.prediction.horizon >
+        tick
+      ) {
         continue;
       }
 
@@ -252,7 +260,11 @@ export async function runExperiment(
   const finalWorldHistory = await store.history(finalWorld.id);
   const worldHistoryFingerprint = stableJsonStringify(finalWorldHistory);
 
-  for (let followTick = ticks + 1; followTick <= ticks + outcomeHorizon; followTick += 1) {
+  for (
+    let followTick = ticks + 1;
+    followTick <= ticks + MAX_CARDINAL_PREDICTION_HORIZON;
+    followTick += 1
+  ) {
     if ((await unresolvedExecutedInterventions()).length === 0) {
       break;
     }
@@ -275,6 +287,7 @@ export async function runExperiment(
       worldRulesVersion: WORLD_RULES_VERSION,
       sensorVersion: WORLD_SENSOR_VERSION,
       cardinalPolicyVersion: core.policyVersion,
+      cardinalResearchVersion: CARDINAL_RESEARCH_VERSION,
       interventionGatewayPolicyVersion: gateway.policyVersion,
       disturbancesFingerprint: stableJsonStringify(disturbances),
     },
@@ -320,6 +333,8 @@ export async function runControlledComparison(
         off.manifest.sensorVersion === intervene.manifest.sensorVersion &&
         off.manifest.cardinalPolicyVersion === observer.manifest.cardinalPolicyVersion &&
         off.manifest.cardinalPolicyVersion === intervene.manifest.cardinalPolicyVersion &&
+        off.manifest.cardinalResearchVersion === observer.manifest.cardinalResearchVersion &&
+        off.manifest.cardinalResearchVersion === intervene.manifest.cardinalResearchVersion &&
         off.manifest.interventionGatewayPolicyVersion ===
           observer.manifest.interventionGatewayPolicyVersion &&
         off.manifest.interventionGatewayPolicyVersion ===

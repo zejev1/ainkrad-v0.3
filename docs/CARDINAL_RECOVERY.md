@@ -90,3 +90,10 @@ It does not weaken the external-world rule:
 > Freedom inside. Control at the boundary.
 
 Any future real-world executor remains outside Cardinal's process and outside Cardinal's control, with credentials and authorization owned by the independent external gateway.
+
+
+## Research-context recovery
+
+Cardinal research context is reconstructed from journal evidence after restart. Only strictly earlier logical observation times are included in the next cycle. Therefore an evaluation already appended for time `T` is ignored when rebuilding the prior context for an exact retry at `T`; the retry does not manufacture extra persistence, confidence or a different hypothesis decision.
+
+The research-context fingerprint, policy version, research version and sensor version travel with the evaluation/experiment evidence so a restart cannot silently change the meaning of Cardinal's longitudinal reasoning.
