@@ -1,0 +1,17 @@
+{
+  "name": "ainkrad-v0-3",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Experimental autonomous world for developing and testing Cardinal.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "demo": "tsx src/demo.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.1"
+  }
+}

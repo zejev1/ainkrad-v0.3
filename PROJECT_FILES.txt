@@ -1,0 +1,42 @@
+Ainkrad v0.3 clean foundation
+
+Files:
+- .gitignore
+- README.md
+- SPCK_IMPORT.md
+- docs/MIGRATION_RULES.md
+- package.json
+- src/boundary/ExternalGateway.ts
+- src/cardinal/CardinalAuditor.ts
+- src/cardinal/CardinalCore.ts
+- src/cardinal/CardinalJournal.ts
+- src/cardinal/CardinalObserver.ts
+- src/cardinal/CardinalRuntime.ts
+- src/cardinal/InMemoryCardinalJournal.ts
+- src/cardinal/InterventionGateway.ts
+- src/cardinal/types.ts
+- src/core/json.ts
+- src/demo.ts
+- src/experiment/ExperimentRunner.ts
+- src/index.ts
+- src/runtime/WorldRuntime.ts
+- src/runtime/inputBus/InMemoryInputBus.ts
+- src/runtime/inputBus/InputBus.ts
+- src/runtime/inputBus/createEnvelope.ts
+- src/runtime/inputBus/createEventId.ts
+- src/runtime/inputBus/types.ts
+- src/runtime/scheduler/types.ts
+- src/sensors/WorldSensors.ts
+- src/sensors/types.ts
+- src/utils/rng.ts
+- src/world/InMemoryEventStore.ts
+- src/world/WorldEngine.ts
+- src/world/events.ts
+- src/world/types.ts
+- tests/externalGateway.test.ts
+- tests/history.test.ts
+- tests/inputBus.test.ts
+- tests/modes.test.ts
+- tests/observer.test.ts
+- tests/scheduler.test.ts
+- tsconfig.json
