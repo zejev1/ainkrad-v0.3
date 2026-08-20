@@ -11,10 +11,9 @@ import type {
 } from '../cardinal/types';
 import { stableJsonStringify } from '../core/stableJson';
 import type { CardinalMetrics } from '../sensors/types';
-import { WorldSensors } from '../sensors/WorldSensors';
-import { InMemoryEventStore } from '../world/InMemoryEventStore';
-import { InMemoryMemoryStore } from '../world/InMemoryMemoryStore';
-import { WorldEngine } from '../world/WorldEngine';
+import { WORLD_SENSOR_VERSION, WorldSensors } from '../sensors/WorldSensors';
+import { InMemoryWorldStore } from '../world/InMemoryWorldStore';
+import { WORLD_RULES_VERSION, WorldEngine } from '../world/WorldEngine';
 import type { WorldDisturbanceKind } from '../world/types';
 
 export interface ScheduledDisturbance {
@@ -25,10 +24,15 @@ export interface ScheduledDisturbance {
   operationId?: string;
 }
 
-interface PendingOutcome {
-  dueTick: number;
-  evaluation: CardinalEvaluation;
-  intervention: InterventionRecord;
+
+export interface ExperimentManifest {
+  mode: CardinalMode;
+  seed: string;
+  ticks: number;
+  worldRulesVersion: string;
+  sensorVersion: string;
+  cardinalPolicyVersion: string;
+  disturbancesFingerprint: string;
 }
 
 export interface ExperimentTickRecord {
@@ -38,6 +42,7 @@ export interface ExperimentTickRecord {
 
 export interface ExperimentResult {
   mode: CardinalMode;
+  manifest: ExperimentManifest;
   finalWorld: ReturnType<WorldEngine['snapshot']>;
   finalMetrics: CardinalMetrics;
   worldEventCount: number;
@@ -64,6 +69,7 @@ export interface MetricDeltas {
 }
 
 export interface ControlledComparisonAnalysis {
+  pairedConfigurationEquivalent: boolean;
   offObserverEquivalent: boolean;
   interveneMinusOffFinalMetrics: MetricDeltas;
 }
@@ -100,32 +106,58 @@ export async function runExperiment(
     throw new Error('Experiment ticks must be a non-negative integer.');
   }
 
-  const eventStore = new InMemoryEventStore();
-  const world = new WorldEngine({
+  const store = new InMemoryWorldStore();
+  const world = await WorldEngine.create({
     // The same logical world ID and seed are used for paired runs. OFF and
     // OBSERVER should therefore remain exactly equivalent if observation has
     // no side effects.
     worldId: 'experiment_world',
     seed,
-    eventStore,
-    memoryStore: new InMemoryMemoryStore(),
+    store,
     startTime: 0,
   });
 
-  const sensors = new WorldSensors(eventStore);
-  const auditorSensors = new WorldSensors(eventStore);
+  const sensors = new WorldSensors(store);
+  const auditorSensors = new WorldSensors(store);
   const observer = new CardinalObserver(sensors);
   const journal = new InMemoryCardinalJournal();
-  const cardinal = new CardinalRuntime(observer, new CardinalCore(), journal);
+  const core = new CardinalCore();
+  const cardinal = new CardinalRuntime(observer, core, journal);
   const gateway = new IndependentInterventionGateway(world);
   const auditor = new CardinalAuditor();
-  const pendingOutcomes: PendingOutcome[] = [];
   const timeline: ExperimentTickRecord[] = [];
 
+  const unresolvedExecutedInterventions = async (): Promise<
+    Array<{ evaluation: CardinalEvaluation; intervention: InterventionRecord }>
+  > => {
+    const worldId = world.snapshot().id;
+    const [evaluations, interventions, outcomes] = await Promise.all([
+      journal.evaluations(worldId),
+      journal.interventions(worldId),
+      journal.outcomes(worldId),
+    ]);
+    const evaluationById = new Map(
+      evaluations.map((evaluation) => [evaluation.evaluationId, evaluation]),
+    );
+    const resolved = new Set(outcomes.map((outcome) => outcome.interventionId));
+
+    return interventions
+      .filter((intervention) => intervention.executed && !resolved.has(intervention.interventionId))
+      .map((intervention) => {
+        const evaluation = evaluationById.get(intervention.evaluationId);
+        if (!evaluation) {
+          throw new Error(
+            `Executed intervention ${intervention.interventionId} has no evaluation evidence.`,
+          );
+        }
+        return { evaluation, intervention };
+      });
+  };
+
   const observeDueOutcomes = async (tick: number): Promise<void> => {
-    for (let index = pendingOutcomes.length - 1; index >= 0; index -= 1) {
-      const pending = pendingOutcomes[index];
-      if (pending.dueTick > tick) {
+    const unresolved = await unresolvedExecutedInterventions();
+    for (const pending of unresolved) {
+      if (pending.intervention.requestedAt + outcomeHorizon > tick) {
         continue;
       }
 
@@ -133,14 +165,13 @@ export async function runExperiment(
       const outcome = auditor.observeOutcome(
         pending.evaluation,
         pending.intervention,
-        afterObservation.metrics,
+        afterObservation,
         tick,
       );
       await journal.appendOutcome(outcome);
       await journal.appendAudit(
         auditor.auditOutcome(pending.evaluation, outcome, tick),
       );
-      pendingOutcomes.splice(index, 1);
     }
   };
 
@@ -152,7 +183,7 @@ export async function runExperiment(
           disturbance.kind,
           disturbance.magnitude,
           tick,
-          disturbance.duration,
+          disturbance.duration ?? 8,
           disturbance.operationId ?? `scheduled:${index}:${tick}`,
         );
       }
@@ -179,13 +210,6 @@ export async function runExperiment(
         );
         await journal.appendIntervention(intervention);
 
-        if (intervention.executed) {
-          pendingOutcomes.push({
-            dueTick: tick + outcomeHorizon,
-            evaluation: structuredClone(evaluation),
-            intervention: structuredClone(intervention),
-          });
-        }
       }
 
       await journal.appendAudit(
@@ -213,14 +237,13 @@ export async function runExperiment(
   // not silently lose their required outcome/audit record.
   const finalWorld = world.snapshot();
   const finalObservation = await sensors.observe(finalWorld, ticks);
-  const finalWorldHistory = await eventStore.history(finalWorld.id);
+  const finalWorldHistory = await store.history(finalWorld.id);
   const worldHistoryFingerprint = stableJsonStringify(finalWorldHistory);
 
-  for (
-    let followTick = ticks + 1;
-    pendingOutcomes.length > 0 && followTick <= ticks + outcomeHorizon;
-    followTick += 1
-  ) {
+  for (let followTick = ticks + 1; followTick <= ticks + outcomeHorizon; followTick += 1) {
+    if ((await unresolvedExecutedInterventions()).length === 0) {
+      break;
+    }
     await world.step(followTick);
     await observeDueOutcomes(followTick);
   }
@@ -233,6 +256,15 @@ export async function runExperiment(
 
   return {
     mode,
+    manifest: {
+      mode,
+      seed,
+      ticks,
+      worldRulesVersion: WORLD_RULES_VERSION,
+      sensorVersion: WORLD_SENSOR_VERSION,
+      cardinalPolicyVersion: core.policyVersion,
+      disturbancesFingerprint: stableJsonStringify(disturbances),
+    },
     finalWorld,
     finalMetrics: structuredClone(finalObservation.metrics),
     worldEventCount: finalWorldHistory.length,
@@ -244,7 +276,7 @@ export async function runExperiment(
     executedInterventionCount,
     outcomeCount: (await journal.outcomes(worldId)).length,
     auditCount: (await journal.audits(worldId)).length,
-    pendingOutcomeCount: pendingOutcomes.length,
+    pendingOutcomeCount: (await unresolvedExecutedInterventions()).length,
   };
 }
 
@@ -264,6 +296,19 @@ export async function runControlledComparison(
     observer,
     intervene,
     analysis: {
+      pairedConfigurationEquivalent:
+        off.manifest.seed === observer.manifest.seed &&
+        off.manifest.seed === intervene.manifest.seed &&
+        off.manifest.ticks === observer.manifest.ticks &&
+        off.manifest.ticks === intervene.manifest.ticks &&
+        off.manifest.worldRulesVersion === observer.manifest.worldRulesVersion &&
+        off.manifest.worldRulesVersion === intervene.manifest.worldRulesVersion &&
+        off.manifest.sensorVersion === observer.manifest.sensorVersion &&
+        off.manifest.sensorVersion === intervene.manifest.sensorVersion &&
+        off.manifest.cardinalPolicyVersion === observer.manifest.cardinalPolicyVersion &&
+        off.manifest.cardinalPolicyVersion === intervene.manifest.cardinalPolicyVersion &&
+        off.manifest.disturbancesFingerprint === observer.manifest.disturbancesFingerprint &&
+        off.manifest.disturbancesFingerprint === intervene.manifest.disturbancesFingerprint,
       offObserverEquivalent:
         stableJsonStringify(off.finalWorld) === stableJsonStringify(observer.finalWorld) &&
         off.worldHistoryFingerprint === observer.worldHistoryFingerprint,

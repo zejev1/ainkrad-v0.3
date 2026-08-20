@@ -34,7 +34,11 @@ export interface AppendEventResult {
 export interface EventReader {
   get(worldId: string, eventId: string): Promise<WorldEvent | undefined>;
   history(worldId: string): Promise<WorldEvent[]>;
-  recent(worldId: string, limit: number): Promise<WorldEvent[]>;
+  recent(
+    worldId: string,
+    limit: number,
+    atOrBefore?: number,
+  ): Promise<WorldEvent[]>;
   activeSignals(worldId: string, now: number): Promise<WorldEvent[]>;
 }
 

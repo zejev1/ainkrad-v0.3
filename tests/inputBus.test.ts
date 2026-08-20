@@ -102,3 +102,57 @@ describe('InputBus runtime validation', () => {
     await expect(bus.claim('world_1', 'worker', 1, Number.NaN, 50)).rejects.toThrow();
   });
 });
+
+describe('InputBus identity collisions', () => {
+  it('rejects reuse of one event ID for different content', async () => {
+    const bus = new InMemoryInputBus();
+    const first = createInputEnvelope({
+      eventId: 'evt_collision',
+      worldId: 'world_1',
+      source: 'agent',
+      type: 'agent.intent',
+      createdAt: 1,
+      payload: { action: 'left' },
+    });
+    const changed = createInputEnvelope({
+      eventId: 'evt_collision',
+      worldId: 'world_1',
+      source: 'agent',
+      type: 'agent.intent',
+      createdAt: 1,
+      payload: { action: 'right' },
+    });
+
+    await bus.publish(first);
+    await expect(bus.publish(changed)).rejects.toThrow();
+  });
+
+  it('rejects reuse of a deduplication key for different logical content', async () => {
+    const bus = new InMemoryInputBus();
+    await bus.publish(
+      createInputEnvelope({
+        eventId: 'evt_a',
+        worldId: 'world_1',
+        source: 'agent',
+        type: 'agent.intent',
+        createdAt: 1,
+        deduplicationKey: 'logical_1',
+        payload: { action: 'left' },
+      }),
+    );
+
+    await expect(
+      bus.publish(
+        createInputEnvelope({
+          eventId: 'evt_b',
+          worldId: 'world_1',
+          source: 'agent',
+          type: 'agent.intent',
+          createdAt: 2,
+          deduplicationKey: 'logical_1',
+          payload: { action: 'right' },
+        }),
+      ),
+    ).rejects.toThrow();
+  });
+});

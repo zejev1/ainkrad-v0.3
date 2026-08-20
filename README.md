@@ -342,7 +342,10 @@ Requirements:
 - concurrent publishers must not fight over one shared record;
 - unacknowledged queue items keep their deduplication protection even during technical cleanup;
 - transport envelopes are size-bounded so full worlds, memory histories and NPC arrays cannot leak into the queue;
-- serialized envelopes are validated at runtime for source, IDs, finite time and JSON payload shape; TypeScript types alone are not trusted.
+- serialized envelopes are validated at runtime for source, IDs, finite time and JSON payload shape; TypeScript types alone are not trusted;
+- reusing one event ID or deduplication key for different logical content is a hard error.
+
+Transport wall-clock time and autonomous simulation time are separate. `createdAt` describes transport creation; the world records the logical time at which the input is actually applied. Wall-clock delivery jitter must not rewrite autonomous history.
 
 ---
 
@@ -352,7 +355,31 @@ A successful logical world operation must be safe to retry.
 
 Stable operation IDs are required for transport inputs, scheduled disturbances and authorized interventions. Exact retries must not create duplicate history or apply the same intervention twice.
 
+Exact retries remain recognizable even if the world has since advanced to a later logical time. A retry is identified before new-operation temporal guards are applied. Concurrent mutation calls on one engine are serialized, and read-only snapshots expose only committed state, never an in-flight working copy.
+
 A future persistent storage adapter must atomically commit the current-state change and the historical evidence for one logical world operation, or provide an equivalent recoverable commit protocol. In-memory behavior is a reference implementation, not permission to accept split-brain state/history in persistent storage.
+
+The v0.3 domain now exposes this boundary explicitly as `WorldStore`. `WorldEngine` stages the next state, world events and memories, then adopts the mutation only after the store commits them together with a stable operation record.
+
+`WorldState.revision` protects one world from stale concurrent writers. It is deliberately **not** a global sequence counter shared by unrelated inputs or worlds.
+
+Exact retries use the same logical operation ID and fingerprint. Same ID + same content is a no-op; same ID + different content is an error. See `docs/PERSISTENCE_CONTRACT.md`.
+
+---
+
+## Reproducible Research Versions
+
+A persisted experiment must say which rules produced it.
+
+Ainkrad records explicit versions for:
+
+- autonomous world rules;
+- sensor definitions;
+- Cardinal policy logic.
+
+Experiment results also carry the seed and a fingerprint of the disturbance schedule.
+
+A world created under incompatible world rules must not silently resume under new rules. It requires an explicit migration or a new experiment. Otherwise a code change could masquerade as an emergent social change.
 
 ---
 
@@ -404,6 +431,8 @@ Sensors describe.
 
 Sensors do not manipulate the thing they measure.
 
+A sensor may not use future events as present evidence, and the observation time must match the supplied world snapshot. Sensor definitions are versioned because changing a metric changes the meaning of experimental evidence.
+
 ---
 
 ## Audit Trail
@@ -428,6 +457,8 @@ Every meaningful Cardinal evaluation should eventually record:
 The required chain is:
 
 **OBSERVATION → REASONING → DECISION → ACTION → CONSEQUENCE → AUDIT**
+
+Retrying that chain must not manufacture extra evidence. Evaluation, proposal, intervention, outcome and audit identities must be stable for the same logical operation, while same-ID/different-content reuse must fail loudly.
 
 ---
 

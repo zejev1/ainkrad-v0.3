@@ -104,3 +104,29 @@ describe('Experiment history', () => {
     expect(await store.history('world_2')).toHaveLength(1);
   });
 });
+
+describe('Historical time bounds', () => {
+  it('does not return future events from a time-bounded recent query', async () => {
+    const store = new InMemoryEventStore();
+    await store.append({
+      eventId: 'present',
+      worldId: 'world_1',
+      kind: 'agent.present',
+      source: 'agent',
+      occurredAt: 2,
+      payload: {},
+    });
+    await store.append({
+      eventId: 'future',
+      worldId: 'world_1',
+      kind: 'agent.future',
+      source: 'agent',
+      occurredAt: 20,
+      payload: {},
+    });
+
+    expect((await store.recent('world_1', 10, 5)).map((event) => event.eventId)).toEqual([
+      'present',
+    ]);
+  });
+});

@@ -4,18 +4,16 @@ import { InMemoryCardinalJournal } from '../src/cardinal/InMemoryCardinalJournal
 import { CardinalObserver } from '../src/cardinal/CardinalObserver';
 import { CardinalRuntime } from '../src/cardinal/CardinalRuntime';
 import { WorldSensors } from '../src/sensors/WorldSensors';
-import { InMemoryEventStore } from '../src/world/InMemoryEventStore';
-import { InMemoryMemoryStore } from '../src/world/InMemoryMemoryStore';
+import { InMemoryWorldStore } from '../src/world/InMemoryWorldStore';
 import { WorldEngine } from '../src/world/WorldEngine';
 
 describe('Cardinal Observer', () => {
   it('does not mutate the autonomous world', async () => {
-    const eventStore = new InMemoryEventStore();
-    const world = new WorldEngine({
+    const store = new InMemoryWorldStore();
+    const world = await WorldEngine.create({
       worldId: 'world_1',
       seed: 'observer-test',
-      eventStore,
-      memoryStore: new InMemoryMemoryStore(),
+      store,
       startTime: 0,
     });
 
@@ -23,7 +21,7 @@ describe('Cardinal Observer', () => {
     const before = world.snapshot();
 
     const runtime = new CardinalRuntime(
-      new CardinalObserver(new WorldSensors(eventStore)),
+      new CardinalObserver(new WorldSensors(store)),
       new CardinalCore(),
       new InMemoryCardinalJournal(),
     );

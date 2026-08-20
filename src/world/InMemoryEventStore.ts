@@ -13,6 +13,7 @@ function sameEvent(a: WorldEvent, b: WorldEvent): boolean {
   return stableJsonStringify(a) === stableJsonStringify(b);
 }
 
+/** Standalone event-store reference for focused tests/tools. WorldEngine uses WorldStore so state and evidence share one commit boundary. */
 export class InMemoryEventStore implements EventStore {
   private readonly byId = new Map<string, WorldEvent>();
   private readonly byWorld = new Map<string, WorldEvent[]>();
@@ -67,12 +68,21 @@ export class InMemoryEventStore implements EventStore {
     return (this.byWorld.get(worldId) ?? []).map((event) => structuredClone(event));
   }
 
-  async recent(worldId: string, limit: number): Promise<WorldEvent[]> {
+  async recent(
+    worldId: string,
+    limit: number,
+    atOrBefore?: number,
+  ): Promise<WorldEvent[]> {
     if (!Number.isInteger(limit) || limit < 0) {
       throw new Error('EventStore recent limit must be a non-negative integer.');
     }
+    if (atOrBefore !== undefined && !Number.isFinite(atOrBefore)) {
+      throw new Error('EventStore recent time bound must be finite.');
+    }
 
-    const history = this.byWorld.get(worldId) ?? [];
+    const history = (this.byWorld.get(worldId) ?? []).filter(
+      (event) => atOrBefore === undefined || event.occurredAt <= atOrBefore,
+    );
     return history
       .slice(Math.max(0, history.length - limit))
       .map((event) => structuredClone(event));

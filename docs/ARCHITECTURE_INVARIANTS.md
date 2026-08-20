@@ -83,3 +83,30 @@ These rules convert failures from the previous implementation into tests and str
 52. Active signals never influence a time before their own `occurredAt`; temporal projections obey both start and end boundaries.
 53. Serialized input envelopes are validated at runtime; TypeScript source unions are not a transport security boundary.
 54. OFF/OBSERVER contamination checks compare autonomous world-event history as well as the final world snapshot.
+
+## Audit round 3 additions
+
+55. WorldEngine stages state changes, events and memories before one persistence commit; it does not write current state first and evidence later.
+56. `WorldState.revision` provides per-world compare-and-swap protection against stale concurrent writers; it is never a global input counter.
+57. World operation idempotency survives process restart because stable operation IDs and fingerprints live at the `WorldStore` boundary.
+58. Same world operation ID with different logical content is a hard error.
+59. A failed world commit leaves the live engine state and RNG state unchanged.
+60. A persisted world can be reopened with its RNG and event-sequence determinism state intact.
+61. World snapshots carry a rules version and incompatible rules require explicit migration rather than silent continuation.
+62. Sensor snapshots carry a sensor version and Cardinal evaluations carry a policy version.
+63. Experiment results record a reproducibility manifest containing seed, versions and disturbance-schedule fingerprint.
+64. Transport wall-clock `createdAt` is not simulation time; world input evidence records the logical application time.
+65. Time-bounded sensor evidence excludes events whose `occurredAt` is in the future.
+66. A sensor observation timestamp must match the supplied world snapshot timestamp.
+67. Cardinal evaluation, proposal, outcome and Auditor decision identities are stable across exact logical retries.
+68. Cardinal journal exact retries are idempotent and same-ID/different-content reuse is rejected.
+69. Input event IDs and deduplication keys reject different-content reuse instead of silently discarding the collision.
+70. A new world operation may not reuse an event or memory ID already owned by another committed world operation.
+71. Pending intervention outcome work is reconstructed from journal evidence instead of existing only in an ephemeral in-process array.
+72. Outcome evidence records the before/after world revisions, sensor version and supporting event IDs used for the follow-up observation.
+73. Reading `WorldEngine.snapshot()` is side-effect free; determinism state is synchronized at operation commit, not by observation.
+74. A committed world event/effect may not claim a logical time later than the current-state timestamp that already contains its effect; multiple operations may share one logical time and are deduplicated by operation ID, not by `now === now`.
+
+75. Exact retries are recognized by stable operation identity even after the world has progressed beyond the operation's original logical time; temporal guards apply only to genuinely new operations.
+76. One `WorldEngine` instance serializes logical mutations so concurrent callers cannot share or corrupt a working transaction.
+77. `snapshot()` exposes only the last committed projection; uncommitted working state is never observable by sensors or other readers.

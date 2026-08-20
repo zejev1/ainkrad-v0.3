@@ -10,7 +10,9 @@ export interface CardinalMetrics {
 }
 
 export interface SensorSnapshot {
+  sensorVersion: string;
   worldId: string;
+  worldRevision: number;
   observedAt: number;
   metrics: CardinalMetrics;
   evidenceEventIds: string[];

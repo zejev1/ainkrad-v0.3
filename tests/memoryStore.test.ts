@@ -1,16 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { InMemoryEventStore } from '../src/world/InMemoryEventStore';
 import { InMemoryMemoryStore } from '../src/world/InMemoryMemoryStore';
+import { InMemoryWorldStore } from '../src/world/InMemoryWorldStore';
 import { WorldEngine } from '../src/world/WorldEngine';
 
 describe('Long-term memory storage', () => {
   it('keeps memory history outside the hot world snapshot', async () => {
-    const memoryStore = new InMemoryMemoryStore();
-    const world = new WorldEngine({
+    const store = new InMemoryWorldStore();
+    const world = await WorldEngine.create({
       worldId: 'memory-world',
       seed: 'memory-seed',
-      eventStore: new InMemoryEventStore(),
-      memoryStore,
+      store,
       startTime: 0,
     });
 
@@ -21,7 +20,7 @@ describe('Long-term memory storage', () => {
     expect('memories' in world.snapshot()).toBe(false);
     const histories = await Promise.all(
       Object.keys(world.snapshot().agents).map((agentId) =>
-        memoryStore.historyForAgent('memory-world', agentId),
+        store.historyForAgent('memory-world', agentId),
       ),
     );
     expect(histories.some((history) => history.length > 0)).toBe(true);

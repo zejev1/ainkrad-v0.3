@@ -4,7 +4,9 @@ import type { SensorSnapshot } from '../src/sensors/types';
 
 function observation(overrides: Partial<SensorSnapshot['metrics']>): SensorSnapshot {
   return {
+    sensorVersion: 'ainkrad-world-sensors-0.3.3',
     worldId: 'world_1',
+    worldRevision: 7,
     observedAt: 10,
     metrics: {
       populationActivity: 0.4,

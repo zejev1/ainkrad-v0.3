@@ -20,6 +20,9 @@ export interface CardinalEvaluation {
   evaluationId: string;
   worldId: string;
   evaluatedAt: number;
+  observedWorldRevision: number;
+  sensorVersion: string;
+  policyVersion: string;
   mode: Exclude<CardinalMode, 'off'>;
   metrics: CardinalMetrics;
   evidenceEventIds: string[];
@@ -47,6 +50,10 @@ export interface InterventionOutcomeRecord {
   interventionId: string;
   evaluationId: string;
   observedAt: number;
+  sensorVersion: string;
+  beforeWorldRevision: number;
+  afterWorldRevision: number;
+  evidenceEventIds: string[];
   beforeMetrics: CardinalMetrics;
   afterMetrics: CardinalMetrics;
   recoveryCapacityDelta: number;

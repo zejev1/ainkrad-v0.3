@@ -8,6 +8,7 @@ Files:
 - docs/ARCHITECTURE_INVARIANTS.md
 - docs/EXTERNAL_BOUNDARY.md
 - docs/MIGRATION_RULES.md
+- docs/PERSISTENCE_CONTRACT.md
 - package.json
 - src/boundary/ExternalGateway.ts
 - src/cardinal/CardinalAuditor.ts
@@ -19,6 +20,7 @@ Files:
 - src/cardinal/InterventionGateway.ts
 - src/cardinal/types.ts
 - src/core/json.ts
+- src/core/stableId.ts
 - src/core/stableJson.ts
 - src/demo.ts
 - src/experiment/ExperimentRunner.ts
@@ -35,12 +37,15 @@ Files:
 - src/utils/rng.ts
 - src/world/InMemoryEventStore.ts
 - src/world/InMemoryMemoryStore.ts
+- src/world/InMemoryWorldStore.ts
 - src/world/WorldEngine.ts
 - src/world/events.ts
 - src/world/memory.ts
+- src/world/persistence.ts
 - src/world/types.ts
 - tests/auditor.test.ts
 - tests/cardinalCore.test.ts
+- tests/cardinalJournal.test.ts
 - tests/experimentIntegrity.test.ts
 - tests/externalGateway.test.ts
 - tests/history.test.ts
@@ -49,7 +54,9 @@ Files:
 - tests/memoryStore.test.ts
 - tests/modes.test.ts
 - tests/observer.test.ts
+- tests/persistence.test.ts
 - tests/scheduler.test.ts
 - tests/sensors.test.ts
 - tests/worldAutonomy.test.ts
+- tests/worldRuntime.test.ts
 - tsconfig.json

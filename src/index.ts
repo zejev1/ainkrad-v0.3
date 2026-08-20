@@ -9,6 +9,9 @@ export * from './cardinal/InMemoryCardinalJournal';
 export * from './cardinal/InterventionGateway';
 export * from './cardinal/types';
 
+export * from './core/stableId';
+export * from './core/stableJson';
+
 export * from './experiment/ExperimentRunner';
 
 export * from './runtime/WorldRuntime';
@@ -25,6 +28,8 @@ export * from './sensors/WorldSensors';
 export * from './world/events';
 export * from './world/InMemoryEventStore';
 export * from './world/InMemoryMemoryStore';
+export * from './world/InMemoryWorldStore';
 export * from './world/memory';
+export * from './world/persistence';
 export * from './world/types';
 export * from './world/WorldEngine';

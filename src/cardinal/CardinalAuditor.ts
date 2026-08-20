@@ -1,6 +1,6 @@
+import { createStableId } from '../core/stableId';
 import { stableJsonStringify } from '../core/stableJson';
-import { createEventId } from '../runtime/inputBus/createEventId';
-import type { CardinalMetrics, SensorSnapshot } from '../sensors/types';
+import type { SensorSnapshot } from '../sensors/types';
 import type {
   AuditRecord,
   CardinalEvaluation,
@@ -23,7 +23,9 @@ export class CardinalAuditor {
       concerns.push('Decision audit did not receive an independent world observation.');
     } else {
       independentObservationMatched =
+        independentObservation.sensorVersion === evaluation.sensorVersion &&
         independentObservation.worldId === evaluation.worldId &&
+        independentObservation.worldRevision === evaluation.observedWorldRevision &&
         independentObservation.observedAt === evaluation.evaluatedAt &&
         stableJsonStringify(independentObservation.metrics) ===
           stableJsonStringify(evaluation.metrics) &&
@@ -60,7 +62,10 @@ export class CardinalAuditor {
     }
 
     return {
-      auditId: createEventId('audit'),
+      auditId: createStableId('audit-decision', {
+        evaluationId: evaluation.evaluationId,
+        interventionId: intervention?.interventionId,
+      }),
       worldId: evaluation.worldId,
       auditedAt: now,
       stage: 'decision',
@@ -75,11 +80,11 @@ export class CardinalAuditor {
   observeOutcome(
     evaluation: Readonly<CardinalEvaluation>,
     intervention: Readonly<InterventionRecord>,
-    afterMetrics: Readonly<CardinalMetrics>,
+    afterObservation: Readonly<SensorSnapshot>,
     now: number,
   ): InterventionOutcomeRecord {
     const before = evaluation.metrics;
-    const after = structuredClone(afterMetrics);
+    const after = structuredClone(afterObservation.metrics);
 
     let expectedDirectionObserved = true;
     switch (intervention.proposal.kind) {
@@ -95,11 +100,20 @@ export class CardinalAuditor {
     }
 
     return {
-      outcomeId: createEventId('outcome'),
+      outcomeId: createStableId('outcome', {
+        interventionId: intervention.interventionId,
+        observedAt: now,
+        afterWorldRevision: afterObservation.worldRevision,
+        sensorVersion: afterObservation.sensorVersion,
+      }),
       worldId: evaluation.worldId,
       interventionId: intervention.interventionId,
       evaluationId: evaluation.evaluationId,
       observedAt: now,
+      sensorVersion: afterObservation.sensorVersion,
+      beforeWorldRevision: evaluation.observedWorldRevision,
+      afterWorldRevision: afterObservation.worldRevision,
+      evidenceEventIds: [...afterObservation.evidenceEventIds],
       beforeMetrics: structuredClone(before),
       afterMetrics: after,
       recoveryCapacityDelta: after.recoveryCapacity - before.recoveryCapacity,
@@ -119,6 +133,10 @@ export class CardinalAuditor {
   ): AuditRecord {
     const concerns: string[] = [];
 
+    if (outcome.sensorVersion !== evaluation.sensorVersion) {
+      concerns.push('Outcome was measured with a different sensor version than the decision.');
+    }
+
     if (!outcome.expectedDirectionObserved) {
       concerns.push('Observed short-term outcome moved against the intervention expectation.');
     }
@@ -128,7 +146,10 @@ export class CardinalAuditor {
     }
 
     return {
-      auditId: createEventId('audit'),
+      auditId: createStableId('audit-outcome', {
+        evaluationId: evaluation.evaluationId,
+        outcomeId: outcome.outcomeId,
+      }),
       worldId: evaluation.worldId,
       auditedAt: now,
       stage: 'outcome',

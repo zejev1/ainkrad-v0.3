@@ -1,5 +1,5 @@
 import { stableJsonStringify } from '../core/stableJson';
-import { createEventId } from '../runtime/inputBus/createEventId';
+import { createStableId } from '../core/stableId';
 import type { WorldState } from '../world/types';
 import type {
   InterventionKind,
@@ -22,8 +22,8 @@ export interface SimulationInterventionTarget {
     kind: InterventionKind,
     magnitude: number,
     now: number,
-    duration?: number,
-    operationId?: string,
+    duration: number,
+    operationId: string,
   ): Promise<boolean>;
 }
 
@@ -117,7 +117,11 @@ export class IndependentInterventionGateway {
     const authorization = this.authorize(proposal, expectedWorld, now);
 
     const record: InterventionRecord = {
-      interventionId: createEventId('intervention'),
+      interventionId: createStableId('intervention', {
+        worldId: proposal.worldId,
+        proposalId: proposal.proposalId,
+        evaluationId,
+      }),
       evaluationId,
       worldId: proposal.worldId,
       requestedAt: now,

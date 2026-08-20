@@ -40,7 +40,7 @@ export class WorldRuntime {
       try {
         // World handling is idempotent by input eventId. A retry after a crash
         // between world commit and acknowledgement will not duplicate history.
-        await this.world.handleInput(item.event);
+        await this.world.handleInput(item.event, now);
         await this.bus.acknowledge(
           worldId,
           item.event.eventId,

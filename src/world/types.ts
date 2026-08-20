@@ -55,6 +55,8 @@ export interface WorldDeterminismState {
 export interface WorldState {
   id: string;
   now: number;
+  revision: number;
+  rulesVersion: string;
 
   environment: WorldEnvironment;
   determinism: WorldDeterminismState;

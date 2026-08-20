@@ -18,6 +18,7 @@ describe('Controlled Cardinal experiment integrity', () => {
 
     const comparison = await runControlledComparison('scan', 200, disturbances);
 
+    expect(comparison.analysis.pairedConfigurationEquivalent).toBe(true);
     expect(comparison.analysis.offObserverEquivalent).toBe(true);
     expect(comparison.observer.finalWorld).toEqual(comparison.off.finalWorld);
     expect(comparison.observer.worldHistoryFingerprint).toBe(

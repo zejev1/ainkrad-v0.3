@@ -4,7 +4,9 @@ import { CardinalCore } from '../src/cardinal/CardinalCore';
 import type { SensorSnapshot } from '../src/sensors/types';
 
 const observation: SensorSnapshot = {
+  sensorVersion: 'ainkrad-world-sensors-0.3.3',
   worldId: 'world_1',
+  worldRevision: 7,
   observedAt: 10,
   metrics: {
     populationActivity: 0.5,

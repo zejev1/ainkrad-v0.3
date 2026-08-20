@@ -3,16 +3,14 @@ import {
   ABSOLUTE_MAX_INTERVENTION_MAGNITUDE,
   IndependentInterventionGateway,
 } from '../src/cardinal/InterventionGateway';
-import { InMemoryEventStore } from '../src/world/InMemoryEventStore';
-import { InMemoryMemoryStore } from '../src/world/InMemoryMemoryStore';
+import { InMemoryWorldStore } from '../src/world/InMemoryWorldStore';
 import { WorldEngine } from '../src/world/WorldEngine';
 
-function makeWorld() {
-  return new WorldEngine({
+async function makeWorld() {
+  return await WorldEngine.create({
     worldId: 'world_1',
     seed: 'gateway',
-    eventStore: new InMemoryEventStore(),
-    memoryStore: new InMemoryMemoryStore(),
+    store: new InMemoryWorldStore(),
     agentNames: [],
     startTime: 0,
   });
@@ -20,7 +18,7 @@ function makeWorld() {
 
 describe('Independent intervention gateway', () => {
   it('executes allowed proposals and blocks a different rapid proposal', async () => {
-    const world = makeWorld();
+    const world = await makeWorld();
     await world.step(10);
     const gateway = new IndependentInterventionGateway(world, { minInterval: 5 });
     const firstProposal = {
@@ -42,7 +40,7 @@ describe('Independent intervention gateway', () => {
   });
 
   it('makes an exact proposal retry idempotent', async () => {
-    const world = makeWorld();
+    const world = await makeWorld();
     await world.step(10);
     const gateway = new IndependentInterventionGateway(world);
     const proposal = {
@@ -66,7 +64,7 @@ describe('Independent intervention gateway', () => {
   });
 
   it('fails closed for a runtime kind outside the allowlist', async () => {
-    const world = makeWorld();
+    const world = await makeWorld();
     await world.step(10);
     const gateway = new IndependentInterventionGateway(world);
     const proposal = {
@@ -83,8 +81,8 @@ describe('Independent intervention gateway', () => {
     expect(result.executed).toBe(false);
   });
 
-  it('cannot be configured above the absolute intervention cap', () => {
-    const world = makeWorld();
+  it('cannot be configured above the absolute intervention cap', async () => {
+    const world = await makeWorld();
     expect(
       () =>
         new IndependentInterventionGateway(world, {

@@ -42,3 +42,16 @@ The research model must not depend on a vendor-specific bottleneck.
 ## Persistence commit rule
 
 A future persistent adapter must not reproduce the old retry failure pattern by committing current state separately from its historical evidence. One logical world operation must be atomic across its current-state projection and append-only evidence, or use an equivalent recoverable commit protocol with stable operation IDs.
+
+## Audit 3: persistence-before-provider rule
+
+Do not add a database driver until it can implement the `WorldStore` contract without weakening it.
+
+Rejected adapter designs include:
+
+- updating the current world row and appending evidence in separate non-recoverable writes;
+- relying on one process's RAM for world-operation idempotency;
+- silently overwriting a newer world revision after a stale read;
+- resuming an old snapshot under changed world rules without explicit migration;
+- using transport wall-clock timestamps as autonomous simulation time;
+- allowing retry-generated Cardinal rows to inflate the apparent amount of research evidence.

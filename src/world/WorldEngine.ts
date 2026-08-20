@@ -1,7 +1,9 @@
+import type { InterventionKind } from '../cardinal/types';
+import { stableJsonStringify } from '../core/stableJson';
 import type { InputEnvelope } from '../runtime/inputBus/types';
 import { SeededRng } from '../utils/rng';
-import type { EventStore, WorldEvent } from './events';
-import type { MemoryStore } from './memory';
+import type { WorldEvent } from './events';
+import type { WorldStore } from './persistence';
 import type {
   AgentState,
   MemoryRecord,
@@ -10,36 +12,88 @@ import type {
   WorldEnvironment,
   WorldState,
 } from './types';
-import type { InterventionKind } from '../cardinal/types';
+
+export const WORLD_RULES_VERSION = 'ainkrad-world-rules-0.3.3';
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const clampSigned = (value: number) => Math.max(-1, Math.min(1, value));
 
-function pairKey(a: string, b: string): string {
+function relationshipKey(a: string, b: string): string {
   return [a, b].sort().join('::');
+}
+
+function assertWorldState(state: WorldState): void {
+  if (!state.id.trim()) {
+    throw new Error('World state id must not be empty.');
+  }
+  if (!Number.isFinite(state.now)) {
+    throw new Error('World state time must be finite.');
+  }
+  if (!state.rulesVersion?.trim()) {
+    throw new Error('World rulesVersion must not be empty.');
+  }
+  if (!Number.isInteger(state.revision) || state.revision < 0) {
+    throw new Error('World state revision must be a non-negative integer.');
+  }
+  if (!Number.isInteger(state.determinism.eventSequence) || state.determinism.eventSequence < 0) {
+    throw new Error('World event sequence must be a non-negative integer.');
+  }
+  if (!Number.isFinite(state.determinism.rngState)) {
+    throw new Error('World RNG state must be finite.');
+  }
 }
 
 export interface WorldEngineOptions {
   worldId: string;
   seed: string;
-  eventStore: EventStore;
-  memoryStore: MemoryStore;
+  store: WorldStore;
   agentNames?: string[];
   startTime?: number;
 }
 
+export interface OpenWorldEngineOptions {
+  worldId: string;
+  store: WorldStore;
+}
+
+/**
+ * WorldEngine mutates only a private working copy during a logical operation.
+ * Events and memories are staged beside that copy. The live engine state is
+ * replaced only after WorldStore atomically commits state + evidence + the
+ * operation tombstone.
+ */
 export class WorldEngine {
   private readonly rng: SeededRng;
-  private readonly eventStore: EventStore;
-  private readonly memoryStore: MemoryStore;
-  private state: WorldState;
+  private committedState: WorldState;
+  private workingState: WorldState | undefined;
+  private operationTail: Promise<void> = Promise.resolve();
+  private stagedEvents: WorldEvent[] | undefined;
+  private stagedMemories: MemoryRecord[] | undefined;
 
-  constructor(options: WorldEngineOptions) {
-    this.rng = new SeededRng(options.seed);
-    this.eventStore = options.eventStore;
-    this.memoryStore = options.memoryStore;
+  private constructor(
+    private readonly store: WorldStore,
+    state: WorldState,
+  ) {
+    assertWorldState(state);
+    this.committedState = structuredClone(state);
+    this.rng = new SeededRng('restored-world', state.determinism.rngState);
+  }
+
+  static async create(options: WorldEngineOptions): Promise<WorldEngine> {
+    if (!options.worldId.trim()) {
+      throw new Error('World id must not be empty.');
+    }
+    const existing = await options.store.loadWorld(options.worldId);
+    if (existing) {
+      throw new Error(`World ${options.worldId} already exists in the store.`);
+    }
 
     const now = options.startTime ?? 0;
+    if (!Number.isFinite(now)) {
+      throw new Error('World start time must be finite.');
+    }
+
+    const rng = new SeededRng(options.seed);
     const names = options.agentNames ?? ['Alex', 'Mira', 'Kai', 'Noa', 'Ilan', 'Rin'];
     const agents: Record<string, AgentState> = {};
 
@@ -48,17 +102,19 @@ export class WorldEngine {
       agents[id] = {
         id,
         name,
-        energy: this.rng.between(0.55, 0.95),
-        stress: this.rng.between(0.05, 0.25),
-        resources: this.rng.between(0.35, 0.8),
-        socialDrive: this.rng.between(0.25, 0.85),
+        energy: rng.between(0.55, 0.95),
+        stress: rng.between(0.05, 0.25),
+        resources: rng.between(0.35, 0.8),
+        socialDrive: rng.between(0.25, 0.85),
         lastMeaningfulEventAt: now,
       };
     });
 
-    this.state = {
+    const state: WorldState = {
       id: options.worldId,
       now,
+      revision: 0,
+      rulesVersion: WORLD_RULES_VERSION,
       environment: {
         resourcePool: 1,
         resourceRegenerationRate: 0.012,
@@ -66,82 +122,114 @@ export class WorldEngine {
         safetySupport: 0.5,
       },
       determinism: {
-        rngState: this.rng.snapshot(),
+        rngState: rng.snapshot(),
         eventSequence: 0,
       },
       agents,
       relationships: {},
     };
+
+    await options.store.initializeWorld(state);
+    return new WorldEngine(options.store, state);
+  }
+
+  static async open(options: OpenWorldEngineOptions): Promise<WorldEngine> {
+    const state = await options.store.loadWorld(options.worldId);
+    if (!state) {
+      throw new Error(`World ${options.worldId} does not exist in the store.`);
+    }
+    if (state.rulesVersion !== WORLD_RULES_VERSION) {
+      throw new Error(
+        `World ${options.worldId} uses rules ${state.rulesVersion}; runtime expects ${WORLD_RULES_VERSION}. Explicit migration is required.`,
+      );
+    }
+    return new WorldEngine(options.store, state);
   }
 
   snapshot(): WorldState {
-    this.syncDeterminismState();
-    return structuredClone(this.state);
+    // Never expose an operation's uncommitted working copy. Sensors and other
+    // readers see only the last atomically committed world projection.
+    return structuredClone(this.committedState);
   }
 
-  async handleInput(input: InputEnvelope): Promise<void> {
-    if (input.worldId !== this.state.id) {
+  async reload(): Promise<void> {
+    await this.runExclusive(async () => {
+      await this.reloadFromStore();
+    });
+  }
+
+  async handleInput(input: InputEnvelope, appliedAt: number): Promise<boolean> {
+    if (input.worldId !== this.committedState.id) {
       throw new Error(
-        `Input belongs to world ${input.worldId}, expected ${this.state.id}.`,
+        `Input belongs to world ${input.worldId}, expected ${this.committedState.id}.`,
       );
     }
 
-    // Stable event ID makes transport retries idempotent. If a worker crashes
-    // after the world event is appended but before queue acknowledgement, the
-    // next attempt becomes a no-op instead of duplicating experiment history.
-    const event: WorldEvent = {
-      eventId: `input:${input.eventId}`,
-      worldId: this.state.id,
-      kind: `input.${input.type}`,
-      source: input.source,
-      occurredAt: input.createdAt,
-      payload: structuredClone(input.payload),
-      correlationId: input.correlationId ?? input.eventId,
-    };
+    if (!Number.isFinite(appliedAt)) {
+      throw new Error('Input appliedAt must be finite.');
+    }
 
-    await this.eventStore.append(event);
+    const operationId = `input:${input.eventId}`;
+    const fingerprint = stableJsonStringify({ kind: 'input', input, appliedAt });
+
+    return await this.mutate(operationId, fingerprint, async () => {
+      if (appliedAt < this.state.now) {
+        throw new Error('Input appliedAt cannot precede world time.');
+      }
+      this.state.now = appliedAt;
+
+      // createdAt belongs to transport. The world event records the logical
+      // simulation time at which the input is actually applied. Wall-clock
+      // delivery jitter must not contaminate replayable world history.
+      this.stageEvent({
+        eventId: `input:${this.state.id}:${input.eventId}`,
+        worldId: this.state.id,
+        kind: `input.${input.type}`,
+        source: input.source,
+        occurredAt: appliedAt,
+        payload: structuredClone(input.payload),
+        correlationId: input.correlationId ?? input.eventId,
+      });
+    });
   }
 
-  async step(now: number): Promise<void> {
+  async step(now: number): Promise<boolean> {
     if (!Number.isFinite(now)) {
       throw new Error('World step time must be finite.');
     }
-    if (now < this.state.now) {
-      throw new Error(
-        `World cannot step backwards from ${this.state.now} to ${now}.`,
+    const operationId = `tick:${now}`;
+    const fingerprint = stableJsonStringify({ kind: 'tick', now });
+
+    return await this.mutate(operationId, fingerprint, async () => {
+      if (now < this.state.now) {
+        throw new Error(
+          `World cannot step backwards from ${this.state.now} to ${now}.`,
+        );
+      }
+      this.state.now = now;
+
+      // The control world has endogenous recovery. Cardinal is not the only
+      // source of resources or recovery capacity.
+      this.state.environment.resourcePool = clamp01(
+        this.state.environment.resourcePool +
+          this.state.environment.resourceRegenerationRate,
       );
-    }
-    if (now === this.state.now) {
-      // A successfully completed scheduler retry for the same logical tick is a
-      // no-op. Persistent adapters must still commit a tick atomically.
-      return;
-    }
 
-    this.state.now = now;
+      const effectiveEnvironment = await this.effectiveEnvironment(now);
+      const agents = Object.values(this.state.agents);
 
-    // The control world must have endogenous recovery mechanisms. Cardinal is
-    // not allowed to be the only source of resources or recovery.
-    this.state.environment.resourcePool = clamp01(
-      this.state.environment.resourcePool +
-        this.state.environment.resourceRegenerationRate,
-    );
-
-    const effectiveEnvironment = await this.effectiveEnvironment(now);
-    const agents = Object.values(this.state.agents);
-
-    for (const agent of agents) {
-      await this.stepAgent(agent, agents, effectiveEnvironment, now);
-    }
-
-    this.syncDeterminismState();
+      for (const agent of agents) {
+        await this.stepAgent(agent, agents, effectiveEnvironment, now);
+      }
+    });
   }
 
   async applyDisturbance(
     kind: WorldDisturbanceKind,
     magnitude: number,
     now: number,
-    duration = 8,
-    operationId?: string,
+    duration: number,
+    operationId: string,
   ): Promise<boolean> {
     if (!['resource_shock', 'social_barrier', 'safety_shock'].includes(kind as string)) {
       throw new Error('Unknown disturbance kind.');
@@ -155,68 +243,68 @@ export class WorldEngine {
     if (!Number.isFinite(duration) || duration < 1) {
       throw new Error('Disturbance duration must be finite and at least 1.');
     }
+    if (!operationId.trim()) {
+      throw new Error('Disturbance operationId is required for retry safety.');
+    }
 
     const amount = Math.max(0, Math.min(0.8, magnitude));
-    const eventKind =
-      kind === 'resource_shock'
-        ? 'world.disturbance.resource_shock'
-        : kind === 'social_barrier'
-          ? 'world.effect.social_barrier'
-          : 'world.effect.safety_shock';
-    const eventId = operationId
-      ? this.stableOperationEventId('disturbance', operationId)
-      : undefined;
+    const fingerprint = stableJsonStringify({
+      kind: 'disturbance',
+      disturbanceKind: kind,
+      magnitude: amount,
+      now,
+      duration,
+    });
 
-    if (eventId) {
-      const existing = await this.eventStore.get(this.state.id, eventId);
-      if (existing) {
-        this.assertSameOperation(existing, eventKind, amount);
-        return false;
+    return await this.mutate(`disturbance:${operationId}`, fingerprint, async () => {
+      if (now < this.state.now) {
+        throw new Error('Disturbance cannot be applied retroactively to a progressed world.');
       }
-    }
+      this.state.now = now;
 
-    const finalEventId = eventId ?? this.nextId('disturbance');
-    if (eventId) {
-      this.state.determinism.eventSequence += 1;
-    }
+      const eventKind =
+        kind === 'resource_shock'
+          ? 'world.disturbance.resource_shock'
+          : kind === 'social_barrier'
+            ? 'world.effect.social_barrier'
+            : 'world.effect.safety_shock';
 
-    if (kind === 'resource_shock') {
-      this.state.environment.resourcePool = clamp01(
-        this.state.environment.resourcePool - amount,
-      );
+      if (kind === 'resource_shock') {
+        this.state.environment.resourcePool = clamp01(
+          this.state.environment.resourcePool - amount,
+        );
 
-      await this.eventStore.append({
-        eventId: finalEventId,
+        this.stageEvent({
+          eventId: this.stableOperationEventId('disturbance', operationId),
+          worldId: this.state.id,
+          kind: eventKind,
+          source: 'system',
+          occurredAt: now,
+          payload: { magnitude: amount },
+        });
+        return;
+      }
+
+      this.stageEvent({
+        eventId: this.stableOperationEventId('disturbance', operationId),
         worldId: this.state.id,
         kind: eventKind,
         source: 'system',
         occurredAt: now,
         payload: { magnitude: amount },
+        activeUntil: now + Math.max(1, duration),
       });
-      return true;
-    }
-
-    await this.eventStore.append({
-      eventId: finalEventId,
-      worldId: this.state.id,
-      kind: eventKind,
-      source: 'system',
-      occurredAt: now,
-      payload: { magnitude: amount },
-      activeUntil: now + Math.max(1, duration),
     });
-    return true;
   }
 
-  // This is intentionally named as an authorized capability. CardinalCore does
-  // not receive a reference to WorldEngine. Only the independent gateway holds
-  // this capability in the current architecture.
+  // CardinalCore never receives this capability. Only the independent
+  // simulation gateway owns it.
   async applyAuthorizedIntervention(
     kind: InterventionKind,
     magnitude: number,
     now: number,
-    duration = 8,
-    operationId?: string,
+    duration: number,
+    operationId: string,
   ): Promise<boolean> {
     if (!['resource_relief', 'open_shared_space', 'safety_support'].includes(kind as string)) {
       throw new Error('Unknown intervention kind.');
@@ -230,57 +318,148 @@ export class WorldEngine {
     if (!Number.isFinite(duration) || duration < 1) {
       throw new Error('Intervention duration must be finite and at least 1.');
     }
+    if (!operationId.trim()) {
+      throw new Error('Intervention operationId is required for retry safety.');
+    }
 
     const amount = Math.max(0, Math.min(0.25, magnitude));
-    const eventKind =
-      kind === 'resource_relief'
-        ? 'cardinal.intervention.resource_relief'
-        : kind === 'open_shared_space'
-          ? 'cardinal.effect.open_shared_space'
-          : 'cardinal.effect.safety_support';
-    const eventId = operationId
-      ? this.stableOperationEventId('intervention', operationId)
-      : undefined;
+    const fingerprint = stableJsonStringify({
+      kind: 'intervention',
+      interventionKind: kind,
+      magnitude: amount,
+      now,
+      duration,
+    });
 
-    if (eventId) {
-      const existing = await this.eventStore.get(this.state.id, eventId);
-      if (existing) {
-        this.assertSameOperation(existing, eventKind, amount);
-        return false;
+    return await this.mutate(`intervention:${operationId}`, fingerprint, async () => {
+      if (now < this.state.now) {
+        throw new Error('Intervention cannot be applied retroactively to a progressed world.');
       }
-    }
+      this.state.now = now;
 
-    const finalEventId = eventId ?? this.nextId('intervention');
-    if (eventId) {
-      this.state.determinism.eventSequence += 1;
-    }
+      const eventKind =
+        kind === 'resource_relief'
+          ? 'cardinal.intervention.resource_relief'
+          : kind === 'open_shared_space'
+            ? 'cardinal.effect.open_shared_space'
+            : 'cardinal.effect.safety_support';
 
-    if (kind === 'resource_relief') {
-      this.state.environment.resourcePool = clamp01(
-        this.state.environment.resourcePool + amount,
-      );
+      if (kind === 'resource_relief') {
+        this.state.environment.resourcePool = clamp01(
+          this.state.environment.resourcePool + amount,
+        );
 
-      await this.eventStore.append({
-        eventId: finalEventId,
+        this.stageEvent({
+          eventId: this.stableOperationEventId('intervention', operationId),
+          worldId: this.state.id,
+          kind: eventKind,
+          source: 'cardinal',
+          occurredAt: now,
+          payload: { magnitude: amount },
+        });
+        return;
+      }
+
+      this.stageEvent({
+        eventId: this.stableOperationEventId('intervention', operationId),
         worldId: this.state.id,
         kind: eventKind,
         source: 'cardinal',
         occurredAt: now,
         payload: { magnitude: amount },
+        activeUntil: now + Math.max(1, duration),
       });
-      return true;
-    }
-
-    await this.eventStore.append({
-      eventId: finalEventId,
-      worldId: this.state.id,
-      kind: eventKind,
-      source: 'cardinal',
-      occurredAt: now,
-      payload: { magnitude: amount },
-      activeUntil: now + Math.max(1, duration),
     });
-    return true;
+  }
+
+  private async mutate(
+    operationId: string,
+    operationFingerprint: string,
+    apply: () => Promise<void>,
+  ): Promise<boolean> {
+    return await this.runExclusive(async () => {
+      const prior = await this.store.committedOperation(
+        this.committedState.id,
+        operationId,
+      );
+      if (prior) {
+        if (prior.operationFingerprint !== operationFingerprint) {
+          throw new Error(
+            `World operation ${operationId} was retried with different content.`,
+          );
+        }
+
+        // Exact retries remain valid even after the world has progressed beyond
+        // the operation's original logical time. Reload the newest committed
+        // projection rather than reapplying old effects.
+        await this.reloadFromStore();
+        return false;
+      }
+
+      const before = structuredClone(this.committedState);
+      const beforeRng = this.rng.snapshot();
+      this.workingState = structuredClone(before);
+      this.rng.restore(before.determinism.rngState);
+      this.stagedEvents = [];
+      this.stagedMemories = [];
+
+      try {
+        await apply();
+        this.syncDeterminismState();
+        this.state.revision = before.revision + 1;
+
+        const result = await this.store.commit({
+          operationId,
+          operationFingerprint,
+          worldId: before.id,
+          expectedRevision: before.revision,
+          nextState: structuredClone(this.state),
+          events: this.stagedEvents.map((event) => structuredClone(event)),
+          memories: this.stagedMemories.map((memory) => structuredClone(memory)),
+        });
+
+        this.adopt(result.state);
+        return result.committed;
+      } catch (error) {
+        this.rng.restore(beforeRng);
+        throw error;
+      } finally {
+        this.workingState = undefined;
+        this.stagedEvents = undefined;
+        this.stagedMemories = undefined;
+      }
+    });
+  }
+
+  private get state(): WorldState {
+    if (!this.workingState) {
+      throw new Error('World mutable state was accessed outside a logical operation.');
+    }
+    return this.workingState;
+  }
+
+  private async runExclusive<T>(work: () => Promise<T>): Promise<T> {
+    const previous = this.operationTail;
+    let release!: () => void;
+    this.operationTail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    await previous;
+    try {
+      return await work();
+    } finally {
+      release();
+    }
+  }
+
+  private async reloadFromStore(): Promise<void> {
+    const worldId = this.committedState.id;
+    const state = await this.store.loadWorld(worldId);
+    if (!state) {
+      throw new Error(`World ${worldId} disappeared from the store.`);
+    }
+    this.adopt(state);
   }
 
   private async stepAgent(
@@ -299,7 +478,7 @@ export class WorldEngine {
       agent.stress = clamp01(agent.stress - 0.05);
       agent.lastAction = 'rest';
 
-      await this.recordAgentEvent(agent, now, 'agent.rested', {
+      this.recordAgentEvent(agent, now, 'agent.rested', {
         energy: agent.energy,
       });
       return;
@@ -314,7 +493,7 @@ export class WorldEngine {
       agent.lastAction = 'gather';
       agent.lastMeaningfulEventAt = now;
 
-      await this.recordAgentEvent(agent, now, 'agent.gathered', { gathered });
+      this.recordAgentEvent(agent, now, 'agent.gathered', { gathered });
       return;
     }
 
@@ -331,7 +510,7 @@ export class WorldEngine {
     agent.resources = clamp01(agent.resources - 0.015);
     agent.lastAction = 'explore';
 
-    await this.recordAgentEvent(agent, now, 'agent.explored', {
+    this.recordAgentEvent(agent, now, 'agent.explored', {
       stress: agent.stress,
     });
   }
@@ -340,7 +519,8 @@ export class WorldEngine {
     agent: AgentState,
     others: AgentState[],
   ): Promise<AgentState> {
-    // Preserve exploration so social structure does not freeze into a clique.
+    // Preserve exploration so early relationships cannot permanently freeze the
+    // society into a scripted clique.
     if (this.rng.next() < 0.2) {
       return this.rng.pick(others);
     }
@@ -348,7 +528,7 @@ export class WorldEngine {
     const weighted: Array<{ other: AgentState; weight: number }> = [];
 
     for (const other of others) {
-      const relationship = this.state.relationships[pairKey(agent.id, other.id)];
+      const relationship = this.state.relationships[relationshipKey(agent.id, other.id)];
       let weight = 0.6;
 
       if (relationship) {
@@ -360,10 +540,7 @@ export class WorldEngine {
           relationship.conflict * 0.3;
       }
 
-      // Long-term interaction memory influences future local decisions instead
-      // of existing only as dead archival text.
-      const recentMemories = await this.memoryStore.recentForPair(
-        this.state.id,
+      const recentMemories = await this.recentMemoriesForPair(
         agent.id,
         other.id,
         5,
@@ -396,7 +573,7 @@ export class WorldEngine {
   }
 
   private async interact(a: AgentState, b: AgentState, now: number): Promise<void> {
-    const key = pairKey(a.id, b.id);
+    const key = relationshipKey(a.id, b.id);
     const ids = [a.id, b.id].sort();
 
     const current =
@@ -440,7 +617,7 @@ export class WorldEngine {
       b.stress = clamp01(b.stress + 0.03);
     }
 
-    await this.maybeShareResources(a, b, next, sentiment, now);
+    this.maybeShareResources(a, b, next, sentiment, now);
 
     const summary =
       sentiment >= 0
@@ -460,10 +637,10 @@ export class WorldEngine {
     }));
 
     for (const memory of memories) {
-      await this.memoryStore.append(memory);
+      this.stageMemory(memory);
     }
 
-    await this.eventStore.append({
+    this.stageEvent({
       eventId: this.nextId('relationship'),
       worldId: this.state.id,
       kind: 'relationship.changed',
@@ -481,13 +658,13 @@ export class WorldEngine {
     });
   }
 
-  private async maybeShareResources(
+  private maybeShareResources(
     a: AgentState,
     b: AgentState,
     relationship: RelationshipState,
     sentiment: number,
     now: number,
-  ): Promise<void> {
+  ): void {
     if (sentiment <= 0.35 || relationship.trust <= 0.55) {
       return;
     }
@@ -507,7 +684,7 @@ export class WorldEngine {
     donor.resources = clamp01(donor.resources - transfer);
     receiver.resources = clamp01(receiver.resources + transfer);
 
-    await this.eventStore.append({
+    this.stageEvent({
       eventId: this.nextId('resource-share'),
       worldId: this.state.id,
       kind: 'resource.shared',
@@ -522,7 +699,14 @@ export class WorldEngine {
   }
 
   private async effectiveEnvironment(now: number): Promise<WorldEnvironment> {
-    const activeSignals = await this.eventStore.activeSignals(this.state.id, now);
+    const committed = await this.store.activeSignals(this.state.id, now);
+    const staged = (this.stagedEvents ?? []).filter(
+      (event) =>
+        event.occurredAt <= now &&
+        event.activeUntil !== undefined &&
+        event.activeUntil > now,
+    );
+    const activeSignals = [...committed, ...staged];
     let socialModifier = 0;
     let safetyModifier = 0;
 
@@ -550,13 +734,13 @@ export class WorldEngine {
     };
   }
 
-  private async recordAgentEvent(
+  private recordAgentEvent(
     agent: AgentState,
     now: number,
     kind: string,
     payload: Record<string, string | number | boolean | null>,
-  ): Promise<void> {
-    await this.eventStore.append({
+  ): void {
+    this.stageEvent({
       eventId: this.nextId('agent-event'),
       worldId: this.state.id,
       kind,
@@ -569,26 +753,43 @@ export class WorldEngine {
     });
   }
 
-  private stableOperationEventId(prefix: string, operationId: string): string {
-    if (!operationId.trim()) {
-      throw new Error('World operationId must not be empty.');
-    }
-    return `${prefix}:${this.state.id}:op:${operationId}`;
+  private async recentMemoriesForPair(
+    agentId: string,
+    otherAgentId: string,
+    limit: number,
+  ): Promise<MemoryRecord[]> {
+    const committed = await this.store.recentForPair(
+      this.state.id,
+      agentId,
+      otherAgentId,
+      limit,
+    );
+    const staged = (this.stagedMemories ?? []).filter(
+      (memory) =>
+        memory.agentId === agentId && memory.relatedAgentIds.includes(otherAgentId),
+    );
+
+    return [...committed, ...staged]
+      .slice(Math.max(0, committed.length + staged.length - limit))
+      .map((memory) => structuredClone(memory));
   }
 
-  private assertSameOperation(
-    existing: WorldEvent,
-    expectedKind: string,
-    expectedMagnitude: number,
-  ): void {
-    if (
-      existing.kind !== expectedKind ||
-      existing.payload.magnitude !== expectedMagnitude
-    ) {
-      throw new Error(
-        `Operation ID ${existing.eventId} was already used for different content.`,
-      );
+  private stageEvent(event: WorldEvent): void {
+    if (!this.stagedEvents) {
+      throw new Error('World event was produced outside a logical operation.');
     }
+    this.stagedEvents.push(structuredClone(event));
+  }
+
+  private stageMemory(memory: MemoryRecord): void {
+    if (!this.stagedMemories) {
+      throw new Error('World memory was produced outside a logical operation.');
+    }
+    this.stagedMemories.push(structuredClone(memory));
+  }
+
+  private stableOperationEventId(prefix: string, operationId: string): string {
+    return `${prefix}:${this.state.id}:op:${operationId}`;
   }
 
   private nextId(prefix: string): string {
@@ -598,5 +799,16 @@ export class WorldEngine {
 
   private syncDeterminismState(): void {
     this.state.determinism.rngState = this.rng.snapshot();
+  }
+
+  private adopt(state: WorldState): void {
+    assertWorldState(state);
+    if (state.rulesVersion !== WORLD_RULES_VERSION) {
+      throw new Error(
+        `World ${state.id} uses rules ${state.rulesVersion}; runtime expects ${WORLD_RULES_VERSION}. Explicit migration is required.`,
+      );
+    }
+    this.committedState = structuredClone(state);
+    this.rng.restore(state.determinism.rngState);
   }
 }

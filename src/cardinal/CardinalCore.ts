@@ -1,4 +1,4 @@
-import { createEventId } from '../runtime/inputBus/createEventId';
+import { createStableId } from '../core/stableId';
 import type { SensorSnapshot } from '../sensors/types';
 import type {
   CardinalEvaluation,
@@ -6,6 +6,8 @@ import type {
   InterventionKind,
   InterventionProposal,
 } from './types';
+
+export const CARDINAL_POLICY_VERSION = 'ainkrad-cardinal-policy-0.3.3';
 
 const clampMagnitude = (value: number) =>
   Math.max(0.05, Math.min(0.25, value));
@@ -18,6 +20,14 @@ interface Candidate {
 }
 
 export class CardinalCore {
+  constructor(
+    readonly policyVersion: string = CARDINAL_POLICY_VERSION,
+  ) {
+    if (!policyVersion.trim()) {
+      throw new Error('Cardinal policyVersion must not be empty.');
+    }
+  }
+
   evaluate(
     mode: Exclude<CardinalMode, 'off'>,
     observation: SensorSnapshot,
@@ -56,16 +66,28 @@ export class CardinalCore {
       });
     }
 
-    // If several systemic problems qualify at once, choose the strongest
-    // measured condition rather than silently encoding a permanent priority
-    // order such as "resources always beat social collapse".
     candidates.sort((a, b) => b.severity - a.severity);
     const selected = candidates[0];
 
+    const evaluationId = createStableId('evaluation', {
+      worldId: observation.worldId,
+      worldRevision: observation.worldRevision,
+      sensorVersion: observation.sensorVersion,
+      policyVersion: this.policyVersion,
+      observedAt: observation.observedAt,
+      mode,
+      metrics: observation.metrics,
+      evidenceEventIds: observation.evidenceEventIds,
+      limitations: observation.limitations,
+    });
+
     const evaluation: CardinalEvaluation = {
-      evaluationId: createEventId('evaluation'),
+      evaluationId,
       worldId: observation.worldId,
       evaluatedAt: observation.observedAt,
+      observedWorldRevision: observation.worldRevision,
+      sensorVersion: observation.sensorVersion,
+      policyVersion: this.policyVersion,
       mode,
       metrics: structuredClone(metrics),
       evidenceEventIds: [...observation.evidenceEventIds],
@@ -79,7 +101,11 @@ export class CardinalCore {
 
     if (selected) {
       const proposal: InterventionProposal = {
-        proposalId: createEventId('proposal'),
+        proposalId: createStableId('proposal', {
+          evaluationId,
+          kind: selected.kind,
+          magnitude: clampMagnitude(selected.severity),
+        }),
         worldId: observation.worldId,
         kind: selected.kind,
         magnitude: clampMagnitude(selected.severity),

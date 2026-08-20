@@ -14,6 +14,7 @@ function agentIndexKey(worldId: string, agentId: string): string {
   return `${worldId}::${agentId}`;
 }
 
+/** Standalone memory-store reference for focused tests/tools. WorldEngine uses WorldStore for atomic state + evidence commits. */
 export class InMemoryMemoryStore implements MemoryStore {
   private readonly byId = new Map<string, MemoryRecord>();
   private readonly byAgent = new Map<string, MemoryRecord[]>();

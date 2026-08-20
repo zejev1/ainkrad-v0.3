@@ -2,6 +2,8 @@ import type { EventReader } from '../world/events';
 import type { WorldState } from '../world/types';
 import type { CardinalMetrics, SensorSnapshot } from './types';
 
+export const WORLD_SENSOR_VERSION = 'ainkrad-world-sensors-0.3.3';
+
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 
 function standardDeviation(values: number[]): number {
@@ -19,6 +21,12 @@ export class WorldSensors {
   constructor(private readonly events: EventReader) {}
 
   async observe(world: Readonly<WorldState>, now: number): Promise<SensorSnapshot> {
+    if (!Number.isFinite(now) || now !== world.now) {
+      throw new Error(
+        'WorldSensors observation time must match the supplied world snapshot time.',
+      );
+    }
+
     const agents = Object.values(world.agents);
     const relationships = Object.values(world.relationships);
 
@@ -76,7 +84,7 @@ export class WorldSensors {
     );
 
     const activeSignals = await this.events.activeSignals(world.id, now);
-    const recent = await this.events.recent(world.id, 50);
+    const recent = await this.events.recent(world.id, 50, now);
     // Cardinal's own prior interventions are context, not independent evidence
     // that the society itself exhibited a condition. Avoid circular evidence.
     const worldEvidence = recent.filter(
@@ -110,7 +118,9 @@ export class WorldSensors {
     };
 
     return {
+      sensorVersion: WORLD_SENSOR_VERSION,
       worldId: world.id,
+      worldRevision: world.revision,
       observedAt: now,
       metrics,
       evidenceEventIds: worldEvidence.map((event) => event.eventId),

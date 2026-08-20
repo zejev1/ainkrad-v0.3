@@ -3,6 +3,7 @@ import type {
   InputBus,
   PublishResult,
 } from './InputBus';
+import { stableJsonStringify } from '../../core/stableJson';
 import { assertValidInputEnvelope, type InputEnvelope } from './types';
 
 interface ClaimState {
@@ -19,7 +20,10 @@ interface QueueItem {
 export class InMemoryInputBus implements InputBus {
   private readonly queues = new Map<string, QueueItem[]>();
   private readonly itemIndex = new Map<string, Map<string, QueueItem>>();
-  private readonly seenKeys = new Map<string, number>();
+  private readonly seenKeys = new Map<
+    string,
+    { recordedAt: number; fingerprint: string }
+  >();
   private claimSequence = 0;
 
   async publish(event: InputEnvelope): Promise<PublishResult> {
@@ -29,20 +33,44 @@ export class InMemoryInputBus implements InputBus {
       ? `${event.worldId}:dedupe:${event.deduplicationKey}`
       : undefined;
 
-    if (
-      this.seenKeys.has(eventKey) ||
-      (dedupeKey !== undefined && this.seenKeys.has(dedupeKey))
-    ) {
-      return {
-        accepted: false,
-        duplicate: true,
-      };
+    const eventFingerprint = stableJsonStringify(event);
+    const dedupeFingerprint = stableJsonStringify({
+      worldId: event.worldId,
+      source: event.source,
+      type: event.type,
+      payload: event.payload,
+      correlationId: event.correlationId,
+    });
+
+    const priorEvent = this.seenKeys.get(eventKey);
+    if (priorEvent) {
+      if (priorEvent.fingerprint !== eventFingerprint) {
+        throw new Error(
+          `Input event ID ${event.eventId} was reused with different content.`,
+        );
+      }
+      return { accepted: false, duplicate: true };
+    }
+
+    if (dedupeKey !== undefined) {
+      const priorDedupe = this.seenKeys.get(dedupeKey);
+      if (priorDedupe) {
+        if (priorDedupe.fingerprint !== dedupeFingerprint) {
+          throw new Error(
+            `Input deduplication key ${event.deduplicationKey} was reused with different logical content.`,
+          );
+        }
+        return { accepted: false, duplicate: true };
+      }
     }
 
     const recordedAt = Date.now();
-    this.seenKeys.set(eventKey, recordedAt);
+    this.seenKeys.set(eventKey, { recordedAt, fingerprint: eventFingerprint });
     if (dedupeKey) {
-      this.seenKeys.set(dedupeKey, recordedAt);
+      this.seenKeys.set(dedupeKey, {
+        recordedAt,
+        fingerprint: dedupeFingerprint,
+      });
     }
 
     const item: QueueItem = {
@@ -193,8 +221,8 @@ export class InMemoryInputBus implements InputBus {
     }
 
     let removed = 0;
-    for (const [key, recordedAt] of this.seenKeys) {
-      if (recordedAt <= before && !protectedKeys.has(key)) {
+    for (const [key, record] of this.seenKeys) {
+      if (record.recordedAt <= before && !protectedKeys.has(key)) {
         this.seenKeys.delete(key);
         removed += 1;
       }
