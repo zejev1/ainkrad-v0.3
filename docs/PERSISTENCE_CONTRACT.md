@@ -68,7 +68,7 @@ Sensor evidence is bounded by the snapshot's logical time. Future events are not
 
 Retrying a completed Cardinal evaluation, intervention record, outcome or audit must not manufacture additional evidence rows.
 
-Logical Cardinal/Auditor identities are deterministic and in-memory journal behavior rejects same-ID/different-content collisions. A future persistent Cardinal journal must enforce the same uniqueness rules.
+Logical Cardinal/Auditor identities are deterministic. The v0.3 persistence port includes a log-backed Cardinal journal: when its `AppendOnlyLog` is durable, recreating the journal preserves evidence and rejects same-ID/different-content collisions across restart.
 
 Outcome follow-up work is derived from executed intervention records that do not yet have an outcome. It is not allowed to exist only in a volatile `pending[]` array. Outcome records also bind the before/after world revisions, sensor version and evidence IDs used for the follow-up measurement.
 
@@ -85,3 +85,26 @@ Technical transport tombstones may use an explicit bounded idempotency window on
 `WorldEngine` serializes logical mutations per engine instance. Its working copy is private to the in-flight operation; `snapshot()` returns only the last committed projection. This prevents sensors or concurrent callers from observing half-applied state while evidence is still uncommitted.
 
 Exact retries are checked by stable operation identity before temporal validation for a new operation. Therefore a retry of an operation from logical time 10 remains a no-op when the world is already at logical time 50, while a genuinely new operation targeting time 10 is rejected as retroactive.
+
+## Cardinal and gateway durable-control streams
+
+World persistence and Cardinal control persistence are related but intentionally separate capabilities.
+
+The independent simulation gateway stores authorization intent and final execution evidence in its own append-only ledger. The Cardinal research journal stores evaluations, intervention evidence, outcomes and audits. Cardinal cannot rewrite the gateway ledger.
+
+For an authorized proposal the recovery protocol is:
+
+1. persist a `pending` gateway intent containing the stable proposal ID, evaluation ID, proposal fingerprint, observed world revision, effect duration and gateway policy version;
+2. ask the world to commit the intervention using that same stable proposal ID and observed revision;
+3. finalize the gateway entry as `executed` with the exact committed world revision;
+4. reconcile the final gateway record into the research journal.
+
+If the process dies after step 2 but before step 3, restart recovery retries the same world operation ID. Because world idempotency is persisted, recovery obtains the original committed revision without reapplying the effect.
+
+If the world changed before the intervention commit, the gateway finalizes the attempt as `stale`. It does not reinterpret the stale authorization as permission to act on a newer world.
+
+Unknown/transient execution failures leave the intent pending so a restart cannot silently reset cooldown or forget an unfinished authorized action.
+
+The generic `AppendOnlyLog` port uses compare-and-append per stream. Implementations should partition streams by world and purpose; they must not recreate a single global hot sequence for all worlds or all evidence.
+
+A durable adapter must make each compare-and-append atomic, or use an equivalent recoverable transaction. If its physical medium can produce a torn final record, recovery must detect and reject/truncate that incomplete tail before exposing the stream.

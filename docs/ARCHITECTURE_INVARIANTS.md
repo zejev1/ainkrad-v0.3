@@ -110,3 +110,26 @@ These rules convert failures from the previous implementation into tests and str
 75. Exact retries are recognized by stable operation identity even after the world has progressed beyond the operation's original logical time; temporal guards apply only to genuinely new operations.
 76. One `WorldEngine` instance serializes logical mutations so concurrent callers cannot share or corrupt a working transaction.
 77. `snapshot()` exposes only the last committed projection; uncommitted working state is never observable by sensors or other readers.
+
+## Audit round 4 additions
+
+78. Gateway cooldown and prior execution state must not live only in process RAM; a restart cannot erase intervention history.
+79. An authorized intervention intent is persisted before the simulation mutation is attempted.
+80. A pending gateway intent is recoverable by stable proposal ID; an exact retry may finalize it but must never apply the world effect twice.
+81. Unknown or transient gateway failures leave a recoverable pending intent rather than silently forgetting authorization state.
+82. Gateway authorization based on world revision `R` is rechecked at the world commit boundary; preflight snapshot equality alone is insufficient.
+83. If another writer advances the world between authorization and commit, the intervention finishes as `stale` and does not mutate the world.
+84. World revision conflicts refresh the engine from committed storage before later decisions continue.
+85. A simulation intervention target verifies the target `worldId` as well as the proposal kind and magnitude; a ledger entry for another world cannot be executed against the current world.
+86. Gateway records include the policy version, observed world revision, execution status and exact committed world revision when execution succeeds.
+87. Gateway recovery resolves pending intents before a new proposal can rely on reset in-memory cooldown state.
+88. Cardinal research evidence has an append-only log-backed journal contract that survives component recreation when backed by durable storage.
+89. Same Cardinal evidence ID + same content is an idempotent retry across restart; same ID + different content is a hard collision.
+90. Cardinal journal streams are partitioned by world and evidence kind; there is no global journal sequence shared by unrelated worlds.
+91. Gateway ledger streams are partitioned by world; intervention control does not use one shared global counter.
+92. Gateway final evidence can be reconciled into the Cardinal research journal after a crash between execution completion and journal append.
+93. The gateway ledger and Cardinal journal are separate capabilities: Cardinal cannot rewrite gateway execution history to make itself look better.
+94. An executed intervention's recorded committed revision comes from the committed world operation itself, not from a later snapshot that may already include unrelated mutations.
+95. The experiment manifest records the intervention-gateway policy version in addition to world, sensor and Cardinal policy versions.
+96. A durable `AppendOnlyLog` adapter must make each compare-and-append atomic (or recoverably equivalent); a torn record is never accepted as committed evidence.
+97. Compaction or indexing of Cardinal/gateway logs may improve storage efficiency but may not erase experimental evidence or alter stable identities.

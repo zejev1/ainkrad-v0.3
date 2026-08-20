@@ -2,17 +2,22 @@ export * from './boundary/ExternalGateway';
 
 export * from './cardinal/CardinalAuditor';
 export * from './cardinal/CardinalCore';
+export * from './cardinal/CardinalRecovery';
 export * from './cardinal/CardinalJournal';
 export * from './cardinal/CardinalObserver';
 export * from './cardinal/CardinalRuntime';
 export * from './cardinal/InMemoryCardinalJournal';
+export * from './cardinal/LogBackedCardinalJournal';
 export * from './cardinal/InterventionGateway';
+export * from './cardinal/InterventionGatewayLedger';
 export * from './cardinal/types';
 
 export * from './core/stableId';
 export * from './core/stableJson';
 
 export * from './experiment/ExperimentRunner';
+
+export * from './persistence/AppendOnlyLog';
 
 export * from './runtime/WorldRuntime';
 export * from './runtime/inputBus/InputBus';

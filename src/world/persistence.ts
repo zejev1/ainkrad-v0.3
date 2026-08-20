@@ -58,3 +58,16 @@ export class WorldRevisionConflictError extends Error {
     this.name = 'WorldRevisionConflictError';
   }
 }
+
+export class StaleWorldObservationError extends Error {
+  constructor(
+    readonly worldId: string,
+    readonly observedRevision: number,
+    readonly currentRevision: number,
+  ) {
+    super(
+      `World ${worldId} observation is stale: observed revision ${observedRevision}, current revision ${currentRevision}.`,
+    );
+    this.name = 'StaleWorldObservationError';
+  }
+}

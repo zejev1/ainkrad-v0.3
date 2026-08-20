@@ -1,6 +1,16 @@
 import { stableJsonStringify } from '../core/stableJson';
 import { createStableId } from '../core/stableId';
+import {
+  StaleWorldObservationError,
+  WorldRevisionConflictError,
+} from '../world/persistence';
+import type { WorldMutationResult } from '../world/WorldEngine';
 import type { WorldState } from '../world/types';
+import {
+  InMemoryInterventionGatewayLedger,
+  type GatewayLedgerEntry,
+  type InterventionGatewayLedger,
+} from './InterventionGatewayLedger';
 import type {
   InterventionKind,
   InterventionProposal,
@@ -9,6 +19,8 @@ import type {
 
 export const ABSOLUTE_MAX_INTERVENTION_MAGNITUDE = 0.25;
 export const ABSOLUTE_MAX_INTERVENTION_DURATION = 32;
+export const INTERVENTION_GATEWAY_POLICY_VERSION =
+  'ainkrad-intervention-gateway-0.3.4';
 
 const ALLOWED_INTERVENTION_KINDS = new Set<string>([
   'resource_relief',
@@ -19,36 +31,43 @@ const ALLOWED_INTERVENTION_KINDS = new Set<string>([
 export interface SimulationInterventionTarget {
   snapshot(): WorldState;
   applyAuthorizedIntervention(
+    worldId: string,
     kind: InterventionKind,
     magnitude: number,
     now: number,
     duration: number,
     operationId: string,
-  ): Promise<boolean>;
+    expectedWorldRevision: number,
+  ): Promise<WorldMutationResult>;
 }
 
 export interface InterventionGatewayOptions {
   maxMagnitude?: number;
   minInterval?: number;
   effectDuration?: number;
+  ledger?: InterventionGatewayLedger;
+  policyVersion?: string;
 }
 
-interface StoredExecution {
-  evaluationId: string;
-  proposalFingerprint: string;
-  record: InterventionRecord;
+interface AuthorizationDecision {
+  authorized: boolean;
+  reason: string;
 }
 
-// This component owns the simulation mutation capability. Cardinal Core never
-// receives it. Runtime allowlisting is intentional: TypeScript union types are
-// not a security boundary when proposals can eventually arrive from serialized
-// data or a model.
+/**
+ * Independent simulation boundary.
+ *
+ * Cardinal may request an intervention. The gateway owns authorization policy,
+ * cooldown, execution intent and the mutation capability. Pending authorization
+ * is recorded before mutation so a crash can be recovered without duplicating
+ * the intervention.
+ */
 export class IndependentInterventionGateway {
   private readonly maxMagnitude: number;
   private readonly minInterval: number;
   private readonly effectDuration: number;
-  private readonly lastExecutionAt = new Map<string, number>();
-  private readonly executionsByProposal = new Map<string, StoredExecution>();
+  private readonly ledger: InterventionGatewayLedger;
+  readonly policyVersion: string;
 
   constructor(
     private readonly target: SimulationInterventionTarget,
@@ -57,6 +76,7 @@ export class IndependentInterventionGateway {
     const maxMagnitude = options.maxMagnitude ?? ABSOLUTE_MAX_INTERVENTION_MAGNITUDE;
     const minInterval = options.minInterval ?? 5;
     const effectDuration = options.effectDuration ?? 8;
+    const policyVersion = options.policyVersion ?? INTERVENTION_GATEWAY_POLICY_VERSION;
 
     if (
       !Number.isFinite(maxMagnitude) ||
@@ -79,10 +99,15 @@ export class IndependentInterventionGateway {
         `Gateway effectDuration must be from 1 to ${ABSOLUTE_MAX_INTERVENTION_DURATION}.`,
       );
     }
+    if (!policyVersion.trim()) {
+      throw new Error('Gateway policyVersion must not be empty.');
+    }
 
     this.maxMagnitude = maxMagnitude;
     this.minInterval = minInterval;
     this.effectDuration = effectDuration;
+    this.ledger = options.ledger ?? new InMemoryInterventionGatewayLedger();
+    this.policyVersion = policyVersion;
   }
 
   async execute(
@@ -98,69 +123,146 @@ export class IndependentInterventionGateway {
       throw new Error('Gateway proposalId must not be empty.');
     }
 
-    const proposalKey = `${proposal.worldId}::${proposal.proposalId}`;
-    const proposalFingerprint = stableJsonStringify(proposal);
-    const prior = this.executionsByProposal.get(proposalKey);
+    const targetWorldId = this.target.snapshot().id;
+    await this.recover(targetWorldId);
 
+    const proposalFingerprint = stableJsonStringify(proposal);
+    const prior = await this.ledger.get(targetWorldId, proposal.proposalId);
     if (prior) {
-      if (
-        prior.evaluationId !== evaluationId ||
-        prior.proposalFingerprint !== proposalFingerprint
-      ) {
-        throw new Error(
-          `Proposal ID ${proposal.proposalId} was reused with different content.`,
-        );
+      this.assertSameRequest(prior, evaluationId, proposalFingerprint);
+      if (prior.phase === 'final') {
+        return structuredClone(prior.record);
       }
-      return structuredClone(prior.record);
+      return await this.resumePending(prior);
     }
 
-    const authorization = this.authorize(proposal, expectedWorld, now);
-
-    const record: InterventionRecord = {
+    const authorization = await this.authorize(proposal, expectedWorld, now);
+    const baseRecord: InterventionRecord = {
       interventionId: createStableId('intervention', {
-        worldId: proposal.worldId,
+        worldId: targetWorldId,
         proposalId: proposal.proposalId,
         evaluationId,
       }),
       evaluationId,
-      worldId: proposal.worldId,
+      worldId: targetWorldId,
       requestedAt: now,
+      observedWorldRevision: expectedWorld.revision,
+      gatewayPolicyVersion: this.policyVersion,
       proposal: structuredClone(proposal),
       authorized: authorization.authorized,
       authorizationReason: authorization.reason,
+      executionStatus: authorization.authorized ? 'authorized_pending' : 'denied',
       executed: false,
     };
 
-    if (authorization.authorized) {
-      // proposalId is the stable world-operation id. If the gateway process is
-      // retried after the target already committed, the target treats the same
-      // proposal as an idempotent replay rather than a second intervention.
-      await this.target.applyAuthorizedIntervention(
-        proposal.kind,
-        proposal.magnitude,
-        now,
-        this.effectDuration,
-        proposal.proposalId,
-      );
-
-      record.executed = true;
-      this.lastExecutionAt.set(proposal.worldId, now);
-    }
-
-    this.executionsByProposal.set(proposalKey, {
+    const entry: GatewayLedgerEntry = {
+      worldId: targetWorldId,
+      proposalId: proposal.proposalId,
       evaluationId,
       proposalFingerprint,
-      record: structuredClone(record),
-    });
+      expectedWorldRevision: expectedWorld.revision,
+      effectDuration: this.effectDuration,
+      gatewayPolicyVersion: this.policyVersion,
+      phase: authorization.authorized ? 'pending' : 'final',
+      record: structuredClone(baseRecord),
+    };
 
-    return structuredClone(record);
+    const stored = await this.ledger.begin(entry);
+    if (stored.phase === 'final') {
+      return structuredClone(stored.record);
+    }
+    return await this.resumePending(stored);
   }
 
-  private authorize(
+  /**
+   * Resolve authorization intents that were persisted before a process failure.
+   * New proposals must not bypass a pending intervention by restarting gateway RAM.
+   */
+  async recover(worldId: string): Promise<void> {
+    if (this.target.snapshot().id !== worldId) {
+      throw new Error(
+        `Gateway target ${this.target.snapshot().id} cannot recover world ${worldId}.`,
+      );
+    }
+    const pending = (await this.ledger.entries(worldId)).filter(
+      (entry) => entry.phase === 'pending',
+    );
+    for (const entry of pending) {
+      await this.resumePending(entry);
+    }
+  }
+
+  async ledgerEntries(worldId: string): Promise<GatewayLedgerEntry[]> {
+    return await this.ledger.entries(worldId);
+  }
+
+  private async resumePending(entry: GatewayLedgerEntry): Promise<InterventionRecord> {
+    if (entry.phase !== 'pending') {
+      return structuredClone(entry.record);
+    }
+
+    const proposal = entry.record.proposal;
+    if (entry.worldId !== this.target.snapshot().id || proposal.worldId !== entry.worldId) {
+      throw new Error(
+        `Gateway ledger entry ${entry.proposalId} does not belong to its simulation target.`,
+      );
+    }
+
+    try {
+      // The target performs a second, commit-bound revision check. If a crash
+      // occurred after the world commit, the same stable proposal ID is treated
+      // as an exact retry and returns without applying the effect twice.
+      const applyResult = await this.target.applyAuthorizedIntervention(
+        entry.worldId,
+        proposal.kind,
+        proposal.magnitude,
+        entry.record.requestedAt,
+        entry.effectDuration,
+        proposal.proposalId,
+        entry.expectedWorldRevision,
+      );
+
+      const final: GatewayLedgerEntry = {
+        ...entry,
+        phase: 'final',
+        record: {
+          ...entry.record,
+          executionStatus: 'executed',
+          executed: true,
+          committedWorldRevision: applyResult.committedRevision,
+        },
+      };
+      return structuredClone((await this.ledger.finalize(final)).record);
+    } catch (error) {
+      if (
+        error instanceof StaleWorldObservationError ||
+        error instanceof WorldRevisionConflictError
+      ) {
+        const final: GatewayLedgerEntry = {
+          ...entry,
+          phase: 'final',
+          record: {
+            ...entry.record,
+            authorizationReason:
+              `${entry.record.authorizationReason} Execution cancelled because the observed world revision became stale before commit.`,
+            executionStatus: 'stale',
+            executed: false,
+          },
+        };
+        return structuredClone((await this.ledger.finalize(final)).record);
+      }
+
+      // Unknown/transient failures intentionally leave the authorization intent
+      // pending. A restarted gateway can recover it using the stable proposal ID.
+      throw error;
+    }
+  }
+
+  private async authorize(
     proposal: Readonly<InterventionProposal>,
     expectedWorld: Readonly<WorldState>,
     now: number,
-  ): { authorized: boolean; reason: string } {
+  ): Promise<AuthorizationDecision> {
     if (!ALLOWED_INTERVENTION_KINDS.has(proposal.kind as string)) {
       return {
         authorized: false,
@@ -205,7 +307,7 @@ export class IndependentInterventionGateway {
       };
     }
 
-    const lastExecution = this.lastExecutionAt.get(proposal.worldId);
+    const lastExecution = await this.ledger.lastExecutedAt(proposal.worldId);
     if (lastExecution !== undefined && now - lastExecution < this.minInterval) {
       return {
         authorized: false,
@@ -215,7 +317,24 @@ export class IndependentInterventionGateway {
 
     return {
       authorized: true,
-      reason: 'Proposal is inside the runtime allowlist and independent gateway limits.',
+      reason:
+        'Proposal is inside the runtime allowlist, persisted cooldown and independent gateway limits.',
     };
+  }
+
+  private assertSameRequest(
+    prior: GatewayLedgerEntry,
+    evaluationId: string,
+    proposalFingerprint: string,
+  ): void {
+    if (
+      prior.evaluationId !== evaluationId ||
+      prior.proposalFingerprint !== proposalFingerprint ||
+      prior.gatewayPolicyVersion !== this.policyVersion
+    ) {
+      throw new Error(
+        `Proposal ID ${prior.proposalId} was reused with different content or execution context.`,
+      );
+    }
   }
 }

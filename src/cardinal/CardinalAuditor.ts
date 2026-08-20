@@ -57,6 +57,27 @@ export class CardinalAuditor {
       concerns.push('An unauthorized intervention was executed.');
     }
 
+    if (intervention) {
+      if (!intervention.gatewayPolicyVersion.trim()) {
+        concerns.push('Intervention is missing its gateway policy version.');
+      }
+      if (intervention.observedWorldRevision !== evaluation.observedWorldRevision) {
+        concerns.push('Gateway intervention was bound to a different observed world revision.');
+      }
+      if (
+        intervention.executionStatus === 'executed' &&
+        (!intervention.executed || intervention.committedWorldRevision === undefined)
+      ) {
+        concerns.push('Executed intervention is missing committed revision evidence.');
+      }
+      if (
+        intervention.executionStatus !== 'executed' &&
+        intervention.executed
+      ) {
+        concerns.push('Intervention execution status conflicts with executed=true.');
+      }
+    }
+
     if (evaluation.decision === 'propose' && evaluation.evidenceEventIds.length === 0) {
       concerns.push('Intervention proposal has no recorded world-event evidence.');
     }

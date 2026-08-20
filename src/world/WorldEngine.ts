@@ -4,6 +4,7 @@ import type { InputEnvelope } from '../runtime/inputBus/types';
 import { SeededRng } from '../utils/rng';
 import type { WorldEvent } from './events';
 import type { WorldStore } from './persistence';
+import { StaleWorldObservationError, WorldRevisionConflictError } from './persistence';
 import type {
   AgentState,
   MemoryRecord,
@@ -13,7 +14,7 @@ import type {
   WorldState,
 } from './types';
 
-export const WORLD_RULES_VERSION = 'ainkrad-world-rules-0.3.3';
+export const WORLD_RULES_VERSION = 'ainkrad-world-rules-0.3.4';
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const clampSigned = (value: number) => Math.max(-1, Math.min(1, value));
@@ -54,6 +55,11 @@ export interface WorldEngineOptions {
 export interface OpenWorldEngineOptions {
   worldId: string;
   store: WorldStore;
+}
+
+export interface WorldMutationResult {
+  committed: boolean;
+  committedRevision: number;
 }
 
 /**
@@ -300,12 +306,19 @@ export class WorldEngine {
   // CardinalCore never receives this capability. Only the independent
   // simulation gateway owns it.
   async applyAuthorizedIntervention(
+    worldId: string,
     kind: InterventionKind,
     magnitude: number,
     now: number,
     duration: number,
     operationId: string,
-  ): Promise<boolean> {
+    expectedWorldRevision: number,
+  ): Promise<WorldMutationResult> {
+    if (worldId !== this.committedState.id) {
+      throw new Error(
+        `Intervention belongs to world ${worldId}, expected ${this.committedState.id}.`,
+      );
+    }
     if (!['resource_relief', 'open_shared_space', 'safety_support'].includes(kind as string)) {
       throw new Error('Unknown intervention kind.');
     }
@@ -321,17 +334,25 @@ export class WorldEngine {
     if (!operationId.trim()) {
       throw new Error('Intervention operationId is required for retry safety.');
     }
+    if (!Number.isInteger(expectedWorldRevision) || expectedWorldRevision < 0) {
+      throw new Error('Intervention expectedWorldRevision must be a non-negative integer.');
+    }
 
     const amount = Math.max(0, Math.min(0.25, magnitude));
     const fingerprint = stableJsonStringify({
       kind: 'intervention',
+      worldId,
       interventionKind: kind,
       magnitude: amount,
       now,
       duration,
+      expectedWorldRevision,
     });
 
-    return await this.mutate(`intervention:${operationId}`, fingerprint, async () => {
+    return await this.mutateDetailed(
+      `intervention:${operationId}`,
+      fingerprint,
+      async () => {
       if (now < this.state.now) {
         throw new Error('Intervention cannot be applied retroactively to a progressed world.');
       }
@@ -369,14 +390,33 @@ export class WorldEngine {
         payload: { magnitude: amount },
         activeUntil: now + Math.max(1, duration),
       });
-    });
+      },
+      expectedWorldRevision,
+    );
   }
 
   private async mutate(
     operationId: string,
     operationFingerprint: string,
     apply: () => Promise<void>,
+    requiredWorldRevision?: number,
   ): Promise<boolean> {
+    return (
+      await this.mutateDetailed(
+        operationId,
+        operationFingerprint,
+        apply,
+        requiredWorldRevision,
+      )
+    ).committed;
+  }
+
+  private async mutateDetailed(
+    operationId: string,
+    operationFingerprint: string,
+    apply: () => Promise<void>,
+    requiredWorldRevision?: number,
+  ): Promise<WorldMutationResult> {
     return await this.runExclusive(async () => {
       const prior = await this.store.committedOperation(
         this.committedState.id,
@@ -393,7 +433,21 @@ export class WorldEngine {
         // the operation's original logical time. Reload the newest committed
         // projection rather than reapplying old effects.
         await this.reloadFromStore();
-        return false;
+        return {
+          committed: false,
+          committedRevision: prior.committedRevision,
+        };
+      }
+
+      if (
+        requiredWorldRevision !== undefined &&
+        this.committedState.revision !== requiredWorldRevision
+      ) {
+        throw new StaleWorldObservationError(
+          this.committedState.id,
+          requiredWorldRevision,
+          this.committedState.revision,
+        );
       }
 
       const before = structuredClone(this.committedState);
@@ -419,9 +473,15 @@ export class WorldEngine {
         });
 
         this.adopt(result.state);
-        return result.committed;
+        return {
+          committed: result.committed,
+          committedRevision: result.operation.committedRevision,
+        };
       } catch (error) {
         this.rng.restore(beforeRng);
+        if (error instanceof WorldRevisionConflictError) {
+          await this.reloadFromStore();
+        }
         throw error;
       } finally {
         this.workingState = undefined;

@@ -112,6 +112,10 @@ An architecturally separate component decides whether a proposed intervention is
 
 The Core can propose. It cannot directly execute, modify or bypass the gateway.
 
+Gateway safety state is not allowed to exist only in process RAM. Authorization intent, final execution state, cooldown evidence and the gateway policy version live behind an independent append-only ledger contract. A restart therefore cannot erase the fact that Cardinal already intervened.
+
+An authorization based on world revision `R` is enforced again at the world commit boundary. A successful preflight snapshot comparison is not enough: if the world changes before commit, execution is recorded as stale and does not mutate the world.
+
 ### Cardinal Auditor
 
 The Auditor is independent from the Cardinal Core.
@@ -359,6 +363,12 @@ Exact retries remain recognizable even if the world has since advanced to a late
 
 A future persistent storage adapter must atomically commit the current-state change and the historical evidence for one logical world operation, or provide an equivalent recoverable commit protocol. In-memory behavior is a reference implementation, not permission to accept split-brain state/history in persistent storage.
 
+Cardinal evidence and gateway control state use independent append-only log contracts. These streams are scoped by world and evidence/control kind rather than one global hot sequence. Recreating a journal or gateway over the same durable log must recover exact IDs, cooldown, pending authorization intents and final records without fabricating duplicate evidence.
+
+Gateway execution follows a recoverable intent protocol: record authorization intent first, attempt the world mutation with the stable proposal ID and observed revision, then finalize the ledger. If the process fails after the world commit but before finalization, recovery retries the same proposal ID; the world treats it as the same logical operation rather than a second intervention. Unknown/transient failures remain pending and block silent bypass.
+
+The detailed Cardinal restart protocol is documented in `docs/CARDINAL_RECOVERY.md`.
+
 The v0.3 domain now exposes this boundary explicitly as `WorldStore`. `WorldEngine` stages the next state, world events and memories, then adopts the mutation only after the store commits them together with a stable operation record.
 
 `WorldState.revision` protects one world from stale concurrent writers. It is deliberately **not** a global sequence counter shared by unrelated inputs or worlds.
@@ -375,7 +385,8 @@ Ainkrad records explicit versions for:
 
 - autonomous world rules;
 - sensor definitions;
-- Cardinal policy logic.
+- Cardinal policy logic;
+- independent simulation intervention-gateway policy.
 
 Experiment results also carry the seed and a fingerprint of the disturbance schedule.
 

@@ -1,15 +1,21 @@
 import { CardinalAuditor } from '../cardinal/CardinalAuditor';
 import { CardinalCore } from '../cardinal/CardinalCore';
-import { InMemoryCardinalJournal } from '../cardinal/InMemoryCardinalJournal';
+import { reconcileGatewayJournal } from '../cardinal/CardinalRecovery';
+import { LogBackedCardinalJournal } from '../cardinal/LogBackedCardinalJournal';
 import { CardinalObserver } from '../cardinal/CardinalObserver';
 import { CardinalRuntime } from '../cardinal/CardinalRuntime';
-import { IndependentInterventionGateway } from '../cardinal/InterventionGateway';
+import {
+  IndependentInterventionGateway,
+  INTERVENTION_GATEWAY_POLICY_VERSION,
+} from '../cardinal/InterventionGateway';
+import { LogBackedInterventionGatewayLedger } from '../cardinal/InterventionGatewayLedger';
 import type {
   CardinalEvaluation,
   CardinalMode,
   InterventionRecord,
 } from '../cardinal/types';
 import { stableJsonStringify } from '../core/stableJson';
+import { InMemoryAppendOnlyLog } from '../persistence/AppendOnlyLog';
 import type { CardinalMetrics } from '../sensors/types';
 import { WORLD_SENSOR_VERSION, WorldSensors } from '../sensors/WorldSensors';
 import { InMemoryWorldStore } from '../world/InMemoryWorldStore';
@@ -32,6 +38,7 @@ export interface ExperimentManifest {
   worldRulesVersion: string;
   sensorVersion: string;
   cardinalPolicyVersion: string;
+  interventionGatewayPolicyVersion: string;
   disturbancesFingerprint: string;
 }
 
@@ -120,10 +127,15 @@ export async function runExperiment(
   const sensors = new WorldSensors(store);
   const auditorSensors = new WorldSensors(store);
   const observer = new CardinalObserver(sensors);
-  const journal = new InMemoryCardinalJournal();
+  const controlLog = new InMemoryAppendOnlyLog();
+  const journal = new LogBackedCardinalJournal(controlLog);
   const core = new CardinalCore();
   const cardinal = new CardinalRuntime(observer, core, journal);
-  const gateway = new IndependentInterventionGateway(world);
+  const gatewayLedger = new LogBackedInterventionGatewayLedger(controlLog);
+  const gateway = new IndependentInterventionGateway(world, {
+    ledger: gatewayLedger,
+    policyVersion: INTERVENTION_GATEWAY_POLICY_VERSION,
+  });
   const auditor = new CardinalAuditor();
   const timeline: ExperimentTickRecord[] = [];
 
@@ -208,7 +220,7 @@ export async function runExperiment(
           world.snapshot(),
           tick,
         );
-        await journal.appendIntervention(intervention);
+        await reconcileGatewayJournal(world.snapshot().id, gateway, journal);
 
       }
 
@@ -263,6 +275,7 @@ export async function runExperiment(
       worldRulesVersion: WORLD_RULES_VERSION,
       sensorVersion: WORLD_SENSOR_VERSION,
       cardinalPolicyVersion: core.policyVersion,
+      interventionGatewayPolicyVersion: gateway.policyVersion,
       disturbancesFingerprint: stableJsonStringify(disturbances),
     },
     finalWorld,
@@ -307,6 +320,10 @@ export async function runControlledComparison(
         off.manifest.sensorVersion === intervene.manifest.sensorVersion &&
         off.manifest.cardinalPolicyVersion === observer.manifest.cardinalPolicyVersion &&
         off.manifest.cardinalPolicyVersion === intervene.manifest.cardinalPolicyVersion &&
+        off.manifest.interventionGatewayPolicyVersion ===
+          observer.manifest.interventionGatewayPolicyVersion &&
+        off.manifest.interventionGatewayPolicyVersion ===
+          intervene.manifest.interventionGatewayPolicyVersion &&
         off.manifest.disturbancesFingerprint === observer.manifest.disturbancesFingerprint &&
         off.manifest.disturbancesFingerprint === intervene.manifest.disturbancesFingerprint,
       offObserverEquivalent:

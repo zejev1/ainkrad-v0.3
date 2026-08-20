@@ -1,11 +1,13 @@
-Ainkrad v0.3 clean foundation
+Ainkrad v0.3 current files
 
 Files:
 - .github/workflows/ci.yml
 - .gitignore
+- PROJECT_FILES.txt
 - README.md
 - SPCK_IMPORT.md
 - docs/ARCHITECTURE_INVARIANTS.md
+- docs/CARDINAL_RECOVERY.md
 - docs/EXTERNAL_BOUNDARY.md
 - docs/MIGRATION_RULES.md
 - docs/PERSISTENCE_CONTRACT.md
@@ -15,9 +17,12 @@ Files:
 - src/cardinal/CardinalCore.ts
 - src/cardinal/CardinalJournal.ts
 - src/cardinal/CardinalObserver.ts
+- src/cardinal/CardinalRecovery.ts
 - src/cardinal/CardinalRuntime.ts
 - src/cardinal/InMemoryCardinalJournal.ts
 - src/cardinal/InterventionGateway.ts
+- src/cardinal/InterventionGatewayLedger.ts
+- src/cardinal/LogBackedCardinalJournal.ts
 - src/cardinal/types.ts
 - src/core/json.ts
 - src/core/stableId.ts
@@ -25,6 +30,7 @@ Files:
 - src/demo.ts
 - src/experiment/ExperimentRunner.ts
 - src/index.ts
+- src/persistence/AppendOnlyLog.ts
 - src/runtime/WorldRuntime.ts
 - src/runtime/inputBus/InMemoryInputBus.ts
 - src/runtime/inputBus/InputBus.ts
@@ -48,9 +54,11 @@ Files:
 - tests/cardinalJournal.test.ts
 - tests/experimentIntegrity.test.ts
 - tests/externalGateway.test.ts
+- tests/gatewayRecovery.test.ts
 - tests/history.test.ts
 - tests/inputBus.test.ts
 - tests/interventionGateway.test.ts
+- tests/logBackedJournal.test.ts
 - tests/memoryStore.test.ts
 - tests/modes.test.ts
 - tests/observer.test.ts

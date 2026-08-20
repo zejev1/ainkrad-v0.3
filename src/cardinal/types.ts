@@ -33,15 +33,25 @@ export interface CardinalEvaluation {
   hypotheticalOnly: boolean;
 }
 
+export type InterventionExecutionStatus =
+  | 'denied'
+  | 'authorized_pending'
+  | 'executed'
+  | 'stale';
+
 export interface InterventionRecord {
   interventionId: string;
   evaluationId: string;
   worldId: string;
   requestedAt: number;
+  observedWorldRevision: number;
+  gatewayPolicyVersion: string;
   proposal: InterventionProposal;
   authorized: boolean;
   authorizationReason: string;
+  executionStatus: InterventionExecutionStatus;
   executed: boolean;
+  committedWorldRevision?: number;
 }
 
 export interface InterventionOutcomeRecord {
