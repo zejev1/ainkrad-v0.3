@@ -154,3 +154,21 @@ These rules convert failures from the previous implementation into tests and str
 113. Experiment manifests record the Cardinal research-semantics version in addition to world, sensor, Cardinal policy and gateway policy versions.
 114. Cardinal reasoning factors stored for audit are concise decision factors, not an unverifiable hidden chain of thought; the reproducible evidence and policy are the authoritative basis.
 115. Restarting Cardinal over the same durable journal must reproduce the same compatible research context and the same next logical evaluation for identical observation evidence.
+
+## Audit round 6 additions
+
+116. Cardinal may not start a new same-kind intervention test while an earlier executed intervention of that kind is still active or lacks its required outcome evidence.
+117. The no-overlap rule is scientific discipline, not merely gateway cooldown; a technically permitted second action may still be epistemically invalid.
+118. Every intervention record stores the exact effect duration authorized by the independent gateway.
+119. Cardinal washout uses the greater of the recorded effect duration and prediction horizon so later evidence is not silently attributed across overlapping test windows.
+120. Unresolved executed interventions remain in the active Cardinal research context even if a bounded ordinary history tail would otherwise omit them.
+121. Unresolved executed interventions likewise remain visible to the independent Auditor context.
+122. Cardinal records a machine-readable defer reason whenever it sees a qualifying problem but intentionally postpones action.
+123. `experiment_in_progress` means an earlier same-kind intervention is active or unresolved; it is not interchangeable with lack of evidence.
+124. A recent intervention-density autonomy budget limits repeated non-critical Cardinal action even when every individual proposal would otherwise qualify.
+125. In v0.3.6, three executed interventions inside a 16-tick autonomy window exhaust the non-critical budget until the window naturally washes out.
+126. Critical conditions may explicitly override the intervention-density budget, but criticality does not silently permit overlap with an unresolved same-kind experiment.
+127. Cardinal's autonomy/dependency assessment is persisted inside the evaluation evidence and participates in stable evaluation identity.
+128. The Auditor reconstructs recent intervention density and in-progress tests independently from the append-only journal rather than trusting Cardinal's derived autonomy assessment.
+129. Auditor decision records bind the independent audit-context version and fingerprint used to challenge Cardinal.
+130. Experiment results report defer counts, including experiment-in-progress and autonomy-budget deferrals, so restraint is measurable rather than hidden.

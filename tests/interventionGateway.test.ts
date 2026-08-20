@@ -43,6 +43,7 @@ describe('Independent intervention gateway', () => {
     const second = await gateway.execute('evaluation_2', secondProposal, world.snapshot(), 10);
 
     expect(first.executed).toBe(true);
+    expect(first.authorizedEffectDuration).toBe(8);
     expect(second.executed).toBe(false);
     expect(second.authorized).toBe(false);
   });

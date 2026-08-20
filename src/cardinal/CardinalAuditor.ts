@@ -1,10 +1,16 @@
 import { createStableId } from '../core/stableId';
 import { stableJsonStringify } from '../core/stableJson';
 import type { CardinalMetrics, SensorSnapshot } from '../sensors/types';
+import type { CardinalAuditContext } from './CardinalAuditContext';
+import {
+  CARDINAL_AUTONOMY_MAX_RECENT_INTERVENTIONS,
+  CARDINAL_AUTONOMY_WINDOW,
+} from './CardinalResearch';
 import type {
   AuditRecord,
   CardinalEvaluation,
   CardinalPredictionMetric,
+  CardinalProblemKind,
   InterventionOutcomeRecord,
   InterventionRecord,
 } from './types';
@@ -22,6 +28,7 @@ export class CardinalAuditor {
     intervention: Readonly<InterventionRecord> | undefined,
     now: number,
     independentObservation?: Readonly<SensorSnapshot>,
+    auditContext?: Readonly<CardinalAuditContext>,
   ): AuditRecord {
     const concerns: string[] = [];
     let independentObservationMatched: boolean | undefined;
@@ -102,6 +109,91 @@ export class CardinalAuditor {
       }
     }
 
+    if (evaluation.decision === 'defer' && !evaluation.deferReason) {
+      concerns.push('Cardinal deferred action without a machine-readable defer reason.');
+    }
+
+    if (evaluation.decision !== 'defer' && evaluation.deferReason) {
+      concerns.push('Cardinal attached a defer reason to a non-defer decision.');
+    }
+
+    if (evaluation.detectedProblem) {
+      const independentlyCritical = this.independentlyCritical(
+        evaluation.detectedProblem.kind,
+        evaluation.metrics,
+      );
+      if (
+        independentlyCritical !==
+        evaluation.detectedProblem.criticalThresholdCrossed
+      ) {
+        concerns.push(
+          'Cardinal critical-threshold claim does not match the Auditor independent threshold check.',
+        );
+      }
+      if (
+        evaluation.decision === 'propose' &&
+        evaluation.detectedProblem.persistence < 3 &&
+        !independentlyCritical
+      ) {
+        concerns.push(
+          'Cardinal proposed a non-critical intervention before three compatible observations.',
+        );
+      }
+    }
+
+    if (auditContext) {
+      for (const priorIntervention of auditContext.priorInterventions) {
+        if (
+          priorIntervention.executed &&
+          (!Number.isFinite(priorIntervention.authorizedEffectDuration) ||
+            priorIntervention.authorizedEffectDuration < 1)
+        ) {
+          concerns.push(
+            `Auditor history intervention ${priorIntervention.interventionId} lacks a valid authorized effect duration.`,
+          );
+        }
+      }
+    }
+
+    if (auditContext && evaluation.detectedProblem) {
+      const expectedAutonomy = this.reconstructAutonomy(
+        evaluation,
+        auditContext,
+      );
+      if (!evaluation.autonomyAssessment) {
+        concerns.push('Cardinal decision is missing its autonomy/dependency assessment.');
+      } else if (
+        stableJsonStringify(evaluation.autonomyAssessment) !==
+        stableJsonStringify(expectedAutonomy)
+      ) {
+        concerns.push(
+          'Cardinal autonomy assessment does not match the Auditor independent journal reconstruction.',
+        );
+      }
+
+      const independentlyCritical = this.independentlyCritical(
+        evaluation.detectedProblem.kind,
+        evaluation.metrics,
+      );
+      if (
+        evaluation.decision === 'propose' &&
+        expectedAutonomy.activeOrUnresolvedSameKindIds.length > 0
+      ) {
+        concerns.push(
+          'Cardinal proposed an overlapping intervention while an earlier same-kind test is active or unresolved.',
+        );
+      }
+      if (
+        evaluation.decision === 'propose' &&
+        expectedAutonomy.budgetStatus === 'exhausted' &&
+        !independentlyCritical
+      ) {
+        concerns.push(
+          'Cardinal proposed a non-critical intervention after exhausting the recent autonomy budget.',
+        );
+      }
+    }
+
     if (intervention?.executed && !intervention.authorized) {
       concerns.push('An unauthorized intervention was executed.');
     }
@@ -109,6 +201,12 @@ export class CardinalAuditor {
     if (intervention) {
       if (!intervention.gatewayPolicyVersion.trim()) {
         concerns.push('Intervention is missing its gateway policy version.');
+      }
+      if (
+        !Number.isFinite(intervention.authorizedEffectDuration) ||
+        intervention.authorizedEffectDuration < 1
+      ) {
+        concerns.push('Intervention is missing a valid authorized effect duration.');
       }
       if (intervention.observedWorldRevision !== evaluation.observedWorldRevision) {
         concerns.push('Gateway intervention was bound to a different observed world revision.');
@@ -139,9 +237,97 @@ export class CardinalAuditor {
       evaluationId: evaluation.evaluationId,
       interventionId: intervention?.interventionId,
       independentObservationMatched,
+      auditContextVersion: auditContext?.version,
+      auditContextFingerprint: auditContext?.fingerprint,
       accepted: concerns.length === 0,
       concerns,
     };
+  }
+
+  private independentlyCritical(
+    kind: CardinalProblemKind,
+    metrics: CardinalMetrics,
+  ): boolean {
+    if (kind === 'resource_fragility') {
+      return metrics.resourcePressure > 0.92 && metrics.recoveryCapacity < 0.25;
+    }
+    if (kind === 'social_fragmentation') {
+      return metrics.socialIsolation > 0.92 && metrics.populationActivity < 0.3;
+    }
+    return metrics.conflictPressure > 0.9 && metrics.averageStress > 0.8;
+  }
+
+  private reconstructAutonomy(
+    evaluation: Readonly<CardinalEvaluation>,
+    context: Readonly<CardinalAuditContext>,
+  ): NonNullable<CardinalEvaluation['autonomyAssessment']> {
+    const proposalKind = this.interventionKindForProblem(
+      evaluation.detectedProblem!.kind,
+    );
+    const resolved = new Set(
+      context.priorOutcomes.map((outcome) => outcome.interventionId),
+    );
+    const executed = context.priorInterventions.filter(
+      (intervention) =>
+        intervention.executed &&
+        intervention.requestedAt < evaluation.evaluatedAt,
+    );
+    const recent = executed.filter(
+      (intervention) =>
+        evaluation.evaluatedAt - intervention.requestedAt <=
+        CARDINAL_AUTONOMY_WINDOW,
+    );
+    const activeOrUnresolved = executed.filter((intervention) => {
+      const effectDuration =
+        Number.isFinite(intervention.authorizedEffectDuration) &&
+        intervention.authorizedEffectDuration >= 1
+          ? intervention.authorizedEffectDuration
+          : Number.POSITIVE_INFINITY;
+      const washout = Math.max(
+        effectDuration,
+        intervention.proposal.prediction.horizon,
+      );
+      return (
+        !resolved.has(intervention.interventionId) ||
+        intervention.requestedAt + washout > evaluation.evaluatedAt
+      );
+    });
+    const sameKind = activeOrUnresolved.filter(
+      (intervention) => intervention.proposal.kind === proposalKind,
+    );
+    const density = Math.max(
+      0,
+      Math.min(1, recent.length / CARDINAL_AUTONOMY_MAX_RECENT_INTERVENTIONS),
+    );
+
+    return {
+      window: CARDINAL_AUTONOMY_WINDOW,
+      recentExecutedInterventionIds: recent.map(
+        (intervention) => intervention.interventionId,
+      ),
+      activeOrUnresolvedInterventionIds: activeOrUnresolved.map(
+        (intervention) => intervention.interventionId,
+      ),
+      activeOrUnresolvedSameKindIds: sameKind.map(
+        (intervention) => intervention.interventionId,
+      ),
+      interventionDensity: density,
+      dependencyRisk: density,
+      budgetStatus:
+        recent.length >= CARDINAL_AUTONOMY_MAX_RECENT_INTERVENTIONS
+          ? 'exhausted'
+          : recent.length === CARDINAL_AUTONOMY_MAX_RECENT_INTERVENTIONS - 1
+            ? 'caution'
+            : 'open',
+    };
+  }
+
+  private interventionKindForProblem(
+    kind: CardinalProblemKind,
+  ): InterventionRecord['proposal']['kind'] {
+    if (kind === 'resource_fragility') return 'resource_relief';
+    if (kind === 'social_fragmentation') return 'open_shared_space';
+    return 'safety_support';
   }
 
   observeOutcome(

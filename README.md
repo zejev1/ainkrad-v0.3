@@ -118,6 +118,16 @@ Exact retries must reconstruct the same research context. A Cardinal cycle may n
 
 This gives Cardinal memory without giving it a private reality that the Auditor cannot inspect.
 
+### Cardinal Experimental Discipline and Autonomy Budget
+
+Cardinal is not allowed to turn the world into a sequence of overlapping interventions whose effects cannot be separated. If an earlier executed intervention of the same kind is still inside its authorized effect/prediction washout window, or has not yet produced its required outcome, Cardinal must normally record `defer: experiment_in_progress` instead of starting another test.
+
+Repeated successful authorization is not itself evidence that more intervention is desirable. Cardinal therefore maintains an auditable **autonomy budget** derived from recent executed interventions. In v0.3.6, three executed interventions inside a 16-tick window exhaust the non-critical budget and force a washout period. A critical systemic condition may explicitly override the density budget, but it may not silently overlap an unresolved same-kind experiment.
+
+The effect duration actually authorized by the independent gateway is written into the intervention record. Cardinal and the Auditor therefore reason from the executed contract, not from a hidden gateway default. Unresolved executed interventions are retained in the active research/audit context even when a normal bounded history tail would otherwise omit them.
+
+The Auditor reconstructs intervention density and in-progress experiments independently from the append-only journal. Cardinal cannot make an autonomy warning disappear by changing its own derived assessment.
+
 ### Intervention Gateway
 
 An architecturally separate component decides whether a proposed intervention is allowed **and performs the authorized simulation mutation itself**.
@@ -476,6 +486,10 @@ Every meaningful Cardinal evaluation should eventually record:
 - falsifiable prediction and horizon;
 - expected outcome;
 - requested magnitude;
+- machine-readable defer reason when action is postponed;
+- autonomy/dependency assessment and in-progress intervention IDs;
+- gateway-authorized effect duration;
+- independent Auditor context fingerprint;
 - authorization result;
 - actual action;
 - later observed outcome;

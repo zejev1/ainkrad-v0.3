@@ -32,10 +32,28 @@ export interface CardinalProblemAssessment {
   persistence: number;
   trend: 'rising' | 'stable' | 'falling';
   confidence: number;
+  criticalThresholdCrossed: boolean;
   supportingEvaluationIds: string[];
   priorOutcomeIds: string[];
   claim: string;
   falsifier: string;
+}
+
+
+export type CardinalDeferReason =
+  | 'insufficient_persistence'
+  | 'experiment_in_progress'
+  | 'autonomy_budget'
+  | 'failed_prediction_caution';
+
+export interface CardinalAutonomyAssessment {
+  window: number;
+  recentExecutedInterventionIds: string[];
+  activeOrUnresolvedInterventionIds: string[];
+  activeOrUnresolvedSameKindIds: string[];
+  interventionDensity: number;
+  dependencyRisk: number;
+  budgetStatus: 'open' | 'caution' | 'exhausted';
 }
 
 export interface InterventionProposal {
@@ -64,6 +82,8 @@ export interface CardinalEvaluation {
   uncertaintyNotes: string[];
   detectedProblem?: CardinalProblemAssessment;
   decision: 'no_action' | 'defer' | 'propose';
+  deferReason?: CardinalDeferReason;
+  autonomyAssessment?: CardinalAutonomyAssessment;
   rationale: string;
   reasoningFactors: string[];
   proposal?: InterventionProposal;
@@ -83,6 +103,7 @@ export interface InterventionRecord {
   requestedAt: number;
   observedWorldRevision: number;
   gatewayPolicyVersion: string;
+  authorizedEffectDuration: number;
   proposal: InterventionProposal;
   authorized: boolean;
   authorizationReason: string;
@@ -124,6 +145,8 @@ export interface AuditRecord {
   interventionId?: string;
   outcomeId?: string;
   independentObservationMatched?: boolean;
+  auditContextVersion?: string;
+  auditContextFingerprint?: string;
   accepted: boolean;
   concerns: string[];
 }

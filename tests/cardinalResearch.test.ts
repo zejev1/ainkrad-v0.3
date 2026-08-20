@@ -87,3 +87,69 @@ describe('Cardinal research memory', () => {
     expect(exactRetry).toEqual(afterRestart);
   });
 });
+
+function researchIntervention(
+  index: number,
+  executed: boolean,
+): import('../src/cardinal/types').InterventionRecord {
+  return {
+    interventionId: `research_intervention_${index}`,
+    evaluationId: `research_evaluation_${index}`,
+    worldId: 'world_research',
+    requestedAt: index + 1,
+    observedWorldRevision: index + 1,
+    gatewayPolicyVersion: 'gateway-research-test',
+    authorizedEffectDuration: 8,
+    proposal: {
+      proposalId: `research_proposal_${index}`,
+      worldId: 'world_research',
+      hypothesisId: `research_hypothesis_${index}`,
+      kind: 'resource_relief',
+      magnitude: 0.1,
+      reason: 'test',
+      expectedOutcome: 'test',
+      prediction: {
+        metric: 'resourcePressure',
+        direction: 'decrease',
+        minimumImprovement: 0.01,
+        horizon: 4,
+        statement: 'resourcePressure should decrease.',
+      },
+    },
+    authorized: executed,
+    authorizationReason: executed ? 'authorized test' : 'denied test',
+    executionStatus: executed ? 'executed' : 'denied',
+    executed,
+    committedWorldRevision: executed ? index + 2 : undefined,
+  };
+}
+
+describe('Cardinal research mandatory unresolved evidence', () => {
+  it('does not let an unresolved executed intervention fall out of the bounded tail', async () => {
+    const log = new InMemoryAppendOnlyLog();
+    const journal = new LogBackedCardinalJournal(log);
+
+    for (let index = 0; index < 14; index += 1) {
+      await journal.appendIntervention(researchIntervention(index, index === 0));
+    }
+
+    const context = await buildCardinalResearchContext(
+      journal,
+      'world_research',
+      100,
+      new CardinalCore().policyVersion,
+      'ainkrad-world-sensors-0.3.3',
+    );
+
+    expect(
+      context.priorInterventions.some(
+        (item) => item.interventionId === 'research_intervention_0',
+      ),
+    ).toBe(true);
+    expect(
+      context.priorInterventions.some(
+        (item) => item.interventionId === 'research_intervention_1',
+      ),
+    ).toBe(false);
+  });
+});

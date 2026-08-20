@@ -84,6 +84,19 @@ function parseEntry(raw: string): JournalEntry {
     throw new Error('Cardinal journal record ID does not match its evidence payload.');
   }
 
+  if (candidate.kind === 'intervention') {
+    const duration = value.authorizedEffectDuration;
+    if (
+      typeof duration !== 'number' ||
+      !Number.isFinite(duration) ||
+      duration < 1
+    ) {
+      throw new Error(
+        'Cardinal journal intervention is missing a valid authorized effect duration.',
+      );
+    }
+  }
+
   return candidate as JournalEntry;
 }
 

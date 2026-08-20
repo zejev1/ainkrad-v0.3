@@ -1,5 +1,9 @@
 import { CardinalAuditor } from '../cardinal/CardinalAuditor';
 import {
+  buildCardinalAuditContext,
+  CARDINAL_AUDIT_CONTEXT_VERSION,
+} from '../cardinal/CardinalAuditContext';
+import {
   CardinalCore,
   MAX_CARDINAL_PREDICTION_HORIZON,
 } from '../cardinal/CardinalCore';
@@ -43,6 +47,7 @@ export interface ExperimentManifest {
   sensorVersion: string;
   cardinalPolicyVersion: string;
   cardinalResearchVersion: string;
+  cardinalAuditContextVersion: string;
   interventionGatewayPolicyVersion: string;
   disturbancesFingerprint: string;
 }
@@ -67,6 +72,9 @@ export interface ExperimentResult {
   outcomeCount: number;
   auditCount: number;
   pendingOutcomeCount: number;
+  deferCount: number;
+  experimentInProgressDeferralCount: number;
+  autonomyBudgetDeferralCount: number;
 }
 
 export interface MetricDeltas {
@@ -216,6 +224,15 @@ export async function runExperiment(
       mode === 'off'
         ? undefined
         : await auditorSensors.observe(world.snapshot(), tick);
+    const independentAuditContext =
+      mode === 'off'
+        ? undefined
+        : await buildCardinalAuditContext(
+            journal,
+            world.snapshot().id,
+            tick,
+            WORLD_SENSOR_VERSION,
+          );
     const evaluation = await cardinal.cycle(mode, world.snapshot(), tick);
 
     if (evaluation) {
@@ -238,6 +255,7 @@ export async function runExperiment(
           intervention,
           tick,
           independentAuditObservation,
+          independentAuditContext,
         ),
       );
     }
@@ -273,6 +291,7 @@ export async function runExperiment(
   }
 
   const worldId = finalWorld.id;
+  const evaluationRecords = await journal.evaluations(worldId);
   const interventionRecords = await journal.interventions(worldId);
   const executedInterventionCount = interventionRecords.filter(
     (item) => item.executed,
@@ -288,6 +307,7 @@ export async function runExperiment(
       sensorVersion: WORLD_SENSOR_VERSION,
       cardinalPolicyVersion: core.policyVersion,
       cardinalResearchVersion: CARDINAL_RESEARCH_VERSION,
+      cardinalAuditContextVersion: CARDINAL_AUDIT_CONTEXT_VERSION,
       interventionGatewayPolicyVersion: gateway.policyVersion,
       disturbancesFingerprint: stableJsonStringify(disturbances),
     },
@@ -296,13 +316,20 @@ export async function runExperiment(
     worldEventCount: finalWorldHistory.length,
     worldHistoryFingerprint,
     timeline,
-    evaluationCount: (await journal.evaluations(worldId)).length,
+    evaluationCount: evaluationRecords.length,
     authorizationDecisionCount: interventionRecords.length,
     interventionCount: executedInterventionCount,
     executedInterventionCount,
     outcomeCount: (await journal.outcomes(worldId)).length,
     auditCount: (await journal.audits(worldId)).length,
     pendingOutcomeCount: (await unresolvedExecutedInterventions()).length,
+    deferCount: evaluationRecords.filter((item) => item.decision === 'defer').length,
+    experimentInProgressDeferralCount: evaluationRecords.filter(
+      (item) => item.deferReason === 'experiment_in_progress',
+    ).length,
+    autonomyBudgetDeferralCount: evaluationRecords.filter(
+      (item) => item.deferReason === 'autonomy_budget',
+    ).length,
   };
 }
 
@@ -335,6 +362,10 @@ export async function runControlledComparison(
         off.manifest.cardinalPolicyVersion === intervene.manifest.cardinalPolicyVersion &&
         off.manifest.cardinalResearchVersion === observer.manifest.cardinalResearchVersion &&
         off.manifest.cardinalResearchVersion === intervene.manifest.cardinalResearchVersion &&
+        off.manifest.cardinalAuditContextVersion ===
+          observer.manifest.cardinalAuditContextVersion &&
+        off.manifest.cardinalAuditContextVersion ===
+          intervene.manifest.cardinalAuditContextVersion &&
         off.manifest.interventionGatewayPolicyVersion ===
           observer.manifest.interventionGatewayPolicyVersion &&
         off.manifest.interventionGatewayPolicyVersion ===

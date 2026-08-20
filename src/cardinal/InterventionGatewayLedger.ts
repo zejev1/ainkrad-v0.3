@@ -52,7 +52,8 @@ function assertEntryShape(entry: GatewayLedgerEntry): void {
     entry.record.evaluationId !== entry.evaluationId ||
     entry.record.proposal.proposalId !== entry.proposalId ||
     entry.record.observedWorldRevision !== entry.expectedWorldRevision ||
-    entry.record.gatewayPolicyVersion !== entry.gatewayPolicyVersion
+    entry.record.gatewayPolicyVersion !== entry.gatewayPolicyVersion ||
+    entry.record.authorizedEffectDuration !== entry.effectDuration
   ) {
     throw new Error('Gateway ledger entry does not match its intervention record.');
   }

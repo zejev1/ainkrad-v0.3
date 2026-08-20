@@ -77,3 +77,16 @@ When the horizon is reached, the Auditor records the actual metric delta and whe
 Cardinal may use recent failed predictions as a reason to defer repeating the same intervention. The correct interpretation is cautious: recent post-intervention observations did not match the prediction. It must not rewrite that into "the intervention caused failure" without a matched control or another valid causal design.
 
 This is the beginning of a self-correcting Cardinal: memory changes what it is willing to test, while all evidence and assumptions remain inspectable.
+
+
+## Experimental discipline and autonomy budget
+
+Cardinal must not confuse repeated action with learning. An executed intervention creates a test window whose end is the greater of the gateway-authorized effect duration and the proposal's prediction horizon. Until that window has washed out and the required outcome exists, a new intervention of the same kind is deferred as `experiment_in_progress`.
+
+This is stricter than the gateway cooldown. Cooldown protects the execution boundary from rapid repeated mutation; experimental discipline protects the meaning of the evidence.
+
+Cardinal also derives a recent intervention-density assessment from executed intervention records. In v0.3.6 the non-critical autonomy budget is exhausted after three executed interventions inside 16 logical ticks. The purpose is not to make the world artificially stable. It is to preserve periods in which the world can demonstrate endogenous recovery, adaptation or failure without constant Cardinal assistance.
+
+A critical threshold may explicitly override the density budget. It does not erase an unresolved same-kind test or make overlapping evidence scientifically clean.
+
+The active research window remains bounded, but unresolved executed interventions are mandatory context and cannot fall out merely because later rows filled the normal tail. The independent Auditor reconstructs the same dependency facts through a separate audit-context builder and stores its own versioned fingerprint in the decision audit.

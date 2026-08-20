@@ -1,11 +1,15 @@
 import { createStableId } from '../core/stableId';
 import type { CardinalMetrics, SensorSnapshot } from '../sensors/types';
 import {
+  CARDINAL_AUTONOMY_MAX_RECENT_INTERVENTIONS,
+  CARDINAL_AUTONOMY_WINDOW,
   CARDINAL_RESEARCH_VERSION,
   emptyCardinalResearchContext,
   type CardinalResearchContext,
 } from './CardinalResearch';
 import type {
+  CardinalAutonomyAssessment,
+  CardinalDeferReason,
   CardinalEvaluation,
   CardinalMode,
   CardinalPredictionMetric,
@@ -15,7 +19,7 @@ import type {
   InterventionProposal,
 } from './types';
 
-export const CARDINAL_POLICY_VERSION = 'ainkrad-cardinal-policy-0.3.4';
+export const CARDINAL_POLICY_VERSION = 'ainkrad-cardinal-policy-0.3.6';
 export const DEFAULT_CARDINAL_PREDICTION_HORIZON = 4;
 export const MAX_CARDINAL_PREDICTION_HORIZON = 16;
 
@@ -133,11 +137,24 @@ export class CardinalCore {
     let detectedProblem: CardinalProblemAssessment | undefined;
     let decision: CardinalEvaluation['decision'] = 'no_action';
     let rationale = 'No systemic condition currently justifies intervention.';
+    let deferReason: CardinalDeferReason | undefined;
+    let autonomyAssessment: CardinalAutonomyAssessment | undefined;
     const reasoningFactors: string[] = [];
 
     if (selected) {
-      detectedProblem = this.assessProblem(selected.candidate, selected.severity, observation, research);
       const isCritical = selected.candidate.critical(observation.metrics);
+      detectedProblem = this.assessProblem(
+        selected.candidate,
+        selected.severity,
+        isCritical,
+        observation,
+        research,
+      );
+      autonomyAssessment = this.assessAutonomy(
+        selected.candidate.interventionKind,
+        observation,
+        research,
+      );
       const recentAdverseOutcomes = this.recentAdverseOutcomes(
         selected.candidate.interventionKind,
         research,
@@ -150,14 +167,29 @@ export class CardinalCore {
         `trend=${detectedProblem.trend}`,
         `confidence=${detectedProblem.confidence.toFixed(3)}`,
         `recent_adverse_outcomes=${recentAdverseOutcomes.length}`,
+        `autonomy_budget=${autonomyAssessment.budgetStatus}`,
+        `recent_executed_interventions=${autonomyAssessment.recentExecutedInterventionIds.length}`,
+        `same_kind_in_progress=${autonomyAssessment.activeOrUnresolvedSameKindIds.length}`,
       );
 
-      if (!isCritical && detectedProblem.persistence < 3) {
+      if (autonomyAssessment.activeOrUnresolvedSameKindIds.length > 0) {
         decision = 'defer';
+        deferReason = 'experiment_in_progress';
+        rationale =
+          `${selected.candidate.reason} Cardinal is deferring because an earlier intervention of the same kind is still active or has not yet produced its scheduled outcome. Overlapping tests would confound the evidence.`;
+      } else if (!isCritical && detectedProblem.persistence < 3) {
+        decision = 'defer';
+        deferReason = 'insufficient_persistence';
         rationale =
           `${selected.candidate.reason} Cardinal is deferring because the condition has not yet persisted across three compatible observations.`;
+      } else if (!isCritical && autonomyAssessment.budgetStatus === 'exhausted') {
+        decision = 'defer';
+        deferReason = 'autonomy_budget';
+        rationale =
+          `${selected.candidate.reason} Cardinal is deferring because recent intervention density has exhausted the autonomy budget. The world must be given a washout period to recover or fail through its own mechanisms before another non-critical test.`;
       } else if (!isCritical && recentAdverseOutcomes.length >= 2) {
         decision = 'defer';
+        deferReason = 'failed_prediction_caution';
         rationale =
           `${selected.candidate.reason} Cardinal is deferring because two recent post-intervention observations for the same action failed its stated prediction; this is caution, not a causal conclusion.`;
       } else {
@@ -165,6 +197,9 @@ export class CardinalCore {
         rationale = isCritical
           ? `${selected.candidate.reason} The condition crossed the critical threshold, so Cardinal may propose a minimal intervention without waiting for the normal persistence window.`
           : `${selected.candidate.reason} The condition persisted across multiple observations, so a minimal falsifiable intervention may be tested.`;
+        if (isCritical && autonomyAssessment.budgetStatus === 'exhausted') {
+          reasoningFactors.push('critical_autonomy_budget_override=true');
+        }
       }
     }
 
@@ -182,6 +217,8 @@ export class CardinalCore {
       limitations: observation.limitations,
       detectedProblem,
       decision,
+      deferReason,
+      autonomyAssessment,
     });
 
     const evaluation: CardinalEvaluation = {
@@ -199,6 +236,8 @@ export class CardinalCore {
       uncertaintyNotes: [...observation.limitations],
       detectedProblem,
       decision,
+      deferReason,
+      autonomyAssessment,
       rationale,
       reasoningFactors,
       hypotheticalOnly: mode === 'observer',
@@ -240,6 +279,7 @@ export class CardinalCore {
   private assessProblem(
     definition: CandidateDefinition,
     severity: number,
+    criticalThresholdCrossed: boolean,
     observation: SensorSnapshot,
     research: CardinalResearchContext,
   ): CardinalProblemAssessment {
@@ -302,10 +342,74 @@ export class CardinalCore {
       persistence: supporting.length + 1,
       trend,
       confidence,
+      criticalThresholdCrossed,
       supportingEvaluationIds: supporting.map((evaluation) => evaluation.evaluationId),
       priorOutcomeIds,
       claim: definition.claim,
       falsifier: definition.falsifier,
+    };
+  }
+
+  private assessAutonomy(
+    interventionKind: InterventionKind,
+    observation: SensorSnapshot,
+    research: CardinalResearchContext,
+  ): CardinalAutonomyAssessment {
+    const resolved = new Set(
+      research.priorOutcomes.map((outcome) => outcome.interventionId),
+    );
+    const executed = research.priorInterventions.filter(
+      (intervention) =>
+        intervention.executed && intervention.requestedAt < observation.observedAt,
+    );
+    const recent = executed.filter(
+      (intervention) =>
+        observation.observedAt - intervention.requestedAt <= CARDINAL_AUTONOMY_WINDOW,
+    );
+    const activeOrUnresolved = executed.filter((intervention) => {
+      if (
+        !Number.isFinite(intervention.authorizedEffectDuration) ||
+        intervention.authorizedEffectDuration < 1
+      ) {
+        throw new Error(
+          `Cardinal research intervention ${intervention.interventionId} is missing a valid authorized effect duration.`,
+        );
+      }
+      const effectOrPredictionHorizon = Math.max(
+        intervention.authorizedEffectDuration,
+        intervention.proposal.prediction.horizon,
+      );
+      const stillInsideWashout =
+        intervention.requestedAt + effectOrPredictionHorizon > observation.observedAt;
+      return !resolved.has(intervention.interventionId) || stillInsideWashout;
+    });
+    const sameKind = activeOrUnresolved.filter(
+      (intervention) => intervention.proposal.kind === interventionKind,
+    );
+    const interventionDensity = clamp01(
+      recent.length / CARDINAL_AUTONOMY_MAX_RECENT_INTERVENTIONS,
+    );
+    const budgetStatus: CardinalAutonomyAssessment['budgetStatus'] =
+      recent.length >= CARDINAL_AUTONOMY_MAX_RECENT_INTERVENTIONS
+        ? 'exhausted'
+        : recent.length === CARDINAL_AUTONOMY_MAX_RECENT_INTERVENTIONS - 1
+          ? 'caution'
+          : 'open';
+
+    return {
+      window: CARDINAL_AUTONOMY_WINDOW,
+      recentExecutedInterventionIds: recent.map(
+        (intervention) => intervention.interventionId,
+      ),
+      activeOrUnresolvedInterventionIds: activeOrUnresolved.map(
+        (intervention) => intervention.interventionId,
+      ),
+      activeOrUnresolvedSameKindIds: sameKind.map(
+        (intervention) => intervention.interventionId,
+      ),
+      interventionDensity,
+      dependencyRisk: interventionDensity,
+      budgetStatus,
     };
   }
 

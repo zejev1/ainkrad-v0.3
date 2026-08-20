@@ -15,6 +15,7 @@ Files:
 - package.json
 - src/boundary/ExternalGateway.ts
 - src/cardinal/CardinalAuditor.ts
+- src/cardinal/CardinalAuditContext.ts
 - src/cardinal/CardinalCore.ts
 - src/cardinal/CardinalJournal.ts
 - src/cardinal/CardinalObserver.ts
