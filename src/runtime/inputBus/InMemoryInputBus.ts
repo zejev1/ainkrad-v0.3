@@ -3,7 +3,7 @@ import type {
   InputBus,
   PublishResult,
 } from './InputBus';
-import type { InputEnvelope } from './types';
+import { assertValidInputEnvelope, type InputEnvelope } from './types';
 
 interface ClaimState {
   consumerId: string;
@@ -23,6 +23,7 @@ export class InMemoryInputBus implements InputBus {
   private claimSequence = 0;
 
   async publish(event: InputEnvelope): Promise<PublishResult> {
+    assertValidInputEnvelope(event);
     const eventKey = this.eventKey(event.worldId, event.eventId);
     const dedupeKey = event.deduplicationKey
       ? `${event.worldId}:dedupe:${event.deduplicationKey}`
@@ -71,6 +72,9 @@ export class InMemoryInputBus implements InputBus {
   ): Promise<ClaimedInput[]> {
     if (!consumerId.trim()) {
       throw new Error('InputBus consumerId must not be empty.');
+    }
+    if (!Number.isFinite(now)) {
+      throw new Error('InputBus claim time must be finite.');
     }
     if (!Number.isInteger(limit) || limit < 1 || limit > 1000) {
       throw new Error('InputBus claim limit must be an integer from 1 to 1000.');
@@ -144,7 +148,14 @@ export class InMemoryInputBus implements InputBus {
       worldId,
       queue.filter((candidate) => candidate !== item),
     );
-    this.itemIndex.get(worldId)?.delete(eventId);
+    const worldIndex = this.itemIndex.get(worldId);
+    worldIndex?.delete(eventId);
+    if (worldIndex?.size === 0) {
+      this.itemIndex.delete(worldId);
+    }
+    if ((this.queues.get(worldId) ?? []).length === 0) {
+      this.queues.delete(worldId);
+    }
   }
 
   async release(
@@ -163,11 +174,27 @@ export class InMemoryInputBus implements InputBus {
   }
 
   // Dedupe tombstones are technical data. A persistent adapter should use an
-  // explicit bounded idempotency window rather than growing forever.
+  // explicit bounded idempotency window rather than growing forever. Tombstones
+  // for queue items that are still unacknowledged are never pruned: otherwise a
+  // duplicate publish could create a second live row with the same event ID.
   pruneDeduplication(before: number): number {
+    if (!Number.isFinite(before)) {
+      throw new Error('InputBus deduplication cutoff must be finite.');
+    }
+
+    const protectedKeys = new Set<string>();
+    for (const [worldId, queue] of this.queues) {
+      for (const item of queue) {
+        protectedKeys.add(this.eventKey(worldId, item.event.eventId));
+        if (item.event.deduplicationKey) {
+          protectedKeys.add(`${worldId}:dedupe:${item.event.deduplicationKey}`);
+        }
+      }
+    }
+
     let removed = 0;
     for (const [key, recordedAt] of this.seenKeys) {
-      if (recordedAt <= before) {
+      if (recordedAt <= before && !protectedKeys.has(key)) {
         this.seenKeys.delete(key);
         removed += 1;
       }

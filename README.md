@@ -183,7 +183,7 @@ Any basic recovery capability required for society to survive — resource renew
 
 Cardinal may alter conditions through minimal authorized interventions, but it must not be the only mechanism capable of keeping the world alive.
 
-Under the same seed and disturbances, **OFF and OBSERVER must produce the same autonomous world state**. If observation changes the world, the experiment is contaminated.
+Under the same seed and disturbances, **OFF and OBSERVER must produce the same autonomous world state and the same autonomous world-event history**. If observation changes either one, the experiment is contaminated.
 
 ---
 
@@ -205,6 +205,8 @@ Intervention introduces instability, dependency, bias, or unintended feedback lo
 All three outcomes are valid.
 
 Failure is experimental data.
+
+A before/after change following one intervention is **observational evidence, not proof of causation**. Causal claims require comparison against a matched control trajectory (same seed, same disturbances, same world rules) or another explicit experimental design.
 
 ---
 
@@ -233,6 +235,10 @@ The gateway independently authorizes and executes external actions.
 
 This restriction must be structural, not merely prompt text.
 
+In v0.3 the only in-process external gateway implementation is deliberately **deny-all**. Any future gateway capable of real external execution must live across a separate process/service or stronger isolation boundary, and its credentials and executor capabilities must not be present inside the Cardinal runtime. See `docs/EXTERNAL_BOUNDARY.md`.
+
+The simulation intervention gateway and the external-world gateway are separate concepts. Permission to alter a test world's environmental conditions never implies permission to act outside the Ainkrad environment.
+
 ---
 
 ## Data Is Part of the Experiment
@@ -259,6 +265,8 @@ Events currently influencing decisions.
 `activeUntil` or a future equivalent means:
 
 > stop using this signal for current decisions after this time.
+
+An active signal also cannot influence a time before its own `occurredAt`.
 
 It does **not** mean:
 
@@ -331,7 +339,20 @@ Requirements:
 - deduplication support;
 - explicit acknowledgement;
 - transport is separate from experiment history;
-- concurrent publishers must not fight over one shared record.
+- concurrent publishers must not fight over one shared record;
+- unacknowledged queue items keep their deduplication protection even during technical cleanup;
+- transport envelopes are size-bounded so full worlds, memory histories and NPC arrays cannot leak into the queue;
+- serialized envelopes are validated at runtime for source, IDs, finite time and JSON payload shape; TypeScript types alone are not trusted.
+
+---
+
+## Retry and Commit Rule
+
+A successful logical world operation must be safe to retry.
+
+Stable operation IDs are required for transport inputs, scheduled disturbances and authorized interventions. Exact retries must not create duplicate history or apply the same intervention twice.
+
+A future persistent storage adapter must atomically commit the current-state change and the historical evidence for one logical world operation, or provide an equivalent recoverable commit protocol. In-memory behavior is a reference implementation, not permission to accept split-brain state/history in persistent storage.
 
 ---
 

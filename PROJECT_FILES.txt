@@ -6,6 +6,7 @@ Files:
 - README.md
 - SPCK_IMPORT.md
 - docs/ARCHITECTURE_INVARIANTS.md
+- docs/EXTERNAL_BOUNDARY.md
 - docs/MIGRATION_RULES.md
 - package.json
 - src/boundary/ExternalGateway.ts
@@ -18,6 +19,7 @@ Files:
 - src/cardinal/InterventionGateway.ts
 - src/cardinal/types.ts
 - src/core/json.ts
+- src/core/stableJson.ts
 - src/demo.ts
 - src/experiment/ExperimentRunner.ts
 - src/index.ts
@@ -37,6 +39,9 @@ Files:
 - src/world/events.ts
 - src/world/memory.ts
 - src/world/types.ts
+- tests/auditor.test.ts
+- tests/cardinalCore.test.ts
+- tests/experimentIntegrity.test.ts
 - tests/externalGateway.test.ts
 - tests/history.test.ts
 - tests/inputBus.test.ts
@@ -45,5 +50,6 @@ Files:
 - tests/modes.test.ts
 - tests/observer.test.ts
 - tests/scheduler.test.ts
+- tests/sensors.test.ts
 - tests/worldAutonomy.test.ts
 - tsconfig.json

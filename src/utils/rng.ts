@@ -45,4 +45,11 @@ export class SeededRng {
   snapshot(): number {
     return this.state >>> 0;
   }
+
+  restore(state: number): void {
+    if (!Number.isFinite(state)) {
+      throw new Error('RNG state must be finite.');
+    }
+    this.state = state >>> 0;
+  }
 }

@@ -29,7 +29,10 @@ export interface AppendEventResult {
 }
 
 // Cardinal sensors receive this read-only capability, never EventStore itself.
+// Every method in this interface must be observational: reads may not compact,
+// delete or otherwise mutate experiment history or current projections.
 export interface EventReader {
+  get(worldId: string, eventId: string): Promise<WorldEvent | undefined>;
   history(worldId: string): Promise<WorldEvent[]>;
   recent(worldId: string, limit: number): Promise<WorldEvent[]>;
   activeSignals(worldId: string, now: number): Promise<WorldEvent[]>;

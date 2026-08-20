@@ -14,4 +14,5 @@ export interface SensorSnapshot {
   observedAt: number;
   metrics: CardinalMetrics;
   evidenceEventIds: string[];
+  limitations: string[];
 }

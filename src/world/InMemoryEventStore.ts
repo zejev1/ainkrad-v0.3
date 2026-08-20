@@ -1,28 +1,35 @@
+import { stableJsonStringify } from '../core/stableJson';
 import type {
   AppendEventResult,
   EventStore,
   WorldEvent,
 } from './events';
 
+function eventIndexKey(worldId: string, eventId: string): string {
+  return `${worldId}::${eventId}`;
+}
+
 function sameEvent(a: WorldEvent, b: WorldEvent): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
+  return stableJsonStringify(a) === stableJsonStringify(b);
 }
 
 export class InMemoryEventStore implements EventStore {
   private readonly byId = new Map<string, WorldEvent>();
   private readonly byWorld = new Map<string, WorldEvent[]>();
 
-  // This is a current-state projection, not experiment history. Expired rows
-  // may be removed from this projection while remaining in byWorld forever.
-  private readonly activeByWorld = new Map<string, WorldEvent[]>();
+  // This is a current-state projection, not experiment history. Entries are
+  // never removed as a side effect of a read. A future persistent adapter may
+  // maintain/compact this projection in an explicit maintenance transaction.
+  private readonly signalsByWorld = new Map<string, WorldEvent[]>();
 
   async append(event: WorldEvent): Promise<AppendEventResult> {
-    const existing = this.byId.get(event.eventId);
+    const indexKey = eventIndexKey(event.worldId, event.eventId);
+    const existing = this.byId.get(indexKey);
 
     if (existing) {
       if (!sameEvent(existing, event)) {
         throw new Error(
-          `Event ID collision with different content: ${event.eventId}`,
+          `Event ID collision with different content in world ${event.worldId}: ${event.eventId}`,
         );
       }
 
@@ -33,22 +40,27 @@ export class InMemoryEventStore implements EventStore {
     }
 
     const stored = structuredClone(event);
-    this.byId.set(stored.eventId, stored);
+    this.byId.set(indexKey, stored);
 
     const history = this.byWorld.get(stored.worldId) ?? [];
     history.push(stored);
     this.byWorld.set(stored.worldId, history);
 
     if (stored.activeUntil !== undefined) {
-      const active = this.activeByWorld.get(stored.worldId) ?? [];
-      active.push(stored);
-      this.activeByWorld.set(stored.worldId, active);
+      const signals = this.signalsByWorld.get(stored.worldId) ?? [];
+      signals.push(stored);
+      this.signalsByWorld.set(stored.worldId, signals);
     }
 
     return {
       appended: true,
       duplicate: false,
     };
+  }
+
+  async get(worldId: string, eventId: string): Promise<WorldEvent | undefined> {
+    const event = this.byId.get(eventIndexKey(worldId, eventId));
+    return event ? structuredClone(event) : undefined;
   }
 
   async history(worldId: string): Promise<WorldEvent[]> {
@@ -67,14 +79,19 @@ export class InMemoryEventStore implements EventStore {
   }
 
   async activeSignals(worldId: string, now: number): Promise<WorldEvent[]> {
-    const candidates = this.activeByWorld.get(worldId) ?? [];
-    const active = candidates.filter(
-      (event) => event.activeUntil !== undefined && event.activeUntil > now,
-    );
+    if (!Number.isFinite(now)) {
+      throw new Error('EventStore activeSignals time must be finite.');
+    }
 
-    // Compact only the active projection. Historical evidence in byWorld is
-    // untouched, which is the key retention invariant.
-    this.activeByWorld.set(worldId, active);
-    return active.map((event) => structuredClone(event));
+    // Pure read: observing a future time must not destroy the ability to inspect
+    // what was active at an earlier time. This matters for replay and auditing.
+    return (this.signalsByWorld.get(worldId) ?? [])
+      .filter(
+        (event) =>
+          event.occurredAt <= now &&
+          event.activeUntil !== undefined &&
+          event.activeUntil > now,
+      )
+      .map((event) => structuredClone(event));
   }
 }

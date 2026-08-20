@@ -1,5 +1,10 @@
 import type { MemoryRecord } from './types';
 
+export interface AppendMemoryResult {
+  appended: boolean;
+  duplicate: boolean;
+}
+
 export interface MemoryReader {
   recentForAgent(
     worldId: string,
@@ -18,7 +23,7 @@ export interface MemoryReader {
 }
 
 export interface MemoryWriter {
-  append(memory: MemoryRecord): Promise<void>;
+  append(memory: MemoryRecord): Promise<AppendMemoryResult>;
 }
 
 export interface MemoryStore extends MemoryReader, MemoryWriter {}

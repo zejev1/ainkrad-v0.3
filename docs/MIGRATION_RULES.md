@@ -26,11 +26,19 @@ Every reused component must answer:
 - Routine logic that always overrides social/autonomous choice.
 - Large objects stored in scheduled-function arguments.
 - Auto-materialization workflows that overwrite hand-reviewed project code.
+- Read methods that silently compact or delete observational data.
+- Runtime trust in TypeScript-only allowlists for gateway authorization.
+- Retried scheduled/intervention operations without stable idempotency IDs.
+- In-process real-world executors or credentials reachable by Cardinal.
 
 ## Database adapters come later
 
 v0.3 starts with domain contracts and in-memory reference implementations.
 
-Convex or another database is an adapter.
+Ainkrad v0.3 does not use Convex. Any future persistent storage is chosen separately and must remain an adapter behind the domain contracts.
 
 The research model must not depend on a vendor-specific bottleneck.
+
+## Persistence commit rule
+
+A future persistent adapter must not reproduce the old retry failure pattern by committing current state separately from its historical evidence. One logical world operation must be atomic across its current-state projection and append-only evidence, or use an equivalent recoverable commit protocol with stable operation IDs.

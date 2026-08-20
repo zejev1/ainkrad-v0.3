@@ -1,5 +1,6 @@
+import { stableJsonStringify } from '../core/stableJson';
 import { createEventId } from '../runtime/inputBus/createEventId';
-import type { CardinalMetrics } from '../sensors/types';
+import type { CardinalMetrics, SensorSnapshot } from '../sensors/types';
 import type {
   AuditRecord,
   CardinalEvaluation,
@@ -12,8 +13,31 @@ export class CardinalAuditor {
     evaluation: Readonly<CardinalEvaluation>,
     intervention: Readonly<InterventionRecord> | undefined,
     now: number,
+    independentObservation?: Readonly<SensorSnapshot>,
   ): AuditRecord {
     const concerns: string[] = [];
+    let independentObservationMatched: boolean | undefined;
+
+    if (!independentObservation) {
+      independentObservationMatched = false;
+      concerns.push('Decision audit did not receive an independent world observation.');
+    } else {
+      independentObservationMatched =
+        independentObservation.worldId === evaluation.worldId &&
+        independentObservation.observedAt === evaluation.evaluatedAt &&
+        stableJsonStringify(independentObservation.metrics) ===
+          stableJsonStringify(evaluation.metrics) &&
+        stableJsonStringify(independentObservation.evidenceEventIds) ===
+          stableJsonStringify(evaluation.evidenceEventIds) &&
+        stableJsonStringify(independentObservation.limitations) ===
+          stableJsonStringify(evaluation.uncertaintyNotes);
+
+      if (!independentObservationMatched) {
+        concerns.push(
+          'Cardinal evaluation does not match the Auditor independent observation.',
+        );
+      }
+    }
 
     if (evaluation.mode === 'observer' && intervention?.executed) {
       concerns.push('Observer mode caused a world intervention.');
@@ -42,6 +66,7 @@ export class CardinalAuditor {
       stage: 'decision',
       evaluationId: evaluation.evaluationId,
       interventionId: intervention?.interventionId,
+      independentObservationMatched,
       accepted: concerns.length === 0,
       concerns,
     };
@@ -83,6 +108,7 @@ export class CardinalAuditor {
       conflictPressureDelta: after.conflictPressure - before.conflictPressure,
       resourcePressureDelta: after.resourcePressure - before.resourcePressure,
       expectedDirectionObserved,
+      causalClaim: 'observational_only',
     };
   }
 

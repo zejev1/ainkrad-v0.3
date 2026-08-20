@@ -77,6 +77,26 @@ export class WorldSensors {
 
     const activeSignals = await this.events.activeSignals(world.id, now);
     const recent = await this.events.recent(world.id, 50);
+    // Cardinal's own prior interventions are context, not independent evidence
+    // that the society itself exhibited a condition. Avoid circular evidence.
+    const worldEvidence = recent.filter(
+      (event) => event.source !== 'cardinal' && event.source !== 'auditor',
+    );
+    const limitations: string[] = [];
+    const possibleRelationships = (agents.length * (agents.length - 1)) / 2;
+
+    if (agents.length < 2) {
+      limitations.push('Population is too small for meaningful social-system inference.');
+    }
+    if (
+      possibleRelationships > 0 &&
+      relationships.length / possibleRelationships < 0.25
+    ) {
+      limitations.push('Relationship graph is sparse; social metrics have limited coverage.');
+    }
+    if (worldEvidence.length < Math.min(10, Math.max(1, agents.length))) {
+      limitations.push('Recent independent world-event evidence is sparse.');
+    }
 
     const metrics: CardinalMetrics = {
       populationActivity: clamp01(populationActivity),
@@ -93,7 +113,8 @@ export class WorldSensors {
       worldId: world.id,
       observedAt: now,
       metrics,
-      evidenceEventIds: recent.map((event) => event.eventId),
+      evidenceEventIds: worldEvidence.map((event) => event.eventId),
+      limitations,
     };
   }
 }

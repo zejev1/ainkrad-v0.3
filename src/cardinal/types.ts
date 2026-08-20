@@ -23,6 +23,7 @@ export interface CardinalEvaluation {
   mode: Exclude<CardinalMode, 'off'>;
   metrics: CardinalMetrics;
   evidenceEventIds: string[];
+  uncertaintyNotes: string[];
   decision: 'no_action' | 'propose';
   rationale: string;
   proposal?: InterventionProposal;
@@ -54,6 +55,7 @@ export interface InterventionOutcomeRecord {
   conflictPressureDelta: number;
   resourcePressureDelta: number;
   expectedDirectionObserved: boolean;
+  causalClaim: 'observational_only';
 }
 
 export interface AuditRecord {
@@ -64,6 +66,7 @@ export interface AuditRecord {
   evaluationId: string;
   interventionId?: string;
   outcomeId?: string;
+  independentObservationMatched?: boolean;
   accepted: boolean;
   concerns: string[];
 }

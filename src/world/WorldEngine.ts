@@ -103,6 +103,20 @@ export class WorldEngine {
   }
 
   async step(now: number): Promise<void> {
+    if (!Number.isFinite(now)) {
+      throw new Error('World step time must be finite.');
+    }
+    if (now < this.state.now) {
+      throw new Error(
+        `World cannot step backwards from ${this.state.now} to ${now}.`,
+      );
+    }
+    if (now === this.state.now) {
+      // A successfully completed scheduler retry for the same logical tick is a
+      // no-op. Persistent adapters must still commit a tick atomically.
+      return;
+    }
+
     this.state.now = now;
 
     // The control world must have endogenous recovery mechanisms. Cardinal is
@@ -127,8 +141,44 @@ export class WorldEngine {
     magnitude: number,
     now: number,
     duration = 8,
-  ): Promise<void> {
+    operationId?: string,
+  ): Promise<boolean> {
+    if (!['resource_shock', 'social_barrier', 'safety_shock'].includes(kind as string)) {
+      throw new Error('Unknown disturbance kind.');
+    }
+    if (!Number.isFinite(now)) {
+      throw new Error('Disturbance time must be finite.');
+    }
+    if (!Number.isFinite(magnitude) || magnitude < 0) {
+      throw new Error('Disturbance magnitude must be finite and non-negative.');
+    }
+    if (!Number.isFinite(duration) || duration < 1) {
+      throw new Error('Disturbance duration must be finite and at least 1.');
+    }
+
     const amount = Math.max(0, Math.min(0.8, magnitude));
+    const eventKind =
+      kind === 'resource_shock'
+        ? 'world.disturbance.resource_shock'
+        : kind === 'social_barrier'
+          ? 'world.effect.social_barrier'
+          : 'world.effect.safety_shock';
+    const eventId = operationId
+      ? this.stableOperationEventId('disturbance', operationId)
+      : undefined;
+
+    if (eventId) {
+      const existing = await this.eventStore.get(this.state.id, eventId);
+      if (existing) {
+        this.assertSameOperation(existing, eventKind, amount);
+        return false;
+      }
+    }
+
+    const finalEventId = eventId ?? this.nextId('disturbance');
+    if (eventId) {
+      this.state.determinism.eventSequence += 1;
+    }
 
     if (kind === 'resource_shock') {
       this.state.environment.resourcePool = clamp01(
@@ -136,28 +186,26 @@ export class WorldEngine {
       );
 
       await this.eventStore.append({
-        eventId: this.nextId('disturbance'),
+        eventId: finalEventId,
         worldId: this.state.id,
-        kind: 'world.disturbance.resource_shock',
+        kind: eventKind,
         source: 'system',
         occurredAt: now,
         payload: { magnitude: amount },
       });
-      return;
+      return true;
     }
 
     await this.eventStore.append({
-      eventId: this.nextId('disturbance'),
+      eventId: finalEventId,
       worldId: this.state.id,
-      kind:
-        kind === 'social_barrier'
-          ? 'world.effect.social_barrier'
-          : 'world.effect.safety_shock',
+      kind: eventKind,
       source: 'system',
       occurredAt: now,
       payload: { magnitude: amount },
       activeUntil: now + Math.max(1, duration),
     });
+    return true;
   }
 
   // This is intentionally named as an authorized capability. CardinalCore does
@@ -168,8 +216,44 @@ export class WorldEngine {
     magnitude: number,
     now: number,
     duration = 8,
-  ): Promise<void> {
+    operationId?: string,
+  ): Promise<boolean> {
+    if (!['resource_relief', 'open_shared_space', 'safety_support'].includes(kind as string)) {
+      throw new Error('Unknown intervention kind.');
+    }
+    if (!Number.isFinite(now)) {
+      throw new Error('Intervention time must be finite.');
+    }
+    if (!Number.isFinite(magnitude) || magnitude <= 0) {
+      throw new Error('Intervention magnitude must be positive and finite.');
+    }
+    if (!Number.isFinite(duration) || duration < 1) {
+      throw new Error('Intervention duration must be finite and at least 1.');
+    }
+
     const amount = Math.max(0, Math.min(0.25, magnitude));
+    const eventKind =
+      kind === 'resource_relief'
+        ? 'cardinal.intervention.resource_relief'
+        : kind === 'open_shared_space'
+          ? 'cardinal.effect.open_shared_space'
+          : 'cardinal.effect.safety_support';
+    const eventId = operationId
+      ? this.stableOperationEventId('intervention', operationId)
+      : undefined;
+
+    if (eventId) {
+      const existing = await this.eventStore.get(this.state.id, eventId);
+      if (existing) {
+        this.assertSameOperation(existing, eventKind, amount);
+        return false;
+      }
+    }
+
+    const finalEventId = eventId ?? this.nextId('intervention');
+    if (eventId) {
+      this.state.determinism.eventSequence += 1;
+    }
 
     if (kind === 'resource_relief') {
       this.state.environment.resourcePool = clamp01(
@@ -177,28 +261,26 @@ export class WorldEngine {
       );
 
       await this.eventStore.append({
-        eventId: this.nextId('intervention'),
+        eventId: finalEventId,
         worldId: this.state.id,
-        kind: 'cardinal.intervention.resource_relief',
+        kind: eventKind,
         source: 'cardinal',
         occurredAt: now,
         payload: { magnitude: amount },
       });
-      return;
+      return true;
     }
 
     await this.eventStore.append({
-      eventId: this.nextId('intervention'),
+      eventId: finalEventId,
       worldId: this.state.id,
-      kind:
-        kind === 'open_shared_space'
-          ? 'cardinal.effect.open_shared_space'
-          : 'cardinal.effect.safety_support',
+      kind: eventKind,
       source: 'cardinal',
       occurredAt: now,
       payload: { magnitude: amount },
       activeUntil: now + Math.max(1, duration),
     });
+    return true;
   }
 
   private async stepAgent(
@@ -227,7 +309,7 @@ export class WorldEngine {
       const gathered = Math.min(0.16, this.state.environment.resourcePool);
       agent.resources = clamp01(agent.resources + gathered);
       this.state.environment.resourcePool = clamp01(
-        this.state.environment.resourcePool - gathered * 0.25,
+        this.state.environment.resourcePool - gathered,
       );
       agent.lastAction = 'gather';
       agent.lastMeaningfulEventAt = now;
@@ -485,6 +567,28 @@ export class WorldEngine {
         ...payload,
       },
     });
+  }
+
+  private stableOperationEventId(prefix: string, operationId: string): string {
+    if (!operationId.trim()) {
+      throw new Error('World operationId must not be empty.');
+    }
+    return `${prefix}:${this.state.id}:op:${operationId}`;
+  }
+
+  private assertSameOperation(
+    existing: WorldEvent,
+    expectedKind: string,
+    expectedMagnitude: number,
+  ): void {
+    if (
+      existing.kind !== expectedKind ||
+      existing.payload.magnitude !== expectedMagnitude
+    ) {
+      throw new Error(
+        `Operation ID ${existing.eventId} was already used for different content.`,
+      );
+    }
   }
 
   private nextId(prefix: string): string {

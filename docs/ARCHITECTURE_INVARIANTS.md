@@ -5,7 +5,7 @@ These rules convert failures from the previous implementation into tests and str
 ## Cardinal
 
 1. Cardinal is the central research system, but the world must remain autonomous without it.
-2. `OFF` and `OBSERVER` must produce identical world state under the same seed and disturbances.
+2. `OFF` and `OBSERVER` must produce identical world state and autonomous world-event history under the same seed and disturbances.
 3. Observer code receives read-only world/event capabilities.
 4. Cardinal Core may propose an intervention but cannot hold the world mutation capability.
 5. The independent intervention gateway authorizes **and executes** simulation interventions.
@@ -62,6 +62,24 @@ These rules convert failures from the previous implementation into tests and str
 ## Project safety
 
 37. No automatic upstream materializer may overwrite reviewed Ainkrad code.
-38. No Convex-specific architecture exists in v0.3; storage providers are adapters, not the domain model.
+38. Ainkrad v0.3 does not use Convex; storage providers are adapters, not the domain model.
 39. CI must typecheck and test changes before we treat a revision as healthy.
 40. README is the project constitution. If code conflicts with it, code changes.
+
+## Audit round 2 additions
+
+41. Sensor reads are side-effect free; asking what was active at one time must not destroy the ability to inspect another time.
+42. Event and memory identities are scoped by world, so identical external IDs in different worlds cannot collide.
+43. Exact memory/event retries are idempotent; same ID with different content is a hard error.
+44. Dedupe tombstones for unacknowledged transport rows cannot be pruned.
+45. Input envelopes are size-bounded just like scheduled operations.
+46. Gateway allowlists are checked at runtime and configuration cannot raise intervention magnitude above the constitutional hard cap.
+47. Stable proposal/disturbance operation IDs prevent a retry from applying the same world mutation twice.
+48. A finished experiment may not silently discard pending intervention outcomes; a follow-up observation tail completes them.
+49. Persistent adapters must atomically couple a logical world-state mutation with its historical evidence, or implement an equivalent recoverable commit protocol.
+50. Any gateway capable of real external execution must run outside Cardinal's control boundary; the only in-process external gateway allowed in v0.3 is deny-all.
+
+51. Single-world before/after intervention outcomes are labeled observational; causal claims require a matched control or another explicit counterfactual design.
+52. Active signals never influence a time before their own `occurredAt`; temporal projections obey both start and end boundaries.
+53. Serialized input envelopes are validated at runtime; TypeScript source unions are not a transport security boundary.
+54. OFF/OBSERVER contamination checks compare autonomous world-event history as well as the final world snapshot.

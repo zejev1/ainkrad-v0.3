@@ -10,7 +10,7 @@
    - `tsconfig.json`
    - `src`
    - `tests`
-6. Do **not** connect this clean foundation to the old production Convex deployment yet.
+6. Do **not** connect this project to the old production Convex deployment. Ainkrad v0.3 is intentionally built without Convex.
 
 This package intentionally has no Convex adapter and no automatic retention.
 Those are later infrastructure layers, after the domain architecture is stable.

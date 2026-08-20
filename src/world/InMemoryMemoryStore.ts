@@ -1,5 +1,10 @@
-import type { MemoryStore } from './memory';
+import { stableJsonStringify } from '../core/stableJson';
+import type { AppendMemoryResult, MemoryStore } from './memory';
 import type { MemoryRecord } from './types';
+
+function memoryIndexKey(worldId: string, memoryId: string): string {
+  return `${worldId}::${memoryId}`;
+}
 
 function pairIndexKey(worldId: string, agentId: string, otherAgentId: string): string {
   return `${worldId}::${agentId}::${otherAgentId}`;
@@ -10,17 +15,29 @@ function agentIndexKey(worldId: string, agentId: string): string {
 }
 
 export class InMemoryMemoryStore implements MemoryStore {
-  private readonly ids = new Set<string>();
+  private readonly byId = new Map<string, MemoryRecord>();
   private readonly byAgent = new Map<string, MemoryRecord[]>();
   private readonly byPair = new Map<string, MemoryRecord[]>();
 
-  async append(memory: MemoryRecord): Promise<void> {
-    if (this.ids.has(memory.memoryId)) {
-      throw new Error(`Duplicate memory ID: ${memory.memoryId}`);
+  async append(memory: MemoryRecord): Promise<AppendMemoryResult> {
+    const idKey = memoryIndexKey(memory.worldId, memory.memoryId);
+    const existing = this.byId.get(idKey);
+
+    if (existing) {
+      if (stableJsonStringify(existing) !== stableJsonStringify(memory)) {
+        throw new Error(
+          `Memory ID collision with different content in world ${memory.worldId}: ${memory.memoryId}`,
+        );
+      }
+
+      return {
+        appended: false,
+        duplicate: true,
+      };
     }
 
     const stored = structuredClone(memory);
-    this.ids.add(stored.memoryId);
+    this.byId.set(idKey, stored);
 
     const agentKey = agentIndexKey(stored.worldId, stored.agentId);
     const agentHistory = this.byAgent.get(agentKey) ?? [];
@@ -33,6 +50,11 @@ export class InMemoryMemoryStore implements MemoryStore {
       pairHistory.push(stored);
       this.byPair.set(pairKey, pairHistory);
     }
+
+    return {
+      appended: true,
+      duplicate: false,
+    };
   }
 
   async recentForAgent(

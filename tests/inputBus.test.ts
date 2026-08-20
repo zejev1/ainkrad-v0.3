@@ -45,3 +45,60 @@ describe('InputBus', () => {
     expect(await bus.claim('world_1', 'worker-b', 10, 121, 50)).toHaveLength(0);
   });
 });
+
+describe('InputBus dedupe cleanup', () => {
+  it('never prunes tombstones for an unacknowledged live queue item', async () => {
+    const bus = new InMemoryInputBus();
+    const event = createInputEnvelope({
+      eventId: 'evt_live',
+      worldId: 'world_1',
+      source: 'agent',
+      type: 'agent.intent',
+      deduplicationKey: 'live_intent',
+    });
+
+    await bus.publish(event);
+    bus.pruneDeduplication(Number.MAX_SAFE_INTEGER);
+
+    expect((await bus.publish(event)).duplicate).toBe(true);
+    expect(await bus.claim('world_1', 'worker', 10, 100, 50)).toHaveLength(1);
+  });
+});
+
+describe('InputBus payload guard', () => {
+  it('rejects giant serialized input context even if it bypasses the factory', async () => {
+    const bus = new InMemoryInputBus();
+    const event = {
+      eventId: 'evt_giant',
+      worldId: 'world_1',
+      source: 'agent',
+      type: 'agent.intent',
+      createdAt: 1,
+      payload: { giant: 'x'.repeat(20_000) },
+    } as const;
+
+    await expect(bus.publish(event)).rejects.toThrow();
+  });
+});
+
+
+describe('InputBus runtime validation', () => {
+  it('fails closed for a serialized source outside the runtime allowlist', async () => {
+    const bus = new InMemoryInputBus();
+    const malformed = {
+      eventId: 'evt_bad_source',
+      worldId: 'world_1',
+      source: 'shell',
+      type: 'agent.intent',
+      createdAt: 1,
+      payload: {},
+    } as unknown as Parameters<InMemoryInputBus['publish']>[0];
+
+    await expect(bus.publish(malformed)).rejects.toThrow();
+  });
+
+  it('rejects non-finite transport claim time', async () => {
+    const bus = new InMemoryInputBus();
+    await expect(bus.claim('world_1', 'worker', 1, Number.NaN, 50)).rejects.toThrow();
+  });
+});
