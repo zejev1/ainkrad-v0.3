@@ -38,7 +38,6 @@ export interface ScheduledDisturbance {
   operationId?: string;
 }
 
-
 export interface ExperimentManifest {
   mode: CardinalMode;
   seed: string;
@@ -55,6 +54,20 @@ export interface ExperimentManifest {
 export interface ExperimentTickRecord {
   tick: number;
   metrics: CardinalMetrics;
+}
+
+export interface ExperimentTickFrame {
+  tick: number;
+  world: ReturnType<WorldEngine['snapshot']>;
+  metrics: CardinalMetrics;
+  evaluation?: CardinalEvaluation;
+  intervention?: InterventionRecord;
+}
+
+export interface ExperimentRunOptions {
+  onTick?: (
+    frame: Readonly<ExperimentTickFrame>,
+  ) => void | Promise<void>;
 }
 
 export interface ExperimentResult {
@@ -101,7 +114,6 @@ export interface ControlledComparisonResult {
   analysis: ControlledComparisonAnalysis;
 }
 
-
 function metricDeltas(a: CardinalMetrics, b: CardinalMetrics): MetricDeltas {
   return {
     populationActivity: a.populationActivity - b.populationActivity,
@@ -120,6 +132,7 @@ export async function runExperiment(
   seed: string,
   ticks: number,
   disturbances: readonly ScheduledDisturbance[] = [],
+  options: ExperimentRunOptions = {},
 ): Promise<ExperimentResult> {
   if (!Number.isInteger(ticks) || ticks < 0) {
     throw new Error('Experiment ticks must be a non-negative integer.');
@@ -166,7 +179,11 @@ export async function runExperiment(
     const resolved = new Set(outcomes.map((outcome) => outcome.interventionId));
 
     return interventions
-      .filter((intervention) => intervention.executed && !resolved.has(intervention.interventionId))
+      .filter(
+        (intervention) =>
+          intervention.executed &&
+          !resolved.has(intervention.interventionId),
+      )
       .map((intervention) => {
         const evaluation = evaluationById.get(intervention.evaluationId);
         if (!evaluation) {
@@ -234,10 +251,9 @@ export async function runExperiment(
             WORLD_SENSOR_VERSION,
           );
     const evaluation = await cardinal.cycle(mode, world.snapshot(), tick);
+    let intervention: InterventionRecord | undefined;
 
     if (evaluation) {
-      let intervention: InterventionRecord | undefined;
-
       if (mode === 'intervene' && evaluation.proposal) {
         intervention = await gateway.execute(
           evaluation.evaluationId,
@@ -246,7 +262,6 @@ export async function runExperiment(
           tick,
         );
         await reconcileGatewayJournal(world.snapshot().id, gateway, journal);
-
       }
 
       await journal.appendAudit(
@@ -268,6 +283,21 @@ export async function runExperiment(
       tick,
       metrics: structuredClone(endOfTick.metrics),
     });
+
+    if (options.onTick) {
+      // The browser receives an immutable projection, never the WorldEngine or
+      // any mutation capability. Visual rendering therefore cannot bypass the
+      // independent intervention gateway.
+      await options.onTick({
+        tick,
+        world: world.snapshot(),
+        metrics: structuredClone(endOfTick.metrics),
+        evaluation: evaluation ? structuredClone(evaluation) : undefined,
+        intervention: intervention
+          ? structuredClone(intervention)
+          : undefined,
+      });
+    }
   }
 
   // Preserve the requested experiment endpoint before follow-up. We then run a
@@ -323,7 +353,9 @@ export async function runExperiment(
     outcomeCount: (await journal.outcomes(worldId)).length,
     auditCount: (await journal.audits(worldId)).length,
     pendingOutcomeCount: (await unresolvedExecutedInterventions()).length,
-    deferCount: evaluationRecords.filter((item) => item.decision === 'defer').length,
+    deferCount: evaluationRecords.filter(
+      (item) => item.decision === 'defer',
+    ).length,
     experimentInProgressDeferralCount: evaluationRecords.filter(
       (item) => item.deferReason === 'experiment_in_progress',
     ).length,
@@ -355,13 +387,18 @@ export async function runControlledComparison(
         off.manifest.ticks === observer.manifest.ticks &&
         off.manifest.ticks === intervene.manifest.ticks &&
         off.manifest.worldRulesVersion === observer.manifest.worldRulesVersion &&
-        off.manifest.worldRulesVersion === intervene.manifest.worldRulesVersion &&
+        off.manifest.worldRulesVersion ===
+          intervene.manifest.worldRulesVersion &&
         off.manifest.sensorVersion === observer.manifest.sensorVersion &&
         off.manifest.sensorVersion === intervene.manifest.sensorVersion &&
-        off.manifest.cardinalPolicyVersion === observer.manifest.cardinalPolicyVersion &&
-        off.manifest.cardinalPolicyVersion === intervene.manifest.cardinalPolicyVersion &&
-        off.manifest.cardinalResearchVersion === observer.manifest.cardinalResearchVersion &&
-        off.manifest.cardinalResearchVersion === intervene.manifest.cardinalResearchVersion &&
+        off.manifest.cardinalPolicyVersion ===
+          observer.manifest.cardinalPolicyVersion &&
+        off.manifest.cardinalPolicyVersion ===
+          intervene.manifest.cardinalPolicyVersion &&
+        off.manifest.cardinalResearchVersion ===
+          observer.manifest.cardinalResearchVersion &&
+        off.manifest.cardinalResearchVersion ===
+          intervene.manifest.cardinalResearchVersion &&
         off.manifest.cardinalAuditContextVersion ===
           observer.manifest.cardinalAuditContextVersion &&
         off.manifest.cardinalAuditContextVersion ===
@@ -370,10 +407,13 @@ export async function runControlledComparison(
           observer.manifest.interventionGatewayPolicyVersion &&
         off.manifest.interventionGatewayPolicyVersion ===
           intervene.manifest.interventionGatewayPolicyVersion &&
-        off.manifest.disturbancesFingerprint === observer.manifest.disturbancesFingerprint &&
-        off.manifest.disturbancesFingerprint === intervene.manifest.disturbancesFingerprint,
+        off.manifest.disturbancesFingerprint ===
+          observer.manifest.disturbancesFingerprint &&
+        off.manifest.disturbancesFingerprint ===
+          intervene.manifest.disturbancesFingerprint,
       offObserverEquivalent:
-        stableJsonStringify(off.finalWorld) === stableJsonStringify(observer.finalWorld) &&
+        stableJsonStringify(off.finalWorld) ===
+          stableJsonStringify(observer.finalWorld) &&
         off.worldHistoryFingerprint === observer.worldHistoryFingerprint,
       interveneMinusOffFinalMetrics: metricDeltas(
         intervene.finalMetrics,
