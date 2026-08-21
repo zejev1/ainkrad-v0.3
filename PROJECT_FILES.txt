@@ -12,6 +12,7 @@ Files:
 - docs/EXTERNAL_BOUNDARY.md
 - docs/MIGRATION_RULES.md
 - docs/PERSISTENCE_CONTRACT.md
+- docs/WORLD_AUTONOMY.md
 - package.json
 - src/boundary/ExternalGateway.ts
 - src/cardinal/CardinalAuditor.ts

@@ -60,3 +60,9 @@ Rejected adapter designs include:
 ## Cardinal research-version changes
 
 A change to Cardinal hypothesis/persistence semantics is an experiment interpretation change, even if the world rules themselves did not change. Persisted evidence remains historical evidence, but new Cardinal research logic must carry a new policy/research version and must not silently treat incompatible old evaluations as a continuous persistence chain.
+
+## Audit 7: autonomous-world schema boundary
+
+World rules `ainkrad-world-rules-0.3.7` add persistent places and required nested NPC personality, needs, skills, goals, home and location state. Older snapshots must not be relabeled and opened as if those fields always existed. They require an explicit migration or a fresh experimental world.
+
+Sensor `ainkrad-world-sensors-0.3.7` also changes the meaning of social isolation from "has a relationship projection" to recent autonomous social contact. Results produced by the older metric remain historical evidence, but they are not semantically interchangeable with the new sensor definition.

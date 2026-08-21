@@ -87,3 +87,159 @@ describe('World rules version', () => {
     ).rejects.toThrow('Explicit migration is required');
   });
 });
+
+describe('Autonomous society depth', () => {
+  it('creates persistent identities with personality, needs, skills, goals and places', async () => {
+    const world = await makeWorld(['A', 'B', 'C']);
+    const state = world.snapshot();
+
+    expect(Object.keys(state.places).length).toBeGreaterThan(3);
+    for (const agent of Object.values(state.agents)) {
+      expect(state.places[agent.homeId]?.kind).toBe('home');
+      expect(state.places[agent.locationId]).toBeDefined();
+      expect(agent.personality.curiosity).toBeGreaterThanOrEqual(0);
+      expect(agent.needs.belonging).toBeGreaterThanOrEqual(0);
+      expect(agent.skills.craft).toBeGreaterThanOrEqual(0);
+      expect(agent.goal.kind).toBeTruthy();
+    }
+  });
+
+  it('produces several autonomous action families instead of one fixed routine', async () => {
+    const store = new InMemoryWorldStore();
+    const world = await WorldEngine.create({
+      worldId: 'diverse',
+      seed: 'diverse-actions',
+      store,
+      startTime: 0,
+    });
+
+    for (let tick = 1; tick <= 180; tick += 1) {
+      await world.step(tick);
+    }
+
+    const kinds = new Set((await store.history('diverse')).map((event) => event.kind));
+    expect(kinds.has('agent.worked')).toBe(true);
+    expect(kinds.has('agent.gathered')).toBe(true);
+    expect(kinds.has('agent.explored')).toBe(true);
+    expect(kinds.has('relationship.changed')).toBe(true);
+    expect(
+      kinds.has('agent.help.accepted') || kinds.has('agent.help.rejected'),
+    ).toBe(true);
+  });
+
+  it('does not give one array position permanent first-mover priority', async () => {
+    const store = new InMemoryWorldStore();
+    const world = await WorldEngine.create({
+      worldId: 'order',
+      seed: 'order-seed',
+      store,
+      agentNames: ['A', 'B', 'C', 'D'],
+      startTime: 0,
+    });
+
+    for (let tick = 1; tick <= 60; tick += 1) await world.step(tick);
+    const firstActors = new Set<string>();
+    const history = await store.history('order');
+    for (let tick = 1; tick <= 60; tick += 1) {
+      const first = history.find(
+        (event) => event.occurredAt === tick && event.source === 'agent',
+      );
+      const agentId = first?.payload.agentId;
+      if (typeof agentId === 'string') firstActors.add(agentId);
+    }
+
+    expect(firstActors.size).toBeGreaterThan(2);
+  });
+
+  it('is deterministic for the same seed while different seeds can diverge', async () => {
+    async function run(seed: string) {
+      const store = new InMemoryWorldStore();
+      const world = await WorldEngine.create({
+        worldId: 'seeded',
+        seed,
+        store,
+        startTime: 0,
+      });
+      for (let tick = 1; tick <= 120; tick += 1) await world.step(tick);
+      return {
+        state: world.snapshot(),
+        history: await store.history('seeded'),
+      };
+    }
+
+    const a = await run('same');
+    const b = await run('same');
+    const c = await run('different');
+
+    expect(a).toEqual(b);
+    expect(c.state.agents).not.toEqual(a.state.agents);
+  });
+
+  it('preserves the exact autonomous future across an engine restart', async () => {
+    async function makeStoreAndWorld() {
+      const store = new InMemoryWorldStore();
+      const world = await WorldEngine.create({
+        worldId: 'restart_future',
+        seed: 'restart-future-seed',
+        store,
+        startTime: 0,
+      });
+      return { store, world };
+    }
+
+    const continuous = await makeStoreAndWorld();
+    for (let tick = 1; tick <= 160; tick += 1) await continuous.world.step(tick);
+
+    const restartedRun = await makeStoreAndWorld();
+    for (let tick = 1; tick <= 80; tick += 1) await restartedRun.world.step(tick);
+    const reopened = await WorldEngine.open({
+      worldId: 'restart_future',
+      store: restartedRun.store,
+    });
+    for (let tick = 81; tick <= 160; tick += 1) await reopened.step(tick);
+
+    expect(reopened.snapshot()).toEqual(continuous.world.snapshot());
+    expect(await restartedRun.store.history('restart_future')).toEqual(
+      await continuous.store.history('restart_future'),
+    );
+  });
+
+  it('does not guarantee control-world collapse merely because agents keep living', async () => {
+    const means: number[] = [];
+    for (const seed of ['viable-a', 'viable-b', 'viable-c']) {
+      const store = new InMemoryWorldStore();
+      const world = await WorldEngine.create({
+        worldId: 'viable',
+        seed,
+        store,
+        startTime: 0,
+      });
+      for (let tick = 1; tick <= 350; tick += 1) await world.step(tick);
+      const agents = Object.values(world.snapshot().agents);
+      means.push(
+        agents.reduce((sum, agent) => sum + agent.resources, 0) / agents.length,
+      );
+    }
+
+    expect(means.reduce((sum, value) => sum + value, 0) / means.length).toBeGreaterThan(0.3);
+  });
+
+  it('rejects a same-version persisted world whose required agent structures are corrupted', async () => {
+    const sourceStore = new InMemoryWorldStore();
+    const source = await WorldEngine.create({
+      worldId: 'corrupt',
+      seed: 'corrupt-seed',
+      store: sourceStore,
+      startTime: 0,
+    });
+    const corrupted = source.snapshot() as any;
+    delete corrupted.agents.agent_1.personality;
+
+    const targetStore = new InMemoryWorldStore();
+    await targetStore.initializeWorld(corrupted);
+
+    await expect(
+      WorldEngine.open({ worldId: 'corrupt', store: targetStore }),
+    ).rejects.toThrow('personality');
+  });
+});

@@ -2,9 +2,11 @@ import type { EventReader } from '../world/events';
 import type { WorldState } from '../world/types';
 import type { CardinalMetrics, SensorSnapshot } from './types';
 
-export const WORLD_SENSOR_VERSION = 'ainkrad-world-sensors-0.3.3';
+export const WORLD_SENSOR_VERSION = 'ainkrad-world-sensors-0.3.7';
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
+const SOCIAL_CONTACT_WINDOW = 8;
+const SENSOR_EVENT_READ_LIMIT = 256;
 
 function standardDeviation(values: number[]): number {
   if (values.length < 2) {
@@ -29,6 +31,8 @@ export class WorldSensors {
 
     const agents = Object.values(world.agents);
     const relationships = Object.values(world.relationships);
+    const activeSignals = await this.events.activeSignals(world.id, now);
+    const recent = await this.events.recent(world.id, SENSOR_EVENT_READ_LIMIT, now);
 
     const activeAgents = agents.filter(
       (agent) => now - agent.lastMeaningfulEventAt <= 5,
@@ -40,14 +44,22 @@ export class WorldSensors {
         ? 0
         : agents.reduce((sum, agent) => sum + agent.stress, 0) / agents.length;
 
+    // Social isolation is about recent contact, not whether two agents happened
+    // to create a relationship row months ago. Persistent relationship state is
+    // still used separately for conflict/quality metrics.
     const connected = new Set<string>();
-    for (const relationship of relationships) {
-      // Contact can be positive or conflictual; both mean the agent is not
-      // socially isolated. Quality is measured separately.
-      if (relationship.affinity > 0.15 || relationship.conflict > 0.15) {
-        connected.add(relationship.agentA);
-        connected.add(relationship.agentB);
+    for (const event of recent) {
+      if (
+        event.source !== 'agent' ||
+        event.kind !== 'relationship.changed' ||
+        event.occurredAt < now - SOCIAL_CONTACT_WINDOW
+      ) {
+        continue;
       }
+      const agentA = event.payload.agentA;
+      const agentB = event.payload.agentB;
+      if (typeof agentA === 'string' && world.agents[agentA]) connected.add(agentA);
+      if (typeof agentB === 'string' && world.agents[agentB]) connected.add(agentB);
     }
 
     const socialIsolation =
@@ -83,8 +95,6 @@ export class WorldSensors {
         averageEnergy * 0.2,
     );
 
-    const activeSignals = await this.events.activeSignals(world.id, now);
-    const recent = await this.events.recent(world.id, 50, now);
     // Cardinal's own prior interventions are context, not independent evidence
     // that the society itself exhibited a condition. Avoid circular evidence.
     const worldEvidence = recent.filter(
@@ -104,6 +114,14 @@ export class WorldSensors {
     }
     if (worldEvidence.length < Math.min(10, Math.max(1, agents.length))) {
       limitations.push('Recent independent world-event evidence is sparse.');
+    }
+    if (
+      recent.length === SENSOR_EVENT_READ_LIMIT &&
+      recent[0]?.occurredAt >= now - SOCIAL_CONTACT_WINDOW
+    ) {
+      limitations.push(
+        'Recent event density exceeded the bounded sensor window; social-contact coverage may be incomplete.',
+      );
     }
 
     const metrics: CardinalMetrics = {

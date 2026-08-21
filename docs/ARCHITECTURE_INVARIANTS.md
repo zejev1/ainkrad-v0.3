@@ -172,3 +172,36 @@ These rules convert failures from the previous implementation into tests and str
 128. The Auditor reconstructs recent intervention density and in-progress tests independently from the append-only journal rather than trusting Cardinal's derived autonomy assessment.
 129. Auditor decision records bind the independent audit-context version and fingerprint used to challenge Cardinal.
 130. Experiment results report defer counts, including experiment-in-progress and autonomy-budget deferrals, so restraint is measurable rather than hidden.
+
+## Audit round 7 additions — autonomous world
+
+131. The control world must remain capable of production, recovery, cooperation and adaptation without Cardinal.
+132. NPC personality, needs, skills, goals, home and location are world-owned persistent state; Cardinal cannot write them directly.
+133. Cardinal mode is not an input to autonomous NPC action selection.
+134. The same seed, world rules and disturbances must reproduce the same autonomous state and event history.
+135. Different seeds are allowed to diverge; diversity is a valid outcome rather than a replay defect.
+136. NPC processing order is shuffled by the persisted seeded RNG each tick instead of granting permanent priority to array order.
+137. Survival emergencies may constrain choice, but ordinary behavior is selected among multiple locally scored actions rather than a fixed routine ladder.
+138. Work is an endogenous control-world resource path and must not depend on Cardinal.
+139. Gathering, work, exploration and voluntary help provide distinct recovery paths; no single Cardinal-only resource mechanism may be required for survival.
+140. Exploration may discover resources but must not guarantee discovery on every action.
+141. Helping is an explicit agent action; positive conversation does not automatically transfer resources.
+142. An offer of help may be rejected and the rejection remains part of autonomous evidence.
+143. Social interactions may improve or worsen relationships; positive outcome is never guaranteed by merely starting a conversation.
+144. Pair memories influence later social targeting, while random social exploration remains possible.
+145. Skills change through experience and are persisted so later behavior can depend on history.
+146. Current NPC goals are derived from inspectable needs/personality/state and are persisted; they are not private Cardinal instructions.
+147. World places are persistent state and agent actions can change location independently of Cardinal.
+148. Visual appearance must remain separable from causal NPC logic so later graphics cannot silently become a decision controller.
+149. Resource shocks may affect shared and household resources, but OFF/OBSERVER worlds retain the same autonomous recovery capabilities as INTERVENE worlds.
+150. Social and safety disturbances modify environmental opportunity/support; they do not directly rewrite relationships, memories or goals.
+151. Social isolation is measured from recent autonomous contact, not from the mere existence of an old relationship projection.
+152. A bounded sensor read that may not cover its declared logical-time window records an explicit limitation.
+153. Changing the semantic meaning of a sensor metric requires a sensor-version change.
+154. Persisted world data is runtime-validated; TypeScript types are not trusted as a storage boundary.
+155. A same-version snapshot missing required nested NPC/world structures fails loudly instead of being partially accepted.
+156. A world-rules change that alters NPC state/action semantics requires explicit migration or a new experiment.
+157. Long-run viability checks guard against guaranteed architectural collapse; they are not evidence that every seed is healthy.
+158. OFF/OBSERVER equivalence must continue to hold after adding richer personalities, goals, skills, locations and social behavior.
+159. Simulation interventions may alter bounded environmental conditions but may not directly assign NPC actions, goals, skills or relationships.
+160. Richer world behavior must remain falsifiable: it is acceptable for a sufficiently capable control society to make Cardinal unnecessary.

@@ -6,42 +6,253 @@ import type { WorldEvent } from './events';
 import type { WorldStore } from './persistence';
 import { StaleWorldObservationError, WorldRevisionConflictError } from './persistence';
 import type {
+  AgentActionKind,
+  AgentGoalKind,
   AgentState,
   MemoryRecord,
   RelationshipState,
   WorldDisturbanceKind,
   WorldEnvironment,
+  WorldPlace,
+  WorldPlaceKind,
   WorldState,
 } from './types';
 
-export const WORLD_RULES_VERSION = 'ainkrad-world-rules-0.3.4';
+export const WORLD_RULES_VERSION = 'ainkrad-world-rules-0.3.7';
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const clampSigned = (value: number) => Math.max(-1, Math.min(1, value));
+
+const ACTION_KINDS: readonly AgentActionKind[] = [
+  'rest',
+  'gather',
+  'work',
+  'socialize',
+  'help',
+  'explore',
+  'reflect',
+];
+
+const GOAL_KINDS: readonly AgentGoalKind[] = [
+  'recover',
+  'secure_resources',
+  'connect',
+  'contribute',
+  'explore',
+  'reflect',
+];
+
+const PLACE_KINDS: readonly WorldPlaceKind[] = [
+  'home',
+  'commons',
+  'resource_field',
+  'workshop',
+  'quiet_space',
+  'outskirts',
+];
 
 function relationshipKey(a: string, b: string): string {
   return [a, b].sort().join('::');
 }
 
-function assertWorldState(state: WorldState): void {
-  if (!state.id.trim()) {
+function asRecord(value: unknown, path: string): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`${path} must be an object.`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function requiredString(value: unknown, path: string): string {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new Error(`${path} must be a non-empty string.`);
+  }
+  return value;
+}
+
+function finiteNumber(value: unknown, path: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(`${path} must be finite.`);
+  }
+  return value;
+}
+
+function unitNumber(value: unknown, path: string): number {
+  const result = finiteNumber(value, path);
+  if (result < 0 || result > 1) {
+    throw new Error(`${path} must be between 0 and 1.`);
+  }
+  return result;
+}
+
+function nonNegativeInteger(value: unknown, path: string): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    throw new Error(`${path} must be a non-negative integer.`);
+  }
+  return value;
+}
+
+function assertUnitFields(
+  record: Record<string, unknown>,
+  fields: readonly string[],
+  path: string,
+): void {
+  for (const field of fields) {
+    unitNumber(record[field], `${path}.${field}`);
+  }
+}
+
+function assertWorldState(value: unknown): asserts value is WorldState {
+  const state = asRecord(value, 'World state');
+  const id = requiredString(state.id, 'World state id');
+  finiteNumber(state.now, 'World state time');
+  nonNegativeInteger(state.revision, 'World state revision');
+  requiredString(state.rulesVersion, 'World state rulesVersion');
+
+  const determinism = asRecord(state.determinism, 'World determinism');
+  finiteNumber(determinism.rngState, 'World RNG state');
+  nonNegativeInteger(determinism.eventSequence, 'World event sequence');
+
+  const environment = asRecord(state.environment, 'World environment');
+  assertUnitFields(
+    environment,
+    ['resourcePool', 'resourceRegenerationRate', 'socialOpportunity', 'safetySupport'],
+    'World environment',
+  );
+
+  const places = asRecord(state.places, 'World places');
+  if (Object.keys(places).length === 0) {
+    throw new Error('World must contain at least one place.');
+  }
+  for (const [placeId, rawPlace] of Object.entries(places)) {
+    const place = asRecord(rawPlace, `World place ${placeId}`);
+    if (requiredString(place.id, `World place ${placeId}.id`) !== placeId) {
+      throw new Error(`World place key ${placeId} does not match its id.`);
+    }
+    requiredString(place.name, `World place ${placeId}.name`);
+    if (!PLACE_KINDS.includes(place.kind as WorldPlaceKind)) {
+      throw new Error(`World place ${placeId}.kind is invalid.`);
+    }
+    const capacity = finiteNumber(place.capacity, `World place ${placeId}.capacity`);
+    if (!Number.isInteger(capacity) || capacity < 1) {
+      throw new Error(`World place ${placeId}.capacity must be a positive integer.`);
+    }
+  }
+
+  const agents = asRecord(state.agents, 'World agents');
+  for (const [agentId, rawAgent] of Object.entries(agents)) {
+    const agent = asRecord(rawAgent, `Agent ${agentId}`);
+    if (requiredString(agent.id, `Agent ${agentId}.id`) !== agentId) {
+      throw new Error(`Agent key ${agentId} does not match its id.`);
+    }
+    requiredString(agent.name, `Agent ${agentId}.name`);
+    assertUnitFields(
+      agent,
+      ['energy', 'stress', 'resources', 'socialDrive'],
+      `Agent ${agentId}`,
+    );
+    finiteNumber(agent.lastMeaningfulEventAt, `Agent ${agentId}.lastMeaningfulEventAt`);
+
+    const personality = asRecord(agent.personality, `Agent ${agentId}.personality`);
+    assertUnitFields(
+      personality,
+      ['sociability', 'diligence', 'curiosity', 'generosity', 'resilience', 'riskTolerance'],
+      `Agent ${agentId}.personality`,
+    );
+
+    const needs = asRecord(agent.needs, `Agent ${agentId}.needs`);
+    assertUnitFields(needs, ['belonging', 'purpose'], `Agent ${agentId}.needs`);
+
+    const skills = asRecord(agent.skills, `Agent ${agentId}.skills`);
+    assertUnitFields(
+      skills,
+      ['gathering', 'craft', 'social', 'exploration'],
+      `Agent ${agentId}.skills`,
+    );
+
+    const goal = asRecord(agent.goal, `Agent ${agentId}.goal`);
+    if (!GOAL_KINDS.includes(goal.kind as AgentGoalKind)) {
+      throw new Error(`Agent ${agentId}.goal.kind is invalid.`);
+    }
+    unitNumber(goal.strength, `Agent ${agentId}.goal.strength`);
+    finiteNumber(goal.since, `Agent ${agentId}.goal.since`);
+
+    const homeId = requiredString(agent.homeId, `Agent ${agentId}.homeId`);
+    const locationId = requiredString(agent.locationId, `Agent ${agentId}.locationId`);
+    if (!places[homeId]) {
+      throw new Error(`Agent ${agentId} references missing home ${homeId}.`);
+    }
+    if (!places[locationId]) {
+      throw new Error(`Agent ${agentId} references missing location ${locationId}.`);
+    }
+    if (
+      agent.lastAction !== undefined &&
+      !ACTION_KINDS.includes(agent.lastAction as AgentActionKind)
+    ) {
+      throw new Error(`Agent ${agentId}.lastAction is invalid.`);
+    }
+  }
+
+  const relationships = asRecord(state.relationships, 'World relationships');
+  for (const [key, rawRelationship] of Object.entries(relationships)) {
+    const relationship = asRecord(rawRelationship, `Relationship ${key}`);
+    const agentA = requiredString(relationship.agentA, `Relationship ${key}.agentA`);
+    const agentB = requiredString(relationship.agentB, `Relationship ${key}.agentB`);
+    if (agentA === agentB || !agents[agentA] || !agents[agentB]) {
+      throw new Error(`Relationship ${key} references invalid agents.`);
+    }
+    if (relationshipKey(agentA, agentB) !== key) {
+      throw new Error(`Relationship ${key} is stored under the wrong key.`);
+    }
+    assertUnitFields(
+      relationship,
+      ['trust', 'affinity', 'respect', 'conflict'],
+      `Relationship ${key}`,
+    );
+    finiteNumber(relationship.updatedAt, `Relationship ${key}.updatedAt`);
+  }
+
+  if (!id.trim()) {
     throw new Error('World state id must not be empty.');
   }
-  if (!Number.isFinite(state.now)) {
-    throw new Error('World state time must be finite.');
-  }
-  if (!state.rulesVersion?.trim()) {
-    throw new Error('World rulesVersion must not be empty.');
-  }
-  if (!Number.isInteger(state.revision) || state.revision < 0) {
-    throw new Error('World state revision must be a non-negative integer.');
-  }
-  if (!Number.isInteger(state.determinism.eventSequence) || state.determinism.eventSequence < 0) {
-    throw new Error('World event sequence must be a non-negative integer.');
-  }
-  if (!Number.isFinite(state.determinism.rngState)) {
-    throw new Error('World RNG state must be finite.');
-  }
+}
+
+function createPlace(
+  id: string,
+  name: string,
+  kind: WorldPlaceKind,
+  capacity: number,
+): WorldPlace {
+  return { id, name, kind, capacity };
+}
+
+function goalFromInitialState(agent: Omit<AgentState, 'goal'>, now: number): AgentState['goal'] {
+  const scores: Array<{ kind: AgentGoalKind; strength: number }> = [
+    { kind: 'recover', strength: (1 - agent.energy) * 0.75 + agent.stress * 0.55 },
+    { kind: 'secure_resources', strength: (1 - agent.resources) * 0.9 },
+    { kind: 'connect', strength: (1 - agent.needs.belonging) * agent.socialDrive },
+    {
+      kind: 'contribute',
+      strength:
+        (1 - agent.needs.purpose) * 0.45 +
+        agent.personality.diligence * 0.35 +
+        agent.personality.generosity * 0.2,
+    },
+    { kind: 'explore', strength: agent.personality.curiosity * 0.75 },
+    {
+      kind: 'reflect',
+      strength:
+        agent.stress * 0.35 +
+        (1 - agent.needs.purpose) * 0.2 +
+        (1 - agent.personality.riskTolerance) * 0.25 +
+        (1 - agent.personality.sociability) * 0.15,
+    },
+  ];
+  scores.sort((a, b) => b.strength - a.strength);
+  return {
+    kind: scores[0].kind,
+    strength: clamp01(scores[0].strength),
+    since: now,
+  };
 }
 
 export interface WorldEngineOptions {
@@ -101,18 +312,57 @@ export class WorldEngine {
 
     const rng = new SeededRng(options.seed);
     const names = options.agentNames ?? ['Alex', 'Mira', 'Kai', 'Noa', 'Ilan', 'Rin'];
+    const places: Record<string, WorldPlace> = {
+      commons: createPlace('commons', 'Common Square', 'commons', Math.max(8, names.length * 2)),
+      resource_field: createPlace('resource_field', 'Resource Field', 'resource_field', Math.max(6, names.length)),
+      workshop: createPlace('workshop', 'Workshop', 'workshop', Math.max(6, names.length)),
+      quiet_space: createPlace('quiet_space', 'Quiet Garden', 'quiet_space', Math.max(4, names.length)),
+      outskirts: createPlace('outskirts', 'Outskirts', 'outskirts', Math.max(8, names.length * 2)),
+    };
     const agents: Record<string, AgentState> = {};
 
     names.forEach((name, index) => {
       const id = `agent_${index + 1}`;
-      agents[id] = {
+      const homeId = `home_${id}`;
+      places[homeId] = createPlace(homeId, `${name}'s Home`, 'home', 3);
+
+      const personality = {
+        sociability: rng.between(0.18, 0.92),
+        diligence: rng.between(0.18, 0.92),
+        curiosity: rng.between(0.18, 0.92),
+        generosity: rng.between(0.18, 0.92),
+        resilience: rng.between(0.18, 0.92),
+        riskTolerance: rng.between(0.18, 0.92),
+      };
+      const socialDrive = clamp01(
+        personality.sociability * 0.75 + rng.between(0.05, 0.25),
+      );
+      const partial = {
         id,
         name,
         energy: rng.between(0.55, 0.95),
         stress: rng.between(0.05, 0.25),
         resources: rng.between(0.35, 0.8),
-        socialDrive: rng.between(0.25, 0.85),
+        socialDrive,
+        personality,
+        needs: {
+          belonging: rng.between(0.35, 0.8),
+          purpose: rng.between(0.35, 0.8),
+        },
+        skills: {
+          gathering: rng.between(0.15, 0.55),
+          craft: rng.between(0.15, 0.55),
+          social: rng.between(0.15, 0.55),
+          exploration: rng.between(0.15, 0.55),
+        },
+        homeId,
+        locationId: homeId,
         lastMeaningfulEventAt: now,
+      } satisfies Omit<AgentState, 'goal'>;
+
+      agents[id] = {
+        ...partial,
+        goal: goalFromInitialState(partial, now),
       };
     });
 
@@ -131,10 +381,12 @@ export class WorldEngine {
         rngState: rng.snapshot(),
         eventSequence: 0,
       },
+      places,
       agents,
       relationships: {},
     };
 
+    assertWorldState(state);
     await options.store.initializeWorld(state);
     return new WorldEngine(options.store, state);
   }
@@ -149,6 +401,7 @@ export class WorldEngine {
         `World ${options.worldId} uses rules ${state.rulesVersion}; runtime expects ${WORLD_RULES_VERSION}. Explicit migration is required.`,
       );
     }
+    assertWorldState(state);
     return new WorldEngine(options.store, state);
   }
 
@@ -184,9 +437,6 @@ export class WorldEngine {
       }
       this.state.now = appliedAt;
 
-      // createdAt belongs to transport. The world event records the logical
-      // simulation time at which the input is actually applied. Wall-clock
-      // delivery jitter must not contaminate replayable world history.
       this.stageEvent({
         eventId: `input:${this.state.id}:${input.eventId}`,
         worldId: this.state.id,
@@ -215,14 +465,14 @@ export class WorldEngine {
       this.state.now = now;
 
       // The control world has endogenous recovery. Cardinal is not the only
-      // source of resources or recovery capacity.
+      // source of resources, production, social repair or stress recovery.
       this.state.environment.resourcePool = clamp01(
         this.state.environment.resourcePool +
           this.state.environment.resourceRegenerationRate,
       );
 
       const effectiveEnvironment = await this.effectiveEnvironment(now);
-      const agents = Object.values(this.state.agents);
+      const agents = this.shuffled(Object.values(this.state.agents));
 
       for (const agent of agents) {
         await this.stepAgent(agent, agents, effectiveEnvironment, now);
@@ -280,13 +530,24 @@ export class WorldEngine {
           this.state.environment.resourcePool - amount,
         );
 
+        // A systemic resource shock affects both shared raw availability and
+        // household reserves. The control world still retains work, gathering,
+        // exploration and cooperation as endogenous recovery paths.
+        for (const agent of Object.values(this.state.agents)) {
+          const householdLoss = amount * 0.6;
+          agent.resources = clamp01(agent.resources - householdLoss);
+          agent.stress = clamp01(
+            agent.stress + amount * 0.08 * (1.15 - agent.personality.resilience * 0.3),
+          );
+        }
+
         this.stageEvent({
           eventId: this.stableOperationEventId('disturbance', operationId),
           worldId: this.state.id,
           kind: eventKind,
           source: 'system',
           occurredAt: now,
-          payload: { magnitude: amount },
+          payload: { magnitude: amount, householdLoss: amount * 0.6 },
         });
         return;
       }
@@ -353,22 +614,33 @@ export class WorldEngine {
       `intervention:${operationId}`,
       fingerprint,
       async () => {
-      if (now < this.state.now) {
-        throw new Error('Intervention cannot be applied retroactively to a progressed world.');
-      }
-      this.state.now = now;
+        if (now < this.state.now) {
+          throw new Error('Intervention cannot be applied retroactively to a progressed world.');
+        }
+        this.state.now = now;
 
-      const eventKind =
-        kind === 'resource_relief'
-          ? 'cardinal.intervention.resource_relief'
-          : kind === 'open_shared_space'
-            ? 'cardinal.effect.open_shared_space'
-            : 'cardinal.effect.safety_support';
+        const eventKind =
+          kind === 'resource_relief'
+            ? 'cardinal.intervention.resource_relief'
+            : kind === 'open_shared_space'
+              ? 'cardinal.effect.open_shared_space'
+              : 'cardinal.effect.safety_support';
 
-      if (kind === 'resource_relief') {
-        this.state.environment.resourcePool = clamp01(
-          this.state.environment.resourcePool + amount,
-        );
+        if (kind === 'resource_relief') {
+          this.state.environment.resourcePool = clamp01(
+            this.state.environment.resourcePool + amount,
+          );
+
+          this.stageEvent({
+            eventId: this.stableOperationEventId('intervention', operationId),
+            worldId: this.state.id,
+            kind: eventKind,
+            source: 'cardinal',
+            occurredAt: now,
+            payload: { magnitude: amount },
+          });
+          return;
+        }
 
         this.stageEvent({
           eventId: this.stableOperationEventId('intervention', operationId),
@@ -377,19 +649,8 @@ export class WorldEngine {
           source: 'cardinal',
           occurredAt: now,
           payload: { magnitude: amount },
+          activeUntil: now + Math.max(1, duration),
         });
-        return;
-      }
-
-      this.stageEvent({
-        eventId: this.stableOperationEventId('intervention', operationId),
-        worldId: this.state.id,
-        kind: eventKind,
-        source: 'cardinal',
-        occurredAt: now,
-        payload: { magnitude: amount },
-        activeUntil: now + Math.max(1, duration),
-      });
       },
       expectedWorldRevision,
     );
@@ -429,9 +690,6 @@ export class WorldEngine {
           );
         }
 
-        // Exact retries remain valid even after the world has progressed beyond
-        // the operation's original logical time. Reload the newest committed
-        // projection rather than reapplying old effects.
         await this.reloadFromStore();
         return {
           committed: false,
@@ -461,6 +719,7 @@ export class WorldEngine {
         await apply();
         this.syncDeterminismState();
         this.state.revision = before.revision + 1;
+        assertWorldState(this.state);
 
         const result = await this.store.commit({
           operationId,
@@ -528,60 +787,466 @@ export class WorldEngine {
     environment: WorldEnvironment,
     now: number,
   ): Promise<void> {
-    agent.energy = clamp01(agent.energy - 0.025);
+    this.applyPassiveNeeds(agent, environment);
+    this.updateGoal(agent, now);
+
+    const action = this.chooseAction(agent, allAgents, environment);
+    switch (action) {
+      case 'rest':
+        this.performRest(agent, now);
+        break;
+      case 'gather':
+        this.performGather(agent, now);
+        break;
+      case 'work':
+        this.performWork(agent, now);
+        break;
+      case 'socialize': {
+        const others = allAgents.filter((other) => other.id !== agent.id);
+        if (others.length === 0) {
+          this.performReflect(agent, now);
+        } else {
+          const accessChance = clamp01(
+            0.12 +
+              environment.socialOpportunity * 0.76 +
+              agent.personality.sociability * 0.12,
+          );
+          if (this.rng.next() > accessChance) {
+            this.performBlockedSocialize(agent, now);
+          } else {
+            const target = await this.chooseSocialTarget(agent, others);
+            await this.interact(agent, target, now);
+          }
+        }
+        break;
+      }
+      case 'help': {
+        const target = this.chooseHelpTarget(agent, allAgents);
+        if (!target) {
+          this.performWork(agent, now);
+        } else {
+          await this.performHelp(agent, target, now);
+        }
+        break;
+      }
+      case 'explore':
+        this.performExplore(agent, now);
+        break;
+      case 'reflect':
+        this.performReflect(agent, now);
+        break;
+    }
+  }
+
+  private applyPassiveNeeds(agent: AgentState, environment: WorldEnvironment): void {
+    agent.energy = clamp01(agent.energy - 0.022);
+    agent.resources = clamp01(agent.resources - 0.006);
+    agent.needs.belonging = clamp01(agent.needs.belonging - 0.012);
+    agent.needs.purpose = clamp01(agent.needs.purpose - 0.008);
     agent.stress = clamp01(
-      agent.stress + (1 - agent.energy) * 0.012 - environment.safetySupport * 0.004,
+      agent.stress +
+        (1 - agent.energy) * 0.012 +
+        (1 - agent.resources) * 0.006 +
+        (1 - environment.safetySupport) * 0.012 -
+        environment.safetySupport * (0.003 + agent.personality.resilience * 0.002),
     );
+  }
 
-    if (agent.energy < 0.25) {
-      agent.energy = clamp01(agent.energy + 0.28);
-      agent.stress = clamp01(agent.stress - 0.05);
-      agent.lastAction = 'rest';
+  private updateGoal(agent: AgentState, now: number): void {
+    const scores: Array<{ kind: AgentGoalKind; strength: number }> = [
+      {
+        kind: 'recover',
+        strength: (1 - agent.energy) * 0.85 + agent.stress * 0.55,
+      },
+      {
+        kind: 'secure_resources',
+        strength: (1 - agent.resources) * 0.95,
+      },
+      {
+        kind: 'connect',
+        strength:
+          (1 - agent.needs.belonging) * (0.55 + agent.socialDrive * 0.55),
+      },
+      {
+        kind: 'contribute',
+        strength:
+          (1 - agent.needs.purpose) * 0.5 +
+          agent.personality.diligence * 0.32 +
+          agent.personality.generosity * 0.18,
+      },
+      {
+        kind: 'explore',
+        strength:
+          agent.personality.curiosity * 0.65 +
+          agent.personality.riskTolerance * 0.12 +
+          (1 - agent.needs.purpose) * 0.2,
+      },
+      {
+        kind: 'reflect',
+        strength:
+          agent.stress * 0.38 +
+          (1 - agent.needs.purpose) * 0.2 +
+          (1 - agent.personality.riskTolerance) * 0.25 +
+          (1 - agent.personality.sociability) * 0.15,
+      },
+    ];
+    scores.sort((a, b) => b.strength - a.strength);
+    const next = scores[0];
+    const currentAge = now - agent.goal.since;
+    const shouldSwitch =
+      next.kind !== agent.goal.kind &&
+      (next.strength > agent.goal.strength + 0.08 || currentAge >= 5);
 
-      this.recordAgentEvent(agent, now, 'agent.rested', {
-        energy: agent.energy,
+    if (shouldSwitch) {
+      const previous = agent.goal.kind;
+      agent.goal = {
+        kind: next.kind,
+        strength: clamp01(next.strength),
+        since: now,
+      };
+      this.recordAgentEvent(agent, now, 'agent.goal.changed', {
+        previous,
+        next: next.kind,
+        strength: agent.goal.strength,
       });
-      return;
-    }
-
-    if (agent.resources < 0.25 && this.state.environment.resourcePool > 0.05) {
-      const gathered = Math.min(0.16, this.state.environment.resourcePool);
-      agent.resources = clamp01(agent.resources + gathered);
-      this.state.environment.resourcePool = clamp01(
-        this.state.environment.resourcePool - gathered,
+    } else {
+      agent.goal.strength = clamp01(
+        scores.find((item) => item.kind === agent.goal.kind)?.strength ?? next.strength,
       );
-      agent.lastAction = 'gather';
-      agent.lastMeaningfulEventAt = now;
+    }
+  }
 
-      this.recordAgentEvent(agent, now, 'agent.gathered', { gathered });
-      return;
+  private chooseAction(
+    agent: AgentState,
+    allAgents: AgentState[],
+    environment: WorldEnvironment,
+  ): AgentActionKind {
+    const helpTarget = this.chooseHelpTarget(agent, allAgents);
+    const socialAvailable = allAgents.some((other) => other.id !== agent.id);
+    const goalBoost = (kind: AgentGoalKind) => (agent.goal.kind === kind ? 0.24 : 0);
+
+    const scores: Array<{ action: AgentActionKind; score: number }> = [
+      {
+        action: 'rest',
+        score:
+          (1 - agent.energy) * 1.45 +
+          agent.stress * 0.42 +
+          goalBoost('recover'),
+      },
+      {
+        action: 'gather',
+        score:
+          (1 - agent.resources) * 1.05 +
+          this.state.environment.resourcePool * 0.22 +
+          agent.skills.gathering * 0.2 +
+          goalBoost('secure_resources'),
+      },
+      {
+        action: 'work',
+        score:
+          (1 - agent.resources) * 0.72 +
+          (1 - agent.needs.purpose) * 0.38 +
+          agent.personality.diligence * 0.52 +
+          agent.skills.craft * 0.18 +
+          goalBoost('contribute'),
+      },
+      {
+        action: 'socialize',
+        score:
+          (socialAvailable ? 1 : 0) *
+          ((1 - agent.needs.belonging) * 0.78 +
+            agent.socialDrive * 0.4 +
+            agent.personality.sociability * 0.3 +
+            environment.socialOpportunity * 0.2 +
+            goalBoost('connect')),
+      },
+      {
+        action: 'help',
+        score: helpTarget
+          ? agent.personality.generosity * 0.65 +
+            (1 - agent.needs.purpose) * 0.24 +
+            Math.max(0, agent.resources - 0.45) * 0.35 +
+            goalBoost('contribute')
+          : -1,
+      },
+      {
+        action: 'explore',
+        score:
+          agent.personality.curiosity * 0.68 +
+          agent.personality.riskTolerance * 0.15 +
+          agent.skills.exploration * 0.16 +
+          (1 - agent.needs.purpose) * 0.2 +
+          goalBoost('explore') -
+          Math.max(0, 0.35 - agent.resources) * 0.7,
+      },
+      {
+        action: 'reflect',
+        score:
+          0.18 +
+          agent.stress * 0.55 +
+          (1 - agent.needs.purpose) * 0.42 +
+          (1 - agent.personality.riskTolerance) * 0.22 +
+          (1 - agent.personality.sociability) * 0.08 +
+          goalBoost('reflect'),
+      },
+    ];
+
+    // Small seeded noise preserves individuality and exploration without turning
+    // choice into a fixed routine. The RNG state is persisted with the world.
+    for (const item of scores) {
+      item.score += this.rng.between(-0.07, 0.07);
     }
 
-    const others = allAgents.filter((other) => other.id !== agent.id);
-    const socialChance =
-      agent.socialDrive * (0.15 + environment.socialOpportunity * 0.3);
-
-    if (others.length > 0 && this.rng.next() < socialChance) {
-      const other = await this.chooseSocialTarget(agent, others);
-      await this.interact(agent, other, now);
-      return;
+    // Severe physiological pressure is a constraint, not a central script.
+    if (agent.energy < 0.12) {
+      return 'rest';
+    }
+    if (agent.resources < 0.08) {
+      const gather = scores.find((item) => item.action === 'gather')!;
+      const work = scores.find((item) => item.action === 'work')!;
+      return gather.score >= work.score && this.state.environment.resourcePool > 0.03
+        ? 'gather'
+        : 'work';
     }
 
-    agent.resources = clamp01(agent.resources - 0.015);
+    scores.sort((a, b) => b.score - a.score);
+    return scores[0].action;
+  }
+
+  private performRest(agent: AgentState, now: number): void {
+    this.moveAgent(agent, agent.homeId);
+    agent.energy = clamp01(agent.energy + 0.3);
+    agent.stress = clamp01(agent.stress - 0.055 - agent.personality.resilience * 0.02);
+    agent.lastAction = 'rest';
+
+    this.recordAgentEvent(agent, now, 'agent.rested', {
+      energy: agent.energy,
+      stress: agent.stress,
+      locationId: agent.locationId,
+    });
+  }
+
+  private performBlockedSocialize(agent: AgentState, now: number): void {
+    this.moveAgent(agent, 'commons');
+    agent.energy = clamp01(agent.energy - 0.01);
+    agent.stress = clamp01(agent.stress + 0.018);
+    agent.needs.belonging = clamp01(agent.needs.belonging - 0.015);
+    agent.lastAction = 'socialize';
+    agent.lastMeaningfulEventAt = now;
+
+    this.recordAgentEvent(agent, now, 'agent.socialize.blocked', {
+      socialOpportunity: 0,
+      locationId: agent.locationId,
+    });
+  }
+
+  private performGather(agent: AgentState, now: number): void {
+    this.moveAgent(agent, 'resource_field');
+    const available = this.state.environment.resourcePool;
+    const effort = 0.06 + agent.skills.gathering * 0.08;
+    const gathered = Math.min(effort, available);
+
+    agent.energy = clamp01(agent.energy - 0.035);
+    agent.stress = clamp01(agent.stress + 0.006);
+    agent.resources = clamp01(agent.resources + gathered);
+    agent.skills.gathering = clamp01(agent.skills.gathering + 0.004);
+    this.state.environment.resourcePool = clamp01(available - gathered);
+    agent.lastAction = 'gather';
+    agent.lastMeaningfulEventAt = now;
+
+    this.recordAgentEvent(agent, now, 'agent.gathered', {
+      gathered,
+      resources: agent.resources,
+      poolRemaining: this.state.environment.resourcePool,
+      locationId: agent.locationId,
+    });
+  }
+
+  private performWork(agent: AgentState, now: number): void {
+    this.moveAgent(agent, 'workshop');
+    const produced =
+      0.035 +
+      agent.skills.craft * 0.05 +
+      agent.personality.diligence * 0.04;
+
+    agent.resources = clamp01(agent.resources + produced);
+    agent.energy = clamp01(agent.energy - 0.045);
+    agent.stress = clamp01(
+      agent.stress + 0.012 * (1 - agent.personality.resilience),
+    );
+    agent.needs.purpose = clamp01(agent.needs.purpose + 0.045);
+    agent.skills.craft = clamp01(agent.skills.craft + 0.004);
+    agent.lastAction = 'work';
+    agent.lastMeaningfulEventAt = now;
+
+    this.recordAgentEvent(agent, now, 'agent.worked', {
+      produced,
+      resources: agent.resources,
+      skill: agent.skills.craft,
+      locationId: agent.locationId,
+    });
+  }
+
+  private performExplore(agent: AgentState, now: number): void {
+    this.moveAgent(agent, 'outskirts');
+    agent.energy = clamp01(agent.energy - 0.04);
+    agent.resources = clamp01(agent.resources - 0.008);
+    agent.skills.exploration = clamp01(agent.skills.exploration + 0.003);
+    agent.needs.purpose = clamp01(agent.needs.purpose + 0.012);
+
+    const discoveryChance = clamp01(
+      0.08 +
+        agent.skills.exploration * 0.2 +
+        agent.personality.curiosity * 0.18 +
+        agent.personality.riskTolerance * 0.08,
+    );
+    const discovered = this.rng.next() < discoveryChance;
+    let discovery = 0;
+    if (discovered) {
+      discovery = this.rng.between(0.035, 0.11);
+      this.state.environment.resourcePool = clamp01(
+        this.state.environment.resourcePool + discovery,
+      );
+      agent.needs.purpose = clamp01(agent.needs.purpose + 0.035);
+    }
+
     agent.lastAction = 'explore';
+    agent.lastMeaningfulEventAt = now;
 
     this.recordAgentEvent(agent, now, 'agent.explored', {
-      stress: agent.stress,
+      discovered,
+      discovery,
+      resourcePool: this.state.environment.resourcePool,
+      locationId: agent.locationId,
     });
+  }
+
+  private performReflect(agent: AgentState, now: number): void {
+    this.moveAgent(agent, 'quiet_space');
+    agent.energy = clamp01(agent.energy + 0.025);
+    agent.stress = clamp01(
+      agent.stress - 0.055 - agent.personality.resilience * 0.025,
+    );
+    agent.needs.purpose = clamp01(agent.needs.purpose + 0.045);
+    agent.lastAction = 'reflect';
+    agent.lastMeaningfulEventAt = now;
+
+    this.stageMemory({
+      memoryId: this.nextId('memory'),
+      worldId: this.state.id,
+      agentId: agent.id,
+      createdAt: now,
+      kind: 'reflection',
+      summary: `${agent.name} reflected on recent needs and priorities.`,
+      importance: clamp01(0.35 + agent.stress * 0.3),
+      valence: clampSigned(0.15 - agent.stress * 0.2),
+      relatedAgentIds: [],
+    });
+
+    this.recordAgentEvent(agent, now, 'agent.reflected', {
+      stress: agent.stress,
+      purpose: agent.needs.purpose,
+      locationId: agent.locationId,
+    });
+  }
+
+  private chooseHelpTarget(agent: AgentState, allAgents: AgentState[]): AgentState | undefined {
+    const candidates = allAgents
+      .filter((other) => other.id !== agent.id)
+      .map((other) => {
+        const relationship = this.state.relationships[relationshipKey(agent.id, other.id)];
+        const need =
+          (1 - other.resources) * 0.65 +
+          other.stress * 0.2 +
+          (1 - other.needs.belonging) * 0.15;
+        const willingness = relationship
+          ? relationship.trust * 0.3 +
+            relationship.affinity * 0.2 +
+            relationship.respect * 0.15 -
+            relationship.conflict * 0.35
+          : 0.05;
+        return { other, score: need + willingness };
+      })
+      .filter((item) => item.other.resources < 0.5 && item.score > 0.42)
+      .sort((a, b) => b.score - a.score);
+
+    return candidates[0]?.other;
+  }
+
+  private async performHelp(a: AgentState, b: AgentState, now: number): Promise<void> {
+    this.moveAgent(a, b.locationId);
+    const key = relationshipKey(a.id, b.id);
+    const current = this.relationshipFor(a, b, now);
+    const offered = Math.min(0.065, Math.max(0, a.resources - 0.35), 0.72 - b.resources);
+    const acceptance = clamp01(
+      0.35 +
+        current.trust * 0.28 +
+        current.affinity * 0.18 +
+        current.respect * 0.12 -
+        current.conflict * 0.35 +
+        b.personality.sociability * 0.08,
+    );
+    const accepted = offered > 0.005 && this.rng.next() < acceptance;
+
+    if (accepted) {
+      a.resources = clamp01(a.resources - offered);
+      b.resources = clamp01(b.resources + offered);
+      a.needs.purpose = clamp01(a.needs.purpose + 0.06);
+      b.needs.belonging = clamp01(b.needs.belonging + 0.06);
+      b.stress = clamp01(b.stress - 0.025);
+      this.state.relationships[key] = {
+        ...current,
+        trust: clamp01(current.trust + 0.025),
+        affinity: clamp01(current.affinity + 0.018),
+        respect: clamp01(current.respect + 0.03),
+        conflict: clamp01(current.conflict - 0.012),
+        updatedAt: now,
+      };
+    } else {
+      a.stress = clamp01(a.stress + 0.008);
+      this.state.relationships[key] = {
+        ...current,
+        respect: clamp01(current.respect - 0.006),
+        conflict: clamp01(current.conflict + 0.01),
+        updatedAt: now,
+      };
+    }
+
+    a.energy = clamp01(a.energy - 0.018);
+    a.lastAction = 'help';
+    a.lastMeaningfulEventAt = now;
+    b.lastMeaningfulEventAt = now;
+
+    const summary = accepted
+      ? `${b.name} accepted help from ${a.name}.`
+      : `${b.name} declined help from ${a.name}.`;
+    for (const agent of [a, b]) {
+      this.stageMemory({
+        memoryId: this.nextId('memory'),
+        worldId: this.state.id,
+        agentId: agent.id,
+        createdAt: now,
+        kind: 'interaction',
+        summary,
+        importance: accepted ? 0.62 : 0.52,
+        valence: accepted ? 0.45 : -0.18,
+        relatedAgentIds: [agent.id === a.id ? b.id : a.id],
+      });
+    }
+
+    this.recordAgentEvent(a, now, accepted ? 'agent.help.accepted' : 'agent.help.rejected', {
+      targetId: b.id,
+      amount: accepted ? offered : 0,
+      locationId: a.locationId,
+    });
+    this.recordRelationshipEvent(this.state.relationships[key], accepted ? 0.45 : -0.18, now);
   }
 
   private async chooseSocialTarget(
     agent: AgentState,
     others: AgentState[],
   ): Promise<AgentState> {
-    // Preserve exploration so early relationships cannot permanently freeze the
-    // society into a scripted clique.
-    if (this.rng.next() < 0.2) {
+    if (this.rng.next() < 0.18) {
       return this.rng.pick(others);
     }
 
@@ -589,15 +1254,15 @@ export class WorldEngine {
 
     for (const other of others) {
       const relationship = this.state.relationships[relationshipKey(agent.id, other.id)];
-      let weight = 0.6;
+      let weight = 0.55;
 
       if (relationship) {
         weight =
-          0.2 +
-          relationship.affinity * 0.35 +
-          relationship.trust * 0.25 +
-          relationship.respect * 0.15 -
-          relationship.conflict * 0.3;
+          0.18 +
+          relationship.affinity * 0.34 +
+          relationship.trust * 0.24 +
+          relationship.respect * 0.14 -
+          relationship.conflict * 0.28;
       }
 
       const recentMemories = await this.recentMemoriesForPair(
@@ -610,8 +1275,14 @@ export class WorldEngine {
         const memoryValence =
           recentMemories.reduce((sum, memory) => sum + memory.valence, 0) /
           recentMemories.length;
-        weight += memoryValence * 0.15;
+        weight += memoryValence * 0.16;
       }
+
+      // Similar interests help, but do not make unlike people impossible to meet.
+      const curiosityCompatibility = 1 - Math.abs(
+        agent.personality.curiosity - other.personality.curiosity,
+      );
+      weight += curiosityCompatibility * 0.08;
 
       weighted.push({
         other,
@@ -633,51 +1304,60 @@ export class WorldEngine {
   }
 
   private async interact(a: AgentState, b: AgentState, now: number): Promise<void> {
+    this.moveAgent(a, 'commons');
+    this.moveAgent(b, 'commons');
     const key = relationshipKey(a.id, b.id);
-    const ids = [a.id, b.id].sort();
-
-    const current =
-      this.state.relationships[key] ??
-      ({
-        agentA: ids[0],
-        agentB: ids[1],
-        trust: 0.5,
-        affinity: 0.5,
-        respect: 0.5,
-        conflict: 0.1,
-        updatedAt: now,
-      } satisfies RelationshipState);
+    const current = this.relationshipFor(a, b, now);
 
     const priorMood =
       (current.trust + current.affinity + current.respect) / 3 - current.conflict;
+    const compatibility =
+      1 -
+      (Math.abs(a.personality.curiosity - b.personality.curiosity) +
+        Math.abs(a.personality.sociability - b.personality.sociability) +
+        Math.abs(a.personality.generosity - b.personality.generosity)) /
+        3;
+    const stressPenalty = (a.stress + b.stress) * 0.12;
+    const socialSkill = (a.skills.social + b.skills.social) / 2;
     const sentiment = clampSigned(
-      this.rng.between(-0.8, 0.8) + (priorMood - 0.4) * 0.6,
+      this.rng.between(-0.72, 0.72) +
+        (priorMood - 0.35) * 0.5 +
+        (compatibility - 0.5) * 0.24 +
+        socialSkill * 0.08 -
+        stressPenalty,
     );
 
     const next: RelationshipState = {
       ...current,
-      trust: clamp01(current.trust + sentiment * 0.04),
+      trust: clamp01(current.trust + sentiment * 0.038),
       affinity: clamp01(current.affinity + sentiment * 0.05),
-      respect: clamp01(current.respect + sentiment * 0.025),
-      conflict: clamp01(current.conflict - sentiment * 0.05),
+      respect: clamp01(current.respect + sentiment * 0.026),
+      conflict: clamp01(current.conflict - sentiment * 0.048),
       updatedAt: now,
     };
 
     this.state.relationships[key] = next;
     a.lastMeaningfulEventAt = now;
     b.lastMeaningfulEventAt = now;
-    a.lastAction = 'interact';
-    b.lastAction = 'interact';
+    a.lastAction = 'socialize';
+    a.energy = clamp01(a.energy - 0.018);
+    a.skills.social = clamp01(a.skills.social + 0.003);
+    b.skills.social = clamp01(b.skills.social + 0.002);
 
-    if (sentiment > 0.2) {
-      a.stress = clamp01(a.stress - 0.02);
-      b.stress = clamp01(b.stress - 0.02);
-    } else if (sentiment < -0.2) {
-      a.stress = clamp01(a.stress + 0.03);
-      b.stress = clamp01(b.stress + 0.03);
+    if (sentiment > 0.18) {
+      a.stress = clamp01(a.stress - 0.024);
+      b.stress = clamp01(b.stress - 0.018);
+      a.needs.belonging = clamp01(a.needs.belonging + 0.09);
+      b.needs.belonging = clamp01(b.needs.belonging + 0.07);
+    } else if (sentiment < -0.18) {
+      a.stress = clamp01(a.stress + 0.032);
+      b.stress = clamp01(b.stress + 0.026);
+      a.needs.belonging = clamp01(a.needs.belonging - 0.018);
+      b.needs.belonging = clamp01(b.needs.belonging - 0.012);
+    } else {
+      a.needs.belonging = clamp01(a.needs.belonging + 0.035);
+      b.needs.belonging = clamp01(b.needs.belonging + 0.025);
     }
-
-    this.maybeShareResources(a, b, next, sentiment, now);
 
     const summary =
       sentiment >= 0
@@ -700,6 +1380,30 @@ export class WorldEngine {
       this.stageMemory(memory);
     }
 
+    this.recordRelationshipEvent(next, sentiment, now);
+  }
+
+  private relationshipFor(a: AgentState, b: AgentState, now: number): RelationshipState {
+    const key = relationshipKey(a.id, b.id);
+    const ids = [a.id, b.id].sort();
+    return (
+      this.state.relationships[key] ?? {
+        agentA: ids[0],
+        agentB: ids[1],
+        trust: 0.5,
+        affinity: 0.5,
+        respect: 0.5,
+        conflict: 0.1,
+        updatedAt: now,
+      }
+    );
+  }
+
+  private recordRelationshipEvent(
+    relationship: RelationshipState,
+    sentiment: number,
+    now: number,
+  ): void {
     this.stageEvent({
       eventId: this.nextId('relationship'),
       worldId: this.state.id,
@@ -707,55 +1411,31 @@ export class WorldEngine {
       source: 'agent',
       occurredAt: now,
       payload: {
-        agentA: next.agentA,
-        agentB: next.agentB,
+        agentA: relationship.agentA,
+        agentB: relationship.agentB,
         sentiment,
-        trust: next.trust,
-        affinity: next.affinity,
-        respect: next.respect,
-        conflict: next.conflict,
+        trust: relationship.trust,
+        affinity: relationship.affinity,
+        respect: relationship.respect,
+        conflict: relationship.conflict,
       },
     });
   }
 
-  private maybeShareResources(
-    a: AgentState,
-    b: AgentState,
-    relationship: RelationshipState,
-    sentiment: number,
-    now: number,
-  ): void {
-    if (sentiment <= 0.35 || relationship.trust <= 0.55) {
-      return;
+  private moveAgent(agent: AgentState, locationId: string): void {
+    if (!this.state.places[locationId]) {
+      throw new Error(`Cannot move ${agent.id} to unknown place ${locationId}.`);
     }
+    agent.locationId = locationId;
+  }
 
-    const donor = a.resources >= b.resources ? a : b;
-    const receiver = donor.id === a.id ? b : a;
-
-    if (donor.resources < 0.65 || receiver.resources > 0.35) {
-      return;
+  private shuffled<T>(values: readonly T[]): T[] {
+    const result = [...values];
+    for (let index = result.length - 1; index > 0; index -= 1) {
+      const swapIndex = Math.floor(this.rng.next() * (index + 1));
+      [result[index], result[swapIndex]] = [result[swapIndex], result[index]];
     }
-
-    const transfer = Math.min(0.08, donor.resources - 0.55, 0.45 - receiver.resources);
-    if (transfer <= 0) {
-      return;
-    }
-
-    donor.resources = clamp01(donor.resources - transfer);
-    receiver.resources = clamp01(receiver.resources + transfer);
-
-    this.stageEvent({
-      eventId: this.nextId('resource-share'),
-      worldId: this.state.id,
-      kind: 'resource.shared',
-      source: 'agent',
-      occurredAt: now,
-      payload: {
-        donorId: donor.id,
-        receiverId: receiver.id,
-        amount: transfer,
-      },
-    });
+    return result;
   }
 
   private async effectiveEnvironment(now: number): Promise<WorldEnvironment> {

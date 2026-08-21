@@ -179,6 +179,20 @@ Cardinal comes later.
 
 ---
 
+## Autonomous World v0.3.7
+
+Cardinal now has a more serious world to observe. NPCs persist personality, needs, skills, goals, homes and current locations. They choose among rest, gathering, productive work, social contact, helping, exploration and reflection from local utility rather than a fixed daily script. A small seeded exploration term preserves variation while keeping experiments reproducible.
+
+The control world has its own economy and recovery paths. Agents can work, gather, discover resources and voluntarily help each other. Resource, social and safety disturbances change conditions but do not issue commands to NPCs. Agent processing order is seeded and shuffled each tick so array position does not become a permanent privilege.
+
+Helping is a decision rather than an automatic reward for a positive conversation, and help can be rejected. Relationships and memories affect later social choices; interactions can improve or worsen the relationship. Skills develop through use and goals are persisted as inspectable current priorities.
+
+The first city geometry is deliberately structural: individual homes plus a common square, resource field, workshop, quiet space and outskirts. Visual appearance comes later; causal independence comes first.
+
+The social-isolation sensor now measures recent autonomous contact rather than treating an old relationship row as proof of current connection. Because that changes metric meaning, the sensor definition has a new version. See `docs/WORLD_AUTONOMY.md`.
+
+---
+
 ## Experimental Modes
 
 Every world has an explicit Cardinal mode.
@@ -445,6 +459,8 @@ Agents own:
 - memory;
 - goals;
 - needs;
+- skills;
+- home and current location;
 - preferences;
 - relationships;
 - local decisions;
@@ -549,10 +565,11 @@ AINKRAD
 │
 ├── World
 │   ├── Autonomous Agents
-│   ├── Needs
+│   ├── Needs / Personality / Goals
+│   ├── Skills / Places
 │   ├── Memory
 │   ├── Relationships
-│   ├── Resources
+│   ├── Resources / Production
 │   └── Append-only Events
 │
 ├── Sensors

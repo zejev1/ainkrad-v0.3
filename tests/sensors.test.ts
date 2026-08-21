@@ -8,7 +8,7 @@ function emptyWorld(): WorldState {
     id: 'world_1',
     now: 1,
     revision: 0,
-    rulesVersion: 'ainkrad-world-rules-0.3.3',
+    rulesVersion: 'ainkrad-world-rules-0.3.7',
     environment: {
       resourcePool: 1,
       resourceRegenerationRate: 0.01,
@@ -18,6 +18,9 @@ function emptyWorld(): WorldState {
     determinism: {
       rngState: 1,
       eventSequence: 0,
+    },
+    places: {
+      commons: { id: 'commons', name: 'Common Square', kind: 'commons', capacity: 8 },
     },
     agents: {},
     relationships: {},
@@ -71,5 +74,70 @@ describe('Sensor snapshot time integrity', () => {
   it('rejects mixing a current snapshot with a different observation time', async () => {
     const events = new InMemoryEventStore();
     await expect(new WorldSensors(events).observe(emptyWorld(), 2)).rejects.toThrow();
+  });
+});
+
+describe('Recent social-contact sensing', () => {
+  it('does not treat an old relationship projection as current social contact', async () => {
+    const events = new InMemoryEventStore();
+    const world = emptyWorld();
+    world.now = 20;
+    world.agents = {
+      a: {
+        id: 'a',
+        name: 'A',
+        energy: 0.8,
+        stress: 0.1,
+        resources: 0.7,
+        socialDrive: 0.5,
+        personality: { sociability: 0.5, diligence: 0.5, curiosity: 0.5, generosity: 0.5, resilience: 0.5, riskTolerance: 0.5 },
+        needs: { belonging: 0.5, purpose: 0.5 },
+        skills: { gathering: 0.3, craft: 0.3, social: 0.3, exploration: 0.3 },
+        goal: { kind: 'connect', strength: 0.5, since: 1 },
+        homeId: 'commons',
+        locationId: 'commons',
+        lastMeaningfulEventAt: 20,
+      },
+      b: {
+        id: 'b',
+        name: 'B',
+        energy: 0.8,
+        stress: 0.1,
+        resources: 0.7,
+        socialDrive: 0.5,
+        personality: { sociability: 0.5, diligence: 0.5, curiosity: 0.5, generosity: 0.5, resilience: 0.5, riskTolerance: 0.5 },
+        needs: { belonging: 0.5, purpose: 0.5 },
+        skills: { gathering: 0.3, craft: 0.3, social: 0.3, exploration: 0.3 },
+        goal: { kind: 'connect', strength: 0.5, since: 1 },
+        homeId: 'commons',
+        locationId: 'commons',
+        lastMeaningfulEventAt: 20,
+      },
+    };
+    world.relationships = {
+      'a::b': {
+        agentA: 'a',
+        agentB: 'b',
+        trust: 0.9,
+        affinity: 0.9,
+        respect: 0.9,
+        conflict: 0.05,
+        updatedAt: 1,
+      },
+    };
+
+    const isolated = await new WorldSensors(events).observe(world, 20);
+    expect(isolated.metrics.socialIsolation).toBe(1);
+
+    await events.append({
+      eventId: 'recent_contact',
+      worldId: 'world_1',
+      kind: 'relationship.changed',
+      source: 'agent',
+      occurredAt: 18,
+      payload: { agentA: 'a', agentB: 'b' },
+    });
+    const connected = await new WorldSensors(events).observe(world, 20);
+    expect(connected.metrics.socialIsolation).toBe(0);
   });
 });
