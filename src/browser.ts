@@ -1,9 +1,5 @@
 import './browser.css';
-import {
-  runExperiment,
-  type ExperimentTickFrame,
-  type ScheduledDisturbance,
-} from './experiment/ExperimentRunner';
+import type { LiveWorldFrame } from './runtime/LiveWorldRuntime';
 import type { AgentState, WorldState } from './world/types';
 
 const app = document.querySelector<HTMLDivElement>('#app');
@@ -11,14 +7,6 @@ const app = document.querySelector<HTMLDivElement>('#app');
 if (!app) {
   throw new Error('Ainkrad browser root not found.');
 }
-
-const TICK_DELAY_MS = 550;
-const BROWSER_TICKS = 300;
-const disturbances: readonly ScheduledDisturbance[] = [
-  { tick: 12, kind: 'resource_shock', magnitude: 0.6 },
-  { tick: 30, kind: 'social_barrier', magnitude: 0.5, duration: 8 },
-  { tick: 45, kind: 'safety_shock', magnitude: 0.5, duration: 8 },
-];
 
 const actionLabels: Record<NonNullable<AgentState['lastAction']>, string> = {
   rest: 'отдыхает',
@@ -86,45 +74,92 @@ app.innerHTML = `
     <main class="world-layout">
       <section class="world-map" aria-label="Карта Ainkrad">
         <div class="map-grid" aria-hidden="true"></div>
-        <svg class="roads" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+
+        <svg
+          class="roads"
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          aria-hidden="true"
+        >
           <path d="M50 50 L17 24 M50 50 L83 24 M50 50 L19 76 M50 50 L81 76" />
           <path d="M8 50 L19 76 M30 8 L17 24 M70 8 L83 24 M92 50 L81 76 M70 92 L81 76 M30 92 L19 76" />
         </svg>
+
         <div id="places-layer" class="places-layer"></div>
         <div id="agents-layer" class="agents-layer"></div>
-        <div class="disturbance-banner" id="disturbance-banner" aria-live="polite"></div>
+
+        <div
+          class="disturbance-banner"
+          id="disturbance-banner"
+          aria-live="polite"
+        ></div>
       </section>
 
       <aside class="world-sidebar">
         <section class="resident-panel" aria-live="polite">
           <p class="panel-label">Выбранный житель</p>
           <h2 id="resident-name">Мир запускается…</h2>
-          <p id="resident-activity" class="resident-activity">Подготавливаем жителей</p>
+
+          <p id="resident-activity" class="resident-activity">
+            Подготавливаем жителей
+          </p>
+
           <dl class="resident-facts">
-            <div><dt>Место</dt><dd id="resident-place">—</dd></div>
-            <div><dt>Цель</dt><dd id="resident-goal">—</dd></div>
+            <div>
+              <dt>Место</dt>
+              <dd id="resident-place">—</dd>
+            </div>
+
+            <div>
+              <dt>Цель</dt>
+              <dd id="resident-goal">—</dd>
+            </div>
           </dl>
+
           <div class="need-row">
-            <span>Энергия</span><span id="energy-value">—</span>
-            <div class="need-track"><span id="energy-bar"></span></div>
+            <span>Энергия</span>
+            <span id="energy-value">—</span>
+            <div class="need-track">
+              <span id="energy-bar"></span>
+            </div>
           </div>
+
           <div class="need-row">
-            <span>Стресс</span><span id="stress-value">—</span>
-            <div class="need-track need-track--stress"><span id="stress-bar"></span></div>
+            <span>Стресс</span>
+            <span id="stress-value">—</span>
+            <div class="need-track need-track--stress">
+              <span id="stress-bar"></span>
+            </div>
           </div>
+
           <div class="need-row">
-            <span>Личные ресурсы</span><span id="personal-resource-value">—</span>
-            <div class="need-track need-track--resources"><span id="personal-resource-bar"></span></div>
+            <span>Личные ресурсы</span>
+            <span id="personal-resource-value">—</span>
+            <div class="need-track need-track--resources">
+              <span id="personal-resource-bar"></span>
+            </div>
           </div>
         </section>
 
         <section class="cardinal-panel">
           <p class="panel-label">Cardinal наблюдает</p>
+
           <div class="cardinal-numbers">
-            <span><strong id="evaluation-value">0</strong> оценок</span>
-            <span><strong id="intervention-value">0</strong> вмешательств</span>
+            <span>
+              <strong id="evaluation-value">0</strong>
+              оценок
+            </span>
+
+            <span>
+              <strong id="intervention-value">0</strong>
+              вмешательств
+            </span>
           </div>
-          <p id="cardinal-message">Cardinal не управляет жителями и вмешивается только при подтверждённой системной проблеме.</p>
+
+          <p id="cardinal-message">
+            Cardinal не управляет жителями и вмешивается только при
+            подтверждённой системной проблеме.
+          </p>
         </section>
       </aside>
     </main>
@@ -133,7 +168,11 @@ app.innerHTML = `
 
 const requiredElement = <T extends HTMLElement>(id: string): T => {
   const element = document.getElementById(id);
-  if (!element) throw new Error(`Missing browser element #${id}.`);
+
+  if (!element) {
+    throw new Error(`Missing browser element #${id}.`);
+  }
+
   return element as T;
 };
 
@@ -146,39 +185,52 @@ const evaluationValue = requiredElement<HTMLElement>('evaluation-value');
 const interventionValue = requiredElement<HTMLElement>('intervention-value');
 const liveIndicator = requiredElement<HTMLElement>('live-indicator');
 const liveLabel = requiredElement<HTMLElement>('live-label');
-const disturbanceBanner = requiredElement<HTMLElement>('disturbance-banner');
+const disturbanceBanner =
+  requiredElement<HTMLElement>('disturbance-banner');
 const residentName = requiredElement<HTMLElement>('resident-name');
-const residentActivity = requiredElement<HTMLElement>('resident-activity');
+const residentActivity =
+  requiredElement<HTMLElement>('resident-activity');
 const residentPlace = requiredElement<HTMLElement>('resident-place');
 const residentGoal = requiredElement<HTMLElement>('resident-goal');
 const energyValue = requiredElement<HTMLElement>('energy-value');
 const energyBar = requiredElement<HTMLElement>('energy-bar');
 const stressValue = requiredElement<HTMLElement>('stress-value');
 const stressBar = requiredElement<HTMLElement>('stress-bar');
-const personalResourceValue = requiredElement<HTMLElement>('personal-resource-value');
-const personalResourceBar = requiredElement<HTMLElement>('personal-resource-bar');
+const personalResourceValue =
+  requiredElement<HTMLElement>('personal-resource-value');
+const personalResourceBar =
+  requiredElement<HTMLElement>('personal-resource-bar');
 const cardinalMessage = requiredElement<HTMLElement>('cardinal-message');
 
 const avatarElements = new Map<string, HTMLButtonElement>();
+
 let placesRendered = false;
 let selectedAgentId: string | undefined;
-let lastFrame: ExperimentTickFrame | undefined;
-let evaluationCount = 0;
-let executedInterventionCount = 0;
+let lastFrame: LiveWorldFrame | undefined;
 
-const clampMapCoordinate = (value: number) => Math.max(5, Math.min(95, value));
-const sleep = (milliseconds: number) =>
-  new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
+const clampMapCoordinate = (value: number) =>
+  Math.max(5, Math.min(95, value));
 
-function pointForPlace(placeId: string, agentIndex = 0): MapPoint {
+function pointForPlace(
+  placeId: string,
+  agentIndex = 0,
+): MapPoint {
   const publicPoint = publicPlacePoints[placeId];
-  if (publicPoint) return publicPoint;
+
+  if (publicPoint) {
+    return publicPoint;
+  }
 
   if (placeId.startsWith('home_')) {
     return homePoints[agentIndex % homePoints.length];
   }
 
-  return { x: 50, y: 50, label: placeId, symbol: '•' };
+  return {
+    x: 50,
+    y: 50,
+    label: placeId,
+    symbol: '•',
+  };
 }
 
 function displayPlaceName(
@@ -193,17 +245,29 @@ function displayPlaceName(
 }
 
 function renderPlaces(world: Readonly<WorldState>): void {
-  if (placesRendered) return;
+  if (placesRendered) {
+    return;
+  }
 
   const agentIds = Object.keys(world.agents);
+
   for (const [placeId, place] of Object.entries(world.places)) {
     const homeAgentIndex = agentIds.findIndex(
       (agentId) => world.agents[agentId]?.homeId === placeId,
     );
-    const point = pointForPlace(placeId, Math.max(0, homeAgentIndex));
+
+    const point = pointForPlace(
+      placeId,
+      Math.max(0, homeAgentIndex),
+    );
+
     const placeElement = document.createElement('div');
+
     placeElement.className =
-      place.kind === 'home' ? 'map-place map-place--home' : 'map-place';
+      place.kind === 'home'
+        ? 'map-place map-place--home'
+        : 'map-place';
+
     placeElement.style.left = `${point.x}%`;
     placeElement.style.top = `${point.y}%`;
     placeElement.setAttribute('aria-label', point.label);
@@ -228,12 +292,17 @@ function ensureAvatar(
   index: number,
 ): HTMLButtonElement {
   const existing = avatarElements.get(agent.id);
-  if (existing) return existing;
+
+  if (existing) {
+    return existing;
+  }
 
   const avatar = document.createElement('button');
+
   avatar.type = 'button';
   avatar.className = 'resident-avatar';
   avatar.style.setProperty('--resident-index', String(index));
+
   avatar.innerHTML = `
     <span class="resident-figure" aria-hidden="true">
       <span class="resident-head"></span>
@@ -244,10 +313,15 @@ function ensureAvatar(
     <span class="resident-nameplate"></span>
   `;
 
-  const nameplate = avatar.querySelector<HTMLElement>('.resident-nameplate');
-  if (!nameplate) throw new Error('Resident nameplate was not created.');
+  const nameplate =
+    avatar.querySelector<HTMLElement>('.resident-nameplate');
+
+  if (!nameplate) {
+    throw new Error('Resident nameplate was not created.');
+  }
 
   nameplate.textContent = agent.name;
+
   avatar.addEventListener('click', () => {
     selectedAgentId = agent.id;
     updateSelection();
@@ -255,31 +329,50 @@ function ensureAvatar(
 
   agentsLayer.append(avatar);
   avatarElements.set(agent.id, avatar);
+
   return avatar;
 }
 
 function updateSelection(): void {
-  if (!lastFrame) return;
+  if (!lastFrame) {
+    return;
+  }
 
   const agents = Object.values(lastFrame.world.agents);
-  const selected =
-    agents.find((agent) => agent.id === selectedAgentId) ?? agents[0];
 
-  if (!selected) return;
+  const selected =
+    agents.find((agent) => agent.id === selectedAgentId) ??
+    agents[0];
+
+  if (!selected) {
+    return;
+  }
 
   selectedAgentId = selected.id;
 
   for (const [agentId, avatar] of avatarElements) {
-    avatar.classList.toggle('is-selected', agentId === selected.id);
-    avatar.setAttribute('aria-pressed', String(agentId === selected.id));
+    avatar.classList.toggle(
+      'is-selected',
+      agentId === selected.id,
+    );
+
+    avatar.setAttribute(
+      'aria-pressed',
+      String(agentId === selected.id),
+    );
   }
 
   residentName.textContent = selected.name;
+
   residentActivity.textContent = selected.lastAction
     ? actionLabels[selected.lastAction]
     : 'осматривается';
-  residentPlace.textContent = displayPlaceName(lastFrame.world, selected);
-  residentGoal.textContent = goalLabels[selected.goal.kind];
+
+  residentPlace.textContent =
+    displayPlaceName(lastFrame.world, selected);
+
+  residentGoal.textContent =
+    goalLabels[selected.goal.kind];
 
   const setNeed = (
     value: number,
@@ -287,17 +380,25 @@ function updateSelection(): void {
     barElement: HTMLElement,
   ) => {
     const percent = Math.round(value * 100);
+
     valueElement.textContent = `${percent}%`;
     barElement.style.width = `${percent}%`;
   };
 
   setNeed(selected.energy, energyValue, energyBar);
   setNeed(selected.stress, stressValue, stressBar);
-  setNeed(selected.resources, personalResourceValue, personalResourceBar);
+
+  setNeed(
+    selected.resources,
+    personalResourceValue,
+    personalResourceBar,
+  );
 }
 
-function announceDisturbance(tick: number): void {
-  const disturbance = disturbances.find((item) => item.tick === tick);
+function announceDisturbance(
+  frame: Readonly<LiveWorldFrame>,
+): void {
+  const disturbance = frame.disturbances[0];
 
   if (!disturbance) {
     disturbanceBanner.classList.remove('is-visible');
@@ -314,79 +415,121 @@ function announceDisturbance(tick: number): void {
   disturbanceBanner.classList.add('is-visible');
 }
 
-function updateWorld(frame: Readonly<ExperimentTickFrame>): void {
+function updateWorld(
+  frame: Readonly<LiveWorldFrame>,
+): void {
   lastFrame = structuredClone(frame);
+
   renderPlaces(frame.world);
 
   const agents = Object.values(frame.world.agents);
-  if (!selectedAgentId) selectedAgentId = agents[0]?.id;
+
+  if (!selectedAgentId) {
+    selectedAgentId = agents[0]?.id;
+  }
 
   agents.forEach((agent, index) => {
     const avatar = ensureAvatar(agent, index);
     const base = pointForPlace(agent.locationId, index);
+
     const isMoving =
-      agent.lastAction !== 'rest' && agent.lastAction !== 'reflect';
+      agent.lastAction !== 'rest' &&
+      agent.lastAction !== 'reflect';
+
     const stride = isMoving ? 3.8 : 1.1;
     const phase = frame.tick * 1.15 + index * 1.7;
-    const x = clampMapCoordinate(base.x + Math.sin(phase) * stride);
-    const y = clampMapCoordinate(base.y + Math.cos(phase * 0.83) * stride);
+
+    const x = clampMapCoordinate(
+      base.x + Math.sin(phase) * stride,
+    );
+
+    const y = clampMapCoordinate(
+      base.y + Math.cos(phase * 0.83) * stride,
+    );
 
     avatar.style.left = `${x}%`;
     avatar.style.top = `${y}%`;
+
     avatar.classList.toggle('is-moving', isMoving);
-    avatar.classList.toggle('is-resting', agent.lastAction === 'rest');
+
+    avatar.classList.toggle(
+      'is-resting',
+      agent.lastAction === 'rest',
+    );
+
     avatar.setAttribute(
       'aria-label',
       `${agent.name}: ${
-        agent.lastAction ? actionLabels[agent.lastAction] : 'осматривается'
+        agent.lastAction
+          ? actionLabels[agent.lastAction]
+          : 'осматривается'
       }, ${displayPlaceName(frame.world, agent)}`,
     );
   });
 
-  if (frame.evaluation) evaluationCount += 1;
-  if (frame.intervention?.executed) executedInterventionCount += 1;
-
   tickValue.textContent = String(frame.tick);
   populationValue.textContent = String(agents.length);
+
   resourceValue.textContent =
-    `${Math.round(frame.world.environment.resourcePool * 100)}%`;
-  evaluationValue.textContent = String(evaluationCount);
-  interventionValue.textContent = String(executedInterventionCount);
+    `${Math.round(
+      frame.world.environment.resourcePool * 100,
+    )}%`;
+
+  evaluationValue.textContent =
+    String(frame.evaluationCount);
+
+  interventionValue.textContent =
+    String(frame.executedInterventionCount);
+
   liveLabel.textContent = 'МИР ЖИВЁТ';
   liveIndicator.classList.add('is-live');
 
-  announceDisturbance(frame.tick);
+  if (frame.intervention?.executed) {
+    cardinalMessage.textContent =
+      'Cardinal выполнила подтверждённое вмешательство через независимый gateway.';
+  }
+
+  announceDisturbance(frame);
   updateSelection();
 }
 
-const result = await runExperiment(
-  'intervene',
-  'ainkrad-browser-world',
-  BROWSER_TICKS,
-  disturbances,
+type LiveWorldWorkerMessage =
+  | {
+      type: 'frame';
+      frame: LiveWorldFrame;
+    }
+  | {
+      type: 'fatal';
+      message: string;
+    };
+
+const liveWorldWorker = new Worker(
+  new URL('./liveWorld.worker.ts', import.meta.url),
   {
-    onTick: async (frame) => {
-      updateWorld(frame);
-      await sleep(TICK_DELAY_MS);
-    },
+    type: 'module',
   },
 );
 
-lastFrame = {
-  tick: result.finalWorld.now,
-  world: result.finalWorld,
-  metrics: result.finalMetrics,
-};
+liveWorldWorker.addEventListener(
+  'message',
+  (
+    event: MessageEvent<LiveWorldWorkerMessage>,
+  ) => {
+    if (event.data.type === 'frame') {
+      updateWorld(event.data.frame);
+      return;
+    }
 
-evaluationValue.textContent = String(result.evaluationCount);
-interventionValue.textContent = String(result.executedInterventionCount);
+    liveLabel.textContent = 'ОШИБКА МИРА';
+    liveIndicator.classList.remove('is-live');
+    cardinalMessage.textContent = event.data.message;
+  },
+);
 
-cardinalMessage.textContent = result.executedInterventionCount
-  ? `Cardinal выполнила ${result.executedInterventionCount} подтверждённых вмешательств через независимый gateway.`
-  : 'Мир справился своими силами. Cardinal наблюдала и не вмешивалась без достаточного основания.';
+liveWorldWorker.addEventListener('error', () => {
+  liveLabel.textContent = 'ОШИБКА МИРА';
+  liveIndicator.classList.remove('is-live');
 
-liveLabel.textContent = 'ЦИКЛ ЗАВЕРШЁН';
-liveIndicator.classList.remove('is-live');
-disturbanceBanner.classList.remove('is-visible');
-
-updateSelection();
+  cardinalMessage.textContent =
+    'Фоновый цикл мира остановился.';
+});
