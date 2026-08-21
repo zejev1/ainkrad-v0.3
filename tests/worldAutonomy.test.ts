@@ -127,6 +127,38 @@ describe('Autonomous society depth', () => {
     ).toBe(true);
   });
 
+  it('can choose a reasonable alternative instead of always obeying the top score', async () => {
+    const store = new InMemoryWorldStore();
+    const world = await WorldEngine.create({
+      worldId: 'choice-space',
+      seed: 'choice-space-seed',
+      store,
+      startTime: 0,
+    });
+
+    for (let tick = 1; tick <= 100; tick += 1) {
+      await world.step(tick);
+    }
+
+    const decisions = (await store.history('choice-space')).filter(
+      (event) => typeof event.payload.chosenAction === 'string',
+    );
+    expect(decisions.length).toBeGreaterThan(100);
+    expect(
+      decisions.some(
+        (event) =>
+          Number(event.payload.consideredActionCount) > 1 &&
+          Number(event.payload.choiceOpenness) > 0,
+      ),
+    ).toBe(true);
+    expect(
+      decisions.some(
+        (event) =>
+          event.payload.chosenAction !== event.payload.dominantAction,
+      ),
+    ).toBe(true);
+  });
+
   it('does not give one array position permanent first-mover priority', async () => {
     const store = new InMemoryWorldStore();
     const world = await WorldEngine.create({

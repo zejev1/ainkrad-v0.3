@@ -20,7 +20,9 @@ export * from './core/stableJson';
 export * from './experiment/ExperimentRunner';
 
 export * from './persistence/AppendOnlyLog';
+export * from './persistence/IndexedDbPersistence';
 
+export * from './runtime/LiveWorldRuntime';
 export * from './runtime/WorldRuntime';
 export * from './runtime/inputBus/InputBus';
 export * from './runtime/inputBus/InMemoryInputBus';

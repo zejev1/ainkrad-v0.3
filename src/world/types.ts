@@ -42,6 +42,14 @@ export interface AgentGoalState {
   since: number;
 }
 
+export interface AgentDecisionState {
+  action: AgentActionKind;
+  dominantAction: AgentActionKind;
+  consideredActionCount: number;
+  openness: number;
+  chosenAt: number;
+}
+
 export interface AgentState {
   id: string;
   name: string;
@@ -61,6 +69,7 @@ export interface AgentState {
 
   lastMeaningfulEventAt: number;
   lastAction?: AgentActionKind;
+  lastDecision?: AgentDecisionState;
 }
 
 export interface RelationshipState {

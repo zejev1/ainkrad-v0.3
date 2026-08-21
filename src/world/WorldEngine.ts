@@ -18,7 +18,7 @@ import type {
   WorldState,
 } from './types';
 
-export const WORLD_RULES_VERSION = 'ainkrad-world-rules-0.3.7';
+export const WORLD_RULES_VERSION = 'ainkrad-world-rules-0.3.8';
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const clampSigned = (value: number) => Math.max(-1, Math.min(1, value));
@@ -189,6 +189,41 @@ function assertWorldState(value: unknown): asserts value is WorldState {
       !ACTION_KINDS.includes(agent.lastAction as AgentActionKind)
     ) {
       throw new Error(`Agent ${agentId}.lastAction is invalid.`);
+    }
+
+    if (agent.lastDecision !== undefined) {
+      const decision = asRecord(
+        agent.lastDecision,
+        `Agent ${agentId}.lastDecision`,
+      );
+      if (!ACTION_KINDS.includes(decision.action as AgentActionKind)) {
+        throw new Error(`Agent ${agentId}.lastDecision.action is invalid.`);
+      }
+      if (!ACTION_KINDS.includes(decision.dominantAction as AgentActionKind)) {
+        throw new Error(
+          `Agent ${agentId}.lastDecision.dominantAction is invalid.`,
+        );
+      }
+      const consideredActionCount = nonNegativeInteger(
+        decision.consideredActionCount,
+        `Agent ${agentId}.lastDecision.consideredActionCount`,
+      );
+      if (
+        consideredActionCount < 1 ||
+        consideredActionCount > ACTION_KINDS.length
+      ) {
+        throw new Error(
+          `Agent ${agentId}.lastDecision.consideredActionCount is out of range.`,
+        );
+      }
+      unitNumber(
+        decision.openness,
+        `Agent ${agentId}.lastDecision.openness`,
+      );
+      finiteNumber(
+        decision.chosenAt,
+        `Agent ${agentId}.lastDecision.chosenAt`,
+      );
     }
   }
 
@@ -790,7 +825,15 @@ export class WorldEngine {
     this.applyPassiveNeeds(agent, environment);
     this.updateGoal(agent, now);
 
-    const action = this.chooseAction(agent, allAgents, environment);
+    const decision = this.chooseAction(agent, allAgents, environment);
+    agent.lastDecision = {
+      action: decision.action,
+      dominantAction: decision.dominantAction,
+      consideredActionCount: decision.consideredActionCount,
+      openness: decision.openness,
+      chosenAt: now,
+    };
+    const action = decision.action;
     switch (action) {
       case 'rest':
         this.performRest(agent, now);
@@ -920,7 +963,12 @@ export class WorldEngine {
     agent: AgentState,
     allAgents: AgentState[],
     environment: WorldEnvironment,
-  ): AgentActionKind {
+  ): {
+    action: AgentActionKind;
+    dominantAction: AgentActionKind;
+    consideredActionCount: number;
+    openness: number;
+  } {
     const helpTarget = this.chooseHelpTarget(agent, allAgents);
     const socialAvailable = allAgents.some((other) => other.id !== agent.id);
     const goalBoost = (kind: AgentGoalKind) => (agent.goal.kind === kind ? 0.24 : 0);
@@ -991,26 +1039,103 @@ export class WorldEngine {
       },
     ];
 
-    // Small seeded noise preserves individuality and exploration without turning
-    // choice into a fixed routine. The RNG state is persisted with the world.
+    // Repetition remains possible, but curiosity makes an unchanged routine
+    // less attractive while diligence can reinforce productive habits.
+    if (agent.lastAction) {
+      const repeated = scores.find(
+        (item) => item.action === agent.lastAction,
+      );
+      if (repeated) {
+        const habitStrength =
+          repeated.action === 'work' || repeated.action === 'gather'
+            ? agent.personality.diligence
+            : repeated.action === 'socialize' || repeated.action === 'help'
+              ? agent.personality.sociability
+              : agent.personality.resilience;
+        repeated.score +=
+          habitStrength * 0.08 - agent.personality.curiosity * 0.13;
+      }
+    }
+
+    // Seeded noise and weighted selection preserve reproducibility without
+    // reducing ordinary choice to a deterministic highest-score instruction.
     for (const item of scores) {
-      item.score += this.rng.between(-0.07, 0.07);
+      item.score += this.rng.between(-0.045, 0.045);
     }
 
     // Severe physiological pressure is a constraint, not a central script.
     if (agent.energy < 0.12) {
-      return 'rest';
+      return {
+        action: 'rest',
+        dominantAction: 'rest',
+        consideredActionCount: 1,
+        openness: 0,
+      };
     }
     if (agent.resources < 0.08) {
       const gather = scores.find((item) => item.action === 'gather')!;
       const work = scores.find((item) => item.action === 'work')!;
-      return gather.score >= work.score && this.state.environment.resourcePool > 0.03
-        ? 'gather'
-        : 'work';
+      const action =
+        gather.score >= work.score &&
+        this.state.environment.resourcePool > 0.03
+          ? 'gather'
+          : 'work';
+      return {
+        action,
+        dominantAction: action,
+        consideredActionCount: 2,
+        openness: 0.08,
+      };
     }
 
     scores.sort((a, b) => b.score - a.score);
-    return scores[0].action;
+    const dominantAction = scores[0].action;
+    const choiceWindow =
+      0.32 +
+      agent.personality.curiosity * 0.2 +
+      agent.personality.riskTolerance * 0.1;
+    const candidates = scores.filter(
+      (item) =>
+        item.score >= scores[0].score - choiceWindow &&
+        item.score > -0.25,
+    );
+    const temperature =
+      0.1 +
+      agent.personality.curiosity * 0.1 +
+      agent.personality.riskTolerance * 0.045;
+    const weights = candidates.map((item) =>
+      Math.exp((item.score - scores[0].score) / temperature),
+    );
+    const total = weights.reduce((sum, weight) => sum + weight, 0);
+    let roll = this.rng.next() * total;
+    let selected = candidates[candidates.length - 1];
+
+    for (let index = 0; index < candidates.length; index += 1) {
+      roll -= weights[index];
+      if (roll <= 0) {
+        selected = candidates[index];
+        break;
+      }
+    }
+
+    const probabilities = weights.map((weight) => weight / total);
+    const entropy = -probabilities.reduce(
+      (sum, probability) =>
+        sum +
+        (probability > 0 ? probability * Math.log(probability) : 0),
+      0,
+    );
+    const openness =
+      candidates.length > 1
+        ? clamp01(entropy / Math.log(candidates.length))
+        : 0;
+
+    return {
+      action: selected.action,
+      dominantAction,
+      consideredActionCount: candidates.length,
+      openness,
+    };
   }
 
   private performRest(agent: AgentState, now: number): void {
@@ -1480,6 +1605,22 @@ export class WorldEngine {
     kind: string,
     payload: Record<string, string | number | boolean | null>,
   ): void {
+    const decisionEvidence: Record<
+      string,
+      string | number | boolean | null
+    > = {};
+    if (
+      kind !== 'agent.goal.changed' &&
+      agent.lastDecision?.chosenAt === now
+    ) {
+      decisionEvidence.chosenAction = agent.lastDecision.action;
+      decisionEvidence.dominantAction =
+        agent.lastDecision.dominantAction;
+      decisionEvidence.consideredActionCount =
+        agent.lastDecision.consideredActionCount;
+      decisionEvidence.choiceOpenness = agent.lastDecision.openness;
+    }
+
     this.stageEvent({
       eventId: this.nextId('agent-event'),
       worldId: this.state.id,
@@ -1488,6 +1629,7 @@ export class WorldEngine {
       occurredAt: now,
       payload: {
         agentId: agent.id,
+        ...decisionEvidence,
         ...payload,
       },
     });

@@ -19,6 +19,23 @@ A persistent `WorldStore.commit()` must save those pieces atomically, or impleme
 
 The engine does not adopt its working mutation until the commit succeeds.
 
+## Browser adapter
+
+The v0.3.8 live page uses IndexedDB as a concrete `WorldStore` adapter. Its world commit is one read-write transaction across:
+
+- the current world projection;
+- the stable operation record;
+- append-only world events;
+- append-only resident memories.
+
+The transaction checks the current per-world revision and all event/memory identities before writing. A conflict aborts the whole transaction; the engine cannot expose a new projection without its evidence.
+
+Cardinal research and independent simulation-gateway records use indexed append-only stream entries with a compare-and-append head. Records are not rewritten as one growing array. Recreating the live runtime reconstructs evaluation counts, intervention counts, cooldown and pending recovery from these streams.
+
+Multiple tabs must not become independent writers over one browser-local world. The live worker uses an exclusive Web Lock when supported and broadcasts committed frames to waiting tabs. The storage revision check remains the final protection for browsers without that lock.
+
+IndexedDB provides durable continuity for the same browser profile and origin. It does not make the browser an always-on service. Closing every page stops execution; clearing site data removes the local database. A future 24/7 runtime must implement the same ports on an independent host without giving Cardinal control of the runtime or external gateway.
+
 ## Per-world revision, not a global hot counter
 
 `WorldState.revision` is a compare-and-swap boundary for one world.

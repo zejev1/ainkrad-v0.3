@@ -31,11 +31,11 @@ Every reused component must answer:
 - Retried scheduled/intervention operations without stable idempotency IDs.
 - In-process real-world executors or credentials reachable by Cardinal.
 
-## Database adapters come later
+## Server-grade database adapters come later
 
-v0.3 starts with domain contracts and in-memory reference implementations.
+v0.3 starts with domain contracts, in-memory reference implementations and a browser-local IndexedDB adapter for the live demo.
 
-Ainkrad v0.3 does not use Convex. Any future persistent storage is chosen separately and must remain an adapter behind the domain contracts.
+Ainkrad v0.3 does not use Convex. Any future always-on/server storage is chosen separately and must remain an adapter behind the domain contracts.
 
 The research model must not depend on a vendor-specific bottleneck.
 
@@ -66,3 +66,11 @@ A change to Cardinal hypothesis/persistence semantics is an experiment interpret
 World rules `ainkrad-world-rules-0.3.7` add persistent places and required nested NPC personality, needs, skills, goals, home and location state. Older snapshots must not be relabeled and opened as if those fields always existed. They require an explicit migration or a fresh experimental world.
 
 Sensor `ainkrad-world-sensors-0.3.7` also changes the meaning of social isolation from "has a relationship projection" to recent autonomous social contact. Results produced by the older metric remain historical evidence, but they are not semantically interchangeable with the new sensor definition.
+
+## Audit 8: choice and browser-continuity boundary
+
+World rules `ainkrad-world-rules-0.3.8` change ordinary action selection from strict highest-score execution to seeded weighted selection among bounded reasonable alternatives. An existing v0.3.7 snapshot must not be relabeled: doing so would mix histories produced by different decision semantics.
+
+The new optional `lastDecision` projection records the chosen action, dominant alternative, considered-action count and openness. Absence at initial world creation is valid; once a tick commits it becomes ordinary persisted history.
+
+The first IndexedDB browser database starts a fresh v0.3.8 local world. Future changes to IndexedDB object stores require a database-version upgrade. Future changes to world semantics still require an explicit world migration or a new world even when the physical database schema itself remains readable.

@@ -15,11 +15,16 @@ import type {
   CardinalMode,
   InterventionRecord,
 } from '../cardinal/types';
-import { InMemoryAppendOnlyLog } from '../persistence/AppendOnlyLog';
+import {
+  InMemoryAppendOnlyLog,
+  type AppendOnlyLog,
+} from '../persistence/AppendOnlyLog';
 import type { CardinalMetrics } from '../sensors/types';
 import { WORLD_SENSOR_VERSION, WorldSensors } from '../sensors/WorldSensors';
 import { InMemoryWorldStore } from '../world/InMemoryWorldStore';
 import { WorldEngine } from '../world/WorldEngine';
+import type { WorldEvent } from '../world/events';
+import type { WorldStore } from '../world/persistence';
 import type { WorldDisturbanceKind, WorldState } from '../world/types';
 
 export interface LiveWorldDisturbance {
@@ -35,6 +40,15 @@ export interface LiveWorldRuntimeOptions {
   seed: string;
   worldId?: string;
   disturbances?: readonly LiveWorldDisturbance[];
+  store?: WorldStore;
+  controlLog?: AppendOnlyLog;
+  durable?: boolean;
+}
+
+export interface LiveWorldContinuity {
+  durable: boolean;
+  resumed: boolean;
+  resumedFromTick: number;
 }
 
 export interface LiveWorldFrame {
@@ -46,6 +60,8 @@ export interface LiveWorldFrame {
   intervention?: InterventionRecord;
   evaluationCount: number;
   executedInterventionCount: number;
+  recentEvents: WorldEvent[];
+  continuity: LiveWorldContinuity;
 }
 
 /**
@@ -57,13 +73,11 @@ export interface LiveWorldFrame {
  */
 export class LiveWorldRuntime {
   private currentTick: number;
-  private evaluationCount = 0;
-  private executedInterventionCount = 0;
 
   private constructor(
     private readonly mode: CardinalMode,
     private readonly disturbances: readonly LiveWorldDisturbance[],
-    private readonly store: InMemoryWorldStore,
+    private readonly store: WorldStore,
     private readonly world: WorldEngine,
     private readonly sensors: WorldSensors,
     private readonly auditorSensors: WorldSensors,
@@ -71,6 +85,9 @@ export class LiveWorldRuntime {
     private readonly cardinal: CardinalRuntime,
     private readonly gateway: IndependentInterventionGateway,
     private readonly auditor: CardinalAuditor,
+    private evaluationCount: number,
+    private executedInterventionCount: number,
+    private readonly continuity: LiveWorldContinuity,
   ) {
     this.currentTick = world.snapshot().now;
   }
@@ -78,17 +95,21 @@ export class LiveWorldRuntime {
   static async create(
     options: LiveWorldRuntimeOptions,
   ): Promise<LiveWorldRuntime> {
-    const store = new InMemoryWorldStore();
-    const world = await WorldEngine.create({
-      worldId: options.worldId ?? 'live_world',
-      seed: options.seed,
-      store,
-      startTime: 0,
-    });
+    const worldId = options.worldId ?? 'live_world';
+    const store = options.store ?? new InMemoryWorldStore();
+    const existing = await store.loadWorld(worldId);
+    const world = existing
+      ? await WorldEngine.open({ worldId, store })
+      : await WorldEngine.create({
+          worldId,
+          seed: options.seed,
+          store,
+          startTime: 0,
+        });
     const sensors = new WorldSensors(store);
     const auditorSensors = new WorldSensors(store);
     const observer = new CardinalObserver(sensors);
-    const controlLog = new InMemoryAppendOnlyLog();
+    const controlLog = options.controlLog ?? new InMemoryAppendOnlyLog();
     const journal = new LogBackedCardinalJournal(controlLog);
     const cardinal = new CardinalRuntime(
       observer,
@@ -99,6 +120,13 @@ export class LiveWorldRuntime {
       ledger: new LogBackedInterventionGatewayLedger(controlLog),
       policyVersion: INTERVENTION_GATEWAY_POLICY_VERSION,
     });
+
+    await reconcileGatewayJournal(worldId, gateway, journal);
+
+    const [evaluations, interventions] = await Promise.all([
+      journal.evaluations(worldId),
+      journal.interventions(worldId),
+    ]);
 
     return new LiveWorldRuntime(
       options.mode ?? 'intervene',
@@ -111,7 +139,28 @@ export class LiveWorldRuntime {
       cardinal,
       gateway,
       new CardinalAuditor(),
+      evaluations.length,
+      interventions.filter((intervention) => intervention.executed).length,
+      {
+        durable: options.durable ?? false,
+        resumed: existing !== undefined,
+        resumedFromTick: existing?.now ?? 0,
+      },
     );
+  }
+
+  async synchronize(): Promise<void> {
+    await this.world.reload();
+    this.currentTick = this.world.snapshot().now;
+
+    const [evaluations, interventions] = await Promise.all([
+      this.journal.evaluations(this.world.snapshot().id),
+      this.journal.interventions(this.world.snapshot().id),
+    ]);
+    this.evaluationCount = evaluations.length;
+    this.executedInterventionCount = interventions.filter(
+      (intervention) => intervention.executed,
+    ).length;
   }
 
   async tick(): Promise<LiveWorldFrame> {
@@ -195,6 +244,12 @@ export class LiveWorldRuntime {
       tick,
     );
 
+    const recentEvents = await this.store.recent(
+      this.world.snapshot().id,
+      10,
+      tick,
+    );
+
     this.currentTick = tick;
 
     return structuredClone({
@@ -206,6 +261,8 @@ export class LiveWorldRuntime {
       intervention,
       evaluationCount: this.evaluationCount,
       executedInterventionCount: this.executedInterventionCount,
+      recentEvents,
+      continuity: this.continuity,
     });
   }
 

@@ -2,7 +2,7 @@
 
 Ainkrad is not a Cardinal demonstration with decorative NPCs. The world must be capable of producing its own successes, failures, adaptations and social structures without Cardinal.
 
-This document defines the v0.3.7 world layer that Cardinal is allowed to observe.
+This document defines the v0.3.8 world layer that Cardinal is allowed to observe.
 
 ## Causal ownership
 
@@ -42,7 +42,11 @@ Agents compare several locally available actions:
 - explore;
 - reflect.
 
-Utility comes from current needs, personality, skills, goal, relationships, environmental conditions and a small seeded exploration term. Very low energy or resources can impose survival constraints, but these constraints do not permanently replace autonomous choice.
+Utility comes from current needs, personality, skills, goal, relationships and environmental conditions. Ordinary action selection does not mechanically execute the highest score. The agent forms a bounded set of reasonable alternatives, converts their relative utilities into seeded weights and chooses within that set. Curiosity and risk tolerance widen the choice window; persisted seeded randomness keeps the result reproducible.
+
+The latest decision persists the chosen action, the strongest-scoring action, the number of considered alternatives and normalized openness of the choice distribution. Action events carry the same concise evidence. This does not claim human consciousness; it makes the simulation's degree of behavioral constraint inspectable instead of hiding it behind animation.
+
+Very low energy or resources can impose survival constraints, but these constraints do not permanently replace autonomous choice. Repetition remains possible: diligence can reinforce productive habits while curiosity makes an unchanged routine less attractive.
 
 The processing order of agents is shuffled by the persisted seeded RNG each tick. Array position must not grant `agent_1` a permanent first-mover privilege.
 
@@ -106,6 +110,10 @@ Changing this metric meaning changes the sensor version.
 World RNG state, event sequence, agent state, places and relationships are persisted in the world projection. Reopening the same committed world must preserve the exact deterministic future.
 
 Same seed + same world rules + same disturbances must reproduce the same autonomous state and history. Different seeds are allowed to generate different societies.
+
+The live browser adapter stores the world projection, events, memories and operation records in one IndexedDB database. Cardinal research evidence and the simulation gateway ledger use separate append-only streams in that database. Reopening the same origin resumes both the society and its governance evidence rather than rebuilding either from zero.
+
+Browser persistence is local to that browser profile and origin. Clearing site data is an explicit reset. The worker advances the world while at least one page is running; browser-local persistence alone is not an always-on server.
 
 ## Persisted-state validation
 

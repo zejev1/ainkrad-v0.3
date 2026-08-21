@@ -1,4 +1,4 @@
-Ainkrad v0.3 current files
+Ainkrad v0.3.8 current files
 
 Files:
 - .github/workflows/ci.yml
@@ -13,10 +13,13 @@ Files:
 - docs/MIGRATION_RULES.md
 - docs/PERSISTENCE_CONTRACT.md
 - docs/WORLD_AUTONOMY.md
+- index.html
 - package.json
 - src/boundary/ExternalGateway.ts
-- src/cardinal/CardinalAuditor.ts
+- src/browser.css
+- src/browser.ts
 - src/cardinal/CardinalAuditContext.ts
+- src/cardinal/CardinalAuditor.ts
 - src/cardinal/CardinalCore.ts
 - src/cardinal/CardinalJournal.ts
 - src/cardinal/CardinalObserver.ts
@@ -35,12 +38,15 @@ Files:
 - src/experiment/ExperimentRunner.ts
 - src/index.ts
 - src/persistence/AppendOnlyLog.ts
+- src/persistence/IndexedDbPersistence.ts
+- src/runtime/LiveWorldRuntime.ts
 - src/runtime/WorldRuntime.ts
 - src/runtime/inputBus/InMemoryInputBus.ts
 - src/runtime/inputBus/InputBus.ts
 - src/runtime/inputBus/createEnvelope.ts
 - src/runtime/inputBus/createEventId.ts
 - src/runtime/inputBus/types.ts
+- src/runtime/liveWorld.worker.ts
 - src/runtime/scheduler/types.ts
 - src/sensors/WorldSensors.ts
 - src/sensors/types.ts
@@ -63,6 +69,7 @@ Files:
 - tests/history.test.ts
 - tests/inputBus.test.ts
 - tests/interventionGateway.test.ts
+- tests/liveWorldRuntime.test.ts
 - tests/logBackedJournal.test.ts
 - tests/memoryStore.test.ts
 - tests/modes.test.ts
@@ -73,3 +80,4 @@ Files:
 - tests/worldAutonomy.test.ts
 - tests/worldRuntime.test.ts
 - tsconfig.json
+- vercel.json

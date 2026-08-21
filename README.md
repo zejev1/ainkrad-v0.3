@@ -179,17 +179,27 @@ Cardinal comes later.
 
 ---
 
-## Autonomous World v0.3.7
+## Autonomous World v0.3.8
 
-Cardinal now has a more serious world to observe. NPCs persist personality, needs, skills, goals, homes and current locations. They choose among rest, gathering, productive work, social contact, helping, exploration and reflection from local utility rather than a fixed daily script. A small seeded exploration term preserves variation while keeping experiments reproducible.
+Cardinal now has a more serious world to observe. NPCs persist personality, needs, skills, goals, homes, current locations and their latest decision evidence. They choose among rest, gathering, productive work, social contact, helping, exploration and reflection rather than following a fixed daily script.
+
+Ordinary choice is no longer a strict highest-score command. Each resident forms a bounded set of reasonable alternatives and makes a seeded weighted choice inside that set. Curiosity and risk tolerance widen the choice space; needs, skills, relationships and personality still matter; emergencies can still constrain options. The chosen action, strongest alternative, number of considered actions and normalized choice openness are persisted as inspectable evidence. The persisted RNG keeps same-seed experiments reproducible.
 
 The control world has its own economy and recovery paths. Agents can work, gather, discover resources and voluntarily help each other. Resource, social and safety disturbances change conditions but do not issue commands to NPCs. Agent processing order is seeded and shuffled each tick so array position does not become a permanent privilege.
 
 Helping is a decision rather than an automatic reward for a positive conversation, and help can be rejected. Relationships and memories affect later social choices; interactions can improve or worsen the relationship. Skills develop through use and goals are persisted as inspectable current priorities.
 
-The first city geometry is deliberately structural: individual homes plus a common square, resource field, workshop, quiet space and outskirts. Visual appearance comes later; causal independence comes first.
+The browser map now renders individual homes, shared places, current occupancy, visible resident actions, a world-event feed and a day/night cycle. This display remains read-only: CSS animation and UI selection cannot write agent goals, actions, relationships or world state.
 
 The social-isolation sensor now measures recent autonomous contact rather than treating an old relationship row as proof of current connection. Because that changes metric meaning, the sensor definition has a new version. See `docs/WORLD_AUTONOMY.md`.
+
+### Browser continuity
+
+The live browser world uses IndexedDB instead of recreating an in-memory world on every page load. One atomic IndexedDB transaction stores the current world projection, operation identity, events and memories. Separate append-only IndexedDB streams preserve Cardinal evaluations, audits and independent gateway intent/final records.
+
+Reloading or reopening the same site in the same browser therefore resumes the committed tick, RNG state, residents, relationships, memories, Cardinal evidence and gateway cooldown/recovery state. Multiple tabs use one exclusive writer lock and mirror its frames so they do not silently fork the same local world.
+
+This is durable browser-local continuity, not a claim that JavaScript runs after the browser is fully closed. Clearing site data removes that local world. A truly 24/7 autonomous deployment still requires an independent always-on runtime; Cardinal must not receive control of that host or of the external gateway.
 
 ---
 
@@ -397,7 +407,7 @@ Stable operation IDs are required for transport inputs, scheduled disturbances a
 
 Exact retries remain recognizable even if the world has since advanced to a later logical time. A retry is identified before new-operation temporal guards are applied. Concurrent mutation calls on one engine are serialized, and read-only snapshots expose only committed state, never an in-flight working copy.
 
-A future persistent storage adapter must atomically commit the current-state change and the historical evidence for one logical world operation, or provide an equivalent recoverable commit protocol. In-memory behavior is a reference implementation, not permission to accept split-brain state/history in persistent storage.
+A persistent storage adapter must atomically commit the current-state change and the historical evidence for one logical world operation, or provide an equivalent recoverable commit protocol. The browser IndexedDB adapter implements this boundary in one transaction. In-memory behavior remains a reference implementation, not permission to accept split-brain state/history in another adapter.
 
 Cardinal evidence and gateway control state use independent append-only log contracts. These streams are scoped by world and evidence/control kind rather than one global hot sequence. Recreating a journal or gateway over the same durable log must recover exact IDs, cooldown, pending authorization intents and final records without fabricating duplicate evidence.
 
@@ -561,7 +571,8 @@ AINKRAD
 ├── Runtime
 │   ├── Input Bus
 │   ├── Scheduler Contracts
-│   └── World Runtime
+│   ├── World Runtime
+│   └── Live Worker / Browser Continuity
 │
 ├── World
 │   ├── Autonomous Agents
@@ -613,7 +624,7 @@ AINKRAD
 12. Cardinal Auditor.
 13. OFF / OBSERVER / INTERVENE controlled comparison.
 14. Long-running experiments.
-15. Database adapters and scaling.
+15. Server-grade database adapters and scaling.
 16. External boundary research.
 
 ---

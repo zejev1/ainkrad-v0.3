@@ -205,3 +205,18 @@ These rules convert failures from the previous implementation into tests and str
 158. OFF/OBSERVER equivalence must continue to hold after adding richer personalities, goals, skills, locations and social behavior.
 159. Simulation interventions may alter bounded environmental conditions but may not directly assign NPC actions, goals, skills or relationships.
 160. Richer world behavior must remain falsifiable: it is acceptable for a sufficiently capable control society to make Cardinal unnecessary.
+
+## Audit round 8 additions — durable live world
+
+161. Ordinary NPC choice is sampled from a bounded set of reasonable alternatives rather than always executing the maximum utility score.
+162. Choice sampling remains deterministic under the persisted seeded RNG; UI timing and Cardinal mode are not action-selection inputs.
+163. Curiosity and risk tolerance may widen ordinary choice, while survival emergencies may explicitly narrow it.
+164. The selected action, dominant alternative, considered-action count and normalized openness are persisted as concise decision evidence.
+165. Visual motion, action bubbles, selection panels and the event feed are read-only projections and cannot become agent-control capabilities.
+166. The live browser world persists projection, events, memories and operation identity in one atomic IndexedDB transaction.
+167. Cardinal research evidence and independent gateway recovery/cooldown evidence persist across browser runtime recreation.
+168. A page reload resumes the last committed logical tick and RNG state; it must not silently create a replacement society.
+169. Multiple same-origin tabs use one writer where Web Locks are available; revision checks remain authoritative when they are not.
+170. A waiting tab may mirror committed frames but may not become a second uncoordinated source of world decisions.
+171. Browser-local durability is not described as 24/7 execution: closing every page stops the worker, and clearing site data explicitly resets local state.
+172. Any future always-on world host remains architecturally separate from Cardinal and does not weaken the independent external-gateway boundary.
