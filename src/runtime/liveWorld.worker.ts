@@ -2,7 +2,7 @@ import {
   LiveWorldRuntime,
   type LiveWorldDisturbance,
   type LiveWorldFrame,
-} from './runtime/LiveWorldRuntime';
+} from './LiveWorldRuntime';
 
 const TICK_DELAY_MS = 550;
 
