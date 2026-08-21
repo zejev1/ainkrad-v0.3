@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CardinalAuditor } from '../src/cardinal/CardinalAuditor';
 import { CardinalCore } from '../src/cardinal/CardinalCore';
+import { deriveCardinalExperience } from '../src/cardinal/CardinalExperience';
 import type { SensorSnapshot } from '../src/sensors/types';
 
 const observation: SensorSnapshot = {
@@ -16,6 +17,9 @@ const observation: SensorSnapshot = {
     resourcePressure: 0.4,
     relationshipDiversity: 0.2,
     recoveryCapacity: 0.6,
+    exploredWorldRatio: 0,
+    wildlifePressure: 0,
+    ecologicalDiversity: 0,
     activeSignalCount: 0,
   },
   evidenceEventIds: ['event_1'],
@@ -112,6 +116,7 @@ describe('Cardinal Auditor autonomy reconstruction', () => {
       priorEvaluations: [],
       priorInterventions: [prior],
       priorOutcomes: [],
+      experience: deriveCardinalExperience([], []),
       fingerprint: 'research_for_audit',
     };
     const auditContext: CardinalAuditContext = {

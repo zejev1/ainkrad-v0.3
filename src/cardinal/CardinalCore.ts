@@ -1,6 +1,10 @@
 import { createStableId } from '../core/stableId';
 import type { CardinalMetrics, SensorSnapshot } from '../sensors/types';
 import {
+  advanceCardinalExperience,
+  deriveCardinalExperience,
+} from './CardinalExperience';
+import {
   CARDINAL_AUTONOMY_MAX_RECENT_INTERVENTIONS,
   CARDINAL_AUTONOMY_WINDOW,
   CARDINAL_RESEARCH_VERSION,
@@ -9,6 +13,7 @@ import {
 } from './CardinalResearch';
 import type {
   CardinalAutonomyAssessment,
+  CardinalCapability,
   CardinalDeferReason,
   CardinalEvaluation,
   CardinalMode,
@@ -19,7 +24,7 @@ import type {
   InterventionProposal,
 } from './types';
 
-export const CARDINAL_POLICY_VERSION = 'ainkrad-cardinal-policy-0.3.6';
+export const CARDINAL_POLICY_VERSION = 'ainkrad-cardinal-policy-0.3.9';
 export const DEFAULT_CARDINAL_PREDICTION_HORIZON = 4;
 export const MAX_CARDINAL_PREDICTION_HORIZON = 16;
 
@@ -39,6 +44,7 @@ interface CandidateDefinition {
   expectedOutcome: string;
   claim: string;
   falsifier: string;
+  requiredCapability?: CardinalCapability;
 }
 
 const CANDIDATES: readonly CandidateDefinition[] = [
@@ -97,6 +103,26 @@ const CANDIDATES: readonly CandidateDefinition[] = [
     falsifier:
       'The hypothesis weakens if stress or conflict pressure recedes through autonomous adaptation.',
   },
+  {
+    problemKind: 'ecosystem_fragility',
+    interventionKind: 'habitat_support',
+    severity: (metrics) => metrics.wildlifePressure - 0.58,
+    qualifies: (metrics) =>
+      metrics.exploredWorldRatio > 0 && metrics.wildlifePressure > 0.7,
+    critical: (metrics) =>
+      metrics.exploredWorldRatio > 0 && metrics.wildlifePressure > 0.94,
+    trendMetric: 'wildlifePressure',
+    predictionMetric: 'wildlifePressure',
+    reason:
+      'Wildlife populations are depleted across discovered habitats.',
+    expectedOutcome:
+      'Temporarily improve habitat recovery while residents remain free to hunt, abstain or adapt.',
+    claim:
+      'The discovered ecosystem is losing wildlife faster than its own recovery cycle restores it.',
+    falsifier:
+      'The hypothesis weakens if wildlife pressure falls through natural recovery or changed resident behavior.',
+    requiredCapability: 'habitat_support_planning',
+  },
 ];
 
 function trendFromDelta(delta: number): 'rising' | 'stable' | 'falling' {
@@ -124,6 +150,11 @@ export class CardinalCore {
         `Cardinal research version ${research.researchVersion} is incompatible with ${CARDINAL_RESEARCH_VERSION}.`,
       );
     }
+
+    const experience = advanceCardinalExperience(
+      research.experience ?? deriveCardinalExperience([], []),
+      observation.metrics,
+    );
 
     const qualified = CANDIDATES
       .filter((candidate) => candidate.qualifies(observation.metrics))
@@ -170,9 +201,28 @@ export class CardinalCore {
         `autonomy_budget=${autonomyAssessment.budgetStatus}`,
         `recent_executed_interventions=${autonomyAssessment.recentExecutedInterventionIds.length}`,
         `same_kind_in_progress=${autonomyAssessment.activeOrUnresolvedSameKindIds.length}`,
+        `cardinal_level=${experience.level}`,
+        `cardinal_experience=${experience.totalExperience}`,
       );
 
-      if (autonomyAssessment.activeOrUnresolvedSameKindIds.length > 0) {
+      const capabilityReady =
+        !selected.candidate.requiredCapability ||
+        experience.capabilities.includes(
+          selected.candidate.requiredCapability,
+        );
+      if (selected.candidate.requiredCapability) {
+        reasoningFactors.push(
+          `required_capability=${selected.candidate.requiredCapability}`,
+          `capability_ready=${capabilityReady}`,
+        );
+      }
+
+      if (!capabilityReady) {
+        decision = 'defer';
+        deferReason = 'capability_not_ready';
+        rationale =
+          `${selected.candidate.reason} Cardinal has not yet accumulated enough independent ecosystem observations to plan this class of intervention.`;
+      } else if (autonomyAssessment.activeOrUnresolvedSameKindIds.length > 0) {
         decision = 'defer';
         deferReason = 'experiment_in_progress';
         rationale =
@@ -219,6 +269,7 @@ export class CardinalCore {
       decision,
       deferReason,
       autonomyAssessment,
+      experience,
     });
 
     const evaluation: CardinalEvaluation = {
@@ -240,6 +291,7 @@ export class CardinalCore {
       autonomyAssessment,
       rationale,
       reasoningFactors,
+      experience,
       hypotheticalOnly: mode === 'observer',
     };
 

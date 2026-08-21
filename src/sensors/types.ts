@@ -6,6 +6,9 @@ export interface CardinalMetrics {
   resourcePressure: number;
   relationshipDiversity: number;
   recoveryCapacity: number;
+  exploredWorldRatio: number;
+  wildlifePressure: number;
+  ecologicalDiversity: number;
   activeSignalCount: number;
 }
 

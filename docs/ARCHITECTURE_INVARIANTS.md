@@ -220,3 +220,22 @@ These rules convert failures from the previous implementation into tests and str
 170. A waiting tab may mirror committed frames but may not become a second uncoordinated source of world decisions.
 171. Browser-local durability is not described as 24/7 execution: closing every page stops the worker, and clearing site data explicitly resets local state.
 172. Any future always-on world host remains architecturally separate from Cardinal and does not weaken the independent external-gateway boundary.
+
+## Audit round 9 additions — growing world and learned Cardinal
+
+173. Natural territory is persistent world state and is revealed only by accumulated resident exploration, never by a Cardinal command or a UI animation.
+174. Region discovery proceeds through an explicit staged plan and atomically commits the place, wildlife population and append-only discovery evidence.
+175. Meadow, forest and sea-shore discovery is caused by resident action; discovery events identify the resident source.
+176. Wildlife population, carrying capacity, recovery rate, habitat, alertness and last-change time are validated persisted state.
+177. Wildlife has an endogenous recovery path in every Cardinal mode, including recovery from local depletion.
+178. Hunting is a fallible resident choice influenced by resident skill and world conditions; Cardinal cannot select the hunter or target.
+179. Successful hunting changes resources, skill and wildlife population together in one world tick commit; failed hunting remains evidence and does not remove an animal.
+180. Walking and nature relaxation remain resident-selected alternatives rather than imposed routines.
+181. Ecological sensors are read-only projections of committed places and wildlife and carry a new sensor version.
+182. Cardinal experience is deterministically reconstructed from append-only evaluations and outcomes; Cardinal cannot directly increment or rewrite its own level.
+183. Capability unlock thresholds are policy-versioned, explicit and auditable.
+184. Cardinal capability growth may expand observation and bounded environmental proposals but never adds control of resident cognition, goals, actions, memories, skills or relationships.
+185. Habitat support is a temporary bounded environmental effect that requires the learned capability, independent audit and independent gateway execution.
+186. Habitat support supplements but does not replace the world's endogenous wildlife recovery.
+187. The `0.3.8 -> 0.3.9` migration preserves the existing society, logical time, RNG state and historical evidence and commits as an idempotent operation.
+188. A deployment containing v0.3.9 must migrate the browser-local world instead of silently replacing it with a new society.

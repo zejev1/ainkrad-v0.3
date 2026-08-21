@@ -2,7 +2,7 @@
 
 Ainkrad is not a Cardinal demonstration with decorative NPCs. The world must be capable of producing its own successes, failures, adaptations and social structures without Cardinal.
 
-This document defines the v0.3.8 world layer that Cardinal is allowed to observe.
+This document defines the v0.3.9 world layer that Cardinal is allowed to observe.
 
 ## Causal ownership
 
@@ -15,16 +15,20 @@ Each agent persists:
 - social drive;
 - personality traits;
 - belonging and purpose needs;
-- gathering, craft, social and exploration skills;
+- gathering, hunting, craft, social and exploration skills;
 - a current derived goal;
 - home and current location;
 - last autonomous action and meaningful-activity time.
 
 Cardinal receives no capability that writes these fields directly. An authorized Cardinal intervention can alter a bounded environmental condition, but it cannot choose a person's goal, friendship, memory, skill or action.
 
-## Places before graphics
+## Resident-driven world growth
 
-The current city is deliberately structural rather than visual. It contains homes plus shared places for social contact, gathering, work, quiet reflection and exploration.
+The initial settlement contains homes plus shared places for social contact, gathering, work, quiet reflection and exploration. It does not begin with the whole natural world already revealed.
+
+Resident exploration accumulates persistent frontier progress. Crossing each threshold opens exactly one next region: meadow, forest, then sea shore. The discovery commits the new place, its wildlife and append-only evidence atomically. Cardinal does not trigger discovery and cannot select the explorer.
+
+The first ecology is intentionally small: rabbits in the meadow, deer in the forest and fish at the shore. Populations have a carrying capacity, reproduction rate and alertness. They recover through an endogenous habitat cycle, including recovery from zero, so Cardinal is not the world's only path back from depletion.
 
 A place is part of persistent world state. NPC actions move them through that state. Appearance, animation and richer geometry can be layered on later without changing the causal rule that the world owns its inhabitants.
 
@@ -35,7 +39,10 @@ A tick does not execute a hard-coded `home -> work -> socialize` schedule.
 Agents compare several locally available actions:
 
 - rest;
+- relax in nature;
+- walk;
 - gather;
+- hunt;
 - work;
 - socialize;
 - help;
@@ -49,6 +56,8 @@ The latest decision persists the chosen action, the strongest-scoring action, th
 Very low energy or resources can impose survival constraints, but these constraints do not permanently replace autonomous choice. Repetition remains possible: diligence can reinforce productive habits while curiosity makes an unchanged routine less attractive.
 
 The processing order of agents is shuffled by the persisted seeded RNG each tick. Array position must not grant `agent_1` a permanent first-mover privilege.
+
+Walking, relaxation and hunting are ordinary alternatives, not scheduled chores. Hunting can succeed or fail. It consumes energy, changes animal alertness, develops hunting skill and only removes an animal on success. Residents may continue gathering or working instead; no central process orders them to hunt.
 
 ## Endogenous economy and recovery
 
@@ -97,6 +106,14 @@ Disturbances change world conditions, not agent scripts.
 
 NPCs remain free to respond through their ordinary action model. This is essential for testing whether the society can adapt without Cardinal.
 
+## Ecology and Cardinal
+
+Read-only sensors derive explored-world ratio, wildlife pressure and ecological diversity from committed world state. They do not spawn animals or write habitat state.
+
+Cardinal experience is reconstructed from append-only evaluations and outcomes. Repeated observations unlock analysis capabilities; they never unlock assignment of resident goals, actions, relationships, memories or skills. The only ecology intervention in v0.3.9 is a bounded temporary `habitat_support` proposal. It requires learned capability, independent Auditor approval and execution by the independent simulation gateway.
+
+That proposal changes environmental recovery conditions only. Residents remain free to hunt, abstain, explore, work or rest. Natural population recovery remains available in OFF and OBSERVER modes.
+
 ## Sensors must measure current society
 
 A persistent relationship row is not evidence that two agents are currently socially connected. The v0.3.7 social-isolation sensor therefore uses recent autonomous relationship-contact evidence within a logical-time window.
@@ -108,6 +125,8 @@ Changing this metric meaning changes the sensor version.
 ## Reproducibility and restart
 
 World RNG state, event sequence, agent state, places and relationships are persisted in the world projection. Reopening the same committed world must preserve the exact deterministic future.
+
+The explicit world-rules migration from v0.3.8 to v0.3.9 preserves logical time, RNG, residents, goals, locations and relationships. It adds ecology state and derives an initial hunting skill deterministically from each resident's already-persisted gathering, exploration and risk tolerance. It does not create replacement residents.
 
 Same seed + same world rules + same disturbances must reproduce the same autonomous state and history. Different seeds are allowed to generate different societies.
 

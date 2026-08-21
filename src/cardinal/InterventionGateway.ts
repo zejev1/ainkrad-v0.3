@@ -20,12 +20,13 @@ import type {
 export const ABSOLUTE_MAX_INTERVENTION_MAGNITUDE = 0.25;
 export const ABSOLUTE_MAX_INTERVENTION_DURATION = 32;
 export const INTERVENTION_GATEWAY_POLICY_VERSION =
-  'ainkrad-intervention-gateway-0.3.6';
+  'ainkrad-intervention-gateway-0.3.9';
 
 const ALLOWED_INTERVENTION_KINDS = new Set<string>([
   'resource_relief',
   'open_shared_space',
   'safety_support',
+  'habitat_support',
 ]);
 
 export interface SimulationInterventionTarget {
@@ -281,7 +282,12 @@ export class IndependentInterventionGateway {
     const prediction = proposal.prediction;
     if (
       !prediction ||
-      !['resourcePressure', 'socialIsolation', 'averageStress'].includes(
+      ![
+        'resourcePressure',
+        'socialIsolation',
+        'averageStress',
+        'wildlifePressure',
+      ].includes(
         prediction.metric as string,
       ) ||
       prediction.direction !== 'decrease' ||

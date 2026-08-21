@@ -2,7 +2,7 @@ import type { EventReader } from '../world/events';
 import type { WorldState } from '../world/types';
 import type { CardinalMetrics, SensorSnapshot } from './types';
 
-export const WORLD_SENSOR_VERSION = 'ainkrad-world-sensors-0.3.7';
+export const WORLD_SENSOR_VERSION = 'ainkrad-world-sensors-0.3.9';
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const SOCIAL_CONTACT_WINDOW = 8;
@@ -31,6 +31,7 @@ export class WorldSensors {
 
     const agents = Object.values(world.agents);
     const relationships = Object.values(world.relationships);
+    const wildlife = Object.values(world.wildlife ?? {});
     const activeSignals = await this.events.activeSignals(world.id, now);
     const recent = await this.events.recent(world.id, SENSOR_EVENT_READ_LIMIT, now);
 
@@ -95,6 +96,19 @@ export class WorldSensors {
         averageEnergy * 0.2,
     );
 
+    const exploredWorldRatio = clamp01((world.growth?.stage ?? 0) / 3);
+    const wildlifePressure =
+      wildlife.length === 0
+        ? 0
+        : wildlife.reduce(
+            (sum, population) =>
+              sum + 1 - population.count / population.carryingCapacity,
+            0,
+          ) / wildlife.length;
+    const ecologicalDiversity = clamp01(
+      new Set(wildlife.map((population) => population.species)).size / 3,
+    );
+
     // Cardinal's own prior interventions are context, not independent evidence
     // that the society itself exhibited a condition. Avoid circular evidence.
     const worldEvidence = recent.filter(
@@ -123,6 +137,11 @@ export class WorldSensors {
         'Recent event density exceeded the bounded sensor window; social-contact coverage may be incomplete.',
       );
     }
+    if ((world.growth?.stage ?? 0) > 0 && wildlife.length === 0) {
+      limitations.push(
+        'Discovered natural regions have no wildlife populations to observe.',
+      );
+    }
 
     const metrics: CardinalMetrics = {
       populationActivity: clamp01(populationActivity),
@@ -132,6 +151,9 @@ export class WorldSensors {
       resourcePressure: clamp01(resourcePressure),
       relationshipDiversity: clamp01(relationshipDiversity),
       recoveryCapacity: clamp01(recoveryCapacity),
+      exploredWorldRatio,
+      wildlifePressure: clamp01(wildlifePressure),
+      ecologicalDiversity,
       activeSignalCount: activeSignals.length,
     };
 

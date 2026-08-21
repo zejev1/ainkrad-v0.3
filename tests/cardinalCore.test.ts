@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CardinalCore } from '../src/cardinal/CardinalCore';
+import { deriveCardinalExperience } from '../src/cardinal/CardinalExperience';
 import {
   CARDINAL_RESEARCH_VERSION,
   emptyCardinalResearchContext,
@@ -25,6 +26,9 @@ function observation(
       resourcePressure: 0.2,
       relationshipDiversity: 0.2,
       recoveryCapacity: 0.7,
+      exploredWorldRatio: 0,
+      wildlifePressure: 0,
+      ecologicalDiversity: 0,
       activeSignalCount: 0,
       ...overrides,
     },
@@ -39,6 +43,7 @@ function research(priorEvaluations: CardinalEvaluation[]): CardinalResearchConte
     priorEvaluations,
     priorInterventions: [],
     priorOutcomes: [],
+    experience: deriveCardinalExperience(priorEvaluations, []),
     fingerprint: `context_${priorEvaluations.length}`,
   };
 }
@@ -166,6 +171,7 @@ function syntheticOutcome(
     socialIsolationDelta: 0,
     conflictPressureDelta: 0,
     resourcePressureDelta: 0,
+    wildlifePressureDelta: 0,
     predictionMetric: 'resourcePressure',
     predictedMinimumImprovement: 0.01,
     observedPredictionDelta: 0,
@@ -186,6 +192,7 @@ describe('Cardinal experimental discipline', () => {
       priorEvaluations: [first, second],
       priorInterventions: [inFlight],
       priorOutcomes: [],
+      experience: deriveCardinalExperience([first, second], []),
       fingerprint: 'active_intervention_context',
     };
 
@@ -217,6 +224,7 @@ describe('Cardinal experimental discipline', () => {
       priorEvaluations: [first, second],
       priorInterventions: interventions,
       priorOutcomes: outcomes,
+      experience: deriveCardinalExperience([first, second], outcomes),
       fingerprint: 'dense_intervention_context',
     };
 
@@ -244,6 +252,7 @@ describe('Cardinal experimental discipline', () => {
       priorEvaluations: [],
       priorInterventions: interventions,
       priorOutcomes: outcomes,
+      experience: deriveCardinalExperience([], outcomes),
       fingerprint: 'critical_budget_context',
     };
 

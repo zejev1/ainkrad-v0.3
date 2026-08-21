@@ -1,4 +1,4 @@
-Ainkrad v0.3.8 current files
+Ainkrad v0.3.9 current files
 
 Files:
 - .github/workflows/ci.yml
@@ -12,6 +12,7 @@ Files:
 - docs/EXTERNAL_BOUNDARY.md
 - docs/MIGRATION_RULES.md
 - docs/PERSISTENCE_CONTRACT.md
+- docs/SAO_CARDINAL_REFERENCE.md
 - docs/WORLD_AUTONOMY.md
 - index.html
 - package.json
@@ -21,6 +22,7 @@ Files:
 - src/cardinal/CardinalAuditContext.ts
 - src/cardinal/CardinalAuditor.ts
 - src/cardinal/CardinalCore.ts
+- src/cardinal/CardinalExperience.ts
 - src/cardinal/CardinalJournal.ts
 - src/cardinal/CardinalObserver.ts
 - src/cardinal/CardinalRecovery.ts
@@ -61,6 +63,7 @@ Files:
 - src/world/types.ts
 - tests/auditor.test.ts
 - tests/cardinalCore.test.ts
+- tests/cardinalExperience.test.ts
 - tests/cardinalJournal.test.ts
 - tests/cardinalResearch.test.ts
 - tests/experimentIntegrity.test.ts

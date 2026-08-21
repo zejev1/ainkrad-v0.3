@@ -179,9 +179,13 @@ Cardinal comes later.
 
 ---
 
-## Autonomous World v0.3.8
+## Growing World v0.3.9
 
-Cardinal now has a more serious world to observe. NPCs persist personality, needs, skills, goals, homes, current locations and their latest decision evidence. They choose among rest, gathering, productive work, social contact, helping, exploration and reflection rather than following a fixed daily script.
+Cardinal now has a more serious world to observe. NPCs persist personality, needs, skills, goals, homes, current locations and their latest decision evidence. They choose among sleep, nature relaxation, walking, gathering, hunting, productive work, social contact, helping, exploration and reflection rather than following a fixed daily script.
+
+The settlement now grows from resident exploration instead of appearing fully built. Exploration progress opens three minimal natural regions in order: a wild meadow, a northern forest and a sea shore. Each discovery is a committed world event caused by a resident, adds a persistent place and introduces a small renewable wildlife population: rabbits, deer or fish. The map reveals terrain, roads and animals only after that part of the world has actually been found.
+
+Residents can now walk for its own sake, relax in discovered nature and hunt. Hunting is a fallible choice influenced by personal skill, risk tolerance, animal alertness and environmental safety. Success consumes one animal and develops hunting skill; failure still costs energy and produces experience. Wildlife alertness falls over time and populations can recover toward a carrying capacity through the world's own habitat cycle. Cardinal is not required for that recovery.
 
 Ordinary choice is no longer a strict highest-score command. Each resident forms a bounded set of reasonable alternatives and makes a seeded weighted choice inside that set. Curiosity and risk tolerance widen the choice space; needs, skills, relationships and personality still matter; emergencies can still constrain options. The chosen action, strongest alternative, number of considered actions and normalized choice openness are persisted as inspectable evidence. The persisted RNG keeps same-seed experiments reproducible.
 
@@ -191,13 +195,15 @@ Helping is a decision rather than an automatic reward for a positive conversatio
 
 The browser map now renders individual homes, shared places, current occupancy, visible resident actions, a world-event feed and a day/night cycle. This display remains read-only: CSS animation and UI selection cannot write agent goals, actions, relationships or world state.
 
-The social-isolation sensor now measures recent autonomous contact rather than treating an old relationship row as proof of current connection. Because that changes metric meaning, the sensor definition has a new version. See `docs/WORLD_AUTONOMY.md`.
+World sensors now also measure explored-world ratio, wildlife pressure and ecological diversity. Cardinal gains auditable experience from journaled observation cycles and measured outcomes. Capabilities unlock only after evidence thresholds; ecosystem support planning requires repeated ecosystem observations and level 2. Even then Cardinal can only propose a temporary habitat modifier. The independent Auditor and intervention gateway validate and execute it, and no capability controls residents. See `docs/WORLD_AUTONOMY.md`, `docs/CARDINAL_RESEARCH.md` and `docs/SAO_CARDINAL_REFERENCE.md`.
 
 ### Browser continuity
 
 The live browser world uses IndexedDB instead of recreating an in-memory world on every page load. One atomic IndexedDB transaction stores the current world projection, operation identity, events and memories. Separate append-only IndexedDB streams preserve Cardinal evaluations, audits and independent gateway intent/final records.
 
 Reloading or reopening the same site in the same browser therefore resumes the committed tick, RNG state, residents, relationships, memories, Cardinal evidence and gateway cooldown/recovery state. Multiple tabs use one exclusive writer lock and mirror its frames so they do not silently fork the same local world.
+
+An explicit `0.3.8 -> 0.3.9` migration preserves the existing browser world's tick, RNG, residents, goals, relationships and history, then adds the new ecology fields and a deterministic initial hunting skill. Deployment does not intentionally reset the society.
 
 This is durable browser-local continuity, not a claim that JavaScript runs after the browser is fully closed. Clearing site data removes that local world. A truly 24/7 autonomous deployment still requires an independent always-on runtime; Cardinal must not receive control of that host or of the external gateway.
 

@@ -21,7 +21,7 @@ The engine does not adopt its working mutation until the commit succeeds.
 
 ## Browser adapter
 
-The v0.3.8 live page uses IndexedDB as a concrete `WorldStore` adapter. Its world commit is one read-write transaction across:
+The v0.3.9 live page uses IndexedDB as a concrete `WorldStore` adapter. Its world commit is one read-write transaction across:
 
 - the current world projection;
 - the stable operation record;
@@ -62,6 +62,8 @@ A world can be reopened from its persisted `WorldState`, including RNG state and
 Every world snapshot carries `rulesVersion`.
 
 A runtime must not silently resume a world created by incompatible world rules. A version mismatch requires an explicit migration or a new experiment.
+
+The reviewed `0.3.8 -> 0.3.9` migration is itself one idempotent world operation. It atomically writes the upgraded projection and a `world.migrated` event while preserving the old society and logical clock. A failed or concurrent migration cannot expose a half-upgraded ecology.
 
 The same rule applies to research interpretation:
 
@@ -134,3 +136,5 @@ Cardinal's longitudinal research memory is reconstructed from append-only evalua
 The active reasoning window may be bounded, but the evidence that produced it is retained. A restart over the same durable journal must reconstruct the same compatible context for the same logical observation. The current cycle excludes records from its own logical observation time so a retry cannot inflate persistence by counting itself twice.
 
 Research context compatibility is versioned. A change to sensor meaning, Cardinal policy or research-context semantics must be reflected in experiment metadata rather than silently mixing unlike evidence.
+
+Cardinal experience is a deterministic projection of those retained evaluation and outcome streams. Restarting the browser or Cardinal runtime recalculates the same level, experience total and unlocked capabilities; no separate mutable XP counter can drift from the evidence.

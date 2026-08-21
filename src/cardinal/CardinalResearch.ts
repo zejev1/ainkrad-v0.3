@@ -1,12 +1,14 @@
 import { createStableId } from '../core/stableId';
 import type { CardinalJournal } from './CardinalJournal';
+import { deriveCardinalExperience } from './CardinalExperience';
 import type {
   CardinalEvaluation,
+  CardinalExperienceState,
   InterventionOutcomeRecord,
   InterventionRecord,
 } from './types';
 
-export const CARDINAL_RESEARCH_VERSION = 'ainkrad-cardinal-research-0.3.6';
+export const CARDINAL_RESEARCH_VERSION = 'ainkrad-cardinal-research-0.3.9';
 export const CARDINAL_RESEARCH_WINDOW = 12;
 export const CARDINAL_AUTONOMY_WINDOW = 16;
 export const CARDINAL_AUTONOMY_MAX_RECENT_INTERVENTIONS = 3;
@@ -16,6 +18,7 @@ export interface CardinalResearchContext {
   priorEvaluations: CardinalEvaluation[];
   priorInterventions: InterventionRecord[];
   priorOutcomes: InterventionOutcomeRecord[];
+  experience: CardinalExperienceState;
   fingerprint: string;
 }
 
@@ -31,6 +34,12 @@ export async function buildCardinalResearchContext(
     journal.interventions(worldId),
     journal.outcomes(worldId),
   ]);
+  const experience = deriveCardinalExperience(
+    evaluations.filter(
+      (evaluation) => evaluation.evaluatedAt < currentObservedAt,
+    ),
+    outcomes.filter((outcome) => outcome.observedAt < currentObservedAt),
+  );
 
   // Strictly earlier logical time is intentional. If the same Cardinal cycle is
   // retried after its evaluation was already journaled, the retry must rebuild
@@ -81,6 +90,7 @@ export async function buildCardinalResearchContext(
     evaluations: priorEvaluations,
     interventions: priorInterventions,
     outcomes: priorOutcomes,
+    experience,
   });
 
   return {
@@ -88,19 +98,23 @@ export async function buildCardinalResearchContext(
     priorEvaluations: structuredClone(priorEvaluations),
     priorInterventions: structuredClone(priorInterventions),
     priorOutcomes: structuredClone(priorOutcomes),
+    experience: structuredClone(experience),
     fingerprint,
   };
 }
 
 export function emptyCardinalResearchContext(): CardinalResearchContext {
+  const experience = deriveCardinalExperience([], []);
   return {
     researchVersion: CARDINAL_RESEARCH_VERSION,
     priorEvaluations: [],
     priorInterventions: [],
     priorOutcomes: [],
+    experience,
     fingerprint: createStableId('research-context', {
       researchVersion: CARDINAL_RESEARCH_VERSION,
       empty: true,
+      experience,
     }),
   };
 }

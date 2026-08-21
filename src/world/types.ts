@@ -8,7 +8,10 @@ export type AgentGoalKind =
 
 export type AgentActionKind =
   | 'rest'
+  | 'relax'
+  | 'walk'
   | 'gather'
+  | 'hunt'
   | 'work'
   | 'socialize'
   | 'help'
@@ -31,6 +34,7 @@ export interface AgentNeeds {
 
 export interface AgentSkills {
   gathering: number;
+  hunting: number;
   craft: number;
   social: number;
   exploration: number;
@@ -102,13 +106,38 @@ export type WorldPlaceKind =
   | 'resource_field'
   | 'workshop'
   | 'quiet_space'
-  | 'outskirts';
+  | 'outskirts'
+  | 'meadow'
+  | 'forest'
+  | 'shore';
 
 export interface WorldPlace {
   id: string;
   name: string;
   kind: WorldPlaceKind;
   capacity: number;
+  discoveredAt?: number;
+}
+
+export type WildlifeSpecies = 'rabbit' | 'deer' | 'fish';
+
+export interface WildlifePopulation {
+  id: string;
+  species: WildlifeSpecies;
+  habitatId: string;
+  count: number;
+  carryingCapacity: number;
+  reproductionRate: number;
+  alertness: number;
+  lastChangedAt: number;
+}
+
+export interface WorldGrowthState {
+  // 0 = settlement, 1 = meadow, 2 = forest, 3 = shore/sea.
+  stage: number;
+  explorationProgress: number;
+  lastExpansionAt: number;
+  discoveredRegionIds: string[];
 }
 
 export interface WorldEnvironment {
@@ -121,6 +150,10 @@ export interface WorldEnvironment {
 
   // Baseline environmental support. Temporary signals can modify it.
   safetySupport: number;
+
+  // Baseline support for habitats and wildlife recovery. Cardinal may only
+  // request a temporary bounded modifier through the independent gateway.
+  habitatSupport: number;
 }
 
 export interface WorldDeterminismState {
@@ -136,8 +169,10 @@ export interface WorldState {
 
   environment: WorldEnvironment;
   determinism: WorldDeterminismState;
+  growth: WorldGrowthState;
 
   places: Record<string, WorldPlace>;
+  wildlife: Record<string, WildlifePopulation>;
   agents: Record<string, AgentState>;
   relationships: Record<string, RelationshipState>;
 }

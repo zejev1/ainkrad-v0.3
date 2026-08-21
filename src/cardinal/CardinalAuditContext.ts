@@ -6,7 +6,7 @@ import type {
   InterventionRecord,
 } from './types';
 
-export const CARDINAL_AUDIT_CONTEXT_VERSION = 'ainkrad-cardinal-audit-context-0.3.6';
+export const CARDINAL_AUDIT_CONTEXT_VERSION = 'ainkrad-cardinal-audit-context-0.3.9';
 export const CARDINAL_AUDIT_HISTORY_WINDOW = 32;
 
 export interface CardinalAuditContext {

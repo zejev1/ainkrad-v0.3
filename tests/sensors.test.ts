@@ -8,12 +8,13 @@ function emptyWorld(): WorldState {
     id: 'world_1',
     now: 1,
     revision: 0,
-    rulesVersion: 'ainkrad-world-rules-0.3.7',
+    rulesVersion: 'ainkrad-world-rules-0.3.9',
     environment: {
       resourcePool: 1,
       resourceRegenerationRate: 0.01,
       socialOpportunity: 0.5,
       safetySupport: 0.5,
+      habitatSupport: 0.5,
     },
     determinism: {
       rngState: 1,
@@ -22,6 +23,13 @@ function emptyWorld(): WorldState {
     places: {
       commons: { id: 'commons', name: 'Common Square', kind: 'commons', capacity: 8 },
     },
+    growth: {
+      stage: 0,
+      explorationProgress: 0,
+      lastExpansionAt: 1,
+      discoveredRegionIds: [],
+    },
+    wildlife: {},
     agents: {},
     relationships: {},
   };
@@ -68,6 +76,61 @@ describe('World sensors', () => {
     const observation = await new WorldSensors(events).observe(emptyWorld(), 1);
     expect(observation.evidenceEventIds).not.toContain('future_fact');
   });
+
+  it('derives ecology metrics from discovered habitats without mutating them', async () => {
+    const events = new InMemoryEventStore();
+    const world = emptyWorld();
+    world.growth = {
+      stage: 2,
+      explorationProgress: 0.4,
+      lastExpansionAt: 1,
+      discoveredRegionIds: ['meadow', 'forest'],
+    };
+    world.places.meadow = {
+      id: 'meadow',
+      name: 'Wild Meadow',
+      kind: 'meadow',
+      capacity: 12,
+      discoveredAt: 1,
+    };
+    world.places.forest = {
+      id: 'forest',
+      name: 'Northern Forest',
+      kind: 'forest',
+      capacity: 14,
+      discoveredAt: 1,
+    };
+    world.wildlife = {
+      rabbits: {
+        id: 'rabbits',
+        species: 'rabbit',
+        habitatId: 'meadow',
+        count: 2,
+        carryingCapacity: 8,
+        reproductionRate: 0.16,
+        alertness: 0.2,
+        lastChangedAt: 1,
+      },
+      deer: {
+        id: 'deer',
+        species: 'deer',
+        habitatId: 'forest',
+        count: 7,
+        carryingCapacity: 7,
+        reproductionRate: 0.1,
+        alertness: 0.3,
+        lastChangedAt: 1,
+      },
+    };
+    const before = structuredClone(world);
+
+    const observation = await new WorldSensors(events).observe(world, 1);
+
+    expect(observation.metrics.exploredWorldRatio).toBeCloseTo(2 / 3);
+    expect(observation.metrics.wildlifePressure).toBeCloseTo(0.375);
+    expect(observation.metrics.ecologicalDiversity).toBeCloseTo(2 / 3);
+    expect(world).toEqual(before);
+  });
 });
 
 describe('Sensor snapshot time integrity', () => {
@@ -92,7 +155,7 @@ describe('Recent social-contact sensing', () => {
         socialDrive: 0.5,
         personality: { sociability: 0.5, diligence: 0.5, curiosity: 0.5, generosity: 0.5, resilience: 0.5, riskTolerance: 0.5 },
         needs: { belonging: 0.5, purpose: 0.5 },
-        skills: { gathering: 0.3, craft: 0.3, social: 0.3, exploration: 0.3 },
+        skills: { gathering: 0.3, hunting: 0.3, craft: 0.3, social: 0.3, exploration: 0.3 },
         goal: { kind: 'connect', strength: 0.5, since: 1 },
         homeId: 'commons',
         locationId: 'commons',
@@ -107,7 +170,7 @@ describe('Recent social-contact sensing', () => {
         socialDrive: 0.5,
         personality: { sociability: 0.5, diligence: 0.5, curiosity: 0.5, generosity: 0.5, resilience: 0.5, riskTolerance: 0.5 },
         needs: { belonging: 0.5, purpose: 0.5 },
-        skills: { gathering: 0.3, craft: 0.3, social: 0.3, exploration: 0.3 },
+        skills: { gathering: 0.3, hunting: 0.3, craft: 0.3, social: 0.3, exploration: 0.3 },
         goal: { kind: 'connect', strength: 0.5, since: 1 },
         homeId: 'commons',
         locationId: 'commons',

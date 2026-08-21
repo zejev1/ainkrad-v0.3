@@ -98,7 +98,7 @@ button {
 
 .status-strip {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, auto));
+  grid-template-columns: repeat(7, minmax(0, auto));
   gap: 10px;
   margin-bottom: 14px;
   padding: 9px;
@@ -211,6 +211,18 @@ button {
   pointer-events: none;
 }
 
+.growth-terrain {
+  opacity: 0;
+  transition: opacity 1.4s ease;
+}
+
+.world-map[data-growth="1"] .growth-terrain--1,
+.world-map[data-growth="2"] .growth-terrain--1,
+.world-map[data-growth="2"] .growth-terrain--2,
+.world-map[data-growth="3"] .growth-terrain {
+  opacity: 1;
+}
+
 .terrain--water {
   right: -9%;
   bottom: -14%;
@@ -270,7 +282,20 @@ button {
   stroke-width: 6;
 }
 
+.roads .road-growth {
+  opacity: 0;
+  transition: opacity 1.2s ease;
+}
+
+.world-map[data-growth="1"] .road-growth--1,
+.world-map[data-growth="2"] .road-growth--1,
+.world-map[data-growth="2"] .road-growth--2,
+.world-map[data-growth="3"] .road-growth {
+  opacity: 1;
+}
+
 .places-layer,
+.wildlife-layer,
 .agents-layer {
   position: absolute;
   inset: 0;
@@ -278,6 +303,11 @@ button {
 
 .places-layer {
   z-index: 2;
+  pointer-events: none;
+}
+
+.wildlife-layer {
+  z-index: 3;
   pointer-events: none;
 }
 
@@ -413,6 +443,20 @@ button {
   background: linear-gradient(145deg, #625b48, #2b4038);
 }
 
+.map-place--meadow .place-building {
+  border-radius: 50%;
+  background: linear-gradient(145deg, #739148, #31563c);
+}
+
+.map-place--forest .place-building {
+  border-radius: 50% 50% 12px 12px;
+  background: linear-gradient(145deg, #315f3d, #133b31);
+}
+
+.map-place--shore .place-building {
+  background: linear-gradient(145deg, #4f8f91, #20505d);
+}
+
 .map-hint {
   position: absolute;
   right: 12px;
@@ -426,6 +470,56 @@ button {
   font-size: 0.61rem;
   font-weight: 700;
   pointer-events: none;
+}
+
+.wildlife-population {
+  position: absolute;
+  display: grid;
+  grid-template-columns: 26px auto;
+  align-items: center;
+  gap: 2px;
+  min-width: 46px;
+  transform: translate(-50%, -50%);
+  color: #e8ffe9;
+  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.32));
+  transition: opacity 500ms ease;
+}
+
+.wildlife-icon {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 22px;
+  border: 1px solid rgba(227, 255, 222, 0.25);
+  border-radius: 50% 55% 48% 52%;
+  background: rgba(31, 63, 43, 0.78);
+  color: #fff4ce;
+  font-size: 0.95rem;
+  animation: wildlife-step 1.25s ease-in-out infinite alternate;
+}
+
+.wildlife-population--fish .wildlife-icon {
+  border-color: rgba(184, 241, 255, 0.3);
+  background: rgba(28, 83, 91, 0.82);
+  color: #c7f5ff;
+  animation-name: wildlife-swim;
+}
+
+.wildlife-count {
+  display: grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: rgba(5, 29, 26, 0.82);
+  color: #dfffe9;
+  font-size: 0.58rem;
+  font-weight: 900;
+}
+
+.wildlife-population.is-depleted {
+  opacity: 0.28;
 }
 
 .resident-avatar {
@@ -615,12 +709,14 @@ button {
 }
 
 .resident-avatar.is-resting .resident-figure,
+.resident-avatar.is-relaxing .resident-figure,
 .resident-avatar.is-reflecting .resident-figure {
   animation: resident-breathe 1.4s ease-in-out infinite alternate;
 }
 
 .resident-avatar.is-socializing .action-bubble,
-.resident-avatar.is-helping .action-bubble {
+.resident-avatar.is-helping .action-bubble,
+.resident-avatar.is-hunting .action-bubble {
   color: #ffcfdf;
   animation: bubble-pop 650ms ease-in-out infinite alternate;
 }
@@ -890,6 +986,17 @@ button {
   line-height: 1.48;
 }
 
+.cardinal-capabilities {
+  margin: -2px 0 10px;
+  padding: 8px 9px;
+  border: 1px solid rgba(123, 190, 159, 0.1);
+  border-radius: 10px;
+  background: rgba(90, 153, 124, 0.055);
+  color: #8fc2ab;
+  font-size: 0.62rem;
+  line-height: 1.42;
+}
+
 @keyframes live-pulse {
   from { box-shadow: 0 0 0 0 rgba(70, 228, 156, 0.34); }
   to { box-shadow: 0 0 0 9px rgba(70, 228, 156, 0); }
@@ -928,6 +1035,16 @@ button {
 @keyframes bubble-pop {
   from { transform: translateY(0) scale(1); }
   to { transform: translateY(-2px) scale(1.05); }
+}
+
+@keyframes wildlife-step {
+  from { transform: translateX(-2px) translateY(0) rotate(-2deg); }
+  to { transform: translateX(3px) translateY(-2px) rotate(2deg); }
+}
+
+@keyframes wildlife-swim {
+  from { transform: translateX(-3px) rotate(-4deg); }
+  to { transform: translateX(4px) rotate(4deg); }
 }
 
 @media (max-width: 940px) {

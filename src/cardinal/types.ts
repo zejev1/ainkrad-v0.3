@@ -5,17 +5,39 @@ export type CardinalMode = 'off' | 'observer' | 'intervene';
 export type CardinalProblemKind =
   | 'resource_fragility'
   | 'social_fragmentation'
-  | 'conflict_overload';
+  | 'conflict_overload'
+  | 'ecosystem_fragility';
 
 export type InterventionKind =
   | 'resource_relief'
   | 'open_shared_space'
-  | 'safety_support';
+  | 'safety_support'
+  | 'habitat_support';
 
 export type CardinalPredictionMetric =
   | 'resourcePressure'
   | 'socialIsolation'
-  | 'averageStress';
+  | 'averageStress'
+  | 'wildlifePressure';
+
+export type CardinalCapability =
+  | 'world_observation'
+  | 'autonomy_guard'
+  | 'trend_reasoning'
+  | 'ecosystem_observation'
+  | 'outcome_learning'
+  | 'habitat_support_planning';
+
+export interface CardinalExperienceState {
+  level: number;
+  totalExperience: number;
+  observationCycles: number;
+  ecologyObservationCycles: number;
+  evaluatedOutcomes: number;
+  successfulPredictions: number;
+  capabilities: CardinalCapability[];
+  newlyUnlockedCapabilities: CardinalCapability[];
+}
 
 export interface FalsifiablePrediction {
   metric: CardinalPredictionMetric;
@@ -44,7 +66,8 @@ export type CardinalDeferReason =
   | 'insufficient_persistence'
   | 'experiment_in_progress'
   | 'autonomy_budget'
-  | 'failed_prediction_caution';
+  | 'failed_prediction_caution'
+  | 'capability_not_ready';
 
 export interface CardinalAutonomyAssessment {
   window: number;
@@ -86,6 +109,7 @@ export interface CardinalEvaluation {
   autonomyAssessment?: CardinalAutonomyAssessment;
   rationale: string;
   reasoningFactors: string[];
+  experience: CardinalExperienceState;
   proposal?: InterventionProposal;
   hypotheticalOnly: boolean;
 }
@@ -129,6 +153,7 @@ export interface InterventionOutcomeRecord {
   socialIsolationDelta: number;
   conflictPressureDelta: number;
   resourcePressureDelta: number;
+  wildlifePressureDelta: number;
   predictionMetric: CardinalPredictionMetric;
   predictedMinimumImprovement: number;
   observedPredictionDelta: number;

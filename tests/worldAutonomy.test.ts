@@ -68,6 +68,62 @@ describe('World autonomy', () => {
 });
 
 describe('World rules version', () => {
+  it('migrates a 0.3.8 save without restarting its people, time or relationships', async () => {
+    const sourceStore = new InMemoryWorldStore();
+    const source = await WorldEngine.create({
+      worldId: 'legacy-continuity',
+      seed: 'legacy-continuity-seed',
+      store: sourceStore,
+      startTime: 0,
+    });
+    for (let tick = 1; tick <= 12; tick += 1) await source.step(tick);
+
+    const legacy = source.snapshot() as any;
+    const preservedTime = legacy.now;
+    legacy.rulesVersion = 'ainkrad-world-rules-0.3.8';
+    legacy.revision = 0;
+    delete legacy.growth;
+    delete legacy.wildlife;
+    delete legacy.environment.habitatSupport;
+    for (const regionId of ['meadow', 'forest', 'shore']) {
+      delete legacy.places[regionId];
+    }
+    for (const agent of Object.values(legacy.agents) as any[]) {
+      if (['meadow', 'forest', 'shore'].includes(agent.locationId)) {
+        agent.locationId = 'outskirts';
+      }
+      delete agent.skills.hunting;
+    }
+    const preservedAgents = structuredClone(legacy.agents);
+    const preservedRelationships = structuredClone(legacy.relationships);
+
+    const targetStore = new InMemoryWorldStore();
+    await targetStore.initializeWorld(legacy);
+    const migrated = await WorldEngine.open({
+      worldId: 'legacy-continuity',
+      store: targetStore,
+    });
+    const state = migrated.snapshot();
+
+    expect(state.now).toBe(preservedTime);
+    expect(state.rulesVersion).toBe('ainkrad-world-rules-0.3.9');
+    expect(state.growth.stage).toBe(0);
+    expect(state.wildlife).toEqual({});
+    expect(state.relationships).toEqual(preservedRelationships);
+    for (const [agentId, agent] of Object.entries(state.agents)) {
+      const previous = preservedAgents[agentId];
+      expect(agent.name).toBe(previous.name);
+      expect(agent.goal).toEqual(previous.goal);
+      expect(agent.locationId).toBe(previous.locationId);
+      expect(agent.skills.hunting).toBeGreaterThanOrEqual(0);
+    }
+    expect(
+      (await targetStore.history('legacy-continuity')).some(
+        (event) => event.kind === 'world.migrated',
+      ),
+    ).toBe(true);
+  });
+
   it('refuses to silently resume a snapshot produced by incompatible world rules', async () => {
     const sourceStore = new InMemoryWorldStore();
     const world = await WorldEngine.create({
@@ -125,6 +181,48 @@ describe('Autonomous society depth', () => {
     expect(
       kinds.has('agent.help.accepted') || kinds.has('agent.help.rejected'),
     ).toBe(true);
+  });
+
+  it('lets resident exploration grow the world in stages and supports nature activity', async () => {
+    const store = new InMemoryWorldStore();
+    const world = await WorldEngine.create({
+      worldId: 'growing-world',
+      seed: 'growing-world-seed',
+      store,
+      startTime: 0,
+    });
+
+    for (let tick = 1; tick <= 240; tick += 1) {
+      await world.step(tick);
+    }
+
+    const state = world.snapshot();
+    const history = await store.history('growing-world');
+    const discoveries = history.filter(
+      (event) => event.kind === 'world.region.discovered',
+    );
+    const kinds = new Set(history.map((event) => event.kind));
+
+    expect(state.growth.stage).toBe(3);
+    expect(state.growth.discoveredRegionIds).toEqual([
+      'meadow',
+      'forest',
+      'shore',
+    ]);
+    expect(Object.keys(state.places)).toEqual(
+      expect.arrayContaining(['meadow', 'forest', 'shore']),
+    );
+    expect(
+      Object.values(state.wildlife).map((population) => population.species),
+    ).toEqual(expect.arrayContaining(['rabbit', 'deer', 'fish']));
+    expect(discoveries.map((event) => event.payload.stage)).toEqual([1, 2, 3]);
+    expect(discoveries.every((event) => event.source === 'agent')).toBe(true);
+    expect(discoveries[0].occurredAt).toBeLessThan(discoveries[1].occurredAt);
+    expect(discoveries[1].occurredAt).toBeLessThan(discoveries[2].occurredAt);
+    expect(kinds.has('agent.walked')).toBe(true);
+    expect(kinds.has('agent.relaxed')).toBe(true);
+    expect(kinds.has('agent.hunted')).toBe(true);
+    expect(kinds.has('world.wildlife.recovered')).toBe(true);
   });
 
   it('can choose a reasonable alternative instead of always obeying the top score', async () => {

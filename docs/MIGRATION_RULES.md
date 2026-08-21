@@ -74,3 +74,13 @@ World rules `ainkrad-world-rules-0.3.8` change ordinary action selection from st
 The new optional `lastDecision` projection records the chosen action, dominant alternative, considered-action count and openness. Absence at initial world creation is valid; once a tick commits it becomes ordinary persisted history.
 
 The first IndexedDB browser database starts a fresh v0.3.8 local world. Future changes to IndexedDB object stores require a database-version upgrade. Future changes to world semantics still require an explicit world migration or a new world even when the physical database schema itself remains readable.
+
+## Audit 9: growing-world migration
+
+World rules `ainkrad-world-rules-0.3.9` add persistent growth stage/progress, discovered-region identity, wildlife populations, habitat support, hunting skill and three new resident actions. The runtime contains one explicit migration from `0.3.8`.
+
+That migration must preserve the existing world ID, logical time, RNG future, residents, goals, locations, relationships and prior evidence. It initializes an undiscovered frontier, adds an empty wildlife projection and derives each resident's hunting skill deterministically from existing world-owned traits and skills. It commits one `world.migrated` event with a stable operation identity.
+
+This is a semantic migration, not a reset. Any snapshot older than `0.3.8`, newer than the runtime, or malformed under its declared version still fails closed and requires a separately reviewed migration.
+
+Cardinal experience does not require an opaque mutable schema row. It is reconstructed from prior append-only evaluation and outcome evidence, including older compatible historical records for experience totals. Hypothesis persistence still uses only the current policy/sensor-compatible window.

@@ -117,6 +117,17 @@ export class CardinalAuditor {
       concerns.push('Cardinal attached a defer reason to a non-defer decision.');
     }
 
+    if (
+      evaluation.proposal?.kind === 'habitat_support' &&
+      !evaluation.experience.capabilities.includes(
+        'habitat_support_planning',
+      )
+    ) {
+      concerns.push(
+        'Cardinal proposed habitat support before earning the required ecosystem capability.',
+      );
+    }
+
     if (evaluation.detectedProblem) {
       const independentlyCritical = this.independentlyCritical(
         evaluation.detectedProblem.kind,
@@ -254,6 +265,11 @@ export class CardinalAuditor {
     if (kind === 'social_fragmentation') {
       return metrics.socialIsolation > 0.92 && metrics.populationActivity < 0.3;
     }
+    if (kind === 'ecosystem_fragility') {
+      return (
+        metrics.exploredWorldRatio > 0 && metrics.wildlifePressure > 0.94
+      );
+    }
     return metrics.conflictPressure > 0.9 && metrics.averageStress > 0.8;
   }
 
@@ -327,6 +343,7 @@ export class CardinalAuditor {
   ): InterventionRecord['proposal']['kind'] {
     if (kind === 'resource_fragility') return 'resource_relief';
     if (kind === 'social_fragmentation') return 'open_shared_space';
+    if (kind === 'ecosystem_fragility') return 'habitat_support';
     return 'safety_support';
   }
 
@@ -336,7 +353,16 @@ export class CardinalAuditor {
     afterObservation: Readonly<SensorSnapshot>,
     now: number,
   ): InterventionOutcomeRecord {
-    const before = evaluation.metrics;
+    // A pending v0.3.8 intervention may finish after the world migrates to
+    // v0.3.9. Normalize the newly introduced ecology metrics instead of
+    // manufacturing NaN outcome evidence from an older evaluation record.
+    const legacyBefore = evaluation.metrics as Partial<CardinalMetrics>;
+    const before: CardinalMetrics = {
+      ...evaluation.metrics,
+      exploredWorldRatio: legacyBefore.exploredWorldRatio ?? 0,
+      wildlifePressure: legacyBefore.wildlifePressure ?? 0,
+      ecologicalDiversity: legacyBefore.ecologicalDiversity ?? 0,
+    };
     const after = structuredClone(afterObservation.metrics);
     const prediction = intervention.proposal.prediction;
     const observedPredictionDelta =
@@ -368,6 +394,8 @@ export class CardinalAuditor {
       socialIsolationDelta: after.socialIsolation - before.socialIsolation,
       conflictPressureDelta: after.conflictPressure - before.conflictPressure,
       resourcePressureDelta: after.resourcePressure - before.resourcePressure,
+      wildlifePressureDelta:
+        after.wildlifePressure - before.wildlifePressure,
       predictionMetric: prediction.metric,
       predictedMinimumImprovement: prediction.minimumImprovement,
       observedPredictionDelta,

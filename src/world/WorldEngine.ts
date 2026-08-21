@@ -13,19 +13,27 @@ import type {
   RelationshipState,
   WorldDisturbanceKind,
   WorldEnvironment,
+  WorldGrowthState,
   WorldPlace,
   WorldPlaceKind,
   WorldState,
+  WildlifePopulation,
+  WildlifeSpecies,
 } from './types';
 
-export const WORLD_RULES_VERSION = 'ainkrad-world-rules-0.3.8';
+export const WORLD_RULES_VERSION = 'ainkrad-world-rules-0.3.9';
+const LEGACY_WORLD_RULES_VERSION = 'ainkrad-world-rules-0.3.8';
+const WORLD_GROWTH_FINAL_STAGE = 3;
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const clampSigned = (value: number) => Math.max(-1, Math.min(1, value));
 
 const ACTION_KINDS: readonly AgentActionKind[] = [
   'rest',
+  'relax',
+  'walk',
   'gather',
+  'hunt',
   'work',
   'socialize',
   'help',
@@ -49,6 +57,87 @@ const PLACE_KINDS: readonly WorldPlaceKind[] = [
   'workshop',
   'quiet_space',
   'outskirts',
+  'meadow',
+  'forest',
+  'shore',
+];
+
+const WILDLIFE_SPECIES: readonly WildlifeSpecies[] = [
+  'rabbit',
+  'deer',
+  'fish',
+];
+
+interface WorldExpansionDefinition {
+  stage: number;
+  place: WorldPlace;
+  wildlife: WildlifePopulation[];
+}
+
+const WORLD_EXPANSIONS: readonly WorldExpansionDefinition[] = [
+  {
+    stage: 1,
+    place: {
+      id: 'meadow',
+      name: 'Wild Meadow',
+      kind: 'meadow',
+      capacity: 12,
+    },
+    wildlife: [
+      {
+        id: 'wildlife_rabbits',
+        species: 'rabbit',
+        habitatId: 'meadow',
+        count: 4,
+        carryingCapacity: 8,
+        reproductionRate: 0.16,
+        alertness: 0.2,
+        lastChangedAt: 0,
+      },
+    ],
+  },
+  {
+    stage: 2,
+    place: {
+      id: 'forest',
+      name: 'Northern Forest',
+      kind: 'forest',
+      capacity: 14,
+    },
+    wildlife: [
+      {
+        id: 'wildlife_deer',
+        species: 'deer',
+        habitatId: 'forest',
+        count: 3,
+        carryingCapacity: 7,
+        reproductionRate: 0.1,
+        alertness: 0.32,
+        lastChangedAt: 0,
+      },
+    ],
+  },
+  {
+    stage: 3,
+    place: {
+      id: 'shore',
+      name: 'Sea Shore',
+      kind: 'shore',
+      capacity: 16,
+    },
+    wildlife: [
+      {
+        id: 'wildlife_fish',
+        species: 'fish',
+        habitatId: 'shore',
+        count: 6,
+        carryingCapacity: 12,
+        reproductionRate: 0.2,
+        alertness: 0.12,
+        lastChangedAt: 0,
+      },
+    ],
+  },
 ];
 
 function relationshipKey(a: string, b: string): string {
@@ -115,9 +204,45 @@ function assertWorldState(value: unknown): asserts value is WorldState {
   const environment = asRecord(state.environment, 'World environment');
   assertUnitFields(
     environment,
-    ['resourcePool', 'resourceRegenerationRate', 'socialOpportunity', 'safetySupport'],
+    [
+      'resourcePool',
+      'resourceRegenerationRate',
+      'socialOpportunity',
+      'safetySupport',
+      'habitatSupport',
+    ],
     'World environment',
   );
+
+  const growth = asRecord(state.growth, 'World growth');
+  const growthStage = nonNegativeInteger(growth.stage, 'World growth.stage');
+  if (growthStage > WORLD_GROWTH_FINAL_STAGE) {
+    throw new Error('World growth.stage exceeds the supported expansion plan.');
+  }
+  unitNumber(growth.explorationProgress, 'World growth.explorationProgress');
+  finiteNumber(growth.lastExpansionAt, 'World growth.lastExpansionAt');
+  if (
+    !Array.isArray(growth.discoveredRegionIds) ||
+    growth.discoveredRegionIds.some(
+      (regionId) => typeof regionId !== 'string' || !regionId.trim(),
+    )
+  ) {
+    throw new Error('World growth.discoveredRegionIds must contain strings.');
+  }
+  const discoveredRegionIds = growth.discoveredRegionIds as string[];
+  const expectedRegionIds = WORLD_EXPANSIONS
+    .filter((expansion) => expansion.stage <= growthStage)
+    .map((expansion) => expansion.place.id);
+  if (
+    discoveredRegionIds.length !== expectedRegionIds.length ||
+    discoveredRegionIds.some(
+      (regionId, index) => regionId !== expectedRegionIds[index],
+    )
+  ) {
+    throw new Error(
+      'World growth.discoveredRegionIds does not match its staged expansion history.',
+    );
+  }
 
   const places = asRecord(state.places, 'World places');
   if (Object.keys(places).length === 0) {
@@ -135,6 +260,111 @@ function assertWorldState(value: unknown): asserts value is WorldState {
     const capacity = finiteNumber(place.capacity, `World place ${placeId}.capacity`);
     if (!Number.isInteger(capacity) || capacity < 1) {
       throw new Error(`World place ${placeId}.capacity must be a positive integer.`);
+    }
+    if (place.discoveredAt !== undefined) {
+      finiteNumber(place.discoveredAt, `World place ${placeId}.discoveredAt`);
+    }
+  }
+  for (const expansion of WORLD_EXPANSIONS) {
+    const discovered = expansion.stage <= growthStage;
+    const storedPlace = places[expansion.place.id];
+    if (discovered && !storedPlace) {
+      throw new Error(
+        `World growth stage ${growthStage} is missing region ${expansion.place.id}.`,
+      );
+    }
+    if (!discovered && storedPlace) {
+      throw new Error(
+        `World contains undiscovered future region ${expansion.place.id}.`,
+      );
+    }
+    if (
+      discovered &&
+      asRecord(storedPlace, `World place ${expansion.place.id}`).discoveredAt ===
+        undefined
+    ) {
+      throw new Error(
+        `Discovered region ${expansion.place.id} is missing discoveredAt.`,
+      );
+    }
+  }
+
+  const wildlife = asRecord(state.wildlife, 'World wildlife');
+  for (const [populationId, rawPopulation] of Object.entries(wildlife)) {
+    const population = asRecord(
+      rawPopulation,
+      `Wildlife population ${populationId}`,
+    );
+    if (
+      requiredString(
+        population.id,
+        `Wildlife population ${populationId}.id`,
+      ) !== populationId
+    ) {
+      throw new Error(
+        `Wildlife population key ${populationId} does not match its id.`,
+      );
+    }
+    if (!WILDLIFE_SPECIES.includes(population.species as WildlifeSpecies)) {
+      throw new Error(`Wildlife population ${populationId}.species is invalid.`);
+    }
+    const habitatId = requiredString(
+      population.habitatId,
+      `Wildlife population ${populationId}.habitatId`,
+    );
+    if (!places[habitatId]) {
+      throw new Error(
+        `Wildlife population ${populationId} references missing habitat ${habitatId}.`,
+      );
+    }
+    const count = nonNegativeInteger(
+      population.count,
+      `Wildlife population ${populationId}.count`,
+    );
+    const carryingCapacity = nonNegativeInteger(
+      population.carryingCapacity,
+      `Wildlife population ${populationId}.carryingCapacity`,
+    );
+    if (carryingCapacity < 1 || count > carryingCapacity) {
+      throw new Error(
+        `Wildlife population ${populationId} exceeds its carrying capacity.`,
+      );
+    }
+    unitNumber(
+      population.reproductionRate,
+      `Wildlife population ${populationId}.reproductionRate`,
+    );
+    unitNumber(
+      population.alertness,
+      `Wildlife population ${populationId}.alertness`,
+    );
+    finiteNumber(
+      population.lastChangedAt,
+      `Wildlife population ${populationId}.lastChangedAt`,
+    );
+  }
+  for (const expansion of WORLD_EXPANSIONS) {
+    for (const expectedPopulation of expansion.wildlife) {
+      const discovered = expansion.stage <= growthStage;
+      const storedPopulation = wildlife[expectedPopulation.id];
+      if (discovered && !storedPopulation) {
+        throw new Error(
+          `World growth stage ${growthStage} is missing wildlife ${expectedPopulation.id}.`,
+        );
+      }
+      if (!discovered && storedPopulation) {
+        throw new Error(
+          `World contains wildlife from undiscovered region ${expectedPopulation.habitatId}.`,
+        );
+      }
+    }
+  }
+
+  for (const regionId of growth.discoveredRegionIds as string[]) {
+    if (!places[regionId]) {
+      throw new Error(
+        `World growth references missing discovered region ${regionId}.`,
+      );
     }
   }
 
@@ -165,7 +395,7 @@ function assertWorldState(value: unknown): asserts value is WorldState {
     const skills = asRecord(agent.skills, `Agent ${agentId}.skills`);
     assertUnitFields(
       skills,
-      ['gathering', 'craft', 'social', 'exploration'],
+      ['gathering', 'hunting', 'craft', 'social', 'exploration'],
       `Agent ${agentId}.skills`,
     );
 
@@ -258,6 +488,81 @@ function createPlace(
   capacity: number,
 ): WorldPlace {
   return { id, name, kind, capacity };
+}
+
+async function migrateLegacyWorld(
+  store: WorldStore,
+  legacy: WorldState,
+): Promise<WorldState> {
+  const operationId = 'migration:world-rules-0.3.8-to-0.3.9';
+  const operationFingerprint = stableJsonStringify({
+    kind: 'world_migration',
+    from: LEGACY_WORLD_RULES_VERSION,
+    to: WORLD_RULES_VERSION,
+  });
+  const next = structuredClone(legacy);
+
+  next.rulesVersion = WORLD_RULES_VERSION;
+  next.revision = legacy.revision + 1;
+  next.environment = {
+    ...next.environment,
+    habitatSupport: 0.5,
+  };
+  next.growth = {
+    stage: 0,
+    explorationProgress: 0,
+    lastExpansionAt: legacy.now,
+    discoveredRegionIds: [],
+  };
+  next.wildlife = {};
+
+  for (const agent of Object.values(next.agents)) {
+    agent.skills = {
+      ...agent.skills,
+      hunting: clamp01(
+        agent.skills.gathering * 0.28 +
+          agent.skills.exploration * 0.32 +
+          agent.personality.riskTolerance * 0.22,
+      ),
+    };
+  }
+
+  next.determinism.eventSequence += 1;
+  const migrationEvent: WorldEvent = {
+    eventId: `migration:${next.id}:world-rules-0.3.9`,
+    worldId: next.id,
+    kind: 'world.migrated',
+    source: 'system',
+    occurredAt: next.now,
+    payload: {
+      from: LEGACY_WORLD_RULES_VERSION,
+      to: WORLD_RULES_VERSION,
+      preservedTick: next.now,
+    },
+  };
+
+  assertWorldState(next);
+
+  try {
+    const result = await store.commit({
+      operationId,
+      operationFingerprint,
+      worldId: legacy.id,
+      expectedRevision: legacy.revision,
+      nextState: next,
+      events: [migrationEvent],
+      memories: [],
+    });
+    return result.state;
+  } catch (error) {
+    if (error instanceof WorldRevisionConflictError) {
+      const concurrent = await store.loadWorld(legacy.id);
+      if (concurrent?.rulesVersion === WORLD_RULES_VERSION) {
+        return concurrent;
+      }
+    }
+    throw error;
+  }
 }
 
 function goalFromInitialState(agent: Omit<AgentState, 'goal'>, now: number): AgentState['goal'] {
@@ -386,6 +691,7 @@ export class WorldEngine {
         },
         skills: {
           gathering: rng.between(0.15, 0.55),
+          hunting: rng.between(0.08, 0.42),
           craft: rng.between(0.15, 0.55),
           social: rng.between(0.15, 0.55),
           exploration: rng.between(0.15, 0.55),
@@ -411,12 +717,20 @@ export class WorldEngine {
         resourceRegenerationRate: 0.012,
         socialOpportunity: 0.5,
         safetySupport: 0.5,
+        habitatSupport: 0.5,
       },
       determinism: {
         rngState: rng.snapshot(),
         eventSequence: 0,
       },
+      growth: {
+        stage: 0,
+        explorationProgress: 0,
+        lastExpansionAt: now,
+        discoveredRegionIds: [],
+      },
       places,
+      wildlife: {},
       agents,
       relationships: {},
     };
@@ -427,9 +741,12 @@ export class WorldEngine {
   }
 
   static async open(options: OpenWorldEngineOptions): Promise<WorldEngine> {
-    const state = await options.store.loadWorld(options.worldId);
+    let state = await options.store.loadWorld(options.worldId);
     if (!state) {
       throw new Error(`World ${options.worldId} does not exist in the store.`);
+    }
+    if (state.rulesVersion === LEGACY_WORLD_RULES_VERSION) {
+      state = await migrateLegacyWorld(options.store, state);
     }
     if (state.rulesVersion !== WORLD_RULES_VERSION) {
       throw new Error(
@@ -507,6 +824,7 @@ export class WorldEngine {
       );
 
       const effectiveEnvironment = await this.effectiveEnvironment(now);
+      this.advanceWildlife(effectiveEnvironment, now);
       const agents = this.shuffled(Object.values(this.state.agents));
 
       for (const agent of agents) {
@@ -615,7 +933,14 @@ export class WorldEngine {
         `Intervention belongs to world ${worldId}, expected ${this.committedState.id}.`,
       );
     }
-    if (!['resource_relief', 'open_shared_space', 'safety_support'].includes(kind as string)) {
+    if (
+      ![
+        'resource_relief',
+        'open_shared_space',
+        'safety_support',
+        'habitat_support',
+      ].includes(kind as string)
+    ) {
       throw new Error('Unknown intervention kind.');
     }
     if (!Number.isFinite(now)) {
@@ -659,7 +984,9 @@ export class WorldEngine {
             ? 'cardinal.intervention.resource_relief'
             : kind === 'open_shared_space'
               ? 'cardinal.effect.open_shared_space'
-              : 'cardinal.effect.safety_support';
+              : kind === 'safety_support'
+                ? 'cardinal.effect.safety_support'
+                : 'cardinal.effect.habitat_support';
 
         if (kind === 'resource_relief') {
           this.state.environment.resourcePool = clamp01(
@@ -838,8 +1165,17 @@ export class WorldEngine {
       case 'rest':
         this.performRest(agent, now);
         break;
+      case 'relax':
+        this.performRelax(agent, now);
+        break;
+      case 'walk':
+        this.performWalk(agent, now);
+        break;
       case 'gather':
         this.performGather(agent, now);
+        break;
+      case 'hunt':
+        this.performHunt(agent, environment, now);
         break;
       case 'work':
         this.performWork(agent, now);
@@ -970,7 +1306,9 @@ export class WorldEngine {
     openness: number;
   } {
     const helpTarget = this.chooseHelpTarget(agent, allAgents);
+    const huntTarget = this.chooseHuntTarget(agent);
     const socialAvailable = allAgents.some((other) => other.id !== agent.id);
+    const natureAvailable = this.state.growth.stage > 0;
     const goalBoost = (kind: AgentGoalKind) => (agent.goal.kind === kind ? 0.24 : 0);
 
     const scores: Array<{ action: AgentActionKind; score: number }> = [
@@ -982,12 +1320,43 @@ export class WorldEngine {
           goalBoost('recover'),
       },
       {
+        action: 'relax',
+        score:
+          (natureAvailable ? 0.16 : 0) +
+          (1 - agent.energy) * 0.62 +
+          agent.stress * 0.72 +
+          agent.personality.curiosity * 0.12 +
+          goalBoost('recover') * 0.65,
+      },
+      {
+        action: 'walk',
+        score:
+          0.18 +
+          agent.personality.curiosity * 0.46 +
+          agent.personality.resilience * 0.08 +
+          (1 - agent.stress) * 0.08 +
+          (1 - agent.needs.purpose) * 0.16 +
+          goalBoost('explore') * 0.6 -
+          Math.max(0, 0.3 - agent.energy) * 0.8,
+      },
+      {
         action: 'gather',
         score:
           (1 - agent.resources) * 1.05 +
           this.state.environment.resourcePool * 0.22 +
           agent.skills.gathering * 0.2 +
           goalBoost('secure_resources'),
+      },
+      {
+        action: 'hunt',
+        score: huntTarget
+          ? (1 - agent.resources) * 0.9 +
+            agent.skills.hunting * 0.34 +
+            agent.personality.riskTolerance * 0.22 +
+            environment.safetySupport * 0.08 +
+            goalBoost('secure_resources') -
+            huntTarget.alertness * 0.34
+          : -1,
       },
       {
         action: 'work',
@@ -1073,17 +1442,20 @@ export class WorldEngine {
       };
     }
     if (agent.resources < 0.08) {
-      const gather = scores.find((item) => item.action === 'gather')!;
-      const work = scores.find((item) => item.action === 'work')!;
-      const action =
-        gather.score >= work.score &&
-        this.state.environment.resourcePool > 0.03
-          ? 'gather'
-          : 'work';
+      const survivalChoices = scores
+        .filter(
+          (item) =>
+            (item.action === 'gather' &&
+              this.state.environment.resourcePool > 0.03) ||
+            item.action === 'work' ||
+            (item.action === 'hunt' && huntTarget !== undefined),
+        )
+        .sort((a, b) => b.score - a.score);
+      const action = survivalChoices[0]?.action ?? 'work';
       return {
         action,
         dominantAction: action,
-        consideredActionCount: 2,
+        consideredActionCount: survivalChoices.length,
         openness: 0.08,
       };
     }
@@ -1151,6 +1523,154 @@ export class WorldEngine {
     });
   }
 
+  private performRelax(agent: AgentState, now: number): void {
+    const naturalPlaces = ['quiet_space', 'meadow', 'forest', 'shore'].filter(
+      (placeId) => this.state.places[placeId],
+    );
+    const destinations =
+      naturalPlaces.length > 0 ? naturalPlaces : [agent.homeId];
+    const destination = this.rng.pick(destinations);
+
+    this.moveAgent(agent, destination);
+    agent.energy = clamp01(agent.energy + 0.13);
+    agent.stress = clamp01(
+      agent.stress - 0.075 - agent.personality.resilience * 0.025,
+    );
+    agent.needs.purpose = clamp01(agent.needs.purpose + 0.012);
+    agent.lastAction = 'relax';
+    agent.lastMeaningfulEventAt = now;
+
+    this.recordAgentEvent(agent, now, 'agent.relaxed', {
+      energy: agent.energy,
+      stress: agent.stress,
+      locationId: agent.locationId,
+    });
+  }
+
+  private performWalk(agent: AgentState, now: number): void {
+    const destinations = Object.values(this.state.places)
+      .filter(
+        (place) =>
+          place.kind !== 'home' &&
+          place.id !== agent.locationId &&
+          place.kind !== 'workshop' &&
+          place.kind !== 'resource_field',
+      )
+      .map((place) => place.id);
+    const destination =
+      destinations.length > 0 ? this.rng.pick(destinations) : 'commons';
+
+    this.moveAgent(agent, destination);
+    agent.energy = clamp01(agent.energy - 0.018);
+    agent.stress = clamp01(agent.stress - 0.018);
+    agent.needs.purpose = clamp01(agent.needs.purpose + 0.008);
+    agent.skills.exploration = clamp01(agent.skills.exploration + 0.001);
+    agent.lastAction = 'walk';
+    agent.lastMeaningfulEventAt = now;
+
+    this.recordAgentEvent(agent, now, 'agent.walked', {
+      locationId: agent.locationId,
+    });
+  }
+
+  private chooseHuntTarget(
+    agent: AgentState,
+  ): WildlifePopulation | undefined {
+    const yieldBySpecies: Record<WildlifeSpecies, number> = {
+      rabbit: 0.11,
+      deer: 0.22,
+      fish: 0.085,
+    };
+
+    return Object.values(this.state.wildlife)
+      .filter(
+        (population) =>
+          population.count > 0 && this.state.places[population.habitatId],
+      )
+      .map((population) => ({
+        population,
+        score:
+          yieldBySpecies[population.species] * 2.4 +
+          population.count / population.carryingCapacity -
+          population.alertness * 0.5 +
+          agent.skills.hunting * 0.12,
+      }))
+      .sort((a, b) => b.score - a.score)[0]?.population;
+  }
+
+  private performHunt(
+    agent: AgentState,
+    environment: WorldEnvironment,
+    now: number,
+  ): void {
+    const target = this.chooseHuntTarget(agent);
+    if (!target) {
+      this.performGather(agent, now);
+      return;
+    }
+
+    const yieldBySpecies: Record<WildlifeSpecies, number> = {
+      rabbit: 0.11,
+      deer: 0.22,
+      fish: 0.085,
+    };
+    const successChance = clamp01(
+      0.16 +
+        agent.skills.hunting * 0.46 +
+        agent.personality.riskTolerance * 0.13 +
+        environment.safetySupport * 0.1 -
+        target.alertness * 0.34,
+    );
+    const succeeded = this.rng.next() < successChance;
+    const gathered = succeeded ? yieldBySpecies[target.species] : 0;
+
+    this.moveAgent(agent, target.habitatId);
+    agent.energy = clamp01(agent.energy - 0.055);
+    agent.stress = clamp01(
+      agent.stress + (succeeded ? -0.008 : 0.018),
+    );
+    agent.resources = clamp01(agent.resources + gathered);
+    agent.skills.hunting = clamp01(
+      agent.skills.hunting + (succeeded ? 0.006 : 0.003),
+    );
+    agent.needs.purpose = clamp01(
+      agent.needs.purpose + (succeeded ? 0.035 : 0.008),
+    );
+    agent.lastAction = 'hunt';
+    agent.lastMeaningfulEventAt = now;
+
+    if (succeeded) {
+      target.count -= 1;
+    }
+    target.alertness = clamp01(
+      target.alertness + (succeeded ? 0.2 : 0.11),
+    );
+    target.lastChangedAt = now;
+
+    this.recordAgentEvent(agent, now, 'agent.hunted', {
+      species: target.species,
+      succeeded,
+      gathered,
+      populationRemaining: target.count,
+      locationId: agent.locationId,
+    });
+
+    if (succeeded && target.count === 0) {
+      this.stageEvent({
+        eventId: this.nextId('wildlife'),
+        worldId: this.state.id,
+        kind: 'world.wildlife.depleted',
+        source: 'world',
+        occurredAt: now,
+        payload: {
+          populationId: target.id,
+          species: target.species,
+          habitatId: target.habitatId,
+        },
+      });
+    }
+  }
+
   private performBlockedSocialize(agent: AgentState, now: number): void {
     this.moveAgent(agent, 'commons');
     agent.energy = clamp01(agent.energy - 0.01);
@@ -1213,7 +1733,13 @@ export class WorldEngine {
   }
 
   private performExplore(agent: AgentState, now: number): void {
-    this.moveAgent(agent, 'outskirts');
+    const frontierByStage = ['outskirts', 'meadow', 'forest', 'shore'];
+    const frontier =
+      frontierByStage[this.state.growth.stage] ?? 'outskirts';
+    this.moveAgent(
+      agent,
+      this.state.places[frontier] ? frontier : 'outskirts',
+    );
     agent.energy = clamp01(agent.energy - 0.04);
     agent.resources = clamp01(agent.resources - 0.008);
     agent.skills.exploration = clamp01(agent.skills.exploration + 0.003);
@@ -1225,9 +1751,9 @@ export class WorldEngine {
         agent.personality.curiosity * 0.18 +
         agent.personality.riskTolerance * 0.08,
     );
-    const discovered = this.rng.next() < discoveryChance;
+    const resourceDiscovered = this.rng.next() < discoveryChance;
     let discovery = 0;
-    if (discovered) {
+    if (resourceDiscovered) {
       discovery = this.rng.between(0.035, 0.11);
       this.state.environment.resourcePool = clamp01(
         this.state.environment.resourcePool + discovery,
@@ -1235,15 +1761,139 @@ export class WorldEngine {
       agent.needs.purpose = clamp01(agent.needs.purpose + 0.035);
     }
 
+    const progressGain =
+      0.045 +
+      agent.skills.exploration * 0.025 +
+      agent.personality.curiosity * 0.02;
+    const discoveredRegionId = this.advanceWorldGrowth(
+      agent,
+      progressGain,
+      now,
+    );
+
     agent.lastAction = 'explore';
     agent.lastMeaningfulEventAt = now;
 
     this.recordAgentEvent(agent, now, 'agent.explored', {
-      discovered,
+      discovered: resourceDiscovered,
       discovery,
       resourcePool: this.state.environment.resourcePool,
+      growthStage: this.state.growth.stage,
+      explorationProgress: this.state.growth.explorationProgress,
+      discoveredRegionId: discoveredRegionId ?? null,
       locationId: agent.locationId,
     });
+  }
+
+  private advanceWorldGrowth(
+    agent: AgentState,
+    progressGain: number,
+    now: number,
+  ): string | undefined {
+    if (this.state.growth.stage >= WORLD_GROWTH_FINAL_STAGE) {
+      this.state.growth.explorationProgress = 1;
+      return undefined;
+    }
+
+    this.state.growth.explorationProgress = clamp01(
+      this.state.growth.explorationProgress + progressGain,
+    );
+    if (this.state.growth.explorationProgress < 1) {
+      return undefined;
+    }
+
+    const expansion = WORLD_EXPANSIONS.find(
+      (candidate) => candidate.stage === this.state.growth.stage + 1,
+    );
+    if (!expansion) {
+      throw new Error(
+        `World expansion stage ${this.state.growth.stage + 1} is not defined.`,
+      );
+    }
+
+    this.state.places[expansion.place.id] = {
+      ...structuredClone(expansion.place),
+      discoveredAt: now,
+    };
+    for (const population of expansion.wildlife) {
+      this.state.wildlife[population.id] = {
+        ...structuredClone(population),
+        lastChangedAt: now,
+      };
+    }
+
+    this.state.growth.stage = expansion.stage;
+    this.state.growth.explorationProgress = 0;
+    this.state.growth.lastExpansionAt = now;
+    this.state.growth.discoveredRegionIds.push(expansion.place.id);
+
+    this.stageEvent({
+      eventId: this.nextId('world-growth'),
+      worldId: this.state.id,
+      kind: 'world.region.discovered',
+      source: 'agent',
+      occurredAt: now,
+      payload: {
+        agentId: agent.id,
+        regionId: expansion.place.id,
+        regionKind: expansion.place.kind,
+        stage: expansion.stage,
+      },
+    });
+    this.stageMemory({
+      memoryId: this.nextId('memory'),
+      worldId: this.state.id,
+      agentId: agent.id,
+      createdAt: now,
+      kind: 'world_event',
+      summary: `${agent.name} discovered ${expansion.place.name}.`,
+      importance: 0.82,
+      valence: 0.62,
+      relatedAgentIds: [],
+    });
+
+    return expansion.place.id;
+  }
+
+  private advanceWildlife(
+    environment: WorldEnvironment,
+    now: number,
+  ): void {
+    for (const population of Object.values(this.state.wildlife)) {
+      population.alertness = clamp01(population.alertness - 0.025);
+      if (population.count >= population.carryingCapacity) {
+        continue;
+      }
+
+      const density = population.count / population.carryingCapacity;
+      const emptyHabitatBoost = population.count === 0 ? 0.22 : 0;
+      const recoveryChance = clamp01(
+        population.reproductionRate *
+          (0.35 + environment.habitatSupport * 0.8) *
+          (1 - density) +
+          emptyHabitatBoost * environment.habitatSupport,
+      );
+      if (this.rng.next() >= recoveryChance) {
+        continue;
+      }
+
+      population.count += 1;
+      population.lastChangedAt = now;
+      this.stageEvent({
+        eventId: this.nextId('wildlife'),
+        worldId: this.state.id,
+        kind: 'world.wildlife.recovered',
+        source: 'world',
+        occurredAt: now,
+        payload: {
+          populationId: population.id,
+          species: population.species,
+          habitatId: population.habitatId,
+          count: population.count,
+          carryingCapacity: population.carryingCapacity,
+        },
+      });
+    }
   }
 
   private performReflect(agent: AgentState, now: number): void {
@@ -1574,6 +2224,7 @@ export class WorldEngine {
     const activeSignals = [...committed, ...staged];
     let socialModifier = 0;
     let safetyModifier = 0;
+    let habitatModifier = 0;
 
     for (const signal of activeSignals) {
       const magnitude =
@@ -1587,6 +2238,9 @@ export class WorldEngine {
         safetyModifier += magnitude;
       } else if (signal.kind === 'world.effect.safety_shock') {
         safetyModifier -= magnitude;
+        habitatModifier -= magnitude * 0.25;
+      } else if (signal.kind === 'cardinal.effect.habitat_support') {
+        habitatModifier += magnitude;
       }
     }
 
@@ -1596,6 +2250,9 @@ export class WorldEngine {
         this.state.environment.socialOpportunity + socialModifier,
       ),
       safetySupport: clamp01(this.state.environment.safetySupport + safetyModifier),
+      habitatSupport: clamp01(
+        this.state.environment.habitatSupport + habitatModifier,
+      ),
     };
   }
 

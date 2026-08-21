@@ -1,10 +1,12 @@
 import './browser.css';
+import type { CardinalCapability } from './cardinal/types';
 import type { LiveWorldFrame } from './runtime/LiveWorldRuntime';
 import type { WorldEvent } from './world/events';
 import type {
   AgentActionKind,
   AgentState,
   RelationshipState,
+  WildlifeSpecies,
   WorldState,
 } from './world/types';
 
@@ -16,7 +18,10 @@ if (!app) {
 
 const actionLabels: Record<AgentActionKind, string> = {
   rest: 'отдыхает',
+  relax: 'отдыхает на природе',
+  walk: 'гуляет',
   gather: 'собирает ресурсы',
+  hunt: 'охотится',
   work: 'работает',
   socialize: 'общается',
   help: 'помогает',
@@ -26,7 +31,10 @@ const actionLabels: Record<AgentActionKind, string> = {
 
 const actionIcons: Record<AgentActionKind, string> = {
   rest: '☾',
+  relax: '☀',
+  walk: '↝',
   gather: '✦',
+  hunt: '➶',
   work: '⚒',
   socialize: '●●',
   help: '♥',
@@ -52,6 +60,14 @@ const traitLabels: Record<keyof AgentState['personality'], string> = {
   riskTolerance: 'смелый',
 };
 
+const skillLabels: Record<keyof AgentState['skills'], string> = {
+  gathering: 'сбор',
+  hunting: 'охота',
+  craft: 'ремесло',
+  social: 'общение',
+  exploration: 'исследование',
+};
+
 interface MapPoint {
   x: number;
   y: number;
@@ -65,6 +81,30 @@ const publicPlacePoints: Record<string, MapPoint> = {
   workshop: { x: 83, y: 25, label: 'Мастерская', symbol: '⚒' },
   quiet_space: { x: 18, y: 75, label: 'Тихий сад', symbol: '♣' },
   outskirts: { x: 82, y: 76, label: 'Окраина', symbol: '▲' },
+  meadow: { x: 8, y: 13, label: 'Дикий луг', symbol: '❀' },
+  forest: { x: 50, y: 12, label: 'Северный лес', symbol: '♠' },
+  shore: { x: 92, y: 88, label: 'Берег моря', symbol: '≈' },
+};
+
+const wildlifeLabels: Record<WildlifeSpecies, string> = {
+  rabbit: 'Кролики',
+  deer: 'Олени',
+  fish: 'Рыба',
+};
+
+const wildlifeIcons: Record<WildlifeSpecies, string> = {
+  rabbit: '🐇',
+  deer: '🦌',
+  fish: '🐟',
+};
+
+const cardinalCapabilityLabels: Record<CardinalCapability, string> = {
+  world_observation: 'наблюдение мира',
+  autonomy_guard: 'защита автономии',
+  trend_reasoning: 'анализ тенденций',
+  ecosystem_observation: 'наблюдение экосистемы',
+  outcome_learning: 'обучение на последствиях',
+  habitat_support_planning: 'планирование поддержки среды',
 };
 
 const homePoints: readonly MapPoint[] = [
@@ -80,9 +120,9 @@ app.innerHTML = `
   <div class="ainkrad-app">
     <header class="world-header">
       <div>
-        <p class="eyebrow">AINKRAD v0.3.8 · автономный мир</p>
+        <p class="eyebrow">AINKRAD v0.3.9 · растущий мир</p>
         <h1>Первый уровень</h1>
-        <p class="world-subtitle">Шесть судеб. Ни одного общего сценария.</p>
+        <p class="world-subtitle">Жители открывают территории. Cardinal учится вместе с миром.</p>
       </div>
 
       <div class="live-indicator" id="live-indicator">
@@ -95,6 +135,8 @@ app.innerHTML = `
       <span>Тик <strong id="tick-value">0</strong></span>
       <span>Время <strong id="time-value">Рассвет</strong></span>
       <span>Жителей <strong id="population-value">6</strong></span>
+      <span>Территории <strong id="growth-value">0/3</strong></span>
+      <span>Животные <strong id="wildlife-value">0</strong></span>
       <span>Общие ресурсы <strong id="resource-value">—</strong></span>
       <span class="save-state">Состояние <strong id="save-value">Загрузка…</strong></span>
     </div>
@@ -103,9 +145,9 @@ app.innerHTML = `
       <section class="world-map" id="world-map" aria-label="Карта Ainkrad">
         <div class="map-sky" aria-hidden="true"></div>
         <div class="map-grid" aria-hidden="true"></div>
-        <div class="terrain terrain--water" aria-hidden="true"></div>
-        <div class="terrain terrain--grove-one" aria-hidden="true"></div>
-        <div class="terrain terrain--grove-two" aria-hidden="true"></div>
+        <div class="terrain terrain--water growth-terrain growth-terrain--3" aria-hidden="true"></div>
+        <div class="terrain terrain--grove-one growth-terrain growth-terrain--2" aria-hidden="true"></div>
+        <div class="terrain terrain--grove-two growth-terrain growth-terrain--1" aria-hidden="true"></div>
 
         <svg
           class="roads"
@@ -115,9 +157,13 @@ app.innerHTML = `
         >
           <path class="road-main" d="M50 48 L16 23 M50 48 L83 25 M50 48 L18 75 M50 48 L82 76" />
           <path d="M7 49 L18 75 M30 8 L16 23 M69 8 L83 25 M93 49 L82 76 M70 92 L82 76 M30 92 L18 75" />
+          <path class="road-growth road-growth--1" d="M16 23 L8 13" />
+          <path class="road-growth road-growth--2" d="M16 23 L50 12" />
+          <path class="road-growth road-growth--3" d="M82 76 L92 88" />
         </svg>
 
         <div id="places-layer" class="places-layer"></div>
+        <div id="wildlife-layer" class="wildlife-layer"></div>
         <div id="agents-layer" class="agents-layer"></div>
 
         <div class="map-hint">Нажмите на жителя</div>
@@ -148,6 +194,7 @@ app.innerHTML = `
             <div><dt>Место</dt><dd id="resident-place">—</dd></div>
             <div><dt>Цель</dt><dd id="resident-goal">—</dd></div>
             <div><dt>Характер</dt><dd id="resident-traits">—</dd></div>
+            <div><dt>Сильный навык</dt><dd id="resident-skill">—</dd></div>
             <div><dt>Выбор</dt><dd id="resident-choice">—</dd></div>
           </dl>
 
@@ -194,7 +241,13 @@ app.innerHTML = `
           <div class="cardinal-numbers">
             <span><strong id="evaluation-value">0</strong>оценок</span>
             <span><strong id="intervention-value">0</strong>вмешательств</span>
+            <span><strong id="cardinal-level-value">1</strong>уровень</span>
+            <span><strong id="cardinal-xp-value">0</strong>опыт</span>
           </div>
+
+          <p class="cardinal-capabilities" id="cardinal-capabilities">
+            Наблюдение мира · защита автономии
+          </p>
 
           <p id="cardinal-message">
             Cardinal не управляет жителями. Любое изменение мира проходит
@@ -214,14 +267,20 @@ const requiredElement = <T extends HTMLElement>(id: string): T => {
 
 const worldMap = requiredElement<HTMLElement>('world-map');
 const placesLayer = requiredElement<HTMLDivElement>('places-layer');
+const wildlifeLayer = requiredElement<HTMLDivElement>('wildlife-layer');
 const agentsLayer = requiredElement<HTMLDivElement>('agents-layer');
 const tickValue = requiredElement<HTMLElement>('tick-value');
 const timeValue = requiredElement<HTMLElement>('time-value');
 const populationValue = requiredElement<HTMLElement>('population-value');
+const growthValue = requiredElement<HTMLElement>('growth-value');
+const wildlifeValue = requiredElement<HTMLElement>('wildlife-value');
 const resourceValue = requiredElement<HTMLElement>('resource-value');
 const saveValue = requiredElement<HTMLElement>('save-value');
 const evaluationValue = requiredElement<HTMLElement>('evaluation-value');
 const interventionValue = requiredElement<HTMLElement>('intervention-value');
+const cardinalLevelValue = requiredElement<HTMLElement>('cardinal-level-value');
+const cardinalXpValue = requiredElement<HTMLElement>('cardinal-xp-value');
+const cardinalCapabilities = requiredElement<HTMLElement>('cardinal-capabilities');
 const liveIndicator = requiredElement<HTMLElement>('live-indicator');
 const liveLabel = requiredElement<HTMLElement>('live-label');
 const disturbanceBanner = requiredElement<HTMLElement>('disturbance-banner');
@@ -231,6 +290,7 @@ const residentActivity = requiredElement<HTMLElement>('resident-activity');
 const residentPlace = requiredElement<HTMLElement>('resident-place');
 const residentGoal = requiredElement<HTMLElement>('resident-goal');
 const residentTraits = requiredElement<HTMLElement>('resident-traits');
+const residentSkill = requiredElement<HTMLElement>('resident-skill');
 const residentChoice = requiredElement<HTMLElement>('resident-choice');
 const relationshipNote = requiredElement<HTMLElement>('relationship-note');
 const eventFeed = requiredElement<HTMLOListElement>('event-feed');
@@ -248,9 +308,9 @@ const cardinalMessage = requiredElement<HTMLElement>('cardinal-message');
 
 const avatarElements = new Map<string, HTMLButtonElement>();
 const placeElements = new Map<string, HTMLElement>();
+const wildlifeElements = new Map<string, HTMLElement>();
 const previousLocations = new Map<string, string>();
 
-let placesRendered = false;
 let selectedAgentId: string | undefined;
 let lastFrame: LiveWorldFrame | undefined;
 let continuityAnnounced = false;
@@ -278,10 +338,9 @@ function displayPlaceName(
 }
 
 function renderPlaces(world: Readonly<WorldState>): void {
-  if (placesRendered) return;
-
   const agentIds = Object.keys(world.agents);
   for (const [placeId, place] of Object.entries(world.places)) {
+    if (placeElements.has(placeId)) continue;
     const homeAgentIndex = agentIds.findIndex(
       (agentId) => world.agents[agentId]?.homeId === placeId,
     );
@@ -301,8 +360,40 @@ function renderPlaces(world: Readonly<WorldState>): void {
     placesLayer.append(placeElement);
     placeElements.set(placeId, placeElement);
   }
+}
 
-  placesRendered = true;
+function renderWildlife(world: Readonly<WorldState>): void {
+  for (const [populationId, population] of Object.entries(world.wildlife)) {
+    let element = wildlifeElements.get(populationId);
+    if (!element) {
+      const habitat = pointForPlace(population.habitatId);
+      const offsets: Record<WildlifeSpecies, { x: number; y: number }> = {
+        rabbit: { x: 6, y: 4 },
+        deer: { x: 7, y: 5 },
+        fish: { x: -6, y: -5 },
+      };
+      const offset = offsets[population.species];
+      element = document.createElement('div');
+      element.className = `wildlife-population wildlife-population--${population.species}`;
+      element.style.left = `${clampMapCoordinate(habitat.x + offset.x)}%`;
+      element.style.top = `${clampMapCoordinate(habitat.y + offset.y)}%`;
+      element.innerHTML = `
+        <span class="wildlife-icon" aria-hidden="true">${wildlifeIcons[population.species]}</span>
+        <span class="wildlife-count"></span>
+      `;
+      wildlifeLayer.append(element);
+      wildlifeElements.set(populationId, element);
+    }
+
+    const label = wildlifeLabels[population.species];
+    const count = element.querySelector<HTMLElement>('.wildlife-count');
+    if (count) count.textContent = String(population.count);
+    element.setAttribute(
+      'aria-label',
+      `${label}: ${population.count} из ${population.carryingCapacity}`,
+    );
+    element.classList.toggle('is-depleted', population.count === 0);
+  }
 }
 
 function ensureAvatar(
@@ -354,6 +445,13 @@ function strongestTraits(agent: Readonly<AgentState>): string {
     .join(' · ');
 }
 
+function strongestSkill(agent: Readonly<AgentState>): string {
+  const strongest = (Object.entries(agent.skills) as Array<
+    [keyof AgentState['skills'], number]
+  >).sort((a, b) => b[1] - a[1])[0];
+  return `${skillLabels[strongest[0]]} · ${Math.round(strongest[1] * 100)}%`;
+}
+
 function closestRelationship(
   world: Readonly<WorldState>,
   agentId: string,
@@ -397,6 +495,7 @@ function updateSelection(): void {
   residentPlace.textContent = displayPlaceName(lastFrame.world, selected);
   residentGoal.textContent = goalLabels[selected.goal.kind];
   residentTraits.textContent = strongestTraits(selected);
+  residentSkill.textContent = strongestSkill(selected);
 
   if (selected.lastDecision) {
     const openness = Math.round(selected.lastDecision.openness * 100);
@@ -459,11 +558,31 @@ function eventText(
   switch (event.kind) {
     case 'agent.rested':
       return `${name} решил отдохнуть`;
+    case 'agent.relaxed':
+      return `${name} отдыхает на природе`;
+    case 'agent.walked':
+      return `${name} отправился гулять`;
     case 'agent.gathered':
       return `${name} добыл ресурсы`;
+    case 'agent.hunted': {
+      const species = event.payload.species;
+      const label =
+        typeof species === 'string' && species in wildlifeLabels
+          ? wildlifeLabels[species as WildlifeSpecies].toLowerCase()
+          : 'дичь';
+      return event.payload.succeeded
+        ? `${name} добыл: ${label}`
+        : `${name} вернулся с охоты без добычи`;
+    }
     case 'agent.worked':
       return `${name} работает в мастерской`;
     case 'agent.explored':
+      if (typeof event.payload.discoveredRegionId === 'string') {
+        return `${name} открыл: ${
+          publicPlacePoints[event.payload.discoveredRegionId]?.label ??
+          event.payload.discoveredRegionId
+        }`;
+      }
       return event.payload.discovered
         ? `${name} нашёл новые ресурсы`
         : `${name} исследует окраину`;
@@ -502,12 +621,30 @@ function eventText(
       return 'Общаться стало труднее';
     case 'world.effect.safety_shock':
       return 'В мире выросла опасность';
+    case 'world.region.discovered': {
+      const regionId = event.payload.regionId;
+      return typeof regionId === 'string'
+        ? `Карта выросла: ${publicPlacePoints[regionId]?.label ?? regionId}`
+        : 'Жители открыли новую территорию';
+    }
+    case 'world.wildlife.recovered': {
+      const species = event.payload.species;
+      return typeof species === 'string' && species in wildlifeLabels
+        ? `${wildlifeLabels[species as WildlifeSpecies]} размножаются`
+        : 'Популяция животных восстанавливается';
+    }
+    case 'world.wildlife.depleted':
+      return 'Одна из популяций животных исчезла из поля зрения';
+    case 'world.migrated':
+      return 'Старый мир продолжен по новым правилам';
     case 'cardinal.intervention.resource_relief':
       return 'Gateway подтвердил ресурсную помощь';
     case 'cardinal.effect.open_shared_space':
       return 'Gateway временно открыл общее пространство';
     case 'cardinal.effect.safety_support':
       return 'Gateway подтвердил поддержку безопасности';
+    case 'cardinal.effect.habitat_support':
+      return 'Gateway временно поддержал восстановление среды';
     default:
       return undefined;
   }
@@ -570,7 +707,9 @@ function updateWorldTime(tick: number): void {
 
 function updateWorld(frame: Readonly<LiveWorldFrame>): void {
   lastFrame = structuredClone(frame);
+  worldMap.dataset.growth = String(frame.world.growth.stage);
   renderPlaces(frame.world);
+  renderWildlife(frame.world);
 
   const agents = Object.values(frame.world.agents);
   if (!selectedAgentId) selectedAgentId = agents[0]?.id;
@@ -603,12 +742,17 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
     const changedPlace = previousLocations.get(agent.id) !== agent.locationId;
     const isMoving =
       changedPlace ||
-      (agent.lastAction !== 'rest' && agent.lastAction !== 'reflect');
+      (agent.lastAction !== 'rest' &&
+        agent.lastAction !== 'relax' &&
+        agent.lastAction !== 'reflect');
 
     avatar.style.left = `${x}%`;
     avatar.style.top = `${y}%`;
     avatar.classList.toggle('is-moving', isMoving);
     avatar.classList.toggle('is-resting', agent.lastAction === 'rest');
+    avatar.classList.toggle('is-relaxing', agent.lastAction === 'relax');
+    avatar.classList.toggle('is-walking', agent.lastAction === 'walk');
+    avatar.classList.toggle('is-hunting', agent.lastAction === 'hunt');
     avatar.classList.toggle('is-reflecting', agent.lastAction === 'reflect');
     avatar.classList.toggle('is-socializing', agent.lastAction === 'socialize');
     avatar.classList.toggle('is-helping', agent.lastAction === 'help');
@@ -632,9 +776,30 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
 
   tickValue.textContent = String(frame.tick);
   populationValue.textContent = String(agents.length);
+  growthValue.textContent =
+    frame.world.growth.stage >= 3
+      ? '3/3'
+      : `${frame.world.growth.stage}/3 · ${Math.round(
+          frame.world.growth.explorationProgress * 100,
+        )}%`;
+  wildlifeValue.textContent = String(
+    Object.values(frame.world.wildlife).reduce(
+      (sum, population) => sum + population.count,
+      0,
+    ),
+  );
   resourceValue.textContent = `${Math.round(frame.world.environment.resourcePool * 100)}%`;
   evaluationValue.textContent = String(frame.evaluationCount);
   interventionValue.textContent = String(frame.executedInterventionCount);
+  if (frame.evaluation?.experience) {
+    cardinalLevelValue.textContent = String(frame.evaluation.experience.level);
+    cardinalXpValue.textContent = String(
+      frame.evaluation.experience.totalExperience,
+    );
+    cardinalCapabilities.textContent = frame.evaluation.experience.capabilities
+      .map((capability) => cardinalCapabilityLabels[capability])
+      .join(' · ');
+  }
   updateWorldTime(frame.tick);
 
   if (frame.continuity.durable) {
@@ -655,7 +820,12 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
   }
   liveIndicator.classList.add('is-live');
 
-  if (frame.intervention?.executed) {
+  const unlocked = frame.evaluation?.experience.newlyUnlockedCapabilities ?? [];
+  if (unlocked.length > 0) {
+    cardinalMessage.textContent = `Cardinal освоил: ${unlocked
+      .map((capability) => cardinalCapabilityLabels[capability])
+      .join(', ')}. Воля жителей не изменилась.`;
+  } else if (frame.intervention?.executed) {
     cardinalMessage.textContent =
       'Cardinal предложил меру. Независимый gateway проверил и выполнил её.';
   } else if (frame.evaluation?.proposal) {
