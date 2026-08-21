@@ -6,7 +6,7 @@ import type {
   InterventionOutcomeRecord,
 } from './types';
 
-interface ExperienceCounters {
+export interface CardinalExperienceCounters {
   observationCycles: number;
   ecologyObservationCycles: number;
   evaluatedOutcomes: number;
@@ -21,7 +21,7 @@ function hasEcologyEvidence(metrics: Partial<CardinalMetrics>): boolean {
 }
 
 function capabilitiesFor(
-  counters: ExperienceCounters,
+  counters: CardinalExperienceCounters,
   level: number,
 ): CardinalCapability[] {
   const capabilities: CardinalCapability[] = [
@@ -61,7 +61,7 @@ function capabilitiesFor(
 }
 
 function makeExperience(
-  counters: ExperienceCounters,
+  counters: CardinalExperienceCounters,
   previousCapabilities: readonly CardinalCapability[] = [],
 ): CardinalExperienceState {
   const totalExperience =
@@ -102,7 +102,7 @@ export function deriveCardinalExperience(
   evaluations: readonly CardinalEvaluation[],
   outcomes: readonly InterventionOutcomeRecord[],
 ): CardinalExperienceState {
-  const counters: ExperienceCounters = {
+  const counters: CardinalExperienceCounters = {
     observationCycles: evaluations.length,
     ecologyObservationCycles: evaluations.filter((evaluation) =>
       hasEcologyEvidence(evaluation.metrics),
@@ -114,6 +114,12 @@ export function deriveCardinalExperience(
   };
 
   return makeExperience(counters);
+}
+
+export function deriveCardinalExperienceFromCounters(
+  counters: Readonly<CardinalExperienceCounters>,
+): CardinalExperienceState {
+  return makeExperience({ ...counters });
 }
 
 export function advanceCardinalExperience(

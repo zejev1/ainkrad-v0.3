@@ -22,6 +22,9 @@ export class AppendOnlyLogConflictError extends Error {
  */
 export interface AppendOnlyLog {
   read(streamId: string): Promise<string[]>;
+  length(streamId: string): Promise<number>;
+  readRange(streamId: string, start: number, limit: number): Promise<string[]>;
+  readTail(streamId: string, limit: number): Promise<string[]>;
   append(streamId: string, expectedLength: number, record: string): Promise<number>;
 }
 
@@ -35,6 +38,32 @@ export class InMemoryAppendOnlyLog implements AppendOnlyLog {
 
   async read(streamId: string): Promise<string[]> {
     return [...(this.streams.get(streamId) ?? [])];
+  }
+
+  async length(streamId: string): Promise<number> {
+    return (this.streams.get(streamId) ?? []).length;
+  }
+
+  async readRange(
+    streamId: string,
+    start: number,
+    limit: number,
+  ): Promise<string[]> {
+    if (!Number.isInteger(start) || start < 0) {
+      throw new Error('Append-only range start must be a non-negative integer.');
+    }
+    if (!Number.isInteger(limit) || limit < 0) {
+      throw new Error('Append-only range limit must be a non-negative integer.');
+    }
+    return (this.streams.get(streamId) ?? []).slice(start, start + limit);
+  }
+
+  async readTail(streamId: string, limit: number): Promise<string[]> {
+    if (!Number.isInteger(limit) || limit < 0) {
+      throw new Error('Append-only tail limit must be a non-negative integer.');
+    }
+    const values = this.streams.get(streamId) ?? [];
+    return values.slice(Math.max(0, values.length - limit));
   }
 
   async append(

@@ -1,6 +1,9 @@
 import { createStableId } from '../core/stableId';
 import type { CardinalJournal } from './CardinalJournal';
-import { deriveCardinalExperience } from './CardinalExperience';
+import {
+  deriveCardinalExperience,
+  deriveCardinalExperienceFromCounters,
+} from './CardinalExperience';
 import type {
   CardinalEvaluation,
   CardinalExperienceState,
@@ -29,17 +32,18 @@ export async function buildCardinalResearchContext(
   policyVersion: string,
   sensorVersion: string,
 ): Promise<CardinalResearchContext> {
-  const [evaluations, interventions, outcomes] = await Promise.all([
-    journal.evaluations(worldId),
-    journal.interventions(worldId),
-    journal.outcomes(worldId),
+  const [evaluations, interventions, outcomes, summary] = await Promise.all([
+    journal.recentEvaluations(worldId, 64, currentObservedAt),
+    journal.recentInterventions(worldId, 256, currentObservedAt),
+    journal.recentOutcomes(worldId, 256, currentObservedAt),
+    journal.summary(worldId, currentObservedAt),
   ]);
-  const experience = deriveCardinalExperience(
-    evaluations.filter(
-      (evaluation) => evaluation.evaluatedAt < currentObservedAt,
-    ),
-    outcomes.filter((outcome) => outcome.observedAt < currentObservedAt),
-  );
+  const experience = deriveCardinalExperienceFromCounters({
+    observationCycles: summary.evaluationCount,
+    ecologyObservationCycles: summary.ecologyEvaluationCount,
+    evaluatedOutcomes: summary.outcomeCount,
+    successfulPredictions: summary.successfulPredictionCount,
+  });
 
   // Strictly earlier logical time is intentional. If the same Cardinal cycle is
   // retried after its evaluation was already journaled, the retry must rebuild

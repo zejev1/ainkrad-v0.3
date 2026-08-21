@@ -28,9 +28,9 @@ export async function buildCardinalAuditContext(
   sensorVersion: string,
 ): Promise<CardinalAuditContext> {
   const [evaluations, interventions, outcomes] = await Promise.all([
-    journal.evaluations(worldId),
-    journal.interventions(worldId),
-    journal.outcomes(worldId),
+    journal.recentEvaluations(worldId, 96, currentObservedAt),
+    journal.recentInterventions(worldId, 256, currentObservedAt),
+    journal.recentOutcomes(worldId, 256, currentObservedAt),
   ]);
 
   const priorEvaluations = evaluations

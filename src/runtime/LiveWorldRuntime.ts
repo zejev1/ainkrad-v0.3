@@ -3,6 +3,7 @@ import { buildCardinalAuditContext } from '../cardinal/CardinalAuditContext';
 import { CardinalCore } from '../cardinal/CardinalCore';
 import { reconcileGatewayJournal } from '../cardinal/CardinalRecovery';
 import { LogBackedCardinalJournal } from '../cardinal/LogBackedCardinalJournal';
+import type { CardinalJournalSummary } from '../cardinal/CardinalJournal';
 import { CardinalObserver } from '../cardinal/CardinalObserver';
 import { CardinalRuntime } from '../cardinal/CardinalRuntime';
 import {
@@ -17,8 +18,10 @@ import {
 } from '../cardinal/InterventionGateway';
 import { LogBackedInterventionGatewayLedger } from '../cardinal/InterventionGatewayLedger';
 import type {
+  AuditRecord,
   CardinalEvaluation,
   CardinalMode,
+  InterventionOutcomeRecord,
   InterventionRecord,
 } from '../cardinal/types';
 import {
@@ -35,7 +38,11 @@ import { InMemoryWorldStore } from '../world/InMemoryWorldStore';
 import { WorldEngine } from '../world/WorldEngine';
 import type { WorldEvent } from '../world/events';
 import type { WorldStore } from '../world/persistence';
-import type { WorldDisturbanceKind, WorldState } from '../world/types';
+import type {
+  WorldDisturbanceKind,
+  WorldLawState,
+  WorldState,
+} from '../world/types';
 import type {
   WorldSpeedId,
   WorldSpeedMultiplier,
@@ -100,23 +107,27 @@ export interface CardinalActivitySnapshot {
   lastCardinalEvent?: WorldEvent;
 }
 
+export interface CardinalConsoleSnapshot {
+  worldId: string;
+  generatedAt: number;
+  laws: WorldLawState[];
+  evaluations: CardinalEvaluation[];
+  interventions: InterventionRecord[];
+  outcomes: InterventionOutcomeRecord[];
+  audits: AuditRecord[];
+}
+
 function cardinalActivityFromHistory(
-  evaluations: readonly CardinalEvaluation[],
-  interventions: readonly InterventionRecord[],
+  summary: Readonly<CardinalJournalSummary>,
   events: readonly WorldEvent[],
+  authorizedWorldChangeCount: number,
 ): CardinalActivitySnapshot {
   const cardinalEvents = events.filter((event) => event.source === 'cardinal');
   return {
-    proposalCount: evaluations.filter((evaluation) => evaluation.proposal).length,
-    authorizationDecisionCount: interventions.length,
-    deniedInterventionCount: interventions.filter(
-      (intervention) => !intervention.executed,
-    ).length,
-    authorizedWorldChangeCount: cardinalEvents.filter(
-      (event) =>
-        event.kind === 'cardinal.world_law.changed' ||
-        event.kind.startsWith('cardinal.catastrophe.'),
-    ).length,
+    proposalCount: summary.proposalCount,
+    authorizationDecisionCount: summary.interventionCount,
+    deniedInterventionCount: summary.deniedInterventionCount,
+    authorizedWorldChangeCount,
     ...(cardinalEvents.length === 0
       ? {}
       : { lastCardinalEvent: structuredClone(cardinalEvents.at(-1)!) }),
@@ -187,10 +198,9 @@ export class LiveWorldRuntime {
 
     await reconcileGatewayJournal(worldId, gateway, journal);
 
-    const [evaluations, interventions, worldHistory] = await Promise.all([
-      journal.evaluations(worldId),
-      journal.interventions(worldId),
-      store.history(worldId),
+    const [summary, recentWorldHistory] = await Promise.all([
+      journal.summary(worldId),
+      store.recent(worldId, 96),
     ]);
 
     return new LiveWorldRuntime(
@@ -211,9 +221,13 @@ export class LiveWorldRuntime {
         options.worldSpeedId,
         options.worldSpeedMultiplier,
       ),
-      evaluations.length,
-      interventions.filter((intervention) => intervention.executed).length,
-      cardinalActivityFromHistory(evaluations, interventions, worldHistory),
+      summary.evaluationCount,
+      summary.executedInterventionCount,
+      cardinalActivityFromHistory(
+        summary,
+        recentWorldHistory,
+        world.snapshot().governance.authorityRevision,
+      ),
       {
         durable: options.durable ?? false,
         resumed: existing !== undefined,
@@ -226,24 +240,42 @@ export class LiveWorldRuntime {
     await this.world.reload();
     this.currentTick = this.world.snapshot().now;
 
-    const [evaluations, interventions, worldHistory] = await Promise.all([
-      this.journal.evaluations(this.world.snapshot().id),
-      this.journal.interventions(this.world.snapshot().id),
-      this.store.history(this.world.snapshot().id),
+    const [summary, recentWorldHistory] = await Promise.all([
+      this.journal.summary(this.world.snapshot().id),
+      this.store.recent(this.world.snapshot().id, 96),
     ]);
-    this.evaluationCount = evaluations.length;
-    this.executedInterventionCount = interventions.filter(
-      (intervention) => intervention.executed,
-    ).length;
+    this.evaluationCount = summary.evaluationCount;
+    this.executedInterventionCount = summary.executedInterventionCount;
     this.cardinalActivity = cardinalActivityFromHistory(
-      evaluations,
-      interventions,
-      worldHistory,
+      summary,
+      recentWorldHistory,
+      this.world.snapshot().governance.authorityRevision,
     );
   }
 
   setWorldSpeed(speedId: unknown, multiplier: unknown): WorldClockControl {
     return this.clockGateway.set(speedId, multiplier);
+  }
+
+  async cardinalConsole(): Promise<CardinalConsoleSnapshot> {
+    const snapshot = this.world.snapshot();
+    const [evaluations, interventions, outcomes, audits] = await Promise.all([
+      this.journal.recentEvaluations(snapshot.id, 160),
+      this.journal.recentInterventions(snapshot.id, 96),
+      this.journal.recentOutcomes(snapshot.id, 96),
+      this.journal.recentAudits(snapshot.id, 192),
+    ]);
+    return structuredClone({
+      worldId: snapshot.id,
+      generatedAt: snapshot.now,
+      laws: Object.values(snapshot.governance.laws).sort(
+        (a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id),
+      ),
+      evaluations,
+      interventions,
+      outcomes,
+      audits,
+    });
   }
 
   async tick(): Promise<LiveWorldFrame> {
@@ -428,9 +460,9 @@ export class LiveWorldRuntime {
     const worldId = this.world.snapshot().id;
 
     const [evaluations, interventions, outcomes] = await Promise.all([
-      this.journal.evaluations(worldId),
-      this.journal.interventions(worldId),
-      this.journal.outcomes(worldId),
+      this.journal.recentEvaluations(worldId, 512),
+      this.journal.recentInterventions(worldId, 256),
+      this.journal.recentOutcomes(worldId, 256),
     ]);
 
     const evaluationById = new Map(

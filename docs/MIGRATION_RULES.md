@@ -105,4 +105,12 @@ The runtime accepts v0.3.8, v0.3.9 and deployed v0.3.10. For v0.3.10 it converts
 
 Existing wildlife remains ordinary wildlife. A migrated mature frontier receives only a bounded seeded monster habitat, and later monsters and settlements emerge through normal world rules. Cardinal policy and sensors advance to v0.3.11 because their pressure meanings and thresholds changed; older evidence remains history but does not become a same-policy persistence chain.
 
+## Audit 12: physical map and bounded hot-history access
+
+World rules `ainkrad-world-rules-0.3.12` add persisted settlement membership, surface semantics, deterministic curved routes, resident 2D position and an interruptible movement projection. Migration from deployed v0.3.11 must preserve the logical tick, elapsed world minutes, age, identity, relationships, frontier, history and RNG future. It may deterministically regroup founding homes into the founding settlement and derive route/position projections because v0.3.11 had no causal spatial position.
+
+Reachable lake, river and sea locations denote shore. Explicit open-water places are not walkable and receive no implicit route. Later bridges, boats, dungeons and sky layers require explicit reviewed world state; they may not be faked by browser animation.
+
+Cardinal evidence remains append-only. Stream length/range access and bounded active views are permitted performance indexes, while deleting old evaluations, outcomes, audits, memories or world events remains prohibited. The interactive console must state when an older record lacks detail rather than fabricating a retrospective explanation.
+
 World speed is not a Cardinal rule and is not part of a world migration. It belongs to the independent external clock gateway. Future increases in acceleration must preserve deterministic substeps and must not skip causal history.

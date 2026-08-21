@@ -47,3 +47,4 @@ export * from './world/persistence';
 export * from './world/types';
 export * from './world/WorldClock';
 export * from './world/WorldEngine';
+export * from './world/WorldNavigation';

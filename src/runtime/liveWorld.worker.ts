@@ -1,5 +1,6 @@
 import {
   LiveWorldRuntime,
+  type CardinalConsoleSnapshot,
   type LiveWorldDisturbance,
   type LiveWorldFrame,
 } from './LiveWorldRuntime';
@@ -18,9 +19,11 @@ import type {
 const WORLD_LOCK_NAME = 'ainkrad-v0-3-live-world-writer';
 const WORLD_CHANNEL_NAME = 'ainkrad-v0-3-live-world-frames';
 const CLOCK_CHANNEL_NAME = 'ainkrad-v0-3-world-clock-control';
-const FRAME_PROTOCOL_VERSION = 'ainkrad-live-frame-0.3.11';
+const CONSOLE_CHANNEL_NAME = 'ainkrad-v0-3-cardinal-console';
+const FRAME_PROTOCOL_VERSION = 'ainkrad-live-frame-0.3.12';
 const COMPATIBLE_FRAME_PROTOCOLS = new Set([
   'ainkrad-live-frame-0.3.10',
+  'ainkrad-live-frame-0.3.11',
   FRAME_PROTOCOL_VERSION,
 ]);
 
@@ -60,6 +63,12 @@ type LiveWorldWorkerMessage =
       frame: LiveWorldFrame;
     }
   | {
+      type: 'cardinal_console';
+      protocolVersion: typeof FRAME_PROTOCOL_VERSION;
+      requestId: string;
+      snapshot: CardinalConsoleSnapshot;
+    }
+  | {
       type: 'fatal';
       protocolVersion: typeof FRAME_PROTOCOL_VERSION;
       message: string;
@@ -71,12 +80,24 @@ interface LiveWorldClockMessage {
   multiplier: WorldSpeedMultiplier;
 }
 
+interface CardinalConsoleRequest {
+  type: 'request_cardinal_console';
+  requestId: string;
+}
+
+type LiveWorldWorkerCommand = LiveWorldClockMessage | CardinalConsoleRequest;
+
+type CardinalConsoleChannelMessage =
+  | CardinalConsoleRequest
+  | Extract<LiveWorldWorkerMessage, { type: 'cardinal_console' }>;
+
 const workerScope = self as unknown as {
   postMessage(message: LiveWorldWorkerMessage): void;
 };
 
 const frameChannel = new BroadcastChannel(WORLD_CHANNEL_NAME);
 const clockChannel = new BroadcastChannel(CLOCK_CHANNEL_NAME);
+const consoleChannel = new BroadcastChannel(CONSOLE_CHANNEL_NAME);
 let activeRuntime: LiveWorldRuntime | undefined;
 let pendingClockControl: LiveWorldClockMessage | undefined;
 
@@ -93,7 +114,17 @@ function applyClockControl(message: LiveWorldClockMessage): void {
 
 self.addEventListener(
   'message',
-  (event: MessageEvent<Partial<LiveWorldClockMessage>>) => {
+  (event: MessageEvent<Partial<LiveWorldWorkerCommand>>) => {
+    if (event.data.type === 'request_cardinal_console') {
+      const request = event.data as CardinalConsoleRequest;
+      if (!request.requestId?.trim()) return;
+      if (activeRuntime) {
+        void sendCardinalConsole(request.requestId, true);
+      } else {
+        consoleChannel.postMessage(request);
+      }
+      return;
+    }
     if (event.data.type !== 'set_speed') return;
     try {
       const message = event.data as LiveWorldClockMessage;
@@ -104,6 +135,35 @@ self.addEventListener(
     } catch {
       // Invalid clock commands never enter the autonomous world.
     }
+  },
+);
+
+async function sendCardinalConsole(
+  requestId: string,
+  broadcast: boolean,
+): Promise<void> {
+  if (!activeRuntime) return;
+  const message = {
+    type: 'cardinal_console',
+    protocolVersion: FRAME_PROTOCOL_VERSION,
+    requestId,
+    snapshot: await activeRuntime.cardinalConsole(),
+  } as const;
+  workerScope.postMessage(message);
+  if (broadcast) consoleChannel.postMessage(message);
+}
+
+consoleChannel.addEventListener(
+  'message',
+  (event: MessageEvent<CardinalConsoleChannelMessage>) => {
+    if (event.data.type === 'request_cardinal_console') {
+      if (activeRuntime) void sendCardinalConsole(event.data.requestId, true);
+      return;
+    }
+    workerScope.postMessage({
+      ...event.data,
+      protocolVersion: FRAME_PROTOCOL_VERSION,
+    });
   },
 );
 

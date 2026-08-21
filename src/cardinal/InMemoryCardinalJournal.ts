@@ -1,5 +1,8 @@
 import { stableJsonStringify } from '../core/stableJson';
-import type { CardinalJournal } from './CardinalJournal';
+import type {
+  CardinalJournal,
+  CardinalJournalSummary,
+} from './CardinalJournal';
 import type {
   AuditRecord,
   CardinalEvaluation,
@@ -42,6 +45,25 @@ function valuesForWorld<T extends { worldId: string }>(
     .map((id) => log.byId.get(id))
     .filter((item): item is T => item !== undefined && item.worldId === worldId)
     .map((item) => structuredClone(item));
+}
+
+function recentForWorld<T extends { worldId: string }>(
+  values: T[],
+  limit: number,
+  beforeExclusive: number | undefined,
+  logicalTime: (value: T) => number,
+): T[] {
+  if (!Number.isInteger(limit) || limit < 0) {
+    throw new Error('Cardinal recent-evidence limit must be non-negative.');
+  }
+  if (limit === 0) return [];
+  return values
+    .filter(
+      (value) =>
+        beforeExclusive === undefined || logicalTime(value) < beforeExclusive,
+    )
+    .slice(-limit)
+    .map((value) => structuredClone(value));
 }
 
 /**
@@ -96,5 +118,90 @@ export class InMemoryCardinalJournal implements CardinalJournal {
 
   async audits(worldId: string): Promise<AuditRecord[]> {
     return valuesForWorld(this.auditLog, worldId);
+  }
+
+  async recentEvaluations(
+    worldId: string,
+    limit: number,
+    beforeExclusive?: number,
+  ): Promise<CardinalEvaluation[]> {
+    return recentForWorld(
+      valuesForWorld(this.evaluationLog, worldId),
+      limit,
+      beforeExclusive,
+      (value) => value.evaluatedAt,
+    );
+  }
+
+  async recentInterventions(
+    worldId: string,
+    limit: number,
+    beforeExclusive?: number,
+  ): Promise<InterventionRecord[]> {
+    return recentForWorld(
+      valuesForWorld(this.interventionLog, worldId),
+      limit,
+      beforeExclusive,
+      (value) => value.requestedAt,
+    );
+  }
+
+  async recentOutcomes(
+    worldId: string,
+    limit: number,
+    beforeExclusive?: number,
+  ): Promise<InterventionOutcomeRecord[]> {
+    return recentForWorld(
+      valuesForWorld(this.outcomeLog, worldId),
+      limit,
+      beforeExclusive,
+      (value) => value.observedAt,
+    );
+  }
+
+  async recentAudits(
+    worldId: string,
+    limit: number,
+    beforeExclusive?: number,
+  ): Promise<AuditRecord[]> {
+    return recentForWorld(
+      valuesForWorld(this.auditLog, worldId),
+      limit,
+      beforeExclusive,
+      (value) => value.auditedAt,
+    );
+  }
+
+  async summary(
+    worldId: string,
+    beforeExclusive?: number,
+  ): Promise<CardinalJournalSummary> {
+    const evaluations = (await this.evaluations(worldId)).filter(
+      (value) => beforeExclusive === undefined || value.evaluatedAt < beforeExclusive,
+    );
+    const interventions = (await this.interventions(worldId)).filter(
+      (value) => beforeExclusive === undefined || value.requestedAt < beforeExclusive,
+    );
+    const outcomes = (await this.outcomes(worldId)).filter(
+      (value) => beforeExclusive === undefined || value.observedAt < beforeExclusive,
+    );
+    const audits = (await this.audits(worldId)).filter(
+      (value) => beforeExclusive === undefined || value.auditedAt < beforeExclusive,
+    );
+    return {
+      evaluationCount: evaluations.length,
+      proposalCount: evaluations.filter((value) => value.proposal).length,
+      ecologyEvaluationCount: evaluations.filter(
+        (value) => value.metrics.exploredWorldRatio > 0,
+      ).length,
+      interventionCount: interventions.length,
+      executedInterventionCount: interventions.filter((value) => value.executed).length,
+      deniedInterventionCount: interventions.filter((value) => !value.executed).length,
+      outcomeCount: outcomes.length,
+      successfulPredictionCount: outcomes.filter(
+        (value) => value.expectedDirectionObserved,
+      ).length,
+      auditCount: audits.length,
+    };
   }
 }

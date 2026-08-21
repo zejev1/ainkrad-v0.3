@@ -2,7 +2,7 @@
 
 Ainkrad is not a Cardinal demonstration with decorative NPCs. The world must be capable of producing its own successes, failures, adaptations and social structures without Cardinal.
 
-This document defines the v0.3.11 world layer that Cardinal is allowed to observe.
+This document defines the v0.3.12 world layer that Cardinal is allowed to observe.
 
 ## Causal ownership
 
@@ -21,7 +21,7 @@ Each agent persists:
 - a current derived goal;
 - persistent emotions, values and beliefs shaped by lived experience;
 - an interruptible multi-tick journey plan;
-- home and current location;
+- home, current location, persisted surface position and current route waypoints;
 - last autonomous action and meaningful-activity time.
 
 Cardinal receives no capability that writes these fields directly. An authorized Cardinal intervention can alter a bounded environmental condition, but it cannot choose a person's goal, friendship, memory, skill or action.
@@ -36,7 +36,9 @@ The first ecology is intentionally small: rabbits in the meadow, deer in the for
 
 Society also changes geography. When population and frontier maturity support expansion, new villages can be founded and established villages can grow into cities. The resulting places, connections and events are persistent world history rather than a decorative UI counter.
 
-A place is part of persistent world state. Connections are reciprocal and route plans move residents across the graph. Procedural coordinates expand in world units instead of being permanently clamped to one initial square; the UI may zoom them without changing causal geometry.
+A place is part of persistent world state. Connections are reciprocal and persistent curved routes move residents across the graph and 2D surface over multiple ticks. Land and reachable shore are walkable; open water is not. A bridge or boat must be explicit world state rather than an implicit ability to walk on water. Procedural coordinates expand in world units instead of being permanently clamped to one initial square; UI pan, buttons and pinch zoom may change only the projection, never causal geometry.
+
+Homes and shared buildings belong to a persisted settlement projection with a center, radius and member places. The founding settlement is compact instead of scattering houses around the frontier. Later villages create a small connected building cluster, and city growth updates the same settlement identity rather than replacing it.
 
 ## Choice, not a fixed routine
 

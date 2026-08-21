@@ -120,7 +120,7 @@ describe('World rules version', () => {
     const state = migrated.snapshot();
 
     expect(state.now).toBe(preservedTime);
-    expect(state.rulesVersion).toBe('ainkrad-world-rules-0.3.11');
+    expect(state.rulesVersion).toBe('ainkrad-world-rules-0.3.12');
     expect(state.growth.stage).toBe(0);
     expect(state.wildlife).toEqual({});
     expect(state.relationships).toEqual(preservedRelationships);

@@ -670,6 +670,49 @@ export class IndexedDbAppendOnlyLog implements AppendOnlyLog {
     return stored.map((item) => item.record);
   }
 
+  async length(streamId: string): Promise<number> {
+    const database = await this.database;
+    const transaction = database.transaction(STORES.streamHeads, 'readonly');
+    const completion = transactionComplete(transaction);
+    const head = (await requestResult(
+      transaction.objectStore(STORES.streamHeads).get(streamId),
+    )) as StoredStreamHead | undefined;
+    await completion;
+    return head?.length ?? 0;
+  }
+
+  async readRange(
+    streamId: string,
+    start: number,
+    limit: number,
+  ): Promise<string[]> {
+    validateLimit(start, 'Append-only range start');
+    validateLimit(limit, 'Append-only range limit');
+    if (limit === 0) return [];
+    const database = await this.database;
+    const transaction = database.transaction(STORES.streamRecords, 'readonly');
+    const completion = transactionComplete(transaction);
+    const range = IDBKeyRange.bound(
+      [streamId, start],
+      [streamId, Math.max(start, start + limit - 1)],
+    );
+    const stored = (await requestResult(
+      transaction
+        .objectStore(STORES.streamRecords)
+        .index(INDEXES.streamRecord)
+        .getAll(range, limit),
+    )) as StoredStreamRecord[];
+    await completion;
+    return stored.map((item) => item.record);
+  }
+
+  async readTail(streamId: string, limit: number): Promise<string[]> {
+    validateLimit(limit, 'Append-only tail limit');
+    if (limit === 0) return [];
+    const length = await this.length(streamId);
+    return await this.readRange(streamId, Math.max(0, length - limit), limit);
+  }
+
   async append(
     streamId: string,
     expectedLength: number,

@@ -21,7 +21,7 @@ The engine does not adopt its working mutation until the commit succeeds.
 
 ## Browser adapter
 
-The v0.3.11 live page uses IndexedDB as a concrete `WorldStore` adapter. Its world commit is one read-write transaction across:
+The v0.3.12 live page uses IndexedDB as a concrete `WorldStore` adapter. Its world commit is one read-write transaction across:
 
 - the current world projection;
 - the stable operation record;
@@ -34,7 +34,7 @@ Cardinal research and independent simulation-gateway records use indexed append-
 
 Multiple tabs must not become independent writers over one browser-local world. The live worker uses an exclusive Web Lock when supported and broadcasts committed frames to waiting tabs. The storage revision check remains the final protection for browsers without that lock.
 
-Broadcast frames carry a v0.3.11 protocol version and can normalize the immediately previous v0.3.10 frame while migration completes. A newly deployed tab ignores incompatible frames instead of attempting to render an unknown world shape.
+Broadcast frames carry a v0.3.12 protocol version and can normalize v0.3.10/v0.3.11 frames while migration completes. A newly deployed tab ignores incompatible frames instead of attempting to render an unknown world shape.
 
 IndexedDB provides durable continuity for the same browser profile and origin. It does not make the browser an always-on service. Closing every page stops execution; clearing site data removes the local database. A future 24/7 runtime must implement the same ports on an independent host without giving Cardinal control of the runtime or external gateway.
 
@@ -65,7 +65,9 @@ Every world snapshot carries `rulesVersion`.
 
 A runtime must not silently resume a world created by incompatible world rules. A version mismatch requires an explicit migration or a new experiment.
 
-The reviewed migration from `0.3.8`, `0.3.9` or deployed `0.3.10` to `0.3.11` is one idempotent world operation. It atomically writes the upgraded projection and a `world.migrated` event while preserving society, ecology, RNG future and logical tick. Existing v0.3.10 biological elapsed time is converted to the unified persisted world-minute calendar. A failed or concurrent migration cannot expose a half-upgraded life-cycle, clock or governance projection.
+The reviewed migration from `0.3.8`, `0.3.9`, `0.3.10` or deployed `0.3.11` to `0.3.12` is one idempotent world operation. It atomically writes the upgraded projection and a `world.migrated` event while preserving society, ecology, RNG future and logical tick. Existing v0.3.10 biological elapsed time is converted to the unified persisted world-minute calendar; v0.3.11 locations deterministically acquire settlement, route and surface-position projections. A failed or concurrent migration cannot expose a half-upgraded life-cycle, clock, spatial or governance projection.
+
+Cardinal streams expose exact length plus bounded range/tail reads. The live loop warms and validates one journal index, then uses bounded research/audit windows and aggregate counters instead of requesting every historical evaluation on every tick. This changes the access path only: no evidence is compacted or deleted. The Cardinal console is also requested on demand and capped to review windows rather than copied into every live frame.
 
 The same rule applies to research interpretation:
 

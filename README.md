@@ -179,6 +179,18 @@ Cardinal comes later.
 
 ---
 
+## Physical World and Cardinal Console v0.3.12
+
+The visible map now projects persisted 2D world physics instead of moving decorative avatars between labels. Every resident has a saved surface position and an interruptible journey along deterministic curved waypoints. Routes belong to the world projection, land and reachable shore are distinct from open water, and no ordinary walking route is generated through a water place. The surface layer is explicit so later dungeon and sky layers can be added without pretending they already exist.
+
+The founding homes, square, workshop, field, garden and outskirts now form one compact settlement with a visible boundary and street network. New villages appear as small building clusters and may grow into cities. Map growth still uses expanding world coordinates, while the browser adds `+`, `−`, fit-to-view and two-finger pinch zoom without changing causal geography. Coast markers stay on reachable shore; water remains a physical boundary until a future bridge or boat route is explicitly created.
+
+Cardinal counters are now entries into an on-demand audit console. Laws, evaluations, proposals and gateway decisions can be opened in plain Russian and traced from detected pressure and evidence through the requested target, bounded duration, independent authorization, prediction, observed result and Auditor verdict. Base laws, Cardinal amendments and temporary interventions are labeled separately. When an older record lacks a field, the console says that it was not recorded instead of inventing a value. Opening a record can highlight its affected map region.
+
+The append-only evidence contract remains intact, but the live loop no longer reloads and clones the complete Cardinal stream or complete world history on every tick. IndexedDB exposes stream lengths and bounded ranges; the journal warms a verified index once, then research and audit cycles consume bounded tails plus exact aggregate counters. World events and personal memories remain append-only and are queried by recent/indexed views. This is a per-tick performance fix, not permission to delete history, and it does not claim that browser storage can guarantee a 2 GB always-on world.
+
+Migration from deployed v0.3.11 preserves the existing tick, calendar, people, ages, relationships, history, frontier, Cardinal evidence and RNG future while deriving settlements, routes and resident surface positions. Cardinal policy and sensor versions remain v0.3.11 because commit 12 changes spatial execution, observability and storage access—not the meaning of their experimental thresholds.
+
 ## Living World v0.3.11
 
 Cardinal now has a society with continuity, generations and consequences to observe. Residents are modeled as persistent people inspired by Alicization's bottom-up Fluctlight idea: stable identity, one continuous life, personality, emotions, values, beliefs, learned skills, goals, relationships, memories and multi-tick intentions. This is an engineering model, not a claim of consciousness or a literal recreation of the fictional technology.
@@ -203,7 +215,7 @@ The live browser world uses IndexedDB instead of recreating an in-memory world o
 
 Reloading or reopening the same site in the same browser therefore resumes the committed tick, RNG state, residents, relationships, memories, Cardinal evidence and gateway cooldown/recovery state. Multiple tabs use one exclusive writer lock and mirror its frames so they do not silently fork the same local world.
 
-An explicit migration accepts `0.3.8`, `0.3.9` and the deployed `0.3.10` world. It preserves tick, RNG future, frontier, wildlife, residents, goals, locations, relationships and prior history. For `0.3.10`, accumulated biological time is converted to the unified calendar instead of restarting the society. Deployment does not intentionally reset the world.
+An explicit migration accepts `0.3.8`, `0.3.9`, `0.3.10` and the deployed `0.3.11` world. It preserves tick, RNG future, frontier, wildlife, residents, goals, locations, relationships and prior history. For `0.3.10`, accumulated biological time is converted to the unified calendar instead of restarting the society. Deployment does not intentionally reset the world.
 
 This is durable browser-local continuity, not a claim that JavaScript runs after the browser is fully closed. Clearing site data removes that local world. A truly 24/7 autonomous deployment still requires an independent always-on runtime; Cardinal must not receive control of that host or of the external gateway.
 

@@ -142,6 +142,30 @@ export interface AgentPlanState {
   expiresAt: number;
 }
 
+export interface WorldPoint2D {
+  x: number;
+  y: number;
+}
+
+/**
+ * v0.3 currently simulates only the surface plane. The explicit layer keeps
+ * today's 2D physics honest while leaving room for dungeons and sky later.
+ */
+export type WorldLayerId = 'surface';
+
+export interface AgentPositionState extends WorldPoint2D {
+  layerId: WorldLayerId;
+}
+
+export interface AgentMovementState {
+  targetPlaceId: string;
+  purpose: AgentActionKind;
+  waypoints: WorldPoint2D[];
+  nextWaypointIndex: number;
+  startedAt: number;
+  worldStageAtStart: number;
+}
+
 export interface AgentState {
   id: string;
   name: string;
@@ -161,6 +185,8 @@ export interface AgentState {
 
   homeId: string;
   locationId: string;
+  position: AgentPositionState;
+  movement?: AgentMovementState;
 
   lastMeaningfulEventAt: number;
   lastAction?: AgentActionKind;
@@ -227,6 +253,10 @@ export type WorldBiome =
   | 'swamp'
   | 'ancient_ruins';
 
+export type WorldSurfaceKind = 'land' | 'shore' | 'water';
+
+export type WorldTraversalKind = 'walk' | 'bridge' | 'boat';
+
 export interface WorldPlace {
   id: string;
   name: string;
@@ -238,7 +268,30 @@ export interface WorldPlace {
   connectedPlaceIds: string[];
   fertility: number;
   danger: number;
+  surface: WorldSurfaceKind;
+  settlementId?: string;
   discoveredAt?: number;
+}
+
+export interface WorldRouteState {
+  id: string;
+  fromPlaceId: string;
+  toPlaceId: string;
+  traversal: WorldTraversalKind;
+  waypoints: WorldPoint2D[];
+  distance: number;
+}
+
+export interface WorldSettlementState {
+  id: string;
+  name: string;
+  kind: 'village' | 'city';
+  centerPlaceId: string;
+  centerX: number;
+  centerY: number;
+  radius: number;
+  memberPlaceIds: string[];
+  foundedAt: number;
 }
 
 export type WildlifeSpecies =
@@ -385,6 +438,8 @@ export interface WorldState {
   governance: WorldGovernanceState;
 
   places: Record<string, WorldPlace>;
+  routes: Record<string, WorldRouteState>;
+  settlements: Record<string, WorldSettlementState>;
   wildlife: Record<string, WildlifePopulation>;
   agents: Record<string, AgentState>;
   relationships: Record<string, RelationshipState>;

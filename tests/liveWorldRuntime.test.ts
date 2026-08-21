@@ -69,5 +69,16 @@ describe('Live world continuity', () => {
     expect(frame.cardinalActivity.proposalCount).toBeGreaterThan(0);
     expect(frame.cardinalActivity.authorizationDecisionCount).toBeGreaterThan(0);
     expect(frame.executedInterventionCount).toBeGreaterThan(0);
+
+    const consoleSnapshot = await runtime.cardinalConsole();
+    expect(consoleSnapshot.laws.length).toBeGreaterThan(0);
+    expect(consoleSnapshot.evaluations.length).toBeLessThanOrEqual(160);
+    expect(consoleSnapshot.interventions.length).toBeGreaterThan(0);
+    expect(
+      consoleSnapshot.audits.some(
+        (audit) =>
+          audit.evaluationId === consoleSnapshot.interventions[0].evaluationId,
+      ),
+    ).toBe(true);
   });
 });

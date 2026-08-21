@@ -283,3 +283,21 @@ These rules convert failures from the previous implementation into tests and str
 224. World level is derived from actual frontier growth rather than copied from Cardinal experience or hard-coded UI text.
 225. Cardinal safety pressure is derived from committed danger evidence and can produce only a bounded proposal through the independent gateway.
 226. v0.3.11 migrates deployed v0.3.10 biological history into unified world minutes without replacing residents or restarting the map.
+
+## Audit round 12 additions — physical surface and inspectable Cardinal
+
+227. Every living resident has one persisted 2D position on an explicit world layer; browser animation may not invent causal position.
+228. v0.3 currently simulates only the surface layer. Dungeon and sky layers require later explicit world rules and migration.
+229. Land and reachable shore may be walked; open water is not walkable without an explicit bridge or boat route.
+230. Routes are persistent deterministic world projections with non-linear waypoints and traversal semantics.
+231. A traveller follows route waypoints over multiple ticks and another resident's interaction may not teleport or pull that traveller off the route.
+232. Founding homes and civic buildings belong to a compact persisted settlement rather than a ring around the entire frontier.
+233. New villages and cities have persistent settlement identity, center, radius and member buildings.
+234. Map pan, button zoom, fit-to-view and pinch zoom change only rendering and never stored world geometry.
+235. Cardinal law, evaluation, proposal, intervention, outcome and audit details are requested on demand rather than copied into every live frame.
+236. The console distinguishes system laws, Cardinal amendments and temporary gateway-authorized effects.
+237. Missing legacy detail is reported as missing; UI text may not invent old evidence, targets, before-values or gateway reasons.
+238. Opening a Cardinal record may highlight inferred affected geography, but the inference must be labeled by the record type and may not mutate the world.
+239. Append-only stream length and bounded range/tail reads are performance indexes, not permission to compact evidence.
+240. The live loop may keep bounded hot views and exact aggregate counters; it must not reload and clone complete Cardinal or world history on every tick.
+241. v0.3.12 migrates deployed v0.3.11 spatially without resetting people, generations, time, frontier, Cardinal evidence or RNG future.

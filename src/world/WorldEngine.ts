@@ -10,6 +10,12 @@ import {
   WORLD_MINUTES_PER_YEAR,
   WORLD_TICKS_PER_YEAR,
 } from './WorldClock';
+import {
+  orientedRouteWaypoints,
+  rebuildWorldRoutes,
+  routeIdBetween,
+  surfaceForPlace,
+} from './WorldNavigation';
 import type {
   AgentActionKind,
   AgentDeathCause,
@@ -28,16 +34,20 @@ import type {
   WorldLawState,
   WorldPlace,
   WorldPlaceKind,
+  WorldPoint2D,
+  WorldRouteState,
+  WorldSettlementState,
   WorldState,
   WildlifePopulation,
   WildlifeSpecies,
 } from './types';
 
-export const WORLD_RULES_VERSION = 'ainkrad-world-rules-0.3.11';
+export const WORLD_RULES_VERSION = 'ainkrad-world-rules-0.3.12';
 const LEGACY_WORLD_RULES_VERSIONS = new Set([
   'ainkrad-world-rules-0.3.8',
   'ainkrad-world-rules-0.3.9',
   'ainkrad-world-rules-0.3.10',
+  'ainkrad-world-rules-0.3.11',
 ]);
 export const WORLD_CONSTITUTION_VERSION = 'ainkrad-constitution-0.3.10';
 export { WORLD_TICKS_PER_YEAR } from './WorldClock';
@@ -156,6 +166,7 @@ const WORLD_EXPANSIONS: readonly WorldExpansionDefinition[] = [
       connectedPlaceIds: ['outskirts'],
       fertility: 0.82,
       danger: 0.12,
+      surface: 'land',
     },
     wildlife: [
       {
@@ -185,6 +196,7 @@ const WORLD_EXPANSIONS: readonly WorldExpansionDefinition[] = [
       connectedPlaceIds: ['meadow', 'outskirts'],
       fertility: 0.74,
       danger: 0.3,
+      surface: 'land',
     },
     wildlife: [
       {
@@ -214,6 +226,7 @@ const WORLD_EXPANSIONS: readonly WorldExpansionDefinition[] = [
       connectedPlaceIds: ['outskirts'],
       fertility: 0.68,
       danger: 0.2,
+      surface: 'shore',
     },
     wildlife: [
       {
@@ -697,6 +710,12 @@ function assertWorldState(value: unknown): asserts value is WorldState {
     }
     unitNumber(place.fertility, `World place ${placeId}.fertility`);
     unitNumber(place.danger, `World place ${placeId}.danger`);
+    if (!['land', 'shore', 'water'].includes(place.surface as string)) {
+      throw new Error(`World place ${placeId}.surface is invalid.`);
+    }
+    if (place.settlementId !== undefined) {
+      requiredString(place.settlementId, `World place ${placeId}.settlementId`);
+    }
     if (place.discoveredAt !== undefined) {
       finiteNumber(place.discoveredAt, `World place ${placeId}.discoveredAt`);
     }
@@ -718,6 +737,98 @@ function assertWorldState(value: unknown): asserts value is WorldState {
           `World connection ${placeId} -> ${connectedId} must be reciprocal.`,
         );
       }
+    }
+  }
+
+  const settlements = asRecord(state.settlements, 'World settlements');
+  for (const [settlementId, rawSettlement] of Object.entries(settlements)) {
+    const settlement = asRecord(
+      rawSettlement,
+      `World settlement ${settlementId}`,
+    );
+    if (
+      requiredString(settlement.id, `World settlement ${settlementId}.id`) !==
+      settlementId
+    ) {
+      throw new Error(`World settlement key ${settlementId} does not match its id.`);
+    }
+    requiredString(settlement.name, `World settlement ${settlementId}.name`);
+    if (!['village', 'city'].includes(settlement.kind as string)) {
+      throw new Error(`World settlement ${settlementId}.kind is invalid.`);
+    }
+    const centerPlaceId = requiredString(
+      settlement.centerPlaceId,
+      `World settlement ${settlementId}.centerPlaceId`,
+    );
+    if (!places[centerPlaceId]) {
+      throw new Error(`World settlement ${settlementId} has no center place.`);
+    }
+    finiteNumber(settlement.centerX, `World settlement ${settlementId}.centerX`);
+    finiteNumber(settlement.centerY, `World settlement ${settlementId}.centerY`);
+    const radius = finiteNumber(
+      settlement.radius,
+      `World settlement ${settlementId}.radius`,
+    );
+    if (radius <= 0) {
+      throw new Error(`World settlement ${settlementId}.radius must be positive.`);
+    }
+    finiteNumber(settlement.foundedAt, `World settlement ${settlementId}.foundedAt`);
+    if (
+      !Array.isArray(settlement.memberPlaceIds) ||
+      settlement.memberPlaceIds.some(
+        (memberId) =>
+          typeof memberId !== 'string' ||
+          !places[memberId] ||
+          asRecord(places[memberId], `World place ${memberId}`).settlementId !==
+            settlementId,
+      )
+    ) {
+      throw new Error(`World settlement ${settlementId} has invalid members.`);
+    }
+  }
+  for (const [placeId, rawPlace] of Object.entries(places)) {
+    const settlementId = asRecord(rawPlace, `World place ${placeId}`).settlementId;
+    if (settlementId !== undefined && !settlements[settlementId as string]) {
+      throw new Error(`World place ${placeId} references a missing settlement.`);
+    }
+  }
+
+  const routes = asRecord(state.routes, 'World routes');
+  for (const [routeId, rawRoute] of Object.entries(routes)) {
+    const route = asRecord(rawRoute, `World route ${routeId}`);
+    if (requiredString(route.id, `World route ${routeId}.id`) !== routeId) {
+      throw new Error(`World route key ${routeId} does not match its id.`);
+    }
+    const fromPlaceId = requiredString(
+      route.fromPlaceId,
+      `World route ${routeId}.fromPlaceId`,
+    );
+    const toPlaceId = requiredString(
+      route.toPlaceId,
+      `World route ${routeId}.toPlaceId`,
+    );
+    if (!places[fromPlaceId] || !places[toPlaceId]) {
+      throw new Error(`World route ${routeId} references a missing place.`);
+    }
+    if (routeIdBetween(fromPlaceId, toPlaceId) !== routeId) {
+      throw new Error(`World route ${routeId} is stored under the wrong key.`);
+    }
+    if (!['walk', 'bridge', 'boat'].includes(route.traversal as string)) {
+      throw new Error(`World route ${routeId}.traversal is invalid.`);
+    }
+    if (
+      !Array.isArray(route.waypoints) ||
+      route.waypoints.length < 2 ||
+      route.waypoints.some((point, index) => {
+        const value = asRecord(point, `World route ${routeId}.waypoints[${index}]`);
+        return !Number.isFinite(value.x) || !Number.isFinite(value.y);
+      })
+    ) {
+      throw new Error(`World route ${routeId} has invalid waypoints.`);
+    }
+    const distance = finiteNumber(route.distance, `World route ${routeId}.distance`);
+    if (distance <= 0) {
+      throw new Error(`World route ${routeId}.distance must be positive.`);
     }
   }
   for (const expansion of WORLD_EXPANSIONS) {
@@ -991,6 +1102,49 @@ function assertWorldState(value: unknown): asserts value is WorldState {
     if (!places[locationId]) {
       throw new Error(`Agent ${agentId} references missing location ${locationId}.`);
     }
+    const position = asRecord(agent.position, `Agent ${agentId}.position`);
+    finiteNumber(position.x, `Agent ${agentId}.position.x`);
+    finiteNumber(position.y, `Agent ${agentId}.position.y`);
+    if (position.layerId !== 'surface') {
+      throw new Error(`Agent ${agentId}.position.layerId is invalid.`);
+    }
+    if (agent.movement !== undefined) {
+      const movement = asRecord(agent.movement, `Agent ${agentId}.movement`);
+      const targetPlaceId = requiredString(
+        movement.targetPlaceId,
+        `Agent ${agentId}.movement.targetPlaceId`,
+      );
+      if (!places[targetPlaceId]) {
+        throw new Error(`Agent ${agentId}.movement target is missing.`);
+      }
+      if (!ACTION_KINDS.includes(movement.purpose as AgentActionKind)) {
+        throw new Error(`Agent ${agentId}.movement.purpose is invalid.`);
+      }
+      const nextWaypointIndex = nonNegativeInteger(
+        movement.nextWaypointIndex,
+        `Agent ${agentId}.movement.nextWaypointIndex`,
+      );
+      if (
+        !Array.isArray(movement.waypoints) ||
+        movement.waypoints.length === 0 ||
+        nextWaypointIndex >= movement.waypoints.length
+      ) {
+        throw new Error(`Agent ${agentId}.movement waypoints are invalid.`);
+      }
+      movement.waypoints.forEach((rawPoint, index) => {
+        const point = asRecord(
+          rawPoint,
+          `Agent ${agentId}.movement.waypoints[${index}]`,
+        );
+        finiteNumber(point.x, `Agent ${agentId}.movement.waypoints[${index}].x`);
+        finiteNumber(point.y, `Agent ${agentId}.movement.waypoints[${index}].y`);
+      });
+      finiteNumber(movement.startedAt, `Agent ${agentId}.movement.startedAt`);
+      nonNegativeInteger(
+        movement.worldStageAtStart,
+        `Agent ${agentId}.movement.worldStageAtStart`,
+      );
+    }
     if (
       agent.lastAction !== undefined &&
       !ACTION_KINDS.includes(agent.lastAction as AgentActionKind)
@@ -1130,6 +1284,8 @@ function createPlace(
       | 'connectedPlaceIds'
       | 'fertility'
       | 'danger'
+      | 'surface'
+      | 'settlementId'
       | 'discoveredAt'
     >
   > = {},
@@ -1145,6 +1301,12 @@ function createPlace(
     connectedPlaceIds: [...(options.connectedPlaceIds ?? [])],
     fertility: options.fertility ?? 0.5,
     danger: options.danger ?? 0.08,
+    surface:
+      options.surface ??
+      surfaceForPlace({ kind, biome: options.biome ?? 'settlement' }),
+    ...(options.settlementId === undefined
+      ? {}
+      : { settlementId: options.settlementId }),
     ...(options.discoveredAt === undefined
       ? {}
       : { discoveredAt: options.discoveredAt }),
@@ -1174,6 +1336,8 @@ function placeMigrationDefaults(
   | 'connectedPlaceIds'
   | 'fertility'
   | 'danger'
+  | 'surface'
+  | 'settlementId'
 > {
   const fixed = WORLD_EXPANSIONS.find(
     (expansion) => expansion.place.id === place.id,
@@ -1186,6 +1350,7 @@ function placeMigrationDefaults(
       connectedPlaceIds: [...fixed.connectedPlaceIds],
       fertility: fixed.fertility,
       danger: fixed.danger,
+      surface: fixed.surface,
     };
   }
 
@@ -1199,12 +1364,14 @@ function placeMigrationDefaults(
       | 'connectedPlaceIds'
       | 'fertility'
       | 'danger'
+      | 'surface'
+      | 'settlementId'
     >
   > = {
     commons: {
       biome: 'settlement',
       mapX: 50,
-      mapY: 48,
+      mapY: 50,
       connectedPlaceIds: [
         'resource_field',
         'workshop',
@@ -1213,51 +1380,64 @@ function placeMigrationDefaults(
       ],
       fertility: 0.55,
       danger: 0.03,
+      surface: 'land',
+      settlementId: 'settlement_ainkrad',
     },
     resource_field: {
       biome: 'plains',
-      mapX: 16,
-      mapY: 23,
+      mapX: 42,
+      mapY: 57,
       connectedPlaceIds: ['commons'],
       fertility: 0.72,
       danger: 0.08,
+      surface: 'land',
+      settlementId: 'settlement_ainkrad',
     },
     workshop: {
       biome: 'settlement',
-      mapX: 83,
-      mapY: 25,
+      mapX: 57,
+      mapY: 47,
       connectedPlaceIds: ['commons'],
       fertility: 0.28,
       danger: 0.1,
+      surface: 'land',
+      settlementId: 'settlement_ainkrad',
     },
     quiet_space: {
       biome: 'forest',
-      mapX: 18,
-      mapY: 75,
+      mapX: 45,
+      mapY: 42,
       connectedPlaceIds: ['commons'],
       fertility: 0.65,
       danger: 0.02,
+      surface: 'land',
+      settlementId: 'settlement_ainkrad',
     },
     outskirts: {
       biome: 'plains',
-      mapX: 82,
-      mapY: 76,
+      mapX: 65,
+      mapY: 60,
       connectedPlaceIds: ['commons'],
       fertility: 0.52,
       danger: 0.18,
+      surface: 'land',
+      settlementId: 'settlement_ainkrad',
     },
   };
   if (base[place.id]) return base[place.id];
 
   if (place.kind === 'home') {
-    const angle = (Math.PI * 2 * homeIndex) / 6 - Math.PI / 2;
+    const angle = homeIndex * 2.399963229728653 - Math.PI / 2;
+    const ring = 6.2 + Math.floor(homeIndex / 7) * 2.4;
     return {
       biome: 'settlement',
-      mapX: clamp01(0.5 + Math.cos(angle) * 0.43) * 100,
-      mapY: clamp01(0.5 + Math.sin(angle) * 0.43) * 100,
+      mapX: 50 + Math.cos(angle) * ring,
+      mapY: 50 + Math.sin(angle) * ring,
       connectedPlaceIds: ['commons'],
       fertility: 0.58,
       danger: 0.02,
+      surface: 'land',
+      settlementId: 'settlement_ainkrad',
     };
   }
 
@@ -1268,7 +1448,59 @@ function placeMigrationDefaults(
     connectedPlaceIds: ['outskirts'],
     fertility: 0.5,
     danger: 0.15,
+    surface: 'land',
   };
+}
+
+function mainSettlement(
+  places: Readonly<Record<string, WorldPlace>>,
+  foundedAt: number,
+): WorldSettlementState {
+  const memberPlaceIds = Object.values(places)
+    .filter((place) => place.settlementId === 'settlement_ainkrad')
+    .map((place) => place.id)
+    .sort();
+  return {
+    id: 'settlement_ainkrad',
+    name: 'Айнкрад',
+    kind: 'village',
+    centerPlaceId: 'commons',
+    centerX: places.commons?.mapX ?? 50,
+    centerY: places.commons?.mapY ?? 50,
+    radius: 17,
+    memberPlaceIds,
+    foundedAt,
+  };
+}
+
+function rebuildSettlementProjection(
+  places: Record<string, WorldPlace>,
+  prior: Readonly<Record<string, WorldSettlementState>> = {},
+  foundedAt = 0,
+): Record<string, WorldSettlementState> {
+  const settlements: Record<string, WorldSettlementState> = {
+    settlement_ainkrad: mainSettlement(places, foundedAt),
+  };
+  for (const place of Object.values(places)) {
+    if (place.kind !== 'village' && place.kind !== 'city') continue;
+    const id = place.settlementId ?? place.id;
+    place.settlementId = id;
+    const existing = prior[id];
+    settlements[id] = {
+      id,
+      name: place.name,
+      kind: place.kind,
+      centerPlaceId: place.id,
+      centerX: place.mapX,
+      centerY: place.mapY,
+      radius: existing?.radius ?? (place.kind === 'city' ? 16 : 11),
+      memberPlaceIds: [...new Set([...(existing?.memberPlaceIds ?? []), place.id])]
+        .filter((placeId) => places[placeId]?.settlementId === id)
+        .sort(),
+      foundedAt: existing?.foundedAt ?? place.discoveredAt ?? foundedAt,
+    };
+  }
+  return settlements;
 }
 
 function createMindState(
@@ -1371,22 +1603,41 @@ async function migrateLegacyWorld(
 
   const homeIds = Object.values(next.places)
     .filter((place) => place.kind === 'home')
-    .map((place) => place.id);
+    .map((place) => place.id)
+    .sort();
+  const corePlaceIds = new Set([
+    'commons',
+    'resource_field',
+    'workshop',
+    'quiet_space',
+    'outskirts',
+  ]);
   for (const place of Object.values(next.places)) {
     const defaults = placeMigrationDefaults(
       place,
       Math.max(0, homeIds.indexOf(place.id)),
     );
+    const moveIntoSettlement = place.kind === 'home' || corePlaceIds.has(place.id);
     Object.assign(place, {
       biome: place.biome ?? defaults.biome,
-      mapX: place.mapX ?? defaults.mapX,
-      mapY: place.mapY ?? defaults.mapY,
+      mapX: moveIntoSettlement ? defaults.mapX : (place.mapX ?? defaults.mapX),
+      mapY: moveIntoSettlement ? defaults.mapY : (place.mapY ?? defaults.mapY),
       connectedPlaceIds: place.connectedPlaceIds ?? defaults.connectedPlaceIds,
       fertility: place.fertility ?? defaults.fertility,
       danger: place.danger ?? defaults.danger,
+      surface: place.surface ?? defaults.surface,
+      ...(defaults.settlementId === undefined
+        ? {}
+        : { settlementId: defaults.settlementId }),
     });
   }
   makeConnectionsReciprocal(next.places);
+  next.settlements = rebuildSettlementProjection(
+    next.places,
+    mutable.settlements ?? {},
+    0,
+  );
+  next.routes = rebuildWorldRoutes(next.places, mutable.routes ?? {});
 
   if (
     next.growth.stage >= 5 &&
@@ -1420,6 +1671,9 @@ async function migrateLegacyWorld(
 
   const agents = Object.values(next.agents);
   agents.forEach((agent, index) => {
+    if (agent.plan && !next.places[agent.plan.targetPlaceId]) {
+      agent.plan = undefined;
+    }
     const priorHunting = (agent.skills as Partial<AgentState['skills']>).hunting;
     agent.skills = {
       ...agent.skills,
@@ -1473,6 +1727,13 @@ async function migrateLegacyWorld(
       agent.personality,
       agent.needs,
     );
+    const location = next.places[agent.locationId] ?? next.places[agent.homeId];
+    agent.position = {
+      x: location.mapX,
+      y: location.mapY,
+      layerId: 'surface',
+    };
+    agent.movement = undefined;
   });
 
   next.population = mutable.population ?? {
@@ -1509,7 +1770,7 @@ async function migrateLegacyWorld(
 
   next.determinism.eventSequence += 1;
   const migrationEvent: WorldEvent = {
-    eventId: `migration:${next.id}:world-rules-0.3.11`,
+    eventId: `migration:${next.id}:world-rules-0.3.12`,
     worldId: next.id,
     kind: 'world.migrated',
     source: 'system',
@@ -1756,6 +2017,11 @@ export class WorldEngine {
         },
         homeId,
         locationId: homeId,
+        position: {
+          x: places[homeId].mapX,
+          y: places[homeId].mapY,
+          layerId: 'surface' as const,
+        },
         lastMeaningfulEventAt: now,
       } satisfies Omit<AgentState, 'goal'>;
 
@@ -1765,6 +2031,8 @@ export class WorldEngine {
       };
     });
     makeConnectionsReciprocal(places);
+    const settlements = rebuildSettlementProjection(places, {}, now);
+    const routes = rebuildWorldRoutes(places);
 
     const state: WorldState = {
       id: options.worldId,
@@ -1816,6 +2084,8 @@ export class WorldEngine {
         laws: defaultWorldLaws(now),
       },
       places,
+      routes,
+      settlements,
       wildlife: {},
       agents,
       relationships: {},
@@ -2415,22 +2685,18 @@ export class WorldEngine {
         };
         const needs = { belonging: 0.55, purpose: 0.62 };
         const homeId = `home_${residentId}`;
-        const angle = this.state.population.nextAgentSequence * 2.399963229728653;
+        const homeIndex = Object.values(this.state.places).filter(
+          (place) => place.kind === 'home',
+        ).length;
         this.state.places[homeId] = createPlace(
           homeId,
           `${name}'s Home`,
           'home',
           3,
-          {
-            biome: 'settlement',
-            mapX: Math.max(5, Math.min(95, 50 + Math.cos(angle) * 42)),
-            mapY: Math.max(5, Math.min(95, 50 + Math.sin(angle) * 42)),
-            connectedPlaceIds: ['commons'],
-            fertility: 0.58,
-            danger: 0.02,
-          },
+          placeMigrationDefaults({ id: homeId, kind: 'home' }, homeIndex),
         );
         makeConnectionsReciprocal(this.state.places);
+        this.rebuildSpatialProjection();
         const ageYears = 25;
         const partial = {
           id: residentId,
@@ -2468,6 +2734,11 @@ export class WorldEngine {
           },
           homeId,
           locationId: 'commons',
+          position: {
+            x: this.state.places.commons.mapX,
+            y: this.state.places.commons.mapY,
+            layerId: 'surface' as const,
+          },
           lastMeaningfulEventAt: now,
         } satisfies Omit<AgentState, 'goal'>;
         this.state.agents[residentId] = {
@@ -2786,6 +3057,10 @@ export class WorldEngine {
     now: number,
   ): Promise<void> {
     this.applyPassiveNeeds(agent, environment);
+    if (this.advanceAgentMovement(agent)) {
+      this.advanceMind(agent);
+      return;
+    }
     this.updateGoal(agent, now);
 
     const decision = this.chooseAction(agent, allAgents, environment);
@@ -3408,7 +3683,7 @@ export class WorldEngine {
         kind: 'hunt',
         targetPlaceId: target.habitatId,
         startedAt: agent.plan?.startedAt ?? now,
-        expiresAt: now + 12,
+        expiresAt: now + 48,
       };
       this.moveAgent(agent, route[1]);
       agent.energy = clamp01(agent.energy - 0.026);
@@ -3626,7 +3901,7 @@ export class WorldEngine {
         kind: 'explore_frontier',
         targetPlaceId: targetFrontier,
         startedAt: agent.plan?.startedAt ?? now,
-        expiresAt: now + 14,
+        expiresAt: now + 48,
       };
       this.moveAgent(agent, nextLocation);
       agent.energy = clamp01(agent.energy - 0.024);
@@ -3670,9 +3945,9 @@ export class WorldEngine {
     }
 
     const progressGain =
-      0.045 +
-      agent.skills.exploration * 0.025 +
-      agent.personality.curiosity * 0.02;
+      0.2 +
+      agent.skills.exploration * 0.04 +
+      agent.personality.curiosity * 0.03;
     const discoveredRegionId = this.advanceWorldGrowth(
       agent,
       progressGain,
@@ -3734,6 +4009,7 @@ export class WorldEngine {
         lastChangedAt: now,
       };
     }
+    this.rebuildSpatialProjection();
 
     this.state.growth.stage = expansion.stage;
     this.state.growth.frontierSequence = Math.max(
@@ -3816,10 +4092,33 @@ export class WorldEngine {
           connectedPlaceIds: [frontierId],
           fertility: clamp01(0.56 + anchor.fertility * 0.2),
           danger: 0.05,
+          settlementId: id,
           discoveredAt: now,
         },
       );
+      for (let districtIndex = 0; districtIndex < 3; districtIndex += 1) {
+        const districtAngle = angle + (Math.PI * 2 * districtIndex) / 3;
+        const districtId = `${id}_house_${districtIndex + 1}`;
+        this.state.places[districtId] = createPlace(
+          districtId,
+          `Дом поселенцев ${districtIndex + 1}`,
+          'home',
+          4,
+          {
+            biome: 'settlement',
+            mapX: this.state.places[id].mapX + Math.cos(districtAngle) * 3.8,
+            mapY: this.state.places[id].mapY + Math.sin(districtAngle) * 3.8,
+            connectedPlaceIds: [id],
+            fertility: 0.58,
+            danger: 0.04,
+            surface: 'land',
+            settlementId: id,
+            discoveredAt: now,
+          },
+        );
+      }
       makeConnectionsReciprocal(this.state.places);
+      this.rebuildSpatialProjection();
       this.stageEvent({
         eventId: this.nextId('settlement'),
         worldId: this.state.id,
@@ -3856,6 +4155,7 @@ export class WorldEngine {
       village.connectedPlaceIds.push('commons');
       makeConnectionsReciprocal(this.state.places);
     }
+    this.rebuildSpatialProjection();
     this.stageEvent({
       eventId: this.nextId('city'),
       worldId: this.state.id,
@@ -4271,9 +4571,9 @@ export class WorldEngine {
     const fertilitySupport =
       this.lawValue('fertility_support', 0.55);
     const baseChoiceChance = clamp01(
-      0.025 +
-        fertilitySupport * 0.055 +
-        Math.max(0, selected.score - 0.62) * 0.08,
+      0.04 +
+        fertilitySupport * 0.09 +
+        Math.max(0, selected.score - 0.62) * 0.12,
     );
     const speedAdjustedChance = clamp01(
       baseChoiceChance *
@@ -4411,6 +4711,11 @@ export class WorldEngine {
       goal: { kind: 'recover', strength: 0.66, since: now },
       homeId,
       locationId: homeId,
+      position: {
+        x: this.state.places[homeId].mapX,
+        y: this.state.places[homeId].mapY,
+        layerId: 'surface',
+      },
       lastMeaningfulEventAt: now,
     };
     this.state.agents[childId] = child;
@@ -5178,10 +5483,108 @@ export class WorldEngine {
   }
 
   private moveAgent(agent: AgentState, locationId: string): void {
-    if (!this.state.places[locationId]) {
+    const destination = this.state.places[locationId];
+    if (!destination) {
       throw new Error(`Cannot move ${agent.id} to unknown place ${locationId}.`);
     }
+    if (agent.movement && agent.movement.targetPlaceId !== locationId) {
+      // Another resident's interaction cannot pull a traveller off a route.
+      return;
+    }
+    if (agent.locationId === locationId && !agent.movement) return;
+
+    const path = this.pathBetween(agent.locationId, locationId);
+    if (!path) {
+      // Water and disconnected territory are physical boundaries. A resident
+      // never receives an implicit teleport just because an action chose it.
+      return;
+    }
+
+    const waypoints: WorldPoint2D[] = [
+      { x: agent.position.x, y: agent.position.y },
+    ];
+    for (let index = 0; index < path.length - 1; index += 1) {
+      const fromId = path[index];
+      const toId = path[index + 1];
+      const route = this.state.routes[routeIdBetween(fromId, toId)];
+      if (!route) return;
+      waypoints.push(...orientedRouteWaypoints(route, fromId).slice(1));
+    }
+
     agent.locationId = locationId;
+    if (waypoints.length > 1) {
+      agent.movement = {
+        targetPlaceId: locationId,
+        purpose: agent.lastDecision?.action ?? 'walk',
+        waypoints,
+        nextWaypointIndex: 1,
+        startedAt: this.state.now,
+        worldStageAtStart: this.state.growth.stage,
+      };
+      return;
+    }
+    agent.position = {
+      x: destination.mapX,
+      y: destination.mapY,
+      layerId: 'surface',
+    };
+    agent.movement = undefined;
+  }
+
+  private advanceAgentMovement(agent: AgentState): boolean {
+    const movement = agent.movement;
+    if (!movement) return false;
+
+    const movementBudget = 7 + agent.life.physiology.mobility * 7;
+    let remaining = movementBudget;
+    while (remaining > 0 && agent.movement) {
+      const target = movement.waypoints[movement.nextWaypointIndex];
+      const dx = target.x - agent.position.x;
+      const dy = target.y - agent.position.y;
+      const distance = Math.hypot(dx, dy);
+      if (distance <= remaining + 0.0001) {
+        agent.position.x = target.x;
+        agent.position.y = target.y;
+        remaining -= distance;
+        movement.nextWaypointIndex += 1;
+        if (movement.nextWaypointIndex >= movement.waypoints.length) {
+          const place = this.state.places[movement.targetPlaceId];
+          if (place) {
+            agent.position.x = place.mapX;
+            agent.position.y = place.mapY;
+          }
+          agent.movement = undefined;
+        }
+        continue;
+      }
+      agent.position.x += (dx / distance) * remaining;
+      agent.position.y += (dy / distance) * remaining;
+      remaining = 0;
+    }
+    if (
+      movement.purpose === 'explore' &&
+      movement.worldStageAtStart === this.state.growth.stage
+    ) {
+      const travelled = Math.max(0, movementBudget - remaining);
+      this.advanceWorldGrowth(
+        agent,
+        Math.min(0.068, 0.014 + travelled * 0.003),
+        this.state.now,
+      );
+    }
+    return true;
+  }
+
+  private rebuildSpatialProjection(): void {
+    this.state.settlements = rebuildSettlementProjection(
+      this.state.places,
+      this.state.settlements,
+      0,
+    );
+    this.state.routes = rebuildWorldRoutes(
+      this.state.places,
+      this.state.routes,
+    );
   }
 
   private lawValue(
@@ -5211,7 +5614,15 @@ export class WorldEngine {
       const path = queue.shift()!;
       const currentId = path[path.length - 1];
       for (const connectedId of this.state.places[currentId].connectedPlaceIds) {
-        if (visited.has(connectedId) || !this.state.places[connectedId]) continue;
+        const route = this.state.routes[routeIdBetween(currentId, connectedId)];
+        if (
+          visited.has(connectedId) ||
+          !this.state.places[connectedId] ||
+          !route ||
+          route.traversal === 'boat'
+        ) {
+          continue;
+        }
         const nextPath = [...path, connectedId];
         if (connectedId === toId) return nextPath;
         visited.add(connectedId);

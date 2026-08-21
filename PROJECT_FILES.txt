@@ -1,4 +1,4 @@
-Ainkrad v0.3.11 current files
+Ainkrad v0.3.12 current files
 
 Files:
 - .github/workflows/ci.yml
@@ -66,6 +66,7 @@ Files:
 - src/world/InMemoryWorldStore.ts
 - src/world/WorldEngine.ts
 - src/world/WorldClock.ts
+- src/world/WorldNavigation.ts
 - src/world/events.ts
 - src/world/memory.ts
 - src/world/persistence.ts
@@ -74,6 +75,7 @@ Files:
 - tests/cardinalCore.test.ts
 - tests/cardinalExperience.test.ts
 - tests/cardinalJournal.test.ts
+- tests/cardinalJournalScaling.test.ts
 - tests/cardinalResearch.test.ts
 - tests/experimentIntegrity.test.ts
 - tests/externalGateway.test.ts
@@ -94,5 +96,6 @@ Files:
 - tests/worldAuthority.test.ts
 - tests/worldClockCivilization.test.ts
 - tests/worldRuntime.test.ts
+- tests/worldSpatial.test.ts
 - tsconfig.json
 - vercel.json
