@@ -34,7 +34,15 @@ export type AgentDeathCause =
   | 'old_age'
   | 'illness'
   | 'deprivation'
-  | 'catastrophe';
+  | 'catastrophe'
+  | 'monster';
+
+export interface AgentPhysiologyState {
+  strength: number;
+  endurance: number;
+  mobility: number;
+  recovery: number;
+}
 
 export interface AgentLifeState {
   bornAt: number;
@@ -43,10 +51,12 @@ export interface AgentLifeState {
   stage: AgentLifeStage;
   alive: boolean;
   health: number;
+  physiology: AgentPhysiologyState;
   generation: number;
   parentIds: string[];
   childIds: string[];
   lastChildAt?: number;
+  lastChildWorldMinute?: number;
   diedAt?: number;
   deathCause?: AgentDeathCause;
 }
@@ -203,7 +213,8 @@ export type WorldPlaceKind =
   | 'river'
   | 'swamp'
   | 'ruins'
-  | 'village';
+  | 'village'
+  | 'city';
 
 export type WorldBiome =
   | 'settlement'
@@ -236,7 +247,10 @@ export type WildlifeSpecies =
   | 'fish'
   | 'boar'
   | 'wolf'
-  | 'bird';
+  | 'bird'
+  | 'dire_wolf'
+  | 'ogre'
+  | 'wraith';
 
 export interface WildlifePopulation {
   id: string;
@@ -246,7 +260,13 @@ export interface WildlifePopulation {
   carryingCapacity: number;
   reproductionRate: number;
   alertness: number;
+  threat: number;
+  isMonster: boolean;
   lastChangedAt: number;
+}
+
+export interface WorldCalendarState {
+  elapsedWorldMinutes: number;
 }
 
 export interface WorldGrowthState {
@@ -263,6 +283,7 @@ export interface WorldPopulationState {
   births: number;
   deaths: number;
   lastBirthAt?: number;
+  lastBirthWorldMinute?: number;
   lastDeathAt?: number;
 }
 
@@ -357,6 +378,7 @@ export interface WorldState {
 
   environment: WorldEnvironment;
   determinism: WorldDeterminismState;
+  calendar: WorldCalendarState;
   growth: WorldGrowthState;
   population: WorldPopulationState;
   cosmology: WorldCosmologyState;

@@ -3,6 +3,7 @@ export interface CardinalMetrics {
   averageStress: number;
   socialIsolation: number;
   conflictPressure: number;
+  safetyPressure: number;
   resourcePressure: number;
   relationshipDiversity: number;
   recoveryCapacity: number;

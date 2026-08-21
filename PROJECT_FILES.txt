@@ -1,8 +1,9 @@
-Ainkrad v0.3.10 current files
+Ainkrad v0.3.11 current files
 
 Files:
 - .github/workflows/ci.yml
 - .gitignore
+- AGENTS.md
 - PROJECT_FILES.txt
 - README.md
 - SPCK_IMPORT.md
@@ -17,9 +18,11 @@ Files:
 - docs/WORLD_AUTONOMY.md
 - docs/WORLD_AUTHORITY.md
 - docs/WORLD_ENTRY_GATEWAY.md
+- docs/WORLD_TIME.md
 - index.html
 - package.json
 - src/boundary/ExternalGateway.ts
+- src/boundary/WorldClockGateway.ts
 - src/boundary/WorldEntryGateway.ts
 - src/browser.css
 - src/browser.ts
@@ -62,6 +65,7 @@ Files:
 - src/world/InMemoryMemoryStore.ts
 - src/world/InMemoryWorldStore.ts
 - src/world/WorldEngine.ts
+- src/world/WorldClock.ts
 - src/world/events.ts
 - src/world/memory.ts
 - src/world/persistence.ts
@@ -88,6 +92,7 @@ Files:
 - tests/sensors.test.ts
 - tests/worldAutonomy.test.ts
 - tests/worldAuthority.test.ts
+- tests/worldClockCivilization.test.ts
 - tests/worldRuntime.test.ts
 - tsconfig.json
 - vercel.json

@@ -96,3 +96,13 @@ All existing place connections are made reciprocal during migration. Existing ge
 Cardinal policy, research, audit context, gateway and sensor versions advance to v0.3.10. Older evaluations remain historical experience totals, but they do not silently form a same-policy persistence chain for a new intervention decision.
 
 Snapshots older than v0.3.8, newer than v0.3.10 or malformed under their declared version still fail closed.
+
+## Audit 11: unified clock, physiology and civilization
+
+World rules `ainkrad-world-rules-0.3.11` add one persisted elapsed-world-minute clock, age-derived physiology, dangerous remote monster populations, endogenous village/city growth and calibrated world pressures for Cardinal.
+
+The runtime accepts v0.3.8, v0.3.9 and deployed v0.3.10. For v0.3.10 it converts the age already accumulated under 96 legacy ticks per year into world minutes. The visible calendar and every resident then continue from that same duration; neither the population nor the world is restarted.
+
+Existing wildlife remains ordinary wildlife. A migrated mature frontier receives only a bounded seeded monster habitat, and later monsters and settlements emerge through normal world rules. Cardinal policy and sensors advance to v0.3.11 because their pressure meanings and thresholds changed; older evidence remains history but does not become a same-policy persistence chain.
+
+World speed is not a Cardinal rule and is not part of a world migration. It belongs to the independent external clock gateway. Future increases in acceleration must preserve deterministic substeps and must not skip causal history.

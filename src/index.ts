@@ -1,4 +1,5 @@
 export * from './boundary/ExternalGateway';
+export * from './boundary/WorldClockGateway';
 export * from './boundary/WorldEntryGateway';
 
 export * from './cardinal/CardinalAuditor';
@@ -44,4 +45,5 @@ export * from './world/InMemoryWorldStore';
 export * from './world/memory';
 export * from './world/persistence';
 export * from './world/types';
+export * from './world/WorldClock';
 export * from './world/WorldEngine';

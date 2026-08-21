@@ -5,11 +5,17 @@ import { SeededRng } from '../utils/rng';
 import type { WorldEvent } from './events';
 import type { WorldStore } from './persistence';
 import { StaleWorldObservationError, WorldRevisionConflictError } from './persistence';
+import {
+  DEFAULT_WORLD_MINUTES_PER_TICK,
+  WORLD_MINUTES_PER_YEAR,
+  WORLD_TICKS_PER_YEAR,
+} from './WorldClock';
 import type {
   AgentActionKind,
   AgentDeathCause,
   AgentGoalKind,
   AgentLifeStage,
+  AgentPhysiologyState,
   AgentState,
   MemoryRecord,
   RelationshipState,
@@ -27,18 +33,20 @@ import type {
   WildlifeSpecies,
 } from './types';
 
-export const WORLD_RULES_VERSION = 'ainkrad-world-rules-0.3.10';
+export const WORLD_RULES_VERSION = 'ainkrad-world-rules-0.3.11';
 const LEGACY_WORLD_RULES_VERSIONS = new Set([
   'ainkrad-world-rules-0.3.8',
   'ainkrad-world-rules-0.3.9',
+  'ainkrad-world-rules-0.3.10',
 ]);
 export const WORLD_CONSTITUTION_VERSION = 'ainkrad-constitution-0.3.10';
-export const WORLD_TICKS_PER_YEAR = 96;
+export { WORLD_TICKS_PER_YEAR } from './WorldClock';
 const MIN_ADULT_AGE = 18;
 const ELDER_AGE = 62;
 const BIRTH_CHECK_INTERVAL = 12;
-const MIN_TICKS_BETWEEN_BIRTHS = 36;
 const MAX_LIVING_POPULATION = 96;
+const LEGACY_WORLD_TICKS_PER_YEAR = 96;
+const MIN_WORLD_MINUTES_BETWEEN_BIRTHS = WORLD_MINUTES_PER_YEAR * 0.8;
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const clampSigned = (value: number) => Math.max(-1, Math.min(1, value));
@@ -85,6 +93,7 @@ const PLACE_KINDS: readonly WorldPlaceKind[] = [
   'swamp',
   'ruins',
   'village',
+  'city',
 ];
 
 const WILDLIFE_SPECIES: readonly WildlifeSpecies[] = [
@@ -94,7 +103,16 @@ const WILDLIFE_SPECIES: readonly WildlifeSpecies[] = [
   'boar',
   'wolf',
   'bird',
+  'dire_wolf',
+  'ogre',
+  'wraith',
 ];
+
+const MONSTER_SPECIES = new Set<WildlifeSpecies>([
+  'dire_wolf',
+  'ogre',
+  'wraith',
+]);
 
 const BIOMES: readonly WorldBiome[] = [
   'settlement',
@@ -148,6 +166,8 @@ const WORLD_EXPANSIONS: readonly WorldExpansionDefinition[] = [
         carryingCapacity: 8,
         reproductionRate: 0.16,
         alertness: 0.2,
+        threat: 0.04,
+        isMonster: false,
         lastChangedAt: 0,
       },
     ],
@@ -175,6 +195,8 @@ const WORLD_EXPANSIONS: readonly WorldExpansionDefinition[] = [
         carryingCapacity: 7,
         reproductionRate: 0.1,
         alertness: 0.32,
+        threat: 0.12,
+        isMonster: false,
         lastChangedAt: 0,
       },
     ],
@@ -202,6 +224,8 @@ const WORLD_EXPANSIONS: readonly WorldExpansionDefinition[] = [
         carryingCapacity: 12,
         reproductionRate: 0.2,
         alertness: 0.12,
+        threat: 0.02,
+        isMonster: false,
         lastChangedAt: 0,
       },
     ],
@@ -209,26 +233,26 @@ const WORLD_EXPANSIONS: readonly WorldExpansionDefinition[] = [
 ];
 
 const REGION_NAME_PREFIXES = [
-  'Northern',
-  'Silver',
-  'Quiet',
-  'Ancient',
-  'Eastern',
-  'Hidden',
-  'Windward',
-  'Amber',
+  'Северные',
+  'Серебряные',
+  'Тихие',
+  'Древние',
+  'Восточные',
+  'Скрытые',
+  'Ветреные',
+  'Янтарные',
 ] as const;
 
 const REGION_NAME_SUFFIXES: Record<WorldBiome, readonly string[]> = {
-  settlement: ['Village', 'Crossroads'],
-  plains: ['Fields', 'Steppe', 'Meadow'],
-  forest: ['Forest', 'Grove', 'Woods'],
-  coast: ['Coast', 'Bay', 'Shore'],
-  mountains: ['Heights', 'Ridge', 'Pass'],
-  lake: ['Lake', 'Waters'],
-  river: ['Riverlands', 'Ford'],
-  swamp: ['Marsh', 'Wetlands'],
-  ancient_ruins: ['Ruins', 'Sanctuary'],
+  settlement: ['Поселение', 'Перекрёстки'],
+  plains: ['Поля', 'Степи', 'Луга'],
+  forest: ['Леса', 'Рощи', 'Чащи'],
+  coast: ['Берега', 'Бухты', 'Побережья'],
+  mountains: ['Высоты', 'Хребты', 'Перевалы'],
+  lake: ['Озёра', 'Воды'],
+  river: ['Речные земли', 'Броды'],
+  swamp: ['Топи', 'Болота'],
+  ancient_ruins: ['Руины', 'Святилища'],
 };
 
 function law(
@@ -339,6 +363,55 @@ function lifeStageForAge(ageYears: number): AgentLifeStage {
   return 'elder';
 }
 
+/** A smooth human-like body curve: growth, a young-adult peak, then decline. */
+function physiologyForAge(
+  ageYears: number,
+  lifespanYears: number,
+  health: number,
+): AgentPhysiologyState {
+  const age = Math.max(0, ageYears);
+  const adultPeak =
+    age < 5
+      ? 0.08 + (age / 5) * 0.22
+      : age < 15
+        ? 0.3 + ((age - 5) / 10) * 0.42
+        : age < 25
+          ? 0.72 + ((age - 15) / 10) * 0.28
+          : age <= 35
+            ? 1
+            : age < 55
+              ? 1 - ((age - 35) / 20) * 0.2
+              : age < 70
+                ? 0.8 - ((age - 55) / 15) * 0.25
+                : Math.max(
+                    0.12,
+                    0.55 -
+                      ((age - 70) / Math.max(8, lifespanYears - 70)) * 0.43,
+                  );
+  const healthFactor = 0.48 + clamp01(health) * 0.52;
+  const experienceReserve = clamp01(age / 55) * 0.08;
+
+  return {
+    strength: clamp01(adultPeak * healthFactor),
+    endurance: clamp01(
+      (adultPeak * 0.86 + experienceReserve) * (0.42 + health * 0.58),
+    ),
+    mobility: clamp01(
+      (adultPeak * (age > 60 ? 0.9 : 1.02)) * (0.45 + health * 0.55),
+    ),
+    recovery: clamp01(
+      (age < 18
+        ? 0.76 + adultPeak * 0.2
+        : age < 40
+          ? 0.94
+          : age < 65
+            ? 0.94 - ((age - 40) / 25) * 0.3
+            : Math.max(0.16, 0.64 - ((age - 65) / 30) * 0.48)) *
+        (0.46 + health * 0.54),
+    ),
+  };
+}
+
 function identityId(worldId: string, agentId: string): string {
   return `person:${worldId}:${agentId}`;
 }
@@ -404,6 +477,15 @@ function assertWorldState(value: unknown): asserts value is WorldState {
   finiteNumber(determinism.rngState, 'World RNG state');
   nonNegativeInteger(determinism.eventSequence, 'World event sequence');
 
+  const calendar = asRecord(state.calendar, 'World calendar');
+  const elapsedWorldMinutes = finiteNumber(
+    calendar.elapsedWorldMinutes,
+    'World calendar.elapsedWorldMinutes',
+  );
+  if (elapsedWorldMinutes < 0) {
+    throw new Error('World calendar.elapsedWorldMinutes cannot be negative.');
+  }
+
   const environment = asRecord(state.environment, 'World environment');
   assertUnitFields(
     environment,
@@ -466,6 +548,12 @@ function assertWorldState(value: unknown): asserts value is WorldState {
   nonNegativeInteger(population.deaths, 'World population.deaths');
   if (population.lastBirthAt !== undefined) {
     finiteNumber(population.lastBirthAt, 'World population.lastBirthAt');
+  }
+  if (population.lastBirthWorldMinute !== undefined) {
+    finiteNumber(
+      population.lastBirthWorldMinute,
+      'World population.lastBirthWorldMinute',
+    );
   }
   if (population.lastDeathAt !== undefined) {
     finiteNumber(population.lastDeathAt, 'World population.lastDeathAt');
@@ -705,6 +793,20 @@ function assertWorldState(value: unknown): asserts value is WorldState {
       population.alertness,
       `Wildlife population ${populationId}.alertness`,
     );
+    unitNumber(population.threat, `Wildlife population ${populationId}.threat`);
+    if (typeof population.isMonster !== 'boolean') {
+      throw new Error(
+        `Wildlife population ${populationId}.isMonster must be boolean.`,
+      );
+    }
+    if (
+      population.isMonster !==
+      MONSTER_SPECIES.has(population.species as WildlifeSpecies)
+    ) {
+      throw new Error(
+        `Wildlife population ${populationId} monster flag is invalid.`,
+      );
+    }
     finiteNumber(
       population.lastChangedAt,
       `Wildlife population ${populationId}.lastChangedAt`,
@@ -782,6 +884,15 @@ function assertWorldState(value: unknown): asserts value is WorldState {
       throw new Error(`Agent ${agentId}.life.alive must be boolean.`);
     }
     unitNumber(life.health, `Agent ${agentId}.life.health`);
+    const physiology = asRecord(
+      life.physiology,
+      `Agent ${agentId}.life.physiology`,
+    );
+    assertUnitFields(
+      physiology,
+      ['strength', 'endurance', 'mobility', 'recovery'],
+      `Agent ${agentId}.life.physiology`,
+    );
     nonNegativeInteger(life.generation, `Agent ${agentId}.life.generation`);
     for (const field of ['parentIds', 'childIds'] as const) {
       if (
@@ -796,12 +907,18 @@ function assertWorldState(value: unknown): asserts value is WorldState {
     if (life.lastChildAt !== undefined) {
       finiteNumber(life.lastChildAt, `Agent ${agentId}.life.lastChildAt`);
     }
+    if (life.lastChildWorldMinute !== undefined) {
+      finiteNumber(
+        life.lastChildWorldMinute,
+        `Agent ${agentId}.life.lastChildWorldMinute`,
+      );
+    }
     if (life.diedAt !== undefined) {
       finiteNumber(life.diedAt, `Agent ${agentId}.life.diedAt`);
     }
     if (
       life.deathCause !== undefined &&
-      !['old_age', 'illness', 'deprivation', 'catastrophe'].includes(
+      !['old_age', 'illness', 'deprivation', 'catastrophe', 'monster'].includes(
         life.deathCause as AgentDeathCause,
       )
     ) {
@@ -1216,6 +1333,13 @@ async function migrateLegacyWorld(
     ...next.environment,
     habitatSupport: next.environment.habitatSupport ?? 0.5,
   };
+  mutable.calendar ??= {
+    // v0.3.10 aged residents once per 96 ticks. Preserve that accumulated
+    // history, then let the external clock control every future increment.
+    elapsedWorldMinutes:
+      (Math.max(0, legacy.now) / LEGACY_WORLD_TICKS_PER_YEAR) *
+      WORLD_MINUTES_PER_YEAR,
+  };
   if (!mutable.growth) {
     mutable.growth = {
       stage: 0,
@@ -1229,6 +1353,21 @@ async function migrateLegacyWorld(
       mutable.growth.frontierSequence ?? mutable.growth.stage;
   }
   mutable.wildlife ??= {};
+  const legacyThreat: Record<WildlifeSpecies, number> = {
+    rabbit: 0.04,
+    deer: 0.08,
+    fish: 0.02,
+    boar: 0.28,
+    wolf: 0.42,
+    bird: 0.02,
+    dire_wolf: 0.72,
+    ogre: 0.86,
+    wraith: 0.94,
+  };
+  for (const population of Object.values(next.wildlife)) {
+    population.threat ??= legacyThreat[population.species] ?? 0.05;
+    population.isMonster ??= MONSTER_SPECIES.has(population.species);
+  }
 
   const homeIds = Object.values(next.places)
     .filter((place) => place.kind === 'home')
@@ -1248,6 +1387,36 @@ async function migrateLegacyWorld(
     });
   }
   makeConnectionsReciprocal(next.places);
+
+  if (
+    next.growth.stage >= 5 &&
+    !Object.values(next.wildlife).some((population) => population.isMonster)
+  ) {
+    const habitatId = next.growth.discoveredRegionIds.at(-1);
+    const habitat = habitatId ? next.places[habitatId] : undefined;
+    if (habitat) {
+      const species: WildlifeSpecies =
+        habitat.biome === 'ancient_ruins'
+          ? 'wraith'
+          : habitat.biome === 'swamp'
+            ? 'ogre'
+            : 'dire_wolf';
+      const threat = legacyThreat[species];
+      next.wildlife[`monster_${next.growth.stage}_${species}`] = {
+        id: `monster_${next.growth.stage}_${species}`,
+        species,
+        habitatId: habitat.id,
+        count: 1,
+        carryingCapacity: 3,
+        reproductionRate: 0.018,
+        alertness: 0.74,
+        threat,
+        isMonster: true,
+        lastChangedAt: next.now,
+      };
+      habitat.danger = Math.max(habitat.danger, threat * 0.78);
+    }
+  }
 
   const agents = Object.values(next.agents);
   agents.forEach((agent, index) => {
@@ -1272,10 +1441,32 @@ async function migrateLegacyWorld(
       stage: lifeStageForAge(ageYears),
       alive: true,
       health: clamp01(0.72 + agent.personality.resilience * 0.24),
+      physiology: physiologyForAge(
+        ageYears,
+        72 + agent.personality.resilience * 26 + (index % 5),
+        clamp01(0.72 + agent.personality.resilience * 0.24),
+      ),
       generation: 0,
       parentIds: [],
       childIds: [],
     };
+    // Preserve biological age while moving every older world onto the single
+    // 60 ticks/year clock. This prevents a restart from making anybody older
+    // or younger while future age and the displayed calendar stay aligned.
+    agent.life.bornAt = next.now - agent.life.ageYears * WORLD_TICKS_PER_YEAR;
+    agent.life.physiology ??= physiologyForAge(
+      agent.life.ageYears,
+      agent.life.lifespanYears,
+      agent.life.health,
+    );
+    if (
+      agent.life.lastChildAt !== undefined &&
+      agent.life.lastChildWorldMinute === undefined
+    ) {
+      agent.life.lastChildWorldMinute =
+        (agent.life.lastChildAt / LEGACY_WORLD_TICKS_PER_YEAR) *
+        WORLD_MINUTES_PER_YEAR;
+    }
     agent.mind ??= createMindState(
       next.id,
       agent.id,
@@ -1289,6 +1480,14 @@ async function migrateLegacyWorld(
     births: 0,
     deaths: 0,
   };
+  if (
+    next.population.lastBirthAt !== undefined &&
+    next.population.lastBirthWorldMinute === undefined
+  ) {
+    next.population.lastBirthWorldMinute =
+      (next.population.lastBirthAt / LEGACY_WORLD_TICKS_PER_YEAR) *
+      WORLD_MINUTES_PER_YEAR;
+  }
   next.cosmology = mutable.cosmology ?? {
     mysteryLevel: 0.12,
     omenCount: 0,
@@ -1310,7 +1509,7 @@ async function migrateLegacyWorld(
 
   next.determinism.eventSequence += 1;
   const migrationEvent: WorldEvent = {
-    eventId: `migration:${next.id}:world-rules-0.3.10`,
+    eventId: `migration:${next.id}:world-rules-0.3.11`,
     worldId: next.id,
     kind: 'world.migrated',
     source: 'system',
@@ -1537,6 +1736,11 @@ export class WorldEngine {
           stage: lifeStageForAge(ageYears),
           alive: true,
           health: clamp01(0.72 + personality.resilience * 0.24),
+          physiology: physiologyForAge(
+            ageYears,
+            72 + personality.resilience * 26 + (index % 5),
+            clamp01(0.72 + personality.resilience * 0.24),
+          ),
           generation: 0,
           parentIds: [],
           childIds: [],
@@ -1577,6 +1781,9 @@ export class WorldEngine {
       determinism: {
         rngState: rng.snapshot(),
         eventSequence: 0,
+      },
+      calendar: {
+        elapsedWorldMinutes: 0,
       },
       growth: {
         stage: 0,
@@ -1680,12 +1887,22 @@ export class WorldEngine {
     });
   }
 
-  async step(now: number): Promise<boolean> {
+  async step(
+    now: number,
+    elapsedWorldMinutes: number = DEFAULT_WORLD_MINUTES_PER_TICK,
+  ): Promise<boolean> {
     if (!Number.isFinite(now)) {
       throw new Error('World step time must be finite.');
     }
+    if (!Number.isFinite(elapsedWorldMinutes) || elapsedWorldMinutes < 0) {
+      throw new Error('Elapsed world minutes must be finite and non-negative.');
+    }
     const operationId = `tick:${now}`;
-    const fingerprint = stableJsonStringify({ kind: 'tick', now });
+    const fingerprint = stableJsonStringify({
+      kind: 'tick',
+      now,
+      elapsedWorldMinutes,
+    });
 
     return await this.mutate(operationId, fingerprint, async () => {
       if (now < this.state.now) {
@@ -1694,6 +1911,7 @@ export class WorldEngine {
         );
       }
       this.state.now = now;
+      this.state.calendar.elapsedWorldMinutes += elapsedWorldMinutes;
 
       // The control world has endogenous recovery. Cardinal is not the only
       // source of resources, production, social repair or stress recovery.
@@ -1707,7 +1925,7 @@ export class WorldEngine {
 
       const effectiveEnvironment = await this.effectiveEnvironment(now);
       this.advanceWildlife(effectiveEnvironment, now);
-      this.advanceAgingAndMortality(now);
+      this.advanceAgingAndMortality(now, elapsedWorldMinutes);
       const agents = this.shuffled(
         Object.values(this.state.agents).filter((agent) => agent.life.alive),
       );
@@ -1715,7 +1933,8 @@ export class WorldEngine {
       for (const agent of agents) {
         await this.stepAgent(agent, agents, effectiveEnvironment, now);
       }
-      this.advanceBirths(now);
+      this.advanceBirths(now, elapsedWorldMinutes);
+      this.advanceSettlements(now);
       this.advanceMysticism(now);
       this.advanceCollectiveMyth(now);
     });
@@ -2229,6 +2448,11 @@ export class WorldEngine {
             stage: 'adult' as const,
             alive: true,
             health: 0.92,
+            physiology: physiologyForAge(
+              ageYears,
+              78 + personality.resilience * 22,
+              0.92,
+            ),
             generation: 0,
             parentIds: [],
             childIds: [],
@@ -2639,11 +2863,14 @@ export class WorldEngine {
         this.performPray(agent, now);
         break;
     }
+    this.advanceMonsterEncounter(agent, now);
     this.advanceMind(agent);
   }
 
   private applyPassiveNeeds(agent: AgentState, environment: WorldEnvironment): void {
-    agent.energy = clamp01(agent.energy - 0.022);
+    agent.energy = clamp01(
+      agent.energy - (0.016 + (1 - agent.life.physiology.endurance) * 0.014),
+    );
     agent.resources = clamp01(agent.resources - 0.006);
     agent.needs.belonging = clamp01(agent.needs.belonging - 0.012);
     agent.needs.purpose = clamp01(agent.needs.purpose - 0.008);
@@ -2751,6 +2978,8 @@ export class WorldEngine {
     const socialAvailable = allAgents.some((other) => other.id !== agent.id);
     const natureAvailable = this.state.growth.stage > 0;
     const goalBoost = (kind: AgentGoalKind) => (agent.goal.kind === kind ? 0.24 : 0);
+    const body = agent.life.physiology;
+    const emotions = agent.mind.emotions;
 
     const scores: Array<{ action: AgentActionKind; score: number }> = [
       {
@@ -2758,6 +2987,7 @@ export class WorldEngine {
         score:
           (1 - agent.energy) * 1.45 +
           agent.stress * 0.42 +
+          (1 - body.recovery) * 0.22 +
           goalBoost('recover'),
       },
       {
@@ -2767,6 +2997,7 @@ export class WorldEngine {
           (1 - agent.energy) * 0.62 +
           agent.stress * 0.72 +
           agent.personality.curiosity * 0.12 +
+          emotions.grief * 0.2 +
           goalBoost('recover') * 0.65,
       },
       {
@@ -2775,6 +3006,9 @@ export class WorldEngine {
           0.18 +
           agent.personality.curiosity * 0.46 +
           agent.personality.resilience * 0.08 +
+          body.mobility * 0.18 +
+          emotions.joy * 0.09 -
+          emotions.fear * 0.12 +
           (1 - agent.stress) * 0.08 +
           (1 - agent.needs.purpose) * 0.16 +
           goalBoost('explore') * 0.6 -
@@ -2786,6 +3020,7 @@ export class WorldEngine {
           (1 - agent.resources) * 1.05 +
           this.state.environment.resourcePool * 0.22 +
           agent.skills.gathering * 0.2 +
+          body.strength * 0.13 +
           goalBoost('secure_resources'),
       },
       {
@@ -2794,9 +3029,14 @@ export class WorldEngine {
           ? (1 - agent.resources) * 0.9 +
             agent.skills.hunting * 0.34 +
             agent.personality.riskTolerance * 0.22 +
+            body.strength * 0.2 +
+            body.endurance * 0.12 +
             environment.safetySupport * 0.08 +
-            goalBoost('secure_resources') -
-            huntTarget.alertness * 0.34
+            emotions.hope * 0.08 -
+            emotions.fear * 0.32 -
+            huntTarget.alertness * 0.34 -
+            huntTarget.threat * 0.36 +
+            goalBoost('secure_resources')
           : -1,
       },
       {
@@ -2806,6 +3046,7 @@ export class WorldEngine {
           (1 - agent.needs.purpose) * 0.38 +
           agent.personality.diligence * 0.52 +
           agent.skills.craft * 0.18 +
+          body.endurance * 0.12 +
           goalBoost('contribute'),
       },
       {
@@ -2815,6 +3056,9 @@ export class WorldEngine {
           ((1 - agent.needs.belonging) * 0.78 +
             agent.socialDrive * 0.4 +
             agent.personality.sociability * 0.3 +
+            emotions.joy * 0.12 +
+            emotions.grief * 0.08 -
+            emotions.fear * 0.08 +
             environment.socialOpportunity * 0.2 +
             goalBoost('connect')),
       },
@@ -2832,7 +3076,11 @@ export class WorldEngine {
         score:
           agent.personality.curiosity * 0.68 +
           agent.personality.riskTolerance * 0.15 +
+          body.mobility * 0.13 +
           agent.skills.exploration * 0.16 +
+          emotions.awe * 0.18 +
+          emotions.hope * 0.09 -
+          emotions.fear * 0.28 +
           (1 - agent.needs.purpose) * 0.2 +
           goalBoost('explore') -
           Math.max(0, 0.35 - agent.resources) * 0.7,
@@ -2845,6 +3093,8 @@ export class WorldEngine {
           (1 - agent.needs.purpose) * 0.42 +
           (1 - agent.personality.riskTolerance) * 0.22 +
           (1 - agent.personality.sociability) * 0.08 +
+          emotions.grief * 0.24 +
+          emotions.fear * 0.12 +
           goalBoost('reflect'),
       },
       {
@@ -2853,6 +3103,7 @@ export class WorldEngine {
           ? agent.mind.values.care * 0.42 +
             (1 - agent.needs.belonging) * 0.34 +
             agent.mind.emotions.hope * 0.18 +
+            emotions.joy * 0.12 +
             goalBoost('build_family')
           : -1,
       },
@@ -2879,6 +3130,13 @@ export class WorldEngine {
     } else if (agent.life.stage === 'elder') {
       const hunt = scores.find((item) => item.action === 'hunt');
       if (hunt) hunt.score -= 0.28;
+    }
+    if (body.mobility < 0.24 || body.strength < 0.2) {
+      for (const item of scores) {
+        if (['hunt', 'explore'].includes(item.action)) item.score = -1;
+      }
+      const rest = scores.find((item) => item.action === 'rest');
+      if (rest) rest.score += 0.36;
     }
 
     // Repetition remains possible, but curiosity makes an unchanged routine
@@ -3011,7 +3269,9 @@ export class WorldEngine {
 
   private performRest(agent: AgentState, now: number): void {
     this.moveAgent(agent, agent.homeId);
-    agent.energy = clamp01(agent.energy + 0.3);
+    agent.energy = clamp01(
+      agent.energy + 0.18 + agent.life.physiology.recovery * 0.14,
+    );
     agent.stress = clamp01(agent.stress - 0.055 - agent.personality.resilience * 0.02);
     agent.lastAction = 'rest';
 
@@ -3031,7 +3291,9 @@ export class WorldEngine {
     const destination = this.rng.pick(destinations);
 
     this.moveAgent(agent, destination);
-    agent.energy = clamp01(agent.energy + 0.13);
+    agent.energy = clamp01(
+      agent.energy + 0.07 + agent.life.physiology.recovery * 0.08,
+    );
     agent.stress = clamp01(
       agent.stress - 0.075 - agent.personality.resilience * 0.025,
     );
@@ -3063,7 +3325,9 @@ export class WorldEngine {
       destinations.length > 0 ? this.rng.pick(destinations) : 'commons';
 
     this.moveAgent(agent, destination);
-    agent.energy = clamp01(agent.energy - 0.018);
+    agent.energy = clamp01(
+      agent.energy - (0.012 + (1 - agent.life.physiology.mobility) * 0.016),
+    );
     agent.stress = clamp01(agent.stress - 0.018);
     agent.needs.purpose = clamp01(agent.needs.purpose + 0.008);
     agent.skills.exploration = clamp01(agent.skills.exploration + 0.001);
@@ -3085,6 +3349,9 @@ export class WorldEngine {
       boar: 0.2,
       wolf: 0.16,
       bird: 0.07,
+      dire_wolf: 0.24,
+      ogre: 0.3,
+      wraith: 0.04,
     };
 
     const populations = Object.values(this.state.wildlife)
@@ -3106,6 +3373,8 @@ export class WorldEngine {
             yieldBySpecies[population.species] * 2.4 +
             population.count / population.carryingCapacity -
             population.alertness * 0.5 +
+            agent.personality.riskTolerance * population.threat * 0.18 -
+            population.threat * 0.62 +
             agent.skills.hunting * 0.12 -
             distance * 0.055,
         };
@@ -3162,13 +3431,20 @@ export class WorldEngine {
       boar: 0.2,
       wolf: 0.16,
       bird: 0.07,
+      dire_wolf: 0.24,
+      ogre: 0.3,
+      wraith: 0.04,
     };
     const successChance = clamp01(
       0.16 +
         agent.skills.hunting * 0.46 +
         agent.personality.riskTolerance * 0.13 +
+        agent.life.physiology.strength * 0.16 +
+        agent.life.physiology.endurance * 0.1 +
         environment.safetySupport * 0.1 -
-        target.alertness * 0.34,
+        agent.mind.emotions.fear * 0.18 -
+        target.alertness * 0.34 -
+        target.threat * 0.32,
     );
     const succeeded = this.rng.next() < successChance;
     const gathered = succeeded ? yieldBySpecies[target.species] : 0;
@@ -3196,13 +3472,65 @@ export class WorldEngine {
     );
     target.lastChangedAt = now;
 
+    let monsterCountered = false;
+    let monsterDamage = 0;
+    if (
+      target.isMonster &&
+      target.count > 0 &&
+      (!succeeded || this.rng.next() < target.threat * 0.38)
+    ) {
+      monsterCountered = true;
+      monsterDamage = clamp01(
+        target.threat *
+          this.rng.between(0.12, 0.34) *
+          (1.18 - agent.life.physiology.strength * 0.38),
+      );
+      agent.life.health = clamp01(agent.life.health - monsterDamage);
+      agent.stress = clamp01(agent.stress + target.threat * 0.24);
+      agent.mind.emotions.fear = clamp01(
+        agent.mind.emotions.fear + target.threat * 0.36,
+      );
+      agent.mind.emotions.awe = clamp01(
+        agent.mind.emotions.awe + target.threat * 0.12,
+      );
+    }
+
     this.recordAgentEvent(agent, now, 'agent.hunted', {
       species: target.species,
       succeeded,
       gathered,
       populationRemaining: target.count,
+      monster: target.isMonster,
+      monsterCountered,
+      monsterDamage,
       locationId: agent.locationId,
     });
+
+    if (monsterCountered) {
+      this.stageEvent({
+        eventId: this.nextId('monster-encounter'),
+        worldId: this.state.id,
+        kind: 'world.monster.encountered',
+        source: 'world',
+        occurredAt: now,
+        payload: {
+          agentId: agent.id,
+          species: target.species,
+          habitatId: target.habitatId,
+          damage: monsterDamage,
+          survived: agent.life.health > 0.04,
+        },
+      });
+      const lethalChance = clamp01(
+        target.threat *
+          (1 - agent.life.physiology.strength) *
+          0.16 +
+          (agent.life.health < 0.18 ? 0.22 : 0),
+      );
+      if (agent.life.health <= 0.04 || this.rng.next() < lethalChance) {
+        this.recordDeath(agent, 'monster', now);
+      }
+    }
 
     if (succeeded && target.count === 0) {
       this.stageEvent({
@@ -3237,7 +3565,10 @@ export class WorldEngine {
   private performGather(agent: AgentState, now: number): void {
     this.moveAgent(agent, 'resource_field');
     const available = this.state.environment.resourcePool;
-    const effort = 0.06 + agent.skills.gathering * 0.08;
+    const effort =
+      0.025 +
+      agent.skills.gathering * 0.08 +
+      agent.life.physiology.strength * 0.035;
     const gathered = Math.min(effort, available);
 
     agent.energy = clamp01(agent.energy - 0.035);
@@ -3259,9 +3590,10 @@ export class WorldEngine {
   private performWork(agent: AgentState, now: number): void {
     this.moveAgent(agent, 'workshop');
     const produced =
-      0.035 +
+      0.018 +
       agent.skills.craft * 0.05 +
-      agent.personality.diligence * 0.04;
+      agent.personality.diligence * 0.04 +
+      agent.life.physiology.endurance * 0.022;
 
     agent.resources = clamp01(agent.resources + produced);
     agent.energy = clamp01(agent.energy - 0.045);
@@ -3442,6 +3774,103 @@ export class WorldEngine {
     return expansion.place.id;
   }
 
+  private advanceSettlements(now: number): void {
+    if (!Number.isInteger(now) || now % 24 !== 0) return;
+    const living = Object.values(this.state.agents).filter(
+      (agent) => agent.life.alive,
+    ).length;
+    const settlements = Object.values(this.state.places).filter(
+      (place) => place.kind === 'village' || place.kind === 'city',
+    );
+    const desiredSettlements = Math.min(
+      Math.floor(this.state.growth.stage / 3),
+      Math.max(0, Math.floor((living - 3) / 3)),
+    );
+
+    if (settlements.length < desiredSettlements) {
+      const sequence = settlements.length + 1;
+      const frontierId =
+        this.state.growth.discoveredRegionIds.at(
+          -1 - (sequence % Math.max(1, this.state.growth.discoveredRegionIds.length)),
+        ) ?? 'outskirts';
+      const anchor = this.state.places[frontierId] ?? this.state.places.outskirts;
+      const names = [
+        'Ривен',
+        'Лунная Долина',
+        'Эльм',
+        'Белый Брод',
+        'Сольвей',
+        'Звёздная Гавань',
+      ];
+      const id = `settlement_${sequence}`;
+      const angle = sequence * 2.399963229728653;
+      this.state.places[id] = createPlace(
+        id,
+        `Поселение ${names[(sequence - 1) % names.length]}`,
+        'village',
+        8 + sequence * 2,
+        {
+          biome: 'settlement',
+          mapX: anchor.mapX + Math.cos(angle) * (8 + sequence),
+          mapY: anchor.mapY + Math.sin(angle) * (8 + sequence),
+          connectedPlaceIds: [frontierId],
+          fertility: clamp01(0.56 + anchor.fertility * 0.2),
+          danger: 0.05,
+          discoveredAt: now,
+        },
+      );
+      makeConnectionsReciprocal(this.state.places);
+      this.stageEvent({
+        eventId: this.nextId('settlement'),
+        worldId: this.state.id,
+        kind: 'world.settlement.founded',
+        source: 'agent',
+        occurredAt: now,
+        payload: {
+          settlementId: id,
+          name: this.state.places[id].name,
+          connectedRegionId: frontierId,
+          livingPopulation: living,
+          worldStage: this.state.growth.stage,
+        },
+      });
+      return;
+    }
+
+    const cities = settlements.filter((place) => place.kind === 'city');
+    const desiredCities = Math.min(
+      Math.floor(this.state.growth.stage / 8),
+      Math.floor(living / 12),
+    );
+    if (cities.length >= desiredCities) return;
+
+    const village = settlements
+      .filter((place) => place.kind === 'village')
+      .sort((a, b) => (a.discoveredAt ?? 0) - (b.discoveredAt ?? 0))[0];
+    if (!village) return;
+    village.kind = 'city';
+    village.name = village.name.replace('Поселение', 'Город');
+    village.capacity = Math.max(20, village.capacity * 2);
+    village.fertility = clamp01(village.fertility + 0.08);
+    if (!village.connectedPlaceIds.includes('commons')) {
+      village.connectedPlaceIds.push('commons');
+      makeConnectionsReciprocal(this.state.places);
+    }
+    this.stageEvent({
+      eventId: this.nextId('city'),
+      worldId: this.state.id,
+      kind: 'world.city.emerged',
+      source: 'agent',
+      occurredAt: now,
+      payload: {
+        cityId: village.id,
+        name: village.name,
+        livingPopulation: living,
+        worldStage: this.state.growth.stage,
+      },
+    });
+  }
+
   private createProceduralExpansion(
     stage: number,
     now: number,
@@ -3525,6 +3954,17 @@ export class WorldEngine {
       ancient_ruins: 'bird',
     };
     const species = speciesByBiome[biome];
+    const ordinaryThreat: Record<WildlifeSpecies, number> = {
+      rabbit: 0.04,
+      deer: 0.08,
+      fish: 0.02,
+      boar: 0.28,
+      wolf: 0.42,
+      bird: 0.02,
+      dire_wolf: 0.72,
+      ogre: 0.86,
+      wraith: 0.94,
+    };
     const carryingCapacity =
       4 + Math.floor(fertilityByBiome[biome] * 8 + this.rng.next() * 4);
     const initialCount = Math.max(2, Math.floor(carryingCapacity * 0.45));
@@ -3552,9 +3992,33 @@ export class WorldEngine {
         carryingCapacity,
         reproductionRate: clamp01(0.07 + place.fertility * 0.12),
         alertness: clamp01(0.12 + place.danger * 0.4),
+        threat: ordinaryThreat[species],
+        isMonster: false,
         lastChangedAt: now,
       },
     ];
+    if (stage >= 5 && (stage - 5) % 3 === 0) {
+      const monsterSpecies: WildlifeSpecies =
+        biome === 'ancient_ruins'
+          ? 'wraith'
+          : biome === 'swamp'
+            ? 'ogre'
+            : 'dire_wolf';
+      const threat = ordinaryThreat[monsterSpecies];
+      place.danger = Math.max(place.danger, threat * 0.78);
+      wildlife.push({
+        id: `monster_${stage}_${monsterSpecies}`,
+        species: monsterSpecies,
+        habitatId: regionId,
+        count: 1 + (stage % 2),
+        carryingCapacity: 2 + (stage % 3),
+        reproductionRate: 0.018,
+        alertness: 0.72,
+        threat,
+        isMonster: true,
+        lastChangedAt: now,
+      });
+    }
     return { stage, place, wildlife };
   }
 
@@ -3572,12 +4036,19 @@ export class WorldEngine {
 
       const density = population.count / population.carryingCapacity;
       const emptyHabitatBoost = population.count === 0 ? 0.22 : 0;
+      // Cardinal habitat support protects ordinary ecology, never monsters.
+      const habitatSupport = population.isMonster
+        ? Math.min(0.3, environment.habitatSupport)
+        : environment.habitatSupport;
+      const effectiveRecoveryLaw = population.isMonster
+        ? Math.min(0.35, recoveryLaw)
+        : recoveryLaw;
       const recoveryChance = clamp01(
         population.reproductionRate *
-          recoveryLaw *
-          (0.35 + environment.habitatSupport * 0.8) *
+          effectiveRecoveryLaw *
+          (0.35 + habitatSupport * 0.8) *
           (1 - density) +
-          emptyHabitatBoost * environment.habitatSupport,
+          emptyHabitatBoost * habitatSupport * (population.isMonster ? 0.08 : 1),
       );
       if (this.rng.next() >= recoveryChance) {
         continue;
@@ -3602,12 +4073,17 @@ export class WorldEngine {
     }
   }
 
-  private advanceAgingAndMortality(now: number): void {
+  private advanceAgingAndMortality(
+    now: number,
+    elapsedWorldMinutes: number,
+  ): void {
+    const ageDelta = elapsedWorldMinutes / WORLD_MINUTES_PER_YEAR;
+    const durationScale = ageDelta * WORLD_TICKS_PER_YEAR;
     for (const agent of Object.values(this.state.agents)) {
       if (!agent.life.alive) continue;
 
       const previousStage = agent.life.stage;
-      agent.life.ageYears += 1 / WORLD_TICKS_PER_YEAR;
+      agent.life.ageYears += ageDelta;
       agent.life.stage = lifeStageForAge(agent.life.ageYears);
       if (agent.life.stage !== previousStage) {
         this.recordAgentEvent(agent, now, 'agent.life.stage_changed', {
@@ -3629,14 +4105,20 @@ export class WorldEngine {
           : 0;
       const recovery =
         agent.resources > 0.35 && agent.energy > 0.3
-          ? 0.0012 + agent.personality.resilience * 0.0012
+          ? (0.0012 + agent.personality.resilience * 0.0012) *
+            agent.life.physiology.recovery
           : 0;
       agent.life.health = clamp01(
         agent.life.health +
           recovery -
           deprivation -
-          frailty -
+          frailty * Math.max(0.05, durationScale) -
           placeDanger * 0.00022,
+      );
+      agent.life.physiology = physiologyForAge(
+        agent.life.ageYears,
+        agent.life.lifespanYears,
+        agent.life.health,
       );
 
       const ageRatio = agent.life.ageYears / agent.life.lifespanYears;
@@ -3650,7 +4132,10 @@ export class WorldEngine {
           agent.resources < 0.08 ? 'deprivation' : 'illness',
           now,
         );
-      } else if (oldAgeChance > 0 && this.rng.next() < oldAgeChance) {
+      } else if (
+        oldAgeChance > 0 &&
+        this.rng.next() < clamp01(oldAgeChance * durationScale)
+      ) {
         this.recordDeath(agent, 'old_age', now);
       }
     }
@@ -3732,11 +4217,13 @@ export class WorldEngine {
     }
   }
 
-  private advanceBirths(now: number): void {
+  private advanceBirths(now: number, elapsedWorldMinutes: number): void {
     if (!Number.isInteger(now) || now % BIRTH_CHECK_INTERVAL !== 0) return;
     if (
-      this.state.population.lastBirthAt !== undefined &&
-      now - this.state.population.lastBirthAt < MIN_TICKS_BETWEEN_BIRTHS
+      this.state.population.lastBirthWorldMinute !== undefined &&
+      this.state.calendar.elapsedWorldMinutes -
+        this.state.population.lastBirthWorldMinute <
+        MIN_WORLD_MINUTES_BETWEEN_BIRTHS
     ) {
       return;
     }
@@ -3783,12 +4270,17 @@ export class WorldEngine {
 
     const fertilitySupport =
       this.lawValue('fertility_support', 0.55);
-    const choiceChance = clamp01(
+    const baseChoiceChance = clamp01(
       0.025 +
         fertilitySupport * 0.055 +
         Math.max(0, selected.score - 0.62) * 0.08,
     );
-    if (this.rng.next() >= choiceChance) return;
+    const speedAdjustedChance = clamp01(
+      baseChoiceChance *
+        ((elapsedWorldMinutes / WORLD_MINUTES_PER_YEAR) *
+          WORLD_TICKS_PER_YEAR),
+    );
+    if (this.rng.next() >= speedAdjustedChance) return;
     this.createChild(selected.a, selected.b, now);
   }
 
@@ -3810,8 +4302,14 @@ export class WorldEngine {
       return false;
     }
     if (
-      (a.life.lastChildAt !== undefined && now - a.life.lastChildAt < 64) ||
-      (b.life.lastChildAt !== undefined && now - b.life.lastChildAt < 64)
+      (a.life.lastChildWorldMinute !== undefined &&
+        this.state.calendar.elapsedWorldMinutes -
+          a.life.lastChildWorldMinute <
+          WORLD_MINUTES_PER_YEAR * 1.3) ||
+      (b.life.lastChildWorldMinute !== undefined &&
+        this.state.calendar.elapsedWorldMinutes -
+          b.life.lastChildWorldMinute <
+          WORLD_MINUTES_PER_YEAR * 1.3)
     ) {
       return false;
     }
@@ -3892,6 +4390,11 @@ export class WorldEngine {
         stage: 'child',
         alive: true,
         health: 0.94,
+        physiology: physiologyForAge(
+          0,
+          72 + personality.resilience * 26,
+          0.94,
+        ),
         generation: Math.max(a.life.generation, b.life.generation) + 1,
         parentIds: [a.id, b.id],
         childIds: [],
@@ -3915,6 +4418,8 @@ export class WorldEngine {
     b.life.childIds.push(childId);
     a.life.lastChildAt = now;
     b.life.lastChildAt = now;
+    a.life.lastChildWorldMinute = this.state.calendar.elapsedWorldMinutes;
+    b.life.lastChildWorldMinute = this.state.calendar.elapsedWorldMinutes;
     this.state.relationships[relationshipKey(a.id, childId)] = {
       agentA: a.id,
       agentB: childId,
@@ -3935,6 +4440,8 @@ export class WorldEngine {
     };
     this.state.population.births += 1;
     this.state.population.lastBirthAt = now;
+    this.state.population.lastBirthWorldMinute =
+      this.state.calendar.elapsedWorldMinutes;
     this.stageEvent({
       eventId: this.nextId('birth'),
       worldId: this.state.id,
@@ -3974,12 +4481,14 @@ export class WorldEngine {
       (place) => place.kind === 'ruins',
     ).length;
     const occurrenceChance = clamp01(
-      0.06 +
+      0.09 +
         resonance * 0.12 +
         weatherVolatility * 0.035 +
         Math.min(0.08, ruinCount * 0.012),
     );
-    if (this.rng.next() >= occurrenceChance) return;
+    const firstMysteryDue =
+      this.state.cosmology.omenCount === 0 && now >= 96 && now % 96 === 0;
+    if (!firstMysteryDue && this.rng.next() >= occurrenceChance) return;
 
     const phenomena = [
       {
@@ -4112,6 +4621,86 @@ export class WorldEngine {
         deityOrigin: deity.origin,
       },
     });
+  }
+
+  private advanceMonsterEncounter(agent: AgentState, now: number): void {
+    if (!agent.life.alive || agent.lastAction === 'hunt') return;
+    const monster = Object.values(this.state.wildlife)
+      .filter(
+        (population) =>
+          population.isMonster &&
+          population.count > 0 &&
+          population.habitatId === agent.locationId,
+      )
+      .sort((a, b) => b.threat - a.threat)[0];
+    if (!monster) return;
+
+    const placeDanger = this.state.places[agent.locationId]?.danger ?? 0.5;
+    const encounterChance = clamp01(
+      0.008 +
+        monster.threat * placeDanger * 0.055 +
+        (agent.lastAction === 'explore' ? 0.025 : 0),
+    );
+    if (this.rng.next() >= encounterChance) return;
+
+    const evasion = clamp01(
+      agent.life.physiology.mobility * 0.42 +
+        agent.skills.exploration * 0.18 +
+        agent.personality.riskTolerance * 0.08,
+    );
+    const escaped = this.rng.next() < evasion;
+    const damage = escaped
+      ? 0
+      : clamp01(
+          monster.threat *
+            this.rng.between(0.08, 0.28) *
+            (1.15 - agent.life.physiology.endurance * 0.3),
+        );
+    agent.life.health = clamp01(agent.life.health - damage);
+    agent.stress = clamp01(agent.stress + monster.threat * (escaped ? 0.12 : 0.28));
+    agent.mind.emotions.fear = clamp01(
+      agent.mind.emotions.fear + monster.threat * (escaped ? 0.18 : 0.42),
+    );
+    agent.mind.emotions.awe = clamp01(
+      agent.mind.emotions.awe + monster.threat * 0.1,
+    );
+
+    this.stageEvent({
+      eventId: this.nextId('monster-encounter'),
+      worldId: this.state.id,
+      kind: 'world.monster.encountered',
+      source: 'world',
+      occurredAt: now,
+      payload: {
+        agentId: agent.id,
+        species: monster.species,
+        habitatId: monster.habitatId,
+        escaped,
+        damage,
+        survived: agent.life.health > 0.035,
+      },
+    });
+    this.stageMemory({
+      memoryId: this.nextId('memory'),
+      worldId: this.state.id,
+      agentId: agent.id,
+      createdAt: now,
+      kind: 'world_event',
+      summary: `${agent.name} encountered ${monster.species} in the wilderness.`,
+      importance: clamp01(0.68 + monster.threat * 0.28),
+      valence: escaped ? -0.46 : -0.88,
+      relatedAgentIds: [],
+    });
+
+    const lethalChance = escaped
+      ? 0
+      : clamp01(
+          monster.threat * (1 - agent.life.physiology.strength) * 0.12 +
+            (agent.life.health < 0.14 ? 0.18 : 0),
+        );
+    if (agent.life.health <= 0.035 || this.rng.next() < lethalChance) {
+      this.recordDeath(agent, 'monster', now);
+    }
   }
 
   private advanceMind(agent: AgentState): void {

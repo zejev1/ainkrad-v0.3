@@ -2,7 +2,7 @@
 
 Ainkrad is not a Cardinal demonstration with decorative NPCs. The world must be capable of producing its own successes, failures, adaptations and social structures without Cardinal.
 
-This document defines the v0.3.10 world layer that Cardinal is allowed to observe.
+This document defines the v0.3.11 world layer that Cardinal is allowed to observe.
 
 ## Causal ownership
 
@@ -12,7 +12,7 @@ Each agent persists:
 
 - identity and name;
 - native or external origin;
-- biological age, health, life stage, lifespan, lineage and generation;
+- biological age, health, life stage, lifespan, lineage, generation and age-derived physiology;
 - energy, stress and personal resources;
 - social drive;
 - personality traits;
@@ -32,7 +32,9 @@ The initial settlement contains homes plus shared places for social contact, gat
 
 Resident exploration accumulates persistent frontier progress. The founding sequence is meadow, forest and sea shore. After that the frontier is unbounded: a seeded procedural generator creates connected mountains, lakes, rivers, swamps, ruins, villages, plains, forests and coasts. Every discovery commits the new place, topology, wildlife and append-only evidence atomically. Cardinal does not select the explorer.
 
-The first ecology is intentionally small: rabbits in the meadow, deer in the forest and fish at the shore. Populations have a carrying capacity, reproduction rate and alertness. They recover through an endogenous habitat cycle, including recovery from zero, so Cardinal is not the world's only path back from depletion.
+The first ecology is intentionally small: rabbits in the meadow, deer in the forest and fish at the shore. Populations have a carrying capacity, reproduction rate and alertness. They recover through an endogenous habitat cycle, including recovery from zero, so Cardinal is not the world's only path back from depletion. Later remote wilderness may contain dire wolves, ogres or wraiths. These monsters are dangerous environmental populations, not Cardinal-controlled enemies.
+
+Society also changes geography. When population and frontier maturity support expansion, new villages can be founded and established villages can grow into cities. The resulting places, connections and events are persistent world history rather than a decorative UI counter.
 
 A place is part of persistent world state. Connections are reciprocal and route plans move residents across the graph. Procedural coordinates expand in world units instead of being permanently clamped to one initial square; the UI may zoom them without changing causal geometry.
 
@@ -69,7 +71,7 @@ Exploration and hunting can create a short multi-tick plan. The resident keeps w
 
 ## Life cycle and generations
 
-World time advances biological age. Health responds to recovery, frailty, danger and deprivation. Death ends action but does not delete the person, lineage, relationships or memories.
+One persisted elapsed-world-minute clock advances both the calendar and biological age. Health responds to recovery, frailty, danger and deprivation. Strength, endurance, mobility and recovery develop through childhood, peak in youth and decline with age; they alter the cost and effectiveness of actions without replacing personal choice. Death ends action but does not delete the person, lineage, relationships or memories.
 
 Birth is a voluntary consequence of a sufficiently strong adult relationship plus health, resources, manageable stress, cooldown and carrying capacity. The child is a new identity with two reciprocal parents and a new generation. Cardinal cannot select partners or create a child directly. See `PERSONHOOD_CONTRACT.md`.
 
@@ -102,7 +104,7 @@ Social barriers alter opportunity to meet; they do not rewrite relationships or 
 
 Skills change through experience. Goals are derived from inspectable state: recovery pressure, resource security, belonging, contribution, curiosity and reflection. The goal is persisted so later analysis can reconstruct what the NPC was prioritizing.
 
-Emotions, values and beliefs are persisted and can change slowly through chosen actions and experienced births, deaths, omens and catastrophes. They are never intervention targets. This is still a deliberately small cognitive model and is not presented as human consciousness.
+Joy, fear, grief, awe and hope are persisted and change through chosen actions, danger, births, deaths, omens and catastrophes. They influence later action scoring and are visible in the resident panel, but they are never direct intervention targets. Values and beliefs also change through lived experience. This is still a deliberately small cognitive model and is not presented as human consciousness.
 
 ## Memory
 
@@ -148,7 +150,7 @@ Changing this metric meaning changes the sensor version.
 
 World RNG state, event sequence, agent state, places and relationships are persisted in the world projection. Reopening the same committed world must preserve the exact deterministic future.
 
-The explicit world-rules migration accepts v0.3.8 and v0.3.9. It preserves logical time, RNG future, residents, goals, locations, relationships and prior v0.3.9 ecology. It adds life, mind, lineage, cosmology, topology and governance without creating replacement residents.
+The explicit world-rules migration accepts v0.3.8, v0.3.9 and v0.3.10. It preserves logical time, RNG future, residents, goals, locations, relationships and prior ecology. The v0.3.10 biological history is converted to elapsed world minutes, then calendar and age continue from the same duration without creating replacement residents.
 
 Same seed + same world rules + same disturbances must reproduce the same autonomous state and history. Different seeds are allowed to generate different societies.
 

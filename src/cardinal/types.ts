@@ -5,6 +5,7 @@ export type CardinalMode = 'off' | 'observer' | 'intervene';
 export type CardinalProblemKind =
   | 'resource_fragility'
   | 'social_fragmentation'
+  | 'safety_instability'
   | 'conflict_overload'
   | 'ecosystem_fragility';
 
@@ -17,6 +18,7 @@ export type InterventionKind =
 export type CardinalPredictionMetric =
   | 'resourcePressure'
   | 'socialIsolation'
+  | 'safetyPressure'
   | 'averageStress'
   | 'wildlifePressure';
 

@@ -1,7 +1,23 @@
 import './browser.css';
-import type { CardinalCapability } from './cardinal/types';
+import type {
+  CardinalCapability,
+  CardinalDeferReason,
+} from './cardinal/types';
 import type { LiveWorldFrame } from './runtime/LiveWorldRuntime';
 import type { WorldEvent } from './world/events';
+import {
+  ageParts,
+  DEFAULT_WORLD_SPEED_ID,
+  DEFAULT_WORLD_SPEED_MULTIPLIER,
+  isWorldSpeedId,
+  isWorldSpeedMultiplier,
+  WORLD_MINUTES_PER_YEAR,
+  WORLD_SPEED_PRESETS,
+  worldCalendarAtMinutes,
+  worldSpeedPreset,
+  type WorldSpeedId,
+  type WorldSpeedMultiplier,
+} from './world/WorldClock';
 import type {
   AgentActionKind,
   AgentState,
@@ -100,6 +116,9 @@ const wildlifeLabels: Record<WildlifeSpecies, string> = {
   boar: 'Кабаны',
   wolf: 'Волки',
   bird: 'Птицы',
+  dire_wolf: 'Лютоволки',
+  ogre: 'Огры',
+  wraith: 'Тени',
 };
 
 const wildlifeIcons: Record<WildlifeSpecies, string> = {
@@ -109,6 +128,17 @@ const wildlifeIcons: Record<WildlifeSpecies, string> = {
   boar: '🐗',
   wolf: '🐺',
   bird: '🐦',
+  dire_wolf: '🐺',
+  ogre: '👹',
+  wraith: '👻',
+};
+
+const emotionLabels: Record<keyof AgentState['mind']['emotions'], string> = {
+  joy: 'радость',
+  fear: 'страх',
+  grief: 'горе',
+  awe: 'трепет',
+  hope: 'надежда',
 };
 
 const cardinalCapabilityLabels: Record<CardinalCapability, string> = {
@@ -123,6 +153,33 @@ const cardinalCapabilityLabels: Record<CardinalCapability, string> = {
   catastrophe_modeling: 'моделирование катастроф',
 };
 
+const cardinalDeferLabels: Record<CardinalDeferReason, string> = {
+  insufficient_persistence:
+    'Cardinal видит риск, но ждёт подтверждения ещё несколькими циклами.',
+  experiment_in_progress:
+    'Предыдущее вмешательство ещё проверяется; накладывать второе нельзя.',
+  autonomy_budget:
+    'Лимит вмешательств исчерпан — миру оставлено время решить проблему самому.',
+  failed_prediction_caution:
+    'Два прошлых прогноза не подтвердились; Cardinal временно воздерживается.',
+  capability_not_ready:
+    'Cardinal ещё не накопил достаточно опыта для такого вмешательства.',
+};
+
+const phaseLabels = {
+  dawn: 'Рассвет',
+  day: 'День',
+  evening: 'Вечер',
+  night: 'Ночь',
+} as const;
+
+const seasonLabels = {
+  spring: 'Весна',
+  summer: 'Лето',
+  autumn: 'Осень',
+  winter: 'Зима',
+} as const;
+
 const homePoints: readonly MapPoint[] = [
   { x: 7, y: 49, label: 'Дом Alex', symbol: '⌂' },
   { x: 30, y: 8, label: 'Дом Mira', symbol: '⌂' },
@@ -136,9 +193,9 @@ app.innerHTML = `
   <div class="ainkrad-app">
     <header class="world-header">
       <div>
-        <p class="eyebrow">AINKRAD v0.3.10 · живые поколения</p>
-        <h1>Первый уровень</h1>
-        <p class="world-subtitle">Жители открывают территории. Cardinal учится вместе с миром.</p>
+        <p class="eyebrow">AINKRAD v0.3.11 · мир поколений</p>
+        <h1 id="world-title">Мир · уровень 1</h1>
+        <p class="world-subtitle">Время регулируется снаружи. Жители сами расширяют карту и проживают поколения.</p>
       </div>
 
       <div class="live-indicator" id="live-indicator">
@@ -149,46 +206,70 @@ app.innerHTML = `
 
     <div class="status-strip" aria-label="Состояние мира">
       <span>Тик <strong id="tick-value">0</strong></span>
-      <span>Время <strong id="time-value">Рассвет</strong></span>
+      <span>Календарь <strong id="time-value">Год 1 · день 1</strong></span>
+      <span>Мир <strong id="world-level-value">ур. 1</strong></span>
       <span>Жителей <strong id="population-value">6</strong></span>
-      <span>Территории <strong id="growth-value">0</strong></span>
+      <span>Карта <strong id="growth-value">5 мест</strong></span>
+      <span>Cardinal <strong id="cardinal-status-level">ур. 1</strong></span>
       <span>Животные <strong id="wildlife-value">0</strong></span>
-      <span>Общие ресурсы <strong id="resource-value">—</strong></span>
+      <span>Монстры <strong id="monster-value">0</strong></span>
+      <span>Ресурсы <strong id="resource-value">—</strong></span>
       <span class="save-state">Состояние <strong id="save-value">Загрузка…</strong></span>
     </div>
 
+    <section class="external-clock" aria-label="Внешнее управление скоростью мира">
+      <div>
+        <span class="external-clock__label">ВНЕШНИЙ FLA-КОНТУР</span>
+        <strong id="clock-rate-value">1 мин = 1 год</strong>
+      </div>
+      <label>
+        <span class="sr-only">Базовая скорость мира</span>
+        <select id="world-speed-select">
+          ${WORLD_SPEED_PRESETS.map(
+            (preset) =>
+              `<option value="${preset.id}"${preset.id === DEFAULT_WORLD_SPEED_ID ? ' selected' : ''}>${preset.shortLabel}</option>`,
+          ).join('')}
+        </select>
+      </label>
+      <button id="speed-multiplier" type="button" aria-label="Переключить ускорение в десять раз">×1</button>
+      <small>Cardinal не имеет доступа</small>
+    </section>
+
     <main class="world-layout">
-      <section class="world-map" id="world-map" aria-label="Карта Ainkrad">
-        <div class="map-sky" aria-hidden="true"></div>
-        <div class="map-grid" aria-hidden="true"></div>
-        <div class="terrain terrain--water growth-terrain growth-terrain--3" aria-hidden="true"></div>
-        <div class="terrain terrain--grove-one growth-terrain growth-terrain--2" aria-hidden="true"></div>
-        <div class="terrain terrain--grove-two growth-terrain growth-terrain--1" aria-hidden="true"></div>
+      <section class="world-map-shell" aria-label="Растущая карта Ainkrad">
+        <div class="map-toolbar">
+          <strong id="map-scale-value">Уровень мира 1 · 11 локаций</strong>
+          <span id="map-time-value">Рассвет · Весна</span>
+        </div>
+        <div class="world-map-viewport" id="world-map-viewport">
+          <section class="world-map" id="world-map" aria-label="Карта Ainkrad">
+            <div class="map-sky" aria-hidden="true"></div>
+            <div class="map-grid" aria-hidden="true"></div>
+            <div class="terrain terrain--water growth-terrain growth-terrain--3" aria-hidden="true"></div>
+            <div class="terrain terrain--grove-one growth-terrain growth-terrain--2" aria-hidden="true"></div>
+            <div class="terrain terrain--grove-two growth-terrain growth-terrain--1" aria-hidden="true"></div>
 
-        <svg
-          class="roads"
-          viewBox="0 0 100 100"
-          preserveAspectRatio="none"
-          aria-hidden="true"
-        >
-          <path class="road-main" d="M50 48 L16 23 M50 48 L83 25 M50 48 L18 75 M50 48 L82 76" />
-          <path d="M7 49 L18 75 M30 8 L16 23 M69 8 L83 25 M93 49 L82 76 M70 92 L82 76 M30 92 L18 75" />
-          <path class="road-growth road-growth--1" d="M16 23 L8 13" />
-          <path class="road-growth road-growth--2" d="M16 23 L50 12" />
-          <path class="road-growth road-growth--3" d="M82 76 L92 88" />
-        </svg>
+            <svg
+              class="roads"
+              id="roads-layer"
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            ></svg>
 
-        <div id="places-layer" class="places-layer"></div>
-        <div id="wildlife-layer" class="wildlife-layer"></div>
-        <div id="agents-layer" class="agents-layer"></div>
+            <div id="places-layer" class="places-layer"></div>
+            <div id="wildlife-layer" class="wildlife-layer"></div>
+            <div id="agents-layer" class="agents-layer"></div>
 
-        <div class="map-hint">Нажмите на жителя</div>
+            <div class="map-hint" id="map-hint">Проведите по карте</div>
 
-        <div
-          class="disturbance-banner"
-          id="disturbance-banner"
-          aria-live="polite"
-        ></div>
+            <div
+              class="disturbance-banner"
+              id="disturbance-banner"
+              aria-live="polite"
+            ></div>
+          </section>
+        </div>
       </section>
 
       <aside class="world-sidebar">
@@ -210,6 +291,8 @@ app.innerHTML = `
             <div><dt>Место</dt><dd id="resident-place">—</dd></div>
             <div><dt>Цель</dt><dd id="resident-goal">—</dd></div>
             <div><dt>Жизнь</dt><dd id="resident-life">—</dd></div>
+            <div><dt>Чувства</dt><dd id="resident-emotion">—</dd></div>
+            <div><dt>Тело</dt><dd id="resident-physiology">—</dd></div>
             <div><dt>Характер</dt><dd id="resident-traits">—</dd></div>
             <div><dt>Сильный навык</dt><dd id="resident-skill">—</dd></div>
             <div><dt>Выбор</dt><dd id="resident-choice">—</dd></div>
@@ -257,7 +340,9 @@ app.innerHTML = `
 
           <div class="cardinal-numbers">
             <span><strong id="evaluation-value">0</strong>оценок</span>
+            <span><strong id="proposal-value">0</strong>предложений</span>
             <span><strong id="intervention-value">0</strong>вмешательств</span>
+            <span><strong id="world-change-value">0</strong>законов мира</span>
             <span><strong id="cardinal-level-value">1</strong>уровень</span>
             <span><strong id="cardinal-xp-value">0</strong>опыт</span>
           </div>
@@ -270,19 +355,30 @@ app.innerHTML = `
             Cardinal не управляет жителями. Любое изменение мира проходит
             только через независимый gateway.
           </p>
+          <p class="cardinal-last-action" id="cardinal-last-action">
+            Последнее действие: пока ни одного вмешательства.
+          </p>
         </section>
       </aside>
     </main>
   </div>
 `;
 
-const requiredElement = <T extends HTMLElement>(id: string): T => {
+const requiredElement = <T extends Element>(id: string): T => {
   const element = document.getElementById(id);
   if (!element) throw new Error(`Missing browser element #${id}.`);
-  return element as T;
+  return element as unknown as T;
 };
 
 const worldMap = requiredElement<HTMLElement>('world-map');
+const worldMapViewport = requiredElement<HTMLElement>('world-map-viewport');
+const roadsLayer = requiredElement<SVGSVGElement>('roads-layer');
+const worldTitle = requiredElement<HTMLElement>('world-title');
+const worldLevelValue = requiredElement<HTMLElement>('world-level-value');
+const cardinalStatusLevel = requiredElement<HTMLElement>('cardinal-status-level');
+const mapScaleValue = requiredElement<HTMLElement>('map-scale-value');
+const mapTimeValue = requiredElement<HTMLElement>('map-time-value');
+const mapHint = requiredElement<HTMLElement>('map-hint');
 const placesLayer = requiredElement<HTMLDivElement>('places-layer');
 const wildlifeLayer = requiredElement<HTMLDivElement>('wildlife-layer');
 const agentsLayer = requiredElement<HTMLDivElement>('agents-layer');
@@ -291,10 +387,16 @@ const timeValue = requiredElement<HTMLElement>('time-value');
 const populationValue = requiredElement<HTMLElement>('population-value');
 const growthValue = requiredElement<HTMLElement>('growth-value');
 const wildlifeValue = requiredElement<HTMLElement>('wildlife-value');
+const monsterValue = requiredElement<HTMLElement>('monster-value');
 const resourceValue = requiredElement<HTMLElement>('resource-value');
 const saveValue = requiredElement<HTMLElement>('save-value');
+const worldSpeedSelect = requiredElement<HTMLSelectElement>('world-speed-select');
+const speedMultiplierButton = requiredElement<HTMLButtonElement>('speed-multiplier');
+const clockRateValue = requiredElement<HTMLElement>('clock-rate-value');
 const evaluationValue = requiredElement<HTMLElement>('evaluation-value');
 const interventionValue = requiredElement<HTMLElement>('intervention-value');
+const proposalValue = requiredElement<HTMLElement>('proposal-value');
+const worldChangeValue = requiredElement<HTMLElement>('world-change-value');
 const cardinalLevelValue = requiredElement<HTMLElement>('cardinal-level-value');
 const cardinalXpValue = requiredElement<HTMLElement>('cardinal-xp-value');
 const cardinalCapabilities = requiredElement<HTMLElement>('cardinal-capabilities');
@@ -307,6 +409,8 @@ const residentActivity = requiredElement<HTMLElement>('resident-activity');
 const residentPlace = requiredElement<HTMLElement>('resident-place');
 const residentGoal = requiredElement<HTMLElement>('resident-goal');
 const residentLife = requiredElement<HTMLElement>('resident-life');
+const residentEmotion = requiredElement<HTMLElement>('resident-emotion');
+const residentPhysiology = requiredElement<HTMLElement>('resident-physiology');
 const residentTraits = requiredElement<HTMLElement>('resident-traits');
 const residentSkill = requiredElement<HTMLElement>('resident-skill');
 const residentChoice = requiredElement<HTMLElement>('resident-choice');
@@ -323,6 +427,7 @@ const belongingBar = requiredElement<HTMLElement>('belonging-bar');
 const purposeValue = requiredElement<HTMLElement>('purpose-value');
 const purposeBar = requiredElement<HTMLElement>('purpose-bar');
 const cardinalMessage = requiredElement<HTMLElement>('cardinal-message');
+const cardinalLastAction = requiredElement<HTMLElement>('cardinal-last-action');
 
 const avatarElements = new Map<string, HTMLButtonElement>();
 const placeElements = new Map<string, HTMLElement>();
@@ -332,6 +437,97 @@ const previousLocations = new Map<string, string>();
 let selectedAgentId: string | undefined;
 let lastFrame: LiveWorldFrame | undefined;
 let continuityAnnounced = false;
+let renderedGrowthStage = -1;
+
+const CLOCK_PREFERENCE_KEY = 'ainkrad-v0.3.external-clock';
+let preferredSpeedId: WorldSpeedId = DEFAULT_WORLD_SPEED_ID;
+let preferredSpeedMultiplier: WorldSpeedMultiplier =
+  DEFAULT_WORLD_SPEED_MULTIPLIER;
+
+try {
+  const stored = JSON.parse(
+    localStorage.getItem(CLOCK_PREFERENCE_KEY) ?? 'null',
+  ) as { speedId?: unknown; multiplier?: unknown } | null;
+  if (stored && isWorldSpeedId(stored.speedId)) {
+    preferredSpeedId = stored.speedId;
+  }
+  if (stored && isWorldSpeedMultiplier(stored.multiplier)) {
+    preferredSpeedMultiplier = stored.multiplier;
+  }
+} catch {
+  // A blocked localStorage only means the external speed resets on next visit.
+}
+
+function clockRateLabel(
+  speedId: WorldSpeedId,
+  multiplier: WorldSpeedMultiplier,
+): string {
+  const minutes =
+    worldSpeedPreset(speedId).worldMinutesPerRealMinute * multiplier;
+  if (minutes >= WORLD_MINUTES_PER_YEAR) {
+    const years = minutes / WORLD_MINUTES_PER_YEAR;
+    return `1 мин = ${Number.isInteger(years) ? years : years.toFixed(1)} ${years === 1 ? 'год' : 'лет'}`;
+  }
+  if (minutes >= 43_200) return `1 мин = ${Math.round(minutes / 43_200)} мес`;
+  if (minutes >= 1_440) return `1 мин = ${Math.round(minutes / 1_440)} дн`;
+  if (minutes >= 60) return `1 мин = ${Math.round(minutes / 60)} ч`;
+  return `1 мин = ${Math.round(minutes)} мин`;
+}
+
+function showClockControl(
+  speedId: WorldSpeedId,
+  multiplier: WorldSpeedMultiplier,
+): void {
+  worldSpeedSelect.value = speedId;
+  speedMultiplierButton.textContent = `×${multiplier}`;
+  speedMultiplierButton.classList.toggle('is-accelerated', multiplier === 10);
+  clockRateValue.textContent = clockRateLabel(speedId, multiplier);
+}
+
+showClockControl(preferredSpeedId, preferredSpeedMultiplier);
+
+const regionNameTranslations: Record<string, string> = {
+  Northern: 'Северные',
+  Silver: 'Серебряные',
+  Quiet: 'Тихие',
+  Ancient: 'Древние',
+  Eastern: 'Восточные',
+  Hidden: 'Скрытые',
+  Windward: 'Ветреные',
+  Amber: 'Янтарные',
+  Village: 'Поселения',
+  Crossroads: 'Перекрёстки',
+  Fields: 'Поля',
+  Steppe: 'Степи',
+  Meadow: 'Луга',
+  Forest: 'Леса',
+  Grove: 'Рощи',
+  Woods: 'Чащи',
+  Coast: 'Берега',
+  Bay: 'Бухты',
+  Shore: 'Побережья',
+  Heights: 'Высоты',
+  Ridge: 'Хребты',
+  Pass: 'Перевалы',
+  Lake: 'Озёра',
+  Waters: 'Воды',
+  Riverlands: 'Речные земли',
+  Ford: 'Броды',
+  Marsh: 'Болота',
+  Wetlands: 'Топи',
+  Ruins: 'Руины',
+  Sanctuary: 'Святилища',
+};
+
+function localizedPlaceName(name: string): string {
+  if (name.endsWith("'s Home")) {
+    return `${name.slice(0, -7)} — дом`;
+  }
+  return name
+    .split(' ')
+    .map((part) => regionNameTranslations[part] ?? part)
+    .join(' ');
+}
 
 const clampMapCoordinate = (value: number) =>
   Math.max(4.5, Math.min(95.5, value));
@@ -361,6 +557,54 @@ function normalizeWorldCoordinates(
   };
 }
 
+function updateWorldMapScale(world: Readonly<WorldState>): void {
+  const places = Object.values(world.places);
+  const minX = Math.min(...places.map((place) => place.mapX));
+  const maxX = Math.max(...places.map((place) => place.mapX));
+  const minY = Math.min(...places.map((place) => place.mapY));
+  const maxY = Math.max(...places.map((place) => place.mapY));
+  const spanX = Math.max(100, maxX - minX + 24);
+  const spanY = Math.max(100, maxY - minY + 24);
+  const growthScale = Math.sqrt(Math.max(0, world.growth.stage));
+  const width = Math.round(Math.max(820 + growthScale * 360, spanX * 8.2));
+  const height = Math.round(Math.max(650 + growthScale * 260, spanY * 6.5));
+  const worldLevel = world.growth.stage + 1;
+
+  worldMap.style.width = `${width}px`;
+  worldMap.style.height = `${height}px`;
+  worldMap.style.minHeight = `${height}px`;
+  worldTitle.textContent = `Мир · уровень ${worldLevel}`;
+  worldLevelValue.textContent = `ур. ${worldLevel}`;
+  mapScaleValue.textContent =
+    `Уровень мира ${worldLevel} · ${places.length} локаций · ${Math.round(spanX)}×${Math.round(spanY)} км`;
+
+  if (renderedGrowthStage === world.growth.stage) return;
+  const previousStage = renderedGrowthStage;
+  renderedGrowthStage = world.growth.stage;
+  mapHint.textContent =
+    previousStage < 0
+      ? 'Проведите по карте · она больше экрана'
+      : `Открыта новая область · уровень мира ${worldLevel}`;
+
+  const newestRegionId = world.growth.discoveredRegionIds.at(-1) ?? 'commons';
+  const target = pointForPlace(newestRegionId, 0, world);
+  requestAnimationFrame(() => {
+    worldMapViewport.scrollTo({
+      left: Math.max(
+        0,
+        (target.x / 100) * worldMap.scrollWidth -
+          worldMapViewport.clientWidth / 2,
+      ),
+      top: Math.max(
+        0,
+        (target.y / 100) * worldMap.scrollHeight -
+          worldMapViewport.clientHeight / 2,
+      ),
+      behavior: previousStage < 0 ? 'auto' : 'smooth',
+    });
+  });
+}
+
 function pointForPlace(
   placeId: string,
   agentIndex = 0,
@@ -382,6 +626,7 @@ function pointForPlace(
       swamp: '♨',
       ruins: '⌘',
       village: '⌂',
+      city: '▦',
       meadow: '❀',
       forest: '♠',
       shore: '≈',
@@ -393,11 +638,7 @@ function pointForPlace(
     );
     return {
       ...normalized,
-      label:
-        publicPoint?.label ??
-        (place.kind === 'home'
-          ? place.name.replace("'s Home", ' — дом')
-          : place.name),
+      label: publicPoint?.label ?? localizedPlaceName(place.name),
       symbol: publicPoint?.symbol ?? symbolByKind[place.kind] ?? '•',
     };
   }
@@ -415,7 +656,34 @@ function displayPlaceName(
   const publicName = publicPlacePoints[agent.locationId]?.label;
   if (publicName) return publicName;
   const storedName = world.places[agent.locationId]?.name ?? agent.locationId;
-  return storedName.replace("'s Home", ' — дом');
+  return localizedPlaceName(storedName);
+}
+
+function renderRoads(world: Readonly<WorldState>): void {
+  const rendered = new Set<string>();
+  roadsLayer.replaceChildren();
+
+  for (const place of Object.values(world.places)) {
+    const start = pointForPlace(place.id, 0, world);
+    for (const connectedId of place.connectedPlaceIds) {
+      if (!world.places[connectedId]) continue;
+      const edgeId = [place.id, connectedId].sort().join('::');
+      if (rendered.has(edgeId)) continue;
+      rendered.add(edgeId);
+
+      const end = pointForPlace(connectedId, 0, world);
+      const path = document.createElementNS(
+        'http://www.w3.org/2000/svg',
+        'path',
+      );
+      path.setAttribute('d', `M${start.x} ${start.y} L${end.x} ${end.y}`);
+      path.classList.toggle(
+        'road-main',
+        place.id === 'commons' || connectedId === 'commons',
+      );
+      roadsLayer.append(path);
+    }
+  }
 }
 
 function renderPlaces(world: Readonly<WorldState>): void {
@@ -443,6 +711,7 @@ function renderPlaces(world: Readonly<WorldState>): void {
       placesLayer.append(placeElement);
       placeElements.set(placeId, placeElement);
     }
+    placeElement.className = `map-place map-place--${place.kind}`;
     placeElement.style.left = `${point.x}%`;
     placeElement.style.top = `${point.y}%`;
     placeElement.setAttribute('aria-label', point.label);
@@ -463,6 +732,9 @@ function renderWildlife(world: Readonly<WorldState>): void {
       boar: { x: 5, y: 5 },
       wolf: { x: -5, y: 4 },
       bird: { x: 3, y: -5 },
+      dire_wolf: { x: -7, y: 6 },
+      ogre: { x: 7, y: -6 },
+      wraith: { x: -6, y: -6 },
     };
     const offset = offsets[population.species];
     let element = wildlifeElements.get(populationId);
@@ -488,6 +760,7 @@ function renderWildlife(world: Readonly<WorldState>): void {
       `${label}: ${population.count} из ${population.carryingCapacity}`,
     );
     element.classList.toggle('is-depleted', population.count === 0);
+    element.classList.toggle('is-monster', population.isMonster === true);
   }
 }
 
@@ -547,6 +820,38 @@ function strongestSkill(agent: Readonly<AgentState>): string {
   return `${skillLabels[strongest[0]]} · ${Math.round(strongest[1] * 100)}%`;
 }
 
+function emotionalSummary(agent: Readonly<AgentState>): string {
+  return (Object.entries(agent.mind.emotions) as Array<
+    [keyof AgentState['mind']['emotions'], number]
+  >)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 2)
+    .map(([emotion, value]) => `${emotionLabels[emotion]} ${Math.round(value * 100)}%`)
+    .join(' · ');
+}
+
+function physiologySummary(agent: Readonly<AgentState>): string {
+  const physiology = (
+    agent.life as AgentState['life'] & {
+      physiology?: AgentState['life']['physiology'];
+    }
+  ).physiology ?? {
+    strength: agent.life.stage === 'elder' ? 0.45 : 0.75,
+    endurance: agent.life.stage === 'elder' ? 0.42 : 0.72,
+    mobility: agent.life.stage === 'elder' ? 0.4 : 0.76,
+    recovery: agent.life.stage === 'elder' ? 0.35 : 0.74,
+  };
+  const bodyState =
+    physiology.strength >= 0.82
+      ? 'сильный'
+      : physiology.mobility < 0.36
+        ? 'немощный'
+        : physiology.endurance < 0.52
+          ? 'быстро устаёт'
+          : 'в норме';
+  return `${bodyState} · сила ${Math.round(physiology.strength * 100)}% · выносливость ${Math.round(physiology.endurance * 100)}%`;
+}
+
 function closestRelationship(
   world: Readonly<WorldState>,
   agentId: string,
@@ -591,9 +896,12 @@ function updateSelection(): void {
     : 'осматривается';
   residentPlace.textContent = displayPlaceName(lastFrame.world, selected);
   residentGoal.textContent = goalLabels[selected.goal.kind];
-  residentLife.textContent = `${Math.floor(selected.life.ageYears)} лет · поколение ${selected.life.generation} · ${
+  const age = ageParts(selected.life.ageYears);
+  residentLife.textContent = `${age.years} лет ${age.months} мес · поколение ${selected.life.generation} · ${
     selected.origin === 'native' ? 'рождён здесь' : 'вошёл извне'
   }`;
+  residentEmotion.textContent = emotionalSummary(selected);
+  residentPhysiology.textContent = physiologySummary(selected);
   residentTraits.textContent = strongestTraits(selected);
   residentSkill.textContent = strongestSkill(selected);
 
@@ -700,7 +1008,9 @@ function eventText(
     case 'agent.born':
       return `${name} родился — началась новая жизнь`;
     case 'agent.died':
-      return `${name} умер, но его история осталась в мире`;
+      return event.payload.cause === 'monster'
+        ? `${name} погиб при встрече с чудовищем`
+        : `${name} умер, но его история осталась в мире`;
     case 'agent.life.stage_changed':
       return `${name} перешёл в новый период жизни`;
     case 'agent.socialize.blocked':
@@ -754,6 +1064,18 @@ function eventText(
     }
     case 'world.wildlife.depleted':
       return 'Одна из популяций животных исчезла из поля зрения';
+    case 'world.monster.encountered': {
+      const species = event.payload.species;
+      const monster =
+        typeof species === 'string' && species in wildlifeLabels
+          ? wildlifeLabels[species as WildlifeSpecies].toLowerCase()
+          : 'чудовище';
+      return `${name} встретил в глуши: ${monster}`;
+    }
+    case 'world.settlement.founded':
+      return `Жители основали ${String(event.payload.name ?? 'новое поселение')}`;
+    case 'world.city.emerged':
+      return `${String(event.payload.name ?? 'Поселение')} выросло в город`;
     case 'world.migrated':
       return 'Старый мир продолжен по новым правилам';
     case 'world.tradition.emerged':
@@ -836,23 +1158,29 @@ function announceDisturbance(frame: Readonly<LiveWorldFrame>): void {
   disturbanceBanner.classList.add('is-visible');
 }
 
-function updateWorldTime(tick: number): void {
-  const phases = [
-    { id: 'dawn', label: 'Рассвет' },
-    { id: 'day', label: 'День' },
-    { id: 'evening', label: 'Вечер' },
-    { id: 'night', label: 'Ночь' },
-  ] as const;
-  const phase = phases[Math.floor(tick / 28) % phases.length];
-  const day = Math.floor(tick / (28 * phases.length)) + 1;
-  worldMap.dataset.phase = phase.id;
-  timeValue.textContent = `${phase.label} · ${day}`;
+function updateWorldTime(frame: Readonly<LiveWorldFrame>): void {
+  const persistedCalendar = (
+    frame.world as WorldState & {
+      calendar?: { elapsedWorldMinutes: number };
+    }
+  ).calendar;
+  const elapsedWorldMinutes =
+    persistedCalendar?.elapsedWorldMinutes ??
+    (frame.tick / 96) * WORLD_MINUTES_PER_YEAR;
+  const calendar = worldCalendarAtMinutes(elapsedWorldMinutes);
+  worldMap.dataset.phase = calendar.phase;
+  const clock = `${String(calendar.hour).padStart(2, '0')}:${String(calendar.minute).padStart(2, '0')}`;
+  timeValue.textContent = `год ${calendar.year} · день ${calendar.dayOfYear} · ${clock}`;
+  timeValue.title = `Прошло ${calendar.totalDays} дней мира`;
+  mapTimeValue.textContent = `${phaseLabels[calendar.phase]} · ${seasonLabels[calendar.season]}`;
 }
 
 function updateWorld(frame: Readonly<LiveWorldFrame>): void {
   lastFrame = structuredClone(frame);
+  updateWorldMapScale(frame.world);
   worldMap.dataset.growth = String(Math.min(3, frame.world.growth.stage));
   renderPlaces(frame.world);
+  renderRoads(frame.world);
   renderWildlife(frame.world);
 
   const agents = Object.values(frame.world.agents).filter(
@@ -915,6 +1243,14 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
       agent.life.stage === 'adolescent',
     );
     avatar.classList.toggle('is-elder', agent.life.stage === 'elder');
+    const physiology = (
+      agent.life as Partial<AgentState['life']>
+    ).physiology;
+    const mobility = physiology?.mobility ?? 0.72;
+    avatar.style.setProperty(
+      '--walk-duration',
+      `${Math.round(280 + (1 - mobility) * 520)}ms`,
+    );
     avatar.dataset.lifeStage = agent.life.stage;
     avatar.dataset.action = agent.lastAction ?? 'idle';
 
@@ -936,20 +1272,41 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
 
   tickValue.textContent = String(frame.tick);
   populationValue.textContent = String(agents.length);
-  growthValue.textContent = `${frame.world.growth.stage} · ${Math.round(
+  growthValue.textContent = `${Object.keys(frame.world.places).length} мест · +${Math.round(
     frame.world.growth.explorationProgress * 100,
   )}%`;
   wildlifeValue.textContent = String(
     Object.values(frame.world.wildlife).reduce(
-      (sum, population) => sum + population.count,
+      (sum, population) =>
+        sum + (population.isMonster === true ? 0 : population.count),
+      0,
+    ),
+  );
+  monsterValue.textContent = String(
+    Object.values(frame.world.wildlife).reduce(
+      (sum, population) =>
+        sum + (population.isMonster === true ? population.count : 0),
       0,
     ),
   );
   resourceValue.textContent = `${Math.round(frame.world.environment.resourcePool * 100)}%`;
   evaluationValue.textContent = String(frame.evaluationCount);
   interventionValue.textContent = String(frame.executedInterventionCount);
+  const cardinalActivity = frame.cardinalActivity ?? {
+    proposalCount: 0,
+    authorizationDecisionCount: frame.executedInterventionCount,
+    deniedInterventionCount: 0,
+    authorizedWorldChangeCount: 0,
+  };
+  proposalValue.textContent = String(cardinalActivity.proposalCount);
+  worldChangeValue.textContent = String(
+    cardinalActivity.authorizedWorldChangeCount,
+  );
+  proposalValue.title =
+    `Решений gateway: ${cardinalActivity.authorizationDecisionCount}; отклонено: ${cardinalActivity.deniedInterventionCount}`;
   if (frame.evaluation?.experience) {
     cardinalLevelValue.textContent = String(frame.evaluation.experience.level);
+    cardinalStatusLevel.textContent = `ур. ${frame.evaluation.experience.level}`;
     cardinalXpValue.textContent = String(
       frame.evaluation.experience.totalExperience,
     );
@@ -957,7 +1314,12 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
       .map((capability) => cardinalCapabilityLabels[capability])
       .join(' · ');
   }
-  updateWorldTime(frame.tick);
+  updateWorldTime(frame);
+  if (frame.clock) {
+    preferredSpeedId = frame.clock.speedId;
+    preferredSpeedMultiplier = frame.clock.multiplier;
+    showClockControl(frame.clock.speedId, frame.clock.multiplier);
+  }
 
   if (frame.continuity.durable) {
     saveValue.textContent = frame.continuity.resumed
@@ -978,19 +1340,42 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
   liveIndicator.classList.add('is-live');
 
   const unlocked = frame.evaluation?.experience.newlyUnlockedCapabilities ?? [];
-  if (unlocked.length > 0) {
+  if (frame.worldAuthority?.authorized) {
+    cardinalMessage.textContent =
+      'Cardinal доказал необходимость изменения правила. Независимый gateway разрешил ограниченную поправку.';
+  } else if (unlocked.length > 0) {
     cardinalMessage.textContent = `Cardinal освоил: ${unlocked
       .map((capability) => cardinalCapabilityLabels[capability])
       .join(', ')}. Воля жителей не изменилась.`;
   } else if (frame.intervention?.executed) {
     cardinalMessage.textContent =
       'Cardinal предложил меру. Независимый gateway проверил и выполнил её.';
+  } else if (frame.intervention && !frame.intervention.executed) {
+    cardinalMessage.textContent =
+      'Gateway отклонил предложение Cardinal: условия безопасности не выполнены.';
   } else if (frame.evaluation?.proposal) {
     cardinalMessage.textContent =
       'Cardinal обнаружил риск и передал предложение независимому gateway.';
+  } else if (frame.evaluation?.deferReason) {
+    cardinalMessage.textContent =
+      cardinalDeferLabels[frame.evaluation.deferReason];
   } else {
     cardinalMessage.textContent =
-      'Cardinal наблюдает. Решения жителей принадлежат только самому миру.';
+      'Сейчас порог системного риска не достигнут. Cardinal наблюдает, а не изображает бурную деятельность.';
+  }
+
+  const lastCardinalEvent = cardinalActivity.lastCardinalEvent;
+  if (lastCardinalEvent) {
+    cardinalLastAction.textContent =
+      `Последнее действие · тик ${lastCardinalEvent.occurredAt}: ${eventText(
+        lastCardinalEvent,
+        frame.world,
+      ) ?? lastCardinalEvent.kind}`;
+    cardinalLastAction.classList.add('has-action');
+  } else {
+    cardinalLastAction.textContent =
+      'Последнее действие: вмешательств ещё не было — ни одно условие не прошло проверку.';
+    cardinalLastAction.classList.remove('has-action');
   }
 
   renderEventFeed(frame);
@@ -1001,12 +1386,12 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
 type LiveWorldWorkerMessage =
   | {
       type: 'frame';
-      protocolVersion: 'ainkrad-live-frame-0.3.10';
+      protocolVersion: 'ainkrad-live-frame-0.3.11';
       frame: LiveWorldFrame;
     }
   | {
       type: 'fatal';
-      protocolVersion: 'ainkrad-live-frame-0.3.10';
+      protocolVersion: 'ainkrad-live-frame-0.3.11';
       message: string;
     };
 
@@ -1014,6 +1399,39 @@ const liveWorldWorker = new Worker(
   new URL('./runtime/liveWorld.worker.ts', import.meta.url),
   { type: 'module' },
 );
+
+function publishClockControl(): void {
+  showClockControl(preferredSpeedId, preferredSpeedMultiplier);
+  try {
+    localStorage.setItem(
+      CLOCK_PREFERENCE_KEY,
+      JSON.stringify({
+        speedId: preferredSpeedId,
+        multiplier: preferredSpeedMultiplier,
+      }),
+    );
+  } catch {
+    // The running worker still receives the choice when storage is blocked.
+  }
+  liveWorldWorker.postMessage({
+    type: 'set_speed',
+    speedId: preferredSpeedId,
+    multiplier: preferredSpeedMultiplier,
+  });
+}
+
+worldSpeedSelect.addEventListener('change', () => {
+  if (!isWorldSpeedId(worldSpeedSelect.value)) return;
+  preferredSpeedId = worldSpeedSelect.value;
+  publishClockControl();
+});
+
+speedMultiplierButton.addEventListener('click', () => {
+  preferredSpeedMultiplier = preferredSpeedMultiplier === 1 ? 10 : 1;
+  publishClockControl();
+});
+
+publishClockControl();
 
 liveWorldWorker.addEventListener(
   'message',

@@ -26,12 +26,20 @@ import {
   type AppendOnlyLog,
 } from '../persistence/AppendOnlyLog';
 import type { CardinalMetrics } from '../sensors/types';
+import {
+  IndependentWorldClockGateway,
+  type WorldClockControl,
+} from '../boundary/WorldClockGateway';
 import { WORLD_SENSOR_VERSION, WorldSensors } from '../sensors/WorldSensors';
 import { InMemoryWorldStore } from '../world/InMemoryWorldStore';
 import { WorldEngine } from '../world/WorldEngine';
 import type { WorldEvent } from '../world/events';
 import type { WorldStore } from '../world/persistence';
 import type { WorldDisturbanceKind, WorldState } from '../world/types';
+import type {
+  WorldSpeedId,
+  WorldSpeedMultiplier,
+} from '../world/WorldClock';
 
 export interface LiveWorldDisturbance {
   tick: number;
@@ -41,14 +49,25 @@ export interface LiveWorldDisturbance {
   operationId?: string;
 }
 
+export interface RecurringLiveWorldDisturbance {
+  firstTick: number;
+  interval: number;
+  kind: WorldDisturbanceKind;
+  magnitude: number;
+  duration?: number;
+}
+
 export interface LiveWorldRuntimeOptions {
   mode?: CardinalMode;
   seed: string;
   worldId?: string;
   disturbances?: readonly LiveWorldDisturbance[];
+  recurringDisturbances?: readonly RecurringLiveWorldDisturbance[];
   store?: WorldStore;
   controlLog?: AppendOnlyLog;
   durable?: boolean;
+  worldSpeedId?: WorldSpeedId;
+  worldSpeedMultiplier?: WorldSpeedMultiplier;
 }
 
 export interface LiveWorldContinuity {
@@ -67,8 +86,41 @@ export interface LiveWorldFrame {
   worldAuthority?: WorldAuthorityRecord;
   evaluationCount: number;
   executedInterventionCount: number;
+  cardinalActivity: CardinalActivitySnapshot;
+  clock: WorldClockControl;
   recentEvents: WorldEvent[];
   continuity: LiveWorldContinuity;
+}
+
+export interface CardinalActivitySnapshot {
+  proposalCount: number;
+  authorizationDecisionCount: number;
+  deniedInterventionCount: number;
+  authorizedWorldChangeCount: number;
+  lastCardinalEvent?: WorldEvent;
+}
+
+function cardinalActivityFromHistory(
+  evaluations: readonly CardinalEvaluation[],
+  interventions: readonly InterventionRecord[],
+  events: readonly WorldEvent[],
+): CardinalActivitySnapshot {
+  const cardinalEvents = events.filter((event) => event.source === 'cardinal');
+  return {
+    proposalCount: evaluations.filter((evaluation) => evaluation.proposal).length,
+    authorizationDecisionCount: interventions.length,
+    deniedInterventionCount: interventions.filter(
+      (intervention) => !intervention.executed,
+    ).length,
+    authorizedWorldChangeCount: cardinalEvents.filter(
+      (event) =>
+        event.kind === 'cardinal.world_law.changed' ||
+        event.kind.startsWith('cardinal.catastrophe.'),
+    ).length,
+    ...(cardinalEvents.length === 0
+      ? {}
+      : { lastCardinalEvent: structuredClone(cardinalEvents.at(-1)!) }),
+  };
 }
 
 /**
@@ -84,6 +136,7 @@ export class LiveWorldRuntime {
   private constructor(
     private readonly mode: CardinalMode,
     private readonly disturbances: readonly LiveWorldDisturbance[],
+    private readonly recurringDisturbances: readonly RecurringLiveWorldDisturbance[],
     private readonly store: WorldStore,
     private readonly world: WorldEngine,
     private readonly sensors: WorldSensors,
@@ -94,8 +147,10 @@ export class LiveWorldRuntime {
     private readonly worldArchitect: CardinalWorldArchitect,
     private readonly worldAuthorityGateway: IndependentWorldAuthorityGateway,
     private readonly auditor: CardinalAuditor,
+    private readonly clockGateway: IndependentWorldClockGateway,
     private evaluationCount: number,
     private executedInterventionCount: number,
+    private cardinalActivity: CardinalActivitySnapshot,
     private readonly continuity: LiveWorldContinuity,
   ) {
     this.currentTick = world.snapshot().now;
@@ -132,14 +187,16 @@ export class LiveWorldRuntime {
 
     await reconcileGatewayJournal(worldId, gateway, journal);
 
-    const [evaluations, interventions] = await Promise.all([
+    const [evaluations, interventions, worldHistory] = await Promise.all([
       journal.evaluations(worldId),
       journal.interventions(worldId),
+      store.history(worldId),
     ]);
 
     return new LiveWorldRuntime(
       options.mode ?? 'intervene',
       options.disturbances ?? [],
+      options.recurringDisturbances ?? [],
       store,
       world,
       sensors,
@@ -150,8 +207,13 @@ export class LiveWorldRuntime {
       new CardinalWorldArchitect(),
       new IndependentWorldAuthorityGateway(world),
       new CardinalAuditor(),
+      new IndependentWorldClockGateway(
+        options.worldSpeedId,
+        options.worldSpeedMultiplier,
+      ),
       evaluations.length,
       interventions.filter((intervention) => intervention.executed).length,
+      cardinalActivityFromHistory(evaluations, interventions, worldHistory),
       {
         durable: options.durable ?? false,
         resumed: existing !== undefined,
@@ -164,21 +226,54 @@ export class LiveWorldRuntime {
     await this.world.reload();
     this.currentTick = this.world.snapshot().now;
 
-    const [evaluations, interventions] = await Promise.all([
+    const [evaluations, interventions, worldHistory] = await Promise.all([
       this.journal.evaluations(this.world.snapshot().id),
       this.journal.interventions(this.world.snapshot().id),
+      this.store.history(this.world.snapshot().id),
     ]);
     this.evaluationCount = evaluations.length;
     this.executedInterventionCount = interventions.filter(
       (intervention) => intervention.executed,
     ).length;
+    this.cardinalActivity = cardinalActivityFromHistory(
+      evaluations,
+      interventions,
+      worldHistory,
+    );
+  }
+
+  setWorldSpeed(speedId: unknown, multiplier: unknown): WorldClockControl {
+    return this.clockGateway.set(speedId, multiplier);
   }
 
   async tick(): Promise<LiveWorldFrame> {
     const tick = this.currentTick + 1;
-    const dueDisturbances = this.disturbances.filter(
+    const scheduledDisturbances = this.disturbances.filter(
       (disturbance) => disturbance.tick === tick,
     );
+    const recurringDisturbances = this.recurringDisturbances
+      .filter(
+        (disturbance) =>
+          Number.isInteger(disturbance.firstTick) &&
+          Number.isInteger(disturbance.interval) &&
+          disturbance.firstTick >= 1 &&
+          disturbance.interval >= 1 &&
+          tick >= disturbance.firstTick &&
+          (tick - disturbance.firstTick) % disturbance.interval === 0,
+      )
+      .map(
+        (disturbance): LiveWorldDisturbance => ({
+          tick,
+          kind: disturbance.kind,
+          magnitude: disturbance.magnitude,
+          duration: disturbance.duration,
+          operationId: `live:recurring:${disturbance.kind}:${tick}`,
+        }),
+      );
+    const dueDisturbances = [
+      ...scheduledDisturbances,
+      ...recurringDisturbances,
+    ];
 
     for (let index = 0; index < dueDisturbances.length; index += 1) {
       const disturbance = dueDisturbances[index];
@@ -191,7 +286,8 @@ export class LiveWorldRuntime {
       );
     }
 
-    await this.world.step(tick);
+    const clock = this.clockGateway.current();
+    await this.world.step(tick, clock.worldMinutesPerTick);
     await this.observeDueOutcomes(tick);
 
     const independentAuditObservation =
@@ -220,6 +316,9 @@ export class LiveWorldRuntime {
 
     if (evaluation) {
       this.evaluationCount += 1;
+      if (evaluation.proposal) {
+        this.cardinalActivity.proposalCount += 1;
+      }
 
       if (this.mode === 'intervene' && evaluation.proposal) {
         intervention = await this.gateway.execute(
@@ -237,7 +336,10 @@ export class LiveWorldRuntime {
 
         if (intervention.executed) {
           this.executedInterventionCount += 1;
+        } else {
+          this.cardinalActivity.deniedInterventionCount += 1;
         }
+        this.cardinalActivity.authorizationDecisionCount += 1;
       }
 
       await this.journal.appendAudit(
@@ -267,6 +369,9 @@ export class LiveWorldRuntime {
             this.world.snapshot(),
             evaluation.experience,
           );
+          if (worldAuthority.authorized) {
+            this.cardinalActivity.authorizedWorldChangeCount += 1;
+          }
         }
       }
     }
@@ -281,6 +386,19 @@ export class LiveWorldRuntime {
       10,
       tick,
     );
+    const latestCardinalEvent = [...recentEvents]
+      .reverse()
+      .find((event) => event.source === 'cardinal');
+    if (
+      latestCardinalEvent &&
+      (!this.cardinalActivity.lastCardinalEvent ||
+        latestCardinalEvent.occurredAt >=
+          this.cardinalActivity.lastCardinalEvent.occurredAt)
+    ) {
+      this.cardinalActivity.lastCardinalEvent = structuredClone(
+        latestCardinalEvent,
+      );
+    }
 
     this.currentTick = tick;
 
@@ -294,6 +412,8 @@ export class LiveWorldRuntime {
       worldAuthority,
       evaluationCount: this.evaluationCount,
       executedInterventionCount: this.executedInterventionCount,
+      cardinalActivity: this.cardinalActivity,
+      clock,
       recentEvents,
       continuity: this.continuity,
     });

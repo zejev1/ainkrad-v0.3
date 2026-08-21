@@ -24,6 +24,15 @@ button {
   font: inherit;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 .ainkrad-app {
   width: min(1280px, 100%);
   margin: 0 auto;
@@ -98,7 +107,7 @@ button {
 
 .status-strip {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, auto));
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
   gap: 10px;
   margin-bottom: 14px;
   padding: 9px;
@@ -108,6 +117,69 @@ button {
   color: #8fa8a1;
   font-size: 0.74rem;
   backdrop-filter: blur(12px);
+}
+
+.external-clock {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) auto auto auto;
+  align-items: center;
+  gap: 9px;
+  margin: -4px 0 14px;
+  padding: 9px 11px;
+  border: 1px solid rgba(109, 174, 214, 0.2);
+  border-radius: 14px;
+  background: linear-gradient(90deg, rgba(10, 32, 45, 0.88), rgba(7, 22, 31, 0.76));
+  box-shadow: inset 3px 0 #58a8d0;
+}
+
+.external-clock > div {
+  display: grid;
+  gap: 2px;
+}
+
+.external-clock__label {
+  color: #75bde1;
+  font-size: 0.55rem;
+  font-weight: 900;
+  letter-spacing: 0.13em;
+}
+
+.external-clock strong {
+  color: #eaf8ff;
+  font-size: 0.78rem;
+}
+
+.external-clock select,
+.external-clock button {
+  min-height: 34px;
+  border: 1px solid rgba(136, 199, 226, 0.25);
+  border-radius: 9px;
+  background: #0a2633;
+  color: #dff6ff;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.external-clock select {
+  padding: 0 28px 0 9px;
+}
+
+.external-clock button {
+  min-width: 48px;
+  padding: 0 10px;
+  cursor: pointer;
+}
+
+.external-clock button.is-accelerated {
+  border-color: rgba(255, 189, 103, 0.5);
+  background: #49331c;
+  color: #ffe3b3;
+}
+
+.external-clock small {
+  color: #73909c;
+  font-size: 0.59rem;
+  white-space: nowrap;
 }
 
 .status-strip > span {
@@ -135,6 +207,38 @@ button {
   grid-template-columns: minmax(0, 1fr) minmax(280px, 330px);
   gap: 14px;
   align-items: start;
+}
+
+.world-map-shell {
+  min-width: 0;
+}
+
+.map-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 7px;
+  padding: 0 5px;
+  color: #7f9e96;
+  font-size: 0.64rem;
+}
+
+.map-toolbar strong {
+  overflow: hidden;
+  color: #b9d8cd;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.world-map-viewport {
+  width: 100%;
+  max-height: min(72vh, 700px);
+  overflow: auto;
+  border-radius: 22px;
+  scrollbar-color: rgba(100, 171, 140, 0.55) rgba(3, 17, 23, 0.5);
+  overscroll-behavior: contain;
+  touch-action: pan-x pan-y;
 }
 
 .world-map {
@@ -457,6 +561,24 @@ button {
   background: linear-gradient(145deg, #4f8f91, #20505d);
 }
 
+.map-place--village .place-building {
+  width: 66px;
+  background: linear-gradient(145deg, #8b754e, #3b493b);
+}
+
+.map-place--city .place-building {
+  width: 76px;
+  height: 58px;
+  border-color: rgba(255, 225, 154, 0.42);
+  background: linear-gradient(145deg, #8b6a3f, #303d3b);
+  box-shadow: 0 0 0 7px rgba(255, 207, 111, 0.07), 0 12px 24px rgba(0, 0, 0, 0.34);
+}
+
+.map-place--city .place-symbol {
+  color: #ffe2a1;
+  font-size: 1.4rem;
+}
+
 .map-hint {
   position: absolute;
   right: 12px;
@@ -522,6 +644,25 @@ button {
   opacity: 0.28;
 }
 
+.wildlife-population.is-monster {
+  z-index: 6;
+  color: #ffd5d5;
+  filter: drop-shadow(0 0 7px rgba(255, 52, 70, 0.72));
+}
+
+.wildlife-population.is-monster .wildlife-icon {
+  width: 32px;
+  height: 28px;
+  border-color: rgba(255, 110, 110, 0.58);
+  background: rgba(74, 12, 24, 0.9);
+  animation: monster-breathe 900ms ease-in-out infinite alternate;
+}
+
+.wildlife-population.is-monster .wildlife-count {
+  background: rgba(70, 7, 20, 0.92);
+  color: #ffd7d7;
+}
+
 .resident-avatar {
   --resident-color: hsl(calc(155 + var(--resident-index) * 41) 68% 58%);
   --resident-dark: hsl(calc(155 + var(--resident-index) * 41) 48% 28%);
@@ -570,6 +711,12 @@ button {
 
 .resident-avatar.is-elder {
   --resident-color: #b9c8d0;
+}
+
+.resident-avatar.is-elder .resident-figure {
+  scale: 0.94 0.9;
+  transform: skewX(-4deg);
+  transform-origin: center bottom;
 }
 
 .resident-shadow {
@@ -703,23 +850,23 @@ button {
 }
 
 .resident-avatar.is-moving .resident-figure {
-  animation: resident-hop 340ms ease-in-out infinite alternate;
+  animation: resident-hop var(--walk-duration, 340ms) ease-in-out infinite alternate;
 }
 
 .resident-avatar.is-moving .resident-leg--left {
-  animation: left-leg 330ms ease-in-out infinite alternate;
+  animation: left-leg var(--walk-duration, 330ms) ease-in-out infinite alternate;
 }
 
 .resident-avatar.is-moving .resident-leg--right {
-  animation: right-leg 330ms ease-in-out infinite alternate;
+  animation: right-leg var(--walk-duration, 330ms) ease-in-out infinite alternate;
 }
 
 .resident-avatar.is-moving .resident-arm--left {
-  animation: left-arm 330ms ease-in-out infinite alternate;
+  animation: left-arm var(--walk-duration, 330ms) ease-in-out infinite alternate;
 }
 
 .resident-avatar.is-moving .resident-arm--right {
-  animation: right-arm 330ms ease-in-out infinite alternate;
+  animation: right-arm var(--walk-duration, 330ms) ease-in-out infinite alternate;
 }
 
 .resident-avatar.is-resting .resident-figure,
@@ -1061,6 +1208,11 @@ button {
   to { transform: translateX(4px) rotate(4deg); }
 }
 
+@keyframes monster-breathe {
+  from { transform: translateY(1px) scale(0.96); filter: brightness(0.85); }
+  to { transform: translateY(-2px) scale(1.08); filter: brightness(1.18); }
+}
+
 @media (max-width: 940px) {
   .world-layout {
     grid-template-columns: minmax(0, 1fr) 285px;
@@ -1136,6 +1288,24 @@ button {
   .status-strip .save-state {
     grid-column: 1 / -1;
     border-top: 1px solid rgba(148, 179, 167, 0.1);
+  }
+
+  .external-clock {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 7px;
+  }
+
+  .external-clock small {
+    grid-column: 1 / -1;
+  }
+
+  .external-clock select {
+    max-width: 112px;
+  }
+
+  .world-map-viewport {
+    max-height: 66vh;
+    border-radius: 18px;
   }
 
   .world-map {

@@ -24,7 +24,7 @@ import type {
   InterventionProposal,
 } from './types';
 
-export const CARDINAL_POLICY_VERSION = 'ainkrad-cardinal-policy-0.3.10';
+export const CARDINAL_POLICY_VERSION = 'ainkrad-cardinal-policy-0.3.11';
 export const DEFAULT_CARDINAL_PREDICTION_HORIZON = 4;
 export const MAX_CARDINAL_PREDICTION_HORIZON = 16;
 
@@ -53,9 +53,9 @@ const CANDIDATES: readonly CandidateDefinition[] = [
     interventionKind: 'resource_relief',
     severity: (metrics) => metrics.resourcePressure - 0.65,
     qualifies: (metrics) =>
-      metrics.resourcePressure > 0.72 && metrics.recoveryCapacity < 0.45,
+      metrics.resourcePressure > 0.62 && metrics.recoveryCapacity < 0.7,
     critical: (metrics) =>
-      metrics.resourcePressure > 0.92 && metrics.recoveryCapacity < 0.25,
+      metrics.resourcePressure > 0.88 && metrics.recoveryCapacity < 0.3,
     trendMetric: 'resourcePressure',
     predictionMetric: 'resourcePressure',
     reason: 'Resource pressure is high while recovery capacity is weak.',
@@ -71,9 +71,9 @@ const CANDIDATES: readonly CandidateDefinition[] = [
     interventionKind: 'open_shared_space',
     severity: (metrics) => metrics.socialIsolation - 0.65,
     qualifies: (metrics) =>
-      metrics.socialIsolation > 0.72 && metrics.populationActivity < 0.55,
+      metrics.socialIsolation > 0.66 && metrics.relationshipDiversity < 0.5,
     critical: (metrics) =>
-      metrics.socialIsolation > 0.92 && metrics.populationActivity < 0.3,
+      metrics.socialIsolation > 0.9 && metrics.relationshipDiversity < 0.22,
     trendMetric: 'socialIsolation',
     predictionMetric: 'socialIsolation',
     reason: 'Persistent isolation coincides with low meaningful activity.',
@@ -83,6 +83,24 @@ const CANDIDATES: readonly CandidateDefinition[] = [
       'The society is entering persistent social fragmentation rather than a temporary low-interaction period.',
     falsifier:
       'The hypothesis weakens if isolation falls or meaningful activity recovers without Cardinal intervention.',
+  },
+  {
+    problemKind: 'safety_instability',
+    interventionKind: 'safety_support',
+    severity: (metrics) => metrics.safetyPressure - 0.58,
+    qualifies: (metrics) =>
+      metrics.safetyPressure > 0.72 && metrics.averageStress > 0.38,
+    critical: (metrics) =>
+      metrics.safetyPressure > 0.95 && metrics.averageStress > 0.68,
+    trendMetric: 'safetyPressure',
+    predictionMetric: 'safetyPressure',
+    reason: 'Persistent environmental danger is raising population stress.',
+    expectedOutcome:
+      'Temporarily restore environmental safety while residents keep control of every personal decision.',
+    claim:
+      'The world is experiencing a persistent safety failure that endogenous recovery is not resolving quickly enough.',
+    falsifier:
+      'The hypothesis weakens if environmental danger or population stress falls without Cardinal support.',
   },
   {
     problemKind: 'conflict_overload',

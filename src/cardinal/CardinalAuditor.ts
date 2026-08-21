@@ -260,10 +260,13 @@ export class CardinalAuditor {
     metrics: CardinalMetrics,
   ): boolean {
     if (kind === 'resource_fragility') {
-      return metrics.resourcePressure > 0.92 && metrics.recoveryCapacity < 0.25;
+      return metrics.resourcePressure > 0.88 && metrics.recoveryCapacity < 0.3;
     }
     if (kind === 'social_fragmentation') {
-      return metrics.socialIsolation > 0.92 && metrics.populationActivity < 0.3;
+      return metrics.socialIsolation > 0.9 && metrics.relationshipDiversity < 0.22;
+    }
+    if (kind === 'safety_instability') {
+      return metrics.safetyPressure > 0.95 && metrics.averageStress > 0.68;
     }
     if (kind === 'ecosystem_fragility') {
       return (
@@ -362,6 +365,7 @@ export class CardinalAuditor {
       exploredWorldRatio: legacyBefore.exploredWorldRatio ?? 0,
       wildlifePressure: legacyBefore.wildlifePressure ?? 0,
       ecologicalDiversity: legacyBefore.ecologicalDiversity ?? 0,
+      safetyPressure: legacyBefore.safetyPressure ?? 0,
     };
     const after = structuredClone(afterObservation.metrics);
     const prediction = intervention.proposal.prediction;

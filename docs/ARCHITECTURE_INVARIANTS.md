@@ -269,3 +269,17 @@ These rules convert failures from the previous implementation into tests and str
 213. Cardinal is not allowed to cause catastrophe merely to create entertainment, training data or faster experience.
 214. v0.3.10 migrates both v0.3.8 and deployed v0.3.9 without resetting tick, RNG future, people, relationships or existing ecology.
 215. Cross-tab browser frames carry a protocol version so an old open deployment cannot be rendered as the new world schema.
+
+## Audit round 11 additions — time, physiology and civilization
+
+216. Calendar time, biological age, birth cooldowns and physiology consume one persisted elapsed-world-minute domain.
+217. A speed change is authorized only by the independent external clock gateway; Cardinal receives no clock capability.
+218. External acceleration may change the amount of world time per tick but may not skip world decisions, ecology, life events or evidence.
+219. Strength, endurance, mobility and recovery are derived from age and health and causally affect action cost and effectiveness.
+220. Emotions remain persistent resident-owned consequences and influence choice without becoming Cardinal or UI commands.
+221. Deadly monsters arise only as world-owned populations in remote geography and may injure or kill through bounded encounters.
+222. Cardinal habitat support may not increase a monster population.
+223. Villages and cities emerge from population and frontier maturity and persist as connected world places with append-only evidence.
+224. World level is derived from actual frontier growth rather than copied from Cardinal experience or hard-coded UI text.
+225. Cardinal safety pressure is derived from committed danger evidence and can produce only a bounded proposal through the independent gateway.
+226. v0.3.11 migrates deployed v0.3.10 biological history into unified world minutes without replacing residents or restarting the map.

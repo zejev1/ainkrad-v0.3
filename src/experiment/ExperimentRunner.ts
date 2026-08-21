@@ -95,6 +95,7 @@ export interface MetricDeltas {
   averageStress: number;
   socialIsolation: number;
   conflictPressure: number;
+  safetyPressure: number;
   resourcePressure: number;
   relationshipDiversity: number;
   recoveryCapacity: number;
@@ -120,6 +121,7 @@ function metricDeltas(a: CardinalMetrics, b: CardinalMetrics): MetricDeltas {
     averageStress: a.averageStress - b.averageStress,
     socialIsolation: a.socialIsolation - b.socialIsolation,
     conflictPressure: a.conflictPressure - b.conflictPressure,
+    safetyPressure: a.safetyPressure - b.safetyPressure,
     resourcePressure: a.resourcePressure - b.resourcePressure,
     relationshipDiversity: a.relationshipDiversity - b.relationshipDiversity,
     recoveryCapacity: a.recoveryCapacity - b.recoveryCapacity,

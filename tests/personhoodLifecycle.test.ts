@@ -60,6 +60,13 @@ describe('Fluctlight-inspired persistent personhood', () => {
       ),
     ).toBe(true);
     expect(
+      Object.values(after.agents).some(
+        (agent) =>
+          JSON.stringify(agent.mind.emotions) !==
+          JSON.stringify(before.agents[agent.id].mind.emotions),
+      ),
+    ).toBe(true);
+    expect(
       (await store.history('personhood-world')).some(
         (event) => Number(event.payload.consideredActionCount) > 1,
       ),
