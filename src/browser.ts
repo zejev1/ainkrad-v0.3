@@ -504,7 +504,7 @@ type LiveWorldWorkerMessage =
     };
 
 const liveWorldWorker = new Worker(
-  new URL('./liveWorld.worker.ts', import.meta.url),
+    new URL('./runtime/liveWorld.worker.ts', import.meta.url),
   {
     type: 'module',
   },
