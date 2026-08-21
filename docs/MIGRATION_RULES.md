@@ -84,3 +84,15 @@ That migration must preserve the existing world ID, logical time, RNG future, re
 This is a semantic migration, not a reset. Any snapshot older than `0.3.8`, newer than the runtime, or malformed under its declared version still fails closed and requires a separately reviewed migration.
 
 Cardinal experience does not require an opaque mutable schema row. It is reconstructed from prior append-only evaluation and outcome evidence, including older compatible historical records for experience totals. Hypothesis persistence still uses only the current policy/sensor-compatible window.
+
+## Audit 10: personhood, generations and constitutional authority
+
+World rules `ainkrad-world-rules-0.3.10` add stable mind identity, emotions, values, beliefs, biological life, lineage, population counters, uncapped procedural frontier topology, cosmology, registered world-law mechanisms and the permanent protected-personhood constitution.
+
+The runtime explicitly accepts both v0.3.8 and deployed v0.3.9 snapshots. For v0.3.9 it preserves the existing frontier, wildlife, habitat support and learned hunting skill. For both versions it preserves world ID, logical tick, RNG state, existing resident IDs, goals, locations, relationships and append-only history. It adds new fields to the same people; it never generates replacement adults.
+
+All existing place connections are made reciprocal during migration. Existing geography receives deterministic coordinates and biome metadata. New demographic ages are deterministic from stable resident order and become the starting point for future aging; they do not retroactively manufacture birth or death events.
+
+Cardinal policy, research, audit context, gateway and sensor versions advance to v0.3.10. Older evaluations remain historical experience totals, but they do not silently form a same-policy persistence chain for a new intervention decision.
+
+Snapshots older than v0.3.8, newer than v0.3.10 or malformed under their declared version still fail closed.

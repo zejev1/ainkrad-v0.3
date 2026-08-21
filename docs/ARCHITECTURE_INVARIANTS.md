@@ -239,3 +239,33 @@ These rules convert failures from the previous implementation into tests and str
 186. Habitat support supplements but does not replace the world's endogenous wildlife recovery.
 187. The `0.3.8 -> 0.3.9` migration preserves the existing society, logical time, RNG state and historical evidence and commits as an idempotent operation.
 188. A deployment containing v0.3.9 must migrate the browser-local world instead of silently replacing it with a new society.
+
+## Audit round 10 additions — persistent people and world authority
+
+189. Every resident has a stable world-scoped identity key that survives goal, emotion, age, relationship and life-stage changes.
+190. Cardinal may not write identity, memory, agency, values or relationships; these protected domains are persisted as a fixed world constitution.
+191. Cardinal world-architecture observations contain aggregate population/frontier state and no resident mind objects.
+192. Biological death ends future action but does not delete identity, lineage, relationships or historical memory.
+193. Birth creates a new identity and reciprocal parent/child links; it may not clone or replace either parent.
+194. Parent selection is an autonomous relationship/living-condition outcome and is never a Cardinal target.
+195. Children, adolescents, adults and elders have different action constraints derived from life stage, not UI appearance.
+196. Multi-tick exploration and hunting plans belong to the resident and remain interruptible by severe survival pressure.
+197. The frontier is not capped at the three founding regions; later geography is seeded, persistent and procedurally extensible.
+198. Place connections are reciprocal and residents traverse the topology rather than treating map location as decorative text.
+199. Procedural map coordinates may expand beyond the initial viewport; rendering may normalize bounds but may not rewrite stored geography.
+200. Natural unexplained phenomena affect only residents who perceive them and create memories rather than global belief assignments.
+201. Shared myth and emergent belief-deities arise from resident interpretation; an external deity may not impersonate an emergent belief.
+202. Resident or deity entry occurs only through the independent entry gateway and never replaces a native resident.
+203. A newly entered resident is subject to the same life, autonomy, mortality and persistence rules as native residents.
+204. Cardinal rule authority is earned from append-only evidence and grants proposal capacity, not a direct world mutation reference.
+205. Every world law belongs to a registered non-person domain and executable mechanism; unknown decorative rules are rejected.
+206. A new authorized rule changes a registered engine mechanism and therefore cannot exist only as ignored prose.
+207. World-law proposals require bounded ranges, fresh world revision, persistent evidence, necessity and cooldown.
+208. A world-law amendment may not widen the constitutional range of an existing law.
+209. Catastrophe proposals require exceptional evidence, learned capability, systemic scope, population floor, casualty ceiling and recovery plan.
+210. Catastrophes may not contain resident target IDs; individual exposure comes from world conditions and resident resilience.
+211. Actual catastrophe deaths may not exceed the authorized ratio and at least four possible survivors remain protected.
+212. A catastrophe persists a destructive phase and a bounded recovery phase governed by a registered recovery mechanism.
+213. Cardinal is not allowed to cause catastrophe merely to create entertainment, training data or faster experience.
+214. v0.3.10 migrates both v0.3.8 and deployed v0.3.9 without resetting tick, RNG future, people, relationships or existing ecology.
+215. Cross-tab browser frames carry a protocol version so an old open deployment cannot be rendered as the new world schema.

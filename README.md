@@ -179,23 +179,23 @@ Cardinal comes later.
 
 ---
 
-## Growing World v0.3.9
+## Living World v0.3.10
 
-Cardinal now has a more serious world to observe. NPCs persist personality, needs, skills, goals, homes, current locations and their latest decision evidence. They choose among sleep, nature relaxation, walking, gathering, hunting, productive work, social contact, helping, exploration and reflection rather than following a fixed daily script.
+Cardinal now has a society with continuity, generations and consequences to observe. Residents are modeled as persistent people inspired by Alicization's bottom-up Fluctlight idea: stable identity, one continuous life, personality, emotions, values, beliefs, learned skills, goals, relationships, memories and multi-tick intentions. This is an engineering model, not a claim of consciousness or a literal recreation of the fictional technology.
 
-The settlement now grows from resident exploration instead of appearing fully built. Exploration progress opens three minimal natural regions in order: a wild meadow, a northern forest and a sea shore. Each discovery is a committed world event caused by a resident, adds a persistent place and introduces a small renewable wildlife population: rabbits, deer or fish. The map reveals terrain, roads and animals only after that part of the world has actually been found.
+Residents age through child, adolescent, adult and elder stages. Adults may voluntarily form families when their relationship and living conditions support that choice. Every child is a new identity with reciprocal parents, a generation number and blended but non-identical traits. Old age, illness, deprivation and a tightly bounded systemic catastrophe can end a life. Death stops action but never deletes identity, lineage, relationships or history; close people can remember and grieve.
 
-Residents can now walk for its own sake, relax in discovered nature and hunt. Hunting is a fallible choice influenced by personal skill, risk tolerance, animal alertness and environmental safety. Success consumes one animal and develops hunting skill; failure still costs energy and produces experience. Wildlife alertness falls over time and populations can recover toward a carrying capacity through the world's own habitat cycle. Cardinal is not required for that recovery.
+The map is no longer capped at three regions. Meadow, forest and shore remain the founding frontier, after which resident exploration procedurally creates connected plains, lakes, rivers, swamps, mountains, ruins, villages and coasts with renewable wildlife. Coordinates expand in world units and the browser zooms the accumulated bounds into view. Exploration and hunting preserve a route plan across connected places instead of teleporting through a fixed action list.
 
-Ordinary choice is no longer a strict highest-score command. Each resident forms a bounded set of reasonable alternatives and makes a seeded weighted choice inside that set. Curiosity and risk tolerance widen the choice space; needs, skills, relationships and personality still matter; emergencies can still constrain options. The chosen action, strongest alternative, number of considered actions and normalized choice openness are persisted as inspectable evidence. The persisted RNG keeps same-seed experiments reproducible.
+Residents choose among rest, nature relaxation, walking, gathering, hunting, productive work, social contact, helping, exploration, reflection, bonding and prayer. Choice is seeded and reproducible but not a strict maximum-score command. Needs, personality, life stage, values, emotion, relationships, skill, environment and an existing intention all matter; survival pressure can interrupt a plan.
 
-The control world has its own economy and recovery paths. Agents can work, gather, discover resources and voluntarily help each other. Resource, social and safety disturbances change conditions but do not issue commands to NPCs. Agent processing order is seeded and shuffled each tick so array position does not become a permanent privilege.
+Mysticism now belongs to the world rather than to a scripted quest. Rare unexplained phenomena may be witnessed, remembered and interpreted differently. Prayer and shared experience can eventually become traditions and an emergent belief-deity. A separate entry gateway also defines future entry as a new resident or external deity; it never lets Cardinal impersonate or replace a person.
 
-Helping is a decision rather than an automatic reward for a positive conversation, and help can be rejected. Relationships and memories affect later social choices; interactions can improve or worsen the relationship. Skills develop through use and goals are persisted as inspectable current priorities.
+Cardinal earns higher capabilities from append-only evidence. It can propose registered world-law mechanisms—frontier, ecology, resources, demography, climate, cosmology and recovery—but an independent world-authority gateway checks necessity, evidence, cooldown, ranges and the permanent personhood constitution. Catastrophe authority exists only behind much stronger capability, population, evidence, casualty-ceiling and recovery checks. Cardinal still receives no resident mind, action, memory, relationship or identity writer.
 
-The browser map now renders individual homes, shared places, current occupancy, visible resident actions, a world-event feed and a day/night cycle. This display remains read-only: CSS animation and UI selection cannot write agent goals, actions, relationships or world state.
+The browser remains a read-only projection. It now shows living population, uncapped frontier count, age/generation/origin for the selected resident, dynamic locations and wildlife. Children are visibly smaller; deceased residents disappear from action view while remaining in persisted history.
 
-World sensors now also measure explored-world ratio, wildlife pressure and ecological diversity. Cardinal gains auditable experience from journaled observation cycles and measured outcomes. Capabilities unlock only after evidence thresholds; ecosystem support planning requires repeated ecosystem observations and level 2. Even then Cardinal can only propose a temporary habitat modifier. The independent Auditor and intervention gateway validate and execute it, and no capability controls residents. See `docs/WORLD_AUTONOMY.md`, `docs/CARDINAL_RESEARCH.md` and `docs/SAO_CARDINAL_REFERENCE.md`.
+See `docs/PERSONHOOD_CONTRACT.md`, `docs/WORLD_AUTHORITY.md`, `docs/WORLD_ENTRY_GATEWAY.md`, `docs/WORLD_AUTONOMY.md` and `docs/SAO_CARDINAL_REFERENCE.md`.
 
 ### Browser continuity
 
@@ -203,7 +203,7 @@ The live browser world uses IndexedDB instead of recreating an in-memory world o
 
 Reloading or reopening the same site in the same browser therefore resumes the committed tick, RNG state, residents, relationships, memories, Cardinal evidence and gateway cooldown/recovery state. Multiple tabs use one exclusive writer lock and mirror its frames so they do not silently fork the same local world.
 
-An explicit `0.3.8 -> 0.3.9` migration preserves the existing browser world's tick, RNG, residents, goals, relationships and history, then adds the new ecology fields and a deterministic initial hunting skill. Deployment does not intentionally reset the society.
+An explicit migration accepts both `0.3.8` and the deployed `0.3.9` world. It preserves tick, RNG future, frontier, wildlife, hunting skill, residents, goals, locations, relationships and prior history, then adds personhood, life-cycle, cosmology, map topology and constitutional world-law state. Deployment does not intentionally reset the society.
 
 This is durable browser-local continuity, not a claim that JavaScript runs after the browser is fully closed. Clearing site data removes that local world. A truly 24/7 autonomous deployment still requires an independent always-on runtime; Cardinal must not receive control of that host or of the external gateway.
 
@@ -582,10 +582,12 @@ AINKRAD
 │
 ├── World
 │   ├── Autonomous Agents
-│   ├── Needs / Personality / Goals
-│   ├── Skills / Places
+│   ├── Life / Lineage / Generations
+│   ├── Needs / Personality / Mind / Goals
+│   ├── Skills / Plans / Places / Frontier
 │   ├── Memory
 │   ├── Relationships
+│   ├── Ecology / Cosmology / World Laws
 │   ├── Resources / Production
 │   └── Append-only Events
 │
@@ -598,10 +600,17 @@ AINKRAD
 │   ├── Research Memory / Hypotheses
 │   ├── Journal
 │   ├── Intervention Proposal + Prediction
+│   ├── World Architect
 │   └── Auditor
 │
 ├── Intervention Gateway
 │   └── Independent authorization
+│
+├── World Authority Gateway
+│   └── Laws / bounded systemic catastrophe
+│
+├── World Entry Gateway
+│   └── New resident / deity identity
 │
 ├── External Boundary Gateway
 │   └── Independent authorization for real-world actions

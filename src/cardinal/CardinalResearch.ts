@@ -8,7 +8,7 @@ import type {
   InterventionRecord,
 } from './types';
 
-export const CARDINAL_RESEARCH_VERSION = 'ainkrad-cardinal-research-0.3.9';
+export const CARDINAL_RESEARCH_VERSION = 'ainkrad-cardinal-research-0.3.10';
 export const CARDINAL_RESEARCH_WINDOW = 12;
 export const CARDINAL_AUTONOMY_WINDOW = 16;
 export const CARDINAL_AUTONOMY_MAX_RECENT_INTERVENTIONS = 3;

@@ -84,6 +84,9 @@ describe('World rules version', () => {
     legacy.revision = 0;
     delete legacy.growth;
     delete legacy.wildlife;
+    delete legacy.population;
+    delete legacy.cosmology;
+    delete legacy.governance;
     delete legacy.environment.habitatSupport;
     for (const regionId of ['meadow', 'forest', 'shore']) {
       delete legacy.places[regionId];
@@ -93,6 +96,17 @@ describe('World rules version', () => {
         agent.locationId = 'outskirts';
       }
       delete agent.skills.hunting;
+      delete agent.origin;
+      delete agent.life;
+      delete agent.mind;
+    }
+    for (const place of Object.values(legacy.places) as any[]) {
+      delete place.biome;
+      delete place.mapX;
+      delete place.mapY;
+      delete place.connectedPlaceIds;
+      delete place.fertility;
+      delete place.danger;
     }
     const preservedAgents = structuredClone(legacy.agents);
     const preservedRelationships = structuredClone(legacy.relationships);
@@ -106,7 +120,7 @@ describe('World rules version', () => {
     const state = migrated.snapshot();
 
     expect(state.now).toBe(preservedTime);
-    expect(state.rulesVersion).toBe('ainkrad-world-rules-0.3.9');
+    expect(state.rulesVersion).toBe('ainkrad-world-rules-0.3.10');
     expect(state.growth.stage).toBe(0);
     expect(state.wildlife).toEqual({});
     expect(state.relationships).toEqual(preservedRelationships);
@@ -116,12 +130,94 @@ describe('World rules version', () => {
       expect(agent.goal).toEqual(previous.goal);
       expect(agent.locationId).toBe(previous.locationId);
       expect(agent.skills.hunting).toBeGreaterThanOrEqual(0);
+      expect(agent.life.alive).toBe(true);
+      expect(agent.mind.identityId).toBe(
+        `person:legacy-continuity:${agentId}`,
+      );
+      expect(agent.mind.continuity).toBe(1);
     }
+    expect(state.governance.protectedPersonhoodDomains).toEqual([
+      'identity',
+      'memory',
+      'agency',
+      'values',
+      'relationships',
+    ]);
     expect(
       (await targetStore.history('legacy-continuity')).some(
         (event) => event.kind === 'world.migrated',
       ),
     ).toBe(true);
+  });
+
+  it('migrates the live 0.3.9 ecology without resetting its frontier or RNG future', async () => {
+    const sourceStore = new InMemoryWorldStore();
+    const source = await WorldEngine.create({
+      worldId: 'legacy-039-continuity',
+      seed: 'legacy-039-seed',
+      store: sourceStore,
+      startTime: 0,
+    });
+    for (let tick = 1; tick <= 96; tick += 1) await source.step(tick);
+
+    const legacy = source.snapshot() as any;
+    legacy.rulesVersion = 'ainkrad-world-rules-0.3.9';
+    legacy.revision = 0;
+    delete legacy.population;
+    delete legacy.cosmology;
+    delete legacy.governance;
+    delete legacy.growth.frontierSequence;
+    for (const place of Object.values(legacy.places) as any[]) {
+      delete place.biome;
+      delete place.mapX;
+      delete place.mapY;
+      delete place.connectedPlaceIds;
+      delete place.fertility;
+      delete place.danger;
+    }
+    for (const agent of Object.values(legacy.agents) as any[]) {
+      delete agent.origin;
+      delete agent.life;
+      delete agent.mind;
+      delete agent.plan;
+    }
+    const preserved = {
+      now: legacy.now,
+      rngState: legacy.determinism.rngState,
+      growth: structuredClone(legacy.growth),
+      wildlife: structuredClone(legacy.wildlife),
+      hunting: Object.fromEntries(
+        Object.values(legacy.agents).map((agent: any) => [
+          agent.id,
+          agent.skills.hunting,
+        ]),
+      ),
+      relationships: structuredClone(legacy.relationships),
+    };
+
+    const targetStore = new InMemoryWorldStore();
+    await targetStore.initializeWorld(legacy);
+    const migrated = await WorldEngine.open({
+      worldId: legacy.id,
+      store: targetStore,
+    });
+    const state = migrated.snapshot();
+
+    expect(state.now).toBe(preserved.now);
+    expect(state.determinism.rngState).toBe(preserved.rngState);
+    expect(state.growth.stage).toBe(preserved.growth.stage);
+    expect(state.growth.discoveredRegionIds).toEqual(
+      preserved.growth.discoveredRegionIds,
+    );
+    expect(state.wildlife).toEqual(preserved.wildlife);
+    expect(state.relationships).toEqual(preserved.relationships);
+    for (const agent of Object.values(state.agents)) {
+      expect(agent.skills.hunting).toBe(preserved.hunting[agent.id]);
+      expect(agent.life.alive).toBe(true);
+      expect(agent.mind.identityId).toBe(
+        `person:legacy-039-continuity:${agent.id}`,
+      );
+    }
   });
 
   it('refuses to silently resume a snapshot produced by incompatible world rules', async () => {
@@ -179,7 +275,11 @@ describe('Autonomous society depth', () => {
     expect(kinds.has('agent.explored')).toBe(true);
     expect(kinds.has('relationship.changed')).toBe(true);
     expect(
-      kinds.has('agent.help.accepted') || kinds.has('agent.help.rejected'),
+      kinds.has('agent.help.accepted') ||
+        kinds.has('agent.help.rejected') ||
+        kinds.has('agent.bond.accepted') ||
+        kinds.has('agent.bond.declined') ||
+        kinds.has('agent.prayed'),
     ).toBe(true);
   });
 
@@ -203,19 +303,29 @@ describe('Autonomous society depth', () => {
     );
     const kinds = new Set(history.map((event) => event.kind));
 
-    expect(state.growth.stage).toBe(3);
-    expect(state.growth.discoveredRegionIds).toEqual([
+    expect(state.growth.stage).toBeGreaterThan(3);
+    expect(state.growth.stage).toBe(state.growth.discoveredRegionIds.length);
+    expect(state.growth.discoveredRegionIds.slice(0, 3)).toEqual([
       'meadow',
       'forest',
       'shore',
     ]);
+    expect(state.growth.discoveredRegionIds[3]).toBe('region_4');
     expect(Object.keys(state.places)).toEqual(
       expect.arrayContaining(['meadow', 'forest', 'shore']),
     );
     expect(
       Object.values(state.wildlife).map((population) => population.species),
     ).toEqual(expect.arrayContaining(['rabbit', 'deer', 'fish']));
-    expect(discoveries.map((event) => event.payload.stage)).toEqual([1, 2, 3]);
+    expect(discoveries.length).toBe(state.growth.stage);
+    expect(discoveries.slice(0, 3).map((event) => event.payload.stage)).toEqual([
+      1,
+      2,
+      3,
+    ]);
+    expect(
+      discoveries.map((event) => event.payload.stage),
+    ).toEqual(Array.from({ length: state.growth.stage }, (_, index) => index + 1));
     expect(discoveries.every((event) => event.source === 'agent')).toBe(true);
     expect(discoveries[0].occurredAt).toBeLessThan(discoveries[1].occurredAt);
     expect(discoveries[1].occurredAt).toBeLessThan(discoveries[2].occurredAt);

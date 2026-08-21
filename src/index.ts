@@ -1,4 +1,5 @@
 export * from './boundary/ExternalGateway';
+export * from './boundary/WorldEntryGateway';
 
 export * from './cardinal/CardinalAuditor';
 export * from './cardinal/CardinalAuditContext';
@@ -13,6 +14,7 @@ export * from './cardinal/InMemoryCardinalJournal';
 export * from './cardinal/LogBackedCardinalJournal';
 export * from './cardinal/InterventionGateway';
 export * from './cardinal/InterventionGatewayLedger';
+export * from './cardinal/WorldAuthorityGateway';
 export * from './cardinal/types';
 
 export * from './core/stableId';

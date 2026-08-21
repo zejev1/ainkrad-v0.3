@@ -41,6 +41,21 @@ function capabilitiesFor(
   if (level >= 2 && counters.ecologyObservationCycles >= 8) {
     capabilities.push('habitat_support_planning');
   }
+  if (level >= 3 && counters.observationCycles >= 64) {
+    capabilities.push('world_rule_design');
+  }
+  if (level >= 4 && counters.observationCycles >= 192) {
+    capabilities.push('demographic_stewardship');
+  }
+  if (
+    level >= 5 &&
+    counters.observationCycles >= 512 &&
+    counters.ecologyObservationCycles >= 128 &&
+    counters.evaluatedOutcomes >= 4 &&
+    counters.successfulPredictions >= 2
+  ) {
+    capabilities.push('catastrophe_modeling');
+  }
 
   return capabilities;
 }
@@ -54,7 +69,18 @@ function makeExperience(
     counters.ecologyObservationCycles * 2 +
     counters.evaluatedOutcomes * 3 +
     counters.successfulPredictions * 2;
-  const level = totalExperience >= 55 ? 3 : totalExperience >= 20 ? 2 : 1;
+  const level =
+    totalExperience >= 2400
+      ? 6
+      : totalExperience >= 1200
+        ? 5
+        : totalExperience >= 520
+          ? 4
+          : totalExperience >= 55
+            ? 3
+            : totalExperience >= 20
+              ? 2
+              : 1;
   const capabilities = capabilitiesFor(counters, level);
   const previous = new Set(previousCapabilities);
 
@@ -106,4 +132,3 @@ export function advanceCardinalExperience(
     previous.capabilities,
   );
 }
-

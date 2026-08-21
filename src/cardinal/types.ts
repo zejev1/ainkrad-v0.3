@@ -26,7 +26,10 @@ export type CardinalCapability =
   | 'trend_reasoning'
   | 'ecosystem_observation'
   | 'outcome_learning'
-  | 'habitat_support_planning';
+  | 'habitat_support_planning'
+  | 'world_rule_design'
+  | 'demographic_stewardship'
+  | 'catastrophe_modeling';
 
 export interface CardinalExperienceState {
   level: number;

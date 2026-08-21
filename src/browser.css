@@ -556,6 +556,20 @@ button {
   display: block;
   width: 31px;
   height: 46px;
+  scale: var(--life-scale, 1);
+  transform-origin: center bottom;
+}
+
+.resident-avatar.is-child {
+  --life-scale: 0.7;
+}
+
+.resident-avatar.is-adolescent {
+  --life-scale: 0.84;
+}
+
+.resident-avatar.is-elder {
+  --resident-color: #b9c8d0;
 }
 
 .resident-shadow {

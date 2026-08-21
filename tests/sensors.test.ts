@@ -3,12 +3,34 @@ import { WorldSensors } from '../src/sensors/WorldSensors';
 import { InMemoryEventStore } from '../src/world/InMemoryEventStore';
 import type { WorldState } from '../src/world/types';
 
+const testLife = () => ({
+  bornAt: -24 * 96,
+  ageYears: 24,
+  lifespanYears: 82,
+  stage: 'adult' as const,
+  alive: true,
+  health: 0.9,
+  generation: 0,
+  parentIds: [],
+  childIds: [],
+});
+
+const testMind = (agentId: string) => ({
+  identityId: `person:world_1:${agentId}`,
+  continuity: 1,
+  autonomy: 0.7,
+  memoryCoherence: 0.8,
+  emotions: { joy: 0.5, fear: 0.1, grief: 0, awe: 0.1, hope: 0.6 },
+  values: { care: 0.5, freedom: 0.5, knowledge: 0.5, tradition: 0.5, ambition: 0.5 },
+  beliefs: { worldTrust: 0.6, divinePresence: 0.1, fate: 0.1, afterlife: 0.1 },
+});
+
 function emptyWorld(): WorldState {
   return {
     id: 'world_1',
     now: 1,
     revision: 0,
-    rulesVersion: 'ainkrad-world-rules-0.3.9',
+    rulesVersion: 'ainkrad-world-rules-0.3.10',
     environment: {
       resourcePool: 1,
       resourceRegenerationRate: 0.01,
@@ -21,13 +43,39 @@ function emptyWorld(): WorldState {
       eventSequence: 0,
     },
     places: {
-      commons: { id: 'commons', name: 'Common Square', kind: 'commons', capacity: 8 },
+      commons: {
+        id: 'commons',
+        name: 'Common Square',
+        kind: 'commons',
+        capacity: 8,
+        biome: 'settlement',
+        mapX: 50,
+        mapY: 50,
+        connectedPlaceIds: [],
+        fertility: 0.5,
+        danger: 0.02,
+      },
     },
     growth: {
       stage: 0,
       explorationProgress: 0,
       lastExpansionAt: 1,
       discoveredRegionIds: [],
+      frontierSequence: 0,
+    },
+    population: { nextAgentSequence: 1, births: 0, deaths: 0 },
+    cosmology: { mysteryLevel: 0.1, omenCount: 0, traditions: [], deities: {} },
+    governance: {
+      constitutionVersion: 'ainkrad-constitution-0.3.10',
+      authorityRevision: 0,
+      protectedPersonhoodDomains: [
+        'identity',
+        'memory',
+        'agency',
+        'values',
+        'relationships',
+      ],
+      laws: {},
     },
     wildlife: {},
     agents: {},
@@ -85,12 +133,19 @@ describe('World sensors', () => {
       explorationProgress: 0.4,
       lastExpansionAt: 1,
       discoveredRegionIds: ['meadow', 'forest'],
+      frontierSequence: 2,
     };
     world.places.meadow = {
       id: 'meadow',
       name: 'Wild Meadow',
       kind: 'meadow',
       capacity: 12,
+      biome: 'plains',
+      mapX: 8,
+      mapY: 13,
+      connectedPlaceIds: ['forest'],
+      fertility: 0.8,
+      danger: 0.1,
       discoveredAt: 1,
     };
     world.places.forest = {
@@ -98,6 +153,12 @@ describe('World sensors', () => {
       name: 'Northern Forest',
       kind: 'forest',
       capacity: 14,
+      biome: 'forest',
+      mapX: 50,
+      mapY: 12,
+      connectedPlaceIds: ['meadow'],
+      fertility: 0.7,
+      danger: 0.3,
       discoveredAt: 1,
     };
     world.wildlife = {
@@ -126,9 +187,9 @@ describe('World sensors', () => {
 
     const observation = await new WorldSensors(events).observe(world, 1);
 
-    expect(observation.metrics.exploredWorldRatio).toBeCloseTo(2 / 3);
+    expect(observation.metrics.exploredWorldRatio).toBeCloseTo(2 / 5);
     expect(observation.metrics.wildlifePressure).toBeCloseTo(0.375);
-    expect(observation.metrics.ecologicalDiversity).toBeCloseTo(2 / 3);
+    expect(observation.metrics.ecologicalDiversity).toBeCloseTo(2 / 6);
     expect(world).toEqual(before);
   });
 });
@@ -149,11 +210,14 @@ describe('Recent social-contact sensing', () => {
       a: {
         id: 'a',
         name: 'A',
+        origin: 'native',
         energy: 0.8,
         stress: 0.1,
         resources: 0.7,
         socialDrive: 0.5,
         personality: { sociability: 0.5, diligence: 0.5, curiosity: 0.5, generosity: 0.5, resilience: 0.5, riskTolerance: 0.5 },
+        life: testLife(),
+        mind: testMind('a'),
         needs: { belonging: 0.5, purpose: 0.5 },
         skills: { gathering: 0.3, hunting: 0.3, craft: 0.3, social: 0.3, exploration: 0.3 },
         goal: { kind: 'connect', strength: 0.5, since: 1 },
@@ -164,11 +228,14 @@ describe('Recent social-contact sensing', () => {
       b: {
         id: 'b',
         name: 'B',
+        origin: 'native',
         energy: 0.8,
         stress: 0.1,
         resources: 0.7,
         socialDrive: 0.5,
         personality: { sociability: 0.5, diligence: 0.5, curiosity: 0.5, generosity: 0.5, resilience: 0.5, riskTolerance: 0.5 },
+        life: testLife(),
+        mind: testMind('b'),
         needs: { belonging: 0.5, purpose: 0.5 },
         skills: { gathering: 0.3, hunting: 0.3, craft: 0.3, social: 0.3, exploration: 0.3 },
         goal: { kind: 'connect', strength: 0.5, since: 1 },

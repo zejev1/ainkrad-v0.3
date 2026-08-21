@@ -7,13 +7,19 @@ import type { WorldStore } from './persistence';
 import { StaleWorldObservationError, WorldRevisionConflictError } from './persistence';
 import type {
   AgentActionKind,
+  AgentDeathCause,
   AgentGoalKind,
+  AgentLifeStage,
   AgentState,
   MemoryRecord,
   RelationshipState,
+  WorldBiome,
   WorldDisturbanceKind,
   WorldEnvironment,
   WorldGrowthState,
+  WorldLawDomain,
+  WorldLawMechanism,
+  WorldLawState,
   WorldPlace,
   WorldPlaceKind,
   WorldState,
@@ -21,9 +27,18 @@ import type {
   WildlifeSpecies,
 } from './types';
 
-export const WORLD_RULES_VERSION = 'ainkrad-world-rules-0.3.9';
-const LEGACY_WORLD_RULES_VERSION = 'ainkrad-world-rules-0.3.8';
-const WORLD_GROWTH_FINAL_STAGE = 3;
+export const WORLD_RULES_VERSION = 'ainkrad-world-rules-0.3.10';
+const LEGACY_WORLD_RULES_VERSIONS = new Set([
+  'ainkrad-world-rules-0.3.8',
+  'ainkrad-world-rules-0.3.9',
+]);
+export const WORLD_CONSTITUTION_VERSION = 'ainkrad-constitution-0.3.10';
+export const WORLD_TICKS_PER_YEAR = 96;
+const MIN_ADULT_AGE = 18;
+const ELDER_AGE = 62;
+const BIRTH_CHECK_INTERVAL = 12;
+const MIN_TICKS_BETWEEN_BIRTHS = 36;
+const MAX_LIVING_POPULATION = 96;
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const clampSigned = (value: number) => Math.max(-1, Math.min(1, value));
@@ -39,6 +54,8 @@ const ACTION_KINDS: readonly AgentActionKind[] = [
   'help',
   'explore',
   'reflect',
+  'bond',
+  'pray',
 ];
 
 const GOAL_KINDS: readonly AgentGoalKind[] = [
@@ -48,6 +65,8 @@ const GOAL_KINDS: readonly AgentGoalKind[] = [
   'contribute',
   'explore',
   'reflect',
+  'build_family',
+  'seek_truth',
 ];
 
 const PLACE_KINDS: readonly WorldPlaceKind[] = [
@@ -60,13 +79,44 @@ const PLACE_KINDS: readonly WorldPlaceKind[] = [
   'meadow',
   'forest',
   'shore',
+  'mountains',
+  'lake',
+  'river',
+  'swamp',
+  'ruins',
+  'village',
 ];
 
 const WILDLIFE_SPECIES: readonly WildlifeSpecies[] = [
   'rabbit',
   'deer',
   'fish',
+  'boar',
+  'wolf',
+  'bird',
 ];
+
+const BIOMES: readonly WorldBiome[] = [
+  'settlement',
+  'plains',
+  'forest',
+  'coast',
+  'mountains',
+  'lake',
+  'river',
+  'swamp',
+  'ancient_ruins',
+];
+
+const LAW_MECHANISM_DOMAINS: Record<WorldLawMechanism, WorldLawDomain> = {
+  frontier_expansion: 'geography',
+  wildlife_recovery: 'ecology',
+  fertility_support: 'demography',
+  resource_regeneration: 'resources',
+  mystic_resonance: 'cosmology',
+  weather_volatility: 'climate',
+  catastrophe_recovery: 'ecology',
+};
 
 interface WorldExpansionDefinition {
   stage: number;
@@ -82,6 +132,12 @@ const WORLD_EXPANSIONS: readonly WorldExpansionDefinition[] = [
       name: 'Wild Meadow',
       kind: 'meadow',
       capacity: 12,
+      biome: 'plains',
+      mapX: 8,
+      mapY: 13,
+      connectedPlaceIds: ['outskirts'],
+      fertility: 0.82,
+      danger: 0.12,
     },
     wildlife: [
       {
@@ -103,6 +159,12 @@ const WORLD_EXPANSIONS: readonly WorldExpansionDefinition[] = [
       name: 'Northern Forest',
       kind: 'forest',
       capacity: 14,
+      biome: 'forest',
+      mapX: 50,
+      mapY: 12,
+      connectedPlaceIds: ['meadow', 'outskirts'],
+      fertility: 0.74,
+      danger: 0.3,
     },
     wildlife: [
       {
@@ -124,6 +186,12 @@ const WORLD_EXPANSIONS: readonly WorldExpansionDefinition[] = [
       name: 'Sea Shore',
       kind: 'shore',
       capacity: 16,
+      biome: 'coast',
+      mapX: 92,
+      mapY: 88,
+      connectedPlaceIds: ['outskirts'],
+      fertility: 0.68,
+      danger: 0.2,
     },
     wildlife: [
       {
@@ -139,6 +207,141 @@ const WORLD_EXPANSIONS: readonly WorldExpansionDefinition[] = [
     ],
   },
 ];
+
+const REGION_NAME_PREFIXES = [
+  'Northern',
+  'Silver',
+  'Quiet',
+  'Ancient',
+  'Eastern',
+  'Hidden',
+  'Windward',
+  'Amber',
+] as const;
+
+const REGION_NAME_SUFFIXES: Record<WorldBiome, readonly string[]> = {
+  settlement: ['Village', 'Crossroads'],
+  plains: ['Fields', 'Steppe', 'Meadow'],
+  forest: ['Forest', 'Grove', 'Woods'],
+  coast: ['Coast', 'Bay', 'Shore'],
+  mountains: ['Heights', 'Ridge', 'Pass'],
+  lake: ['Lake', 'Waters'],
+  river: ['Riverlands', 'Ford'],
+  swamp: ['Marsh', 'Wetlands'],
+  ancient_ruins: ['Ruins', 'Sanctuary'],
+};
+
+function law(
+  id: string,
+  domain: WorldLawState['domain'],
+  mechanism: WorldLawMechanism,
+  value: number,
+  minimum: number,
+  maximum: number,
+  now: number,
+  rationale: string,
+): WorldLawState {
+  return {
+    id,
+    domain,
+    mechanism,
+    value,
+    minimum,
+    maximum,
+    revision: 0,
+    createdAt: now,
+    updatedAt: now,
+    createdBy: 'system',
+    rationale,
+  };
+}
+
+function defaultWorldLaws(now: number): Record<string, WorldLawState> {
+  const laws = [
+    law(
+      'frontier_expansion_rate',
+      'geography',
+      'frontier_expansion',
+      1,
+      0.25,
+      2.5,
+      now,
+      'Residents may discover a continuously generated frontier.',
+    ),
+    law(
+      'wildlife_recovery_rate',
+      'ecology',
+      'wildlife_recovery',
+      1,
+      0.35,
+      2,
+      now,
+      'Wildlife recovers through habitat conditions rather than spawning on command.',
+    ),
+    law(
+      'fertility_support',
+      'demography',
+      'fertility_support',
+      0.55,
+      0.1,
+      1,
+      now,
+      'Families remain voluntary while the world can support new life.',
+    ),
+    law(
+      'resource_regeneration',
+      'resources',
+      'resource_regeneration',
+      1,
+      0.35,
+      2,
+      now,
+      'Shared resources recover according to ecological capacity.',
+    ),
+    law(
+      'mystic_resonance',
+      'cosmology',
+      'mystic_resonance',
+      0.35,
+      0,
+      1,
+      now,
+      'Unexplained events may become belief, ritual and myth through lived experience.',
+    ),
+    law(
+      'weather_volatility',
+      'climate',
+      'weather_volatility',
+      0.2,
+      0,
+      0.8,
+      now,
+      'Weather may vary without directly commanding residents.',
+    ),
+    law(
+      'catastrophe_recovery',
+      'ecology',
+      'catastrophe_recovery',
+      0.75,
+      0.25,
+      1.5,
+      now,
+      'A damaged world retains a path to recovery after a systemic event.',
+    ),
+  ];
+  return Object.fromEntries(laws.map((entry) => [entry.id, entry]));
+}
+
+function lifeStageForAge(ageYears: number): AgentLifeStage {
+  if (ageYears < 12) return 'child';
+  if (ageYears < MIN_ADULT_AGE) return 'adolescent';
+  if (ageYears < ELDER_AGE) return 'adult';
+  return 'elder';
+}
+
+function identityId(worldId: string, agentId: string): string {
+  return `person:${worldId}:${agentId}`;
+}
 
 function relationshipKey(a: string, b: string): string {
   return [a, b].sort().join('::');
@@ -216,11 +419,12 @@ function assertWorldState(value: unknown): asserts value is WorldState {
 
   const growth = asRecord(state.growth, 'World growth');
   const growthStage = nonNegativeInteger(growth.stage, 'World growth.stage');
-  if (growthStage > WORLD_GROWTH_FINAL_STAGE) {
-    throw new Error('World growth.stage exceeds the supported expansion plan.');
-  }
   unitNumber(growth.explorationProgress, 'World growth.explorationProgress');
   finiteNumber(growth.lastExpansionAt, 'World growth.lastExpansionAt');
+  const frontierSequence = nonNegativeInteger(
+    growth.frontierSequence,
+    'World growth.frontierSequence',
+  );
   if (
     !Array.isArray(growth.discoveredRegionIds) ||
     growth.discoveredRegionIds.some(
@@ -230,18 +434,147 @@ function assertWorldState(value: unknown): asserts value is WorldState {
     throw new Error('World growth.discoveredRegionIds must contain strings.');
   }
   const discoveredRegionIds = growth.discoveredRegionIds as string[];
-  const expectedRegionIds = WORLD_EXPANSIONS
-    .filter((expansion) => expansion.stage <= growthStage)
-    .map((expansion) => expansion.place.id);
+  if (growthStage !== discoveredRegionIds.length) {
+    throw new Error(
+      'World growth.stage must equal the number of discovered frontier regions.',
+    );
+  }
+  if (frontierSequence < growthStage) {
+    throw new Error('World growth.frontierSequence cannot trail discovered regions.');
+  }
+  const expectedPrefix = WORLD_EXPANSIONS.slice(
+    0,
+    Math.min(growthStage, WORLD_EXPANSIONS.length),
+  ).map((expansion) => expansion.place.id);
   if (
-    discoveredRegionIds.length !== expectedRegionIds.length ||
-    discoveredRegionIds.some(
-      (regionId, index) => regionId !== expectedRegionIds[index],
+    expectedPrefix.some(
+      (regionId, index) => discoveredRegionIds[index] !== regionId,
     )
   ) {
-    throw new Error(
-      'World growth.discoveredRegionIds does not match its staged expansion history.',
+    throw new Error('World frontier history is missing its founding regions.');
+  }
+
+  const population = asRecord(state.population, 'World population');
+  const nextAgentSequence = nonNegativeInteger(
+    population.nextAgentSequence,
+    'World population.nextAgentSequence',
+  );
+  if (nextAgentSequence < 1) {
+    throw new Error('World population.nextAgentSequence must be positive.');
+  }
+  nonNegativeInteger(population.births, 'World population.births');
+  nonNegativeInteger(population.deaths, 'World population.deaths');
+  if (population.lastBirthAt !== undefined) {
+    finiteNumber(population.lastBirthAt, 'World population.lastBirthAt');
+  }
+  if (population.lastDeathAt !== undefined) {
+    finiteNumber(population.lastDeathAt, 'World population.lastDeathAt');
+  }
+
+  const cosmology = asRecord(state.cosmology, 'World cosmology');
+  unitNumber(cosmology.mysteryLevel, 'World cosmology.mysteryLevel');
+  nonNegativeInteger(cosmology.omenCount, 'World cosmology.omenCount');
+  if (
+    !Array.isArray(cosmology.traditions) ||
+    cosmology.traditions.some(
+      (tradition) => typeof tradition !== 'string' || !tradition.trim(),
+    )
+  ) {
+    throw new Error('World cosmology.traditions must contain strings.');
+  }
+  const deities = asRecord(cosmology.deities, 'World cosmology.deities');
+  for (const [deityId, rawDeity] of Object.entries(deities)) {
+    const deity = asRecord(rawDeity, `Deity ${deityId}`);
+    if (requiredString(deity.id, `Deity ${deityId}.id`) !== deityId) {
+      throw new Error(`Deity key ${deityId} does not match its id.`);
+    }
+    requiredString(deity.name, `Deity ${deityId}.name`);
+    if (!['emergent_belief', 'external_entry'].includes(deity.origin as string)) {
+      throw new Error(`Deity ${deityId}.origin is invalid.`);
+    }
+    finiteNumber(deity.enteredAt, `Deity ${deityId}.enteredAt`);
+    if (deity.lastOmenAt !== undefined) {
+      finiteNumber(deity.lastOmenAt, `Deity ${deityId}.lastOmenAt`);
+    }
+  }
+
+  const governance = asRecord(state.governance, 'World governance');
+  if (
+    requiredString(
+      governance.constitutionVersion,
+      'World governance.constitutionVersion',
+    ) !== WORLD_CONSTITUTION_VERSION
+  ) {
+    throw new Error('World constitution version is incompatible.');
+  }
+  nonNegativeInteger(
+    governance.authorityRevision,
+    'World governance.authorityRevision',
+  );
+  const protectedDomains = governance.protectedPersonhoodDomains;
+  const expectedProtectedDomains = [
+    'identity',
+    'memory',
+    'agency',
+    'values',
+    'relationships',
+  ];
+  if (
+    !Array.isArray(protectedDomains) ||
+    protectedDomains.length !== expectedProtectedDomains.length ||
+    expectedProtectedDomains.some(
+      (domain, index) => protectedDomains[index] !== domain,
+    )
+  ) {
+    throw new Error('World personhood constitution was altered.');
+  }
+  if (governance.lastCardinalAuthorityAt !== undefined) {
+    finiteNumber(
+      governance.lastCardinalAuthorityAt,
+      'World governance.lastCardinalAuthorityAt',
     );
+  }
+  const laws = asRecord(governance.laws, 'World governance.laws');
+  for (const [lawId, rawLaw] of Object.entries(laws)) {
+    const worldLaw = asRecord(rawLaw, `World law ${lawId}`);
+    if (requiredString(worldLaw.id, `World law ${lawId}.id`) !== lawId) {
+      throw new Error(`World law key ${lawId} does not match its id.`);
+    }
+    if (
+      ![
+        'geography',
+        'ecology',
+        'climate',
+        'resources',
+        'demography',
+        'cosmology',
+      ].includes(worldLaw.domain as string)
+    ) {
+      throw new Error(`World law ${lawId}.domain is invalid.`);
+    }
+    const mechanism = worldLaw.mechanism as WorldLawMechanism;
+    if (
+      !Object.prototype.hasOwnProperty.call(
+        LAW_MECHANISM_DOMAINS,
+        mechanism,
+      ) ||
+      LAW_MECHANISM_DOMAINS[mechanism] !== worldLaw.domain
+    ) {
+      throw new Error(`World law ${lawId}.mechanism is invalid for its domain.`);
+    }
+    const value = finiteNumber(worldLaw.value, `World law ${lawId}.value`);
+    const minimum = finiteNumber(worldLaw.minimum, `World law ${lawId}.minimum`);
+    const maximum = finiteNumber(worldLaw.maximum, `World law ${lawId}.maximum`);
+    if (minimum > maximum || value < minimum || value > maximum) {
+      throw new Error(`World law ${lawId}.value is outside its constitutional range.`);
+    }
+    nonNegativeInteger(worldLaw.revision, `World law ${lawId}.revision`);
+    finiteNumber(worldLaw.createdAt, `World law ${lawId}.createdAt`);
+    finiteNumber(worldLaw.updatedAt, `World law ${lawId}.updatedAt`);
+    if (!['system', 'cardinal'].includes(worldLaw.createdBy as string)) {
+      throw new Error(`World law ${lawId}.createdBy is invalid.`);
+    }
+    requiredString(worldLaw.rationale, `World law ${lawId}.rationale`);
   }
 
   const places = asRecord(state.places, 'World places');
@@ -261,8 +594,42 @@ function assertWorldState(value: unknown): asserts value is WorldState {
     if (!Number.isInteger(capacity) || capacity < 1) {
       throw new Error(`World place ${placeId}.capacity must be a positive integer.`);
     }
+    if (!BIOMES.includes(place.biome as WorldBiome)) {
+      throw new Error(`World place ${placeId}.biome is invalid.`);
+    }
+    finiteNumber(place.mapX, `World place ${placeId}.mapX`);
+    finiteNumber(place.mapY, `World place ${placeId}.mapY`);
+    if (
+      !Array.isArray(place.connectedPlaceIds) ||
+      place.connectedPlaceIds.some(
+        (connectedId) => typeof connectedId !== 'string' || !connectedId.trim(),
+      )
+    ) {
+      throw new Error(`World place ${placeId}.connectedPlaceIds must contain strings.`);
+    }
+    unitNumber(place.fertility, `World place ${placeId}.fertility`);
+    unitNumber(place.danger, `World place ${placeId}.danger`);
     if (place.discoveredAt !== undefined) {
       finiteNumber(place.discoveredAt, `World place ${placeId}.discoveredAt`);
+    }
+  }
+  for (const [placeId, rawPlace] of Object.entries(places)) {
+    const place = asRecord(rawPlace, `World place ${placeId}`);
+    for (const connectedId of place.connectedPlaceIds as string[]) {
+      if (!places[connectedId]) {
+        throw new Error(
+          `World place ${placeId} references missing connection ${connectedId}.`,
+        );
+      }
+      const connected = asRecord(
+        places[connectedId],
+        `World place ${connectedId}`,
+      );
+      if (!(connected.connectedPlaceIds as string[]).includes(placeId)) {
+        throw new Error(
+          `World connection ${placeId} -> ${connectedId} must be reciprocal.`,
+        );
+      }
     }
   }
   for (const expansion of WORLD_EXPANSIONS) {
@@ -375,6 +742,9 @@ function assertWorldState(value: unknown): asserts value is WorldState {
       throw new Error(`Agent key ${agentId} does not match its id.`);
     }
     requiredString(agent.name, `Agent ${agentId}.name`);
+    if (!['native', 'external_resident'].includes(agent.origin as string)) {
+      throw new Error(`Agent ${agentId}.origin is invalid.`);
+    }
     assertUnitFields(
       agent,
       ['energy', 'stress', 'resources', 'socialDrive'],
@@ -387,6 +757,96 @@ function assertWorldState(value: unknown): asserts value is WorldState {
       personality,
       ['sociability', 'diligence', 'curiosity', 'generosity', 'resilience', 'riskTolerance'],
       `Agent ${agentId}.personality`,
+    );
+
+    const life = asRecord(agent.life, `Agent ${agentId}.life`);
+    finiteNumber(life.bornAt, `Agent ${agentId}.life.bornAt`);
+    const ageYears = finiteNumber(
+      life.ageYears,
+      `Agent ${agentId}.life.ageYears`,
+    );
+    const lifespanYears = finiteNumber(
+      life.lifespanYears,
+      `Agent ${agentId}.life.lifespanYears`,
+    );
+    if (ageYears < 0 || lifespanYears < 1) {
+      throw new Error(`Agent ${agentId} has invalid biological age.`);
+    }
+    if (!['child', 'adolescent', 'adult', 'elder'].includes(life.stage as string)) {
+      throw new Error(`Agent ${agentId}.life.stage is invalid.`);
+    }
+    if (life.stage !== lifeStageForAge(ageYears)) {
+      throw new Error(`Agent ${agentId}.life.stage does not match biological age.`);
+    }
+    if (typeof life.alive !== 'boolean') {
+      throw new Error(`Agent ${agentId}.life.alive must be boolean.`);
+    }
+    unitNumber(life.health, `Agent ${agentId}.life.health`);
+    nonNegativeInteger(life.generation, `Agent ${agentId}.life.generation`);
+    for (const field of ['parentIds', 'childIds'] as const) {
+      if (
+        !Array.isArray(life[field]) ||
+        life[field].some(
+          (relativeId) => typeof relativeId !== 'string' || !relativeId.trim(),
+        )
+      ) {
+        throw new Error(`Agent ${agentId}.life.${field} must contain IDs.`);
+      }
+    }
+    if (life.lastChildAt !== undefined) {
+      finiteNumber(life.lastChildAt, `Agent ${agentId}.life.lastChildAt`);
+    }
+    if (life.diedAt !== undefined) {
+      finiteNumber(life.diedAt, `Agent ${agentId}.life.diedAt`);
+    }
+    if (
+      life.deathCause !== undefined &&
+      !['old_age', 'illness', 'deprivation', 'catastrophe'].includes(
+        life.deathCause as AgentDeathCause,
+      )
+    ) {
+      throw new Error(`Agent ${agentId}.life.deathCause is invalid.`);
+    }
+    if (
+      life.alive &&
+      (life.diedAt !== undefined || life.deathCause !== undefined)
+    ) {
+      throw new Error(`Living agent ${agentId} cannot have a death record.`);
+    }
+    if (!life.alive && life.diedAt === undefined) {
+      throw new Error(`Dead agent ${agentId} must retain diedAt.`);
+    }
+
+    const mind = asRecord(agent.mind, `Agent ${agentId}.mind`);
+    requiredString(mind.identityId, `Agent ${agentId}.mind.identityId`);
+    if (mind.identityId !== identityId(id, agentId)) {
+      throw new Error(`Agent ${agentId} identity continuity key changed.`);
+    }
+    assertUnitFields(
+      mind,
+      ['continuity', 'autonomy', 'memoryCoherence'],
+      `Agent ${agentId}.mind`,
+    );
+    const emotions = asRecord(
+      mind.emotions,
+      `Agent ${agentId}.mind.emotions`,
+    );
+    assertUnitFields(
+      emotions,
+      ['joy', 'fear', 'grief', 'awe', 'hope'],
+      `Agent ${agentId}.mind.emotions`,
+    );
+    const values = asRecord(mind.values, `Agent ${agentId}.mind.values`);
+    assertUnitFields(
+      values,
+      ['care', 'freedom', 'knowledge', 'tradition', 'ambition'],
+      `Agent ${agentId}.mind.values`,
+    );
+    const beliefs = asRecord(mind.beliefs, `Agent ${agentId}.mind.beliefs`);
+    assertUnitFields(
+      beliefs,
+      ['worldTrust', 'divinePresence', 'fate', 'afterlife'],
+      `Agent ${agentId}.mind.beliefs`,
     );
 
     const needs = asRecord(agent.needs, `Agent ${agentId}.needs`);
@@ -455,6 +915,64 @@ function assertWorldState(value: unknown): asserts value is WorldState {
         `Agent ${agentId}.lastDecision.chosenAt`,
       );
     }
+
+    if (agent.plan !== undefined) {
+      const plan = asRecord(agent.plan, `Agent ${agentId}.plan`);
+      if (!['explore_frontier', 'hunt'].includes(plan.kind as string)) {
+        throw new Error(`Agent ${agentId}.plan.kind is invalid.`);
+      }
+      const targetPlaceId = requiredString(
+        plan.targetPlaceId,
+        `Agent ${agentId}.plan.targetPlaceId`,
+      );
+      if (!places[targetPlaceId]) {
+        throw new Error(`Agent ${agentId}.plan references a missing place.`);
+      }
+      const startedAt = finiteNumber(
+        plan.startedAt,
+        `Agent ${agentId}.plan.startedAt`,
+      );
+      const expiresAt = finiteNumber(
+        plan.expiresAt,
+        `Agent ${agentId}.plan.expiresAt`,
+      );
+      if (expiresAt < startedAt) {
+        throw new Error(`Agent ${agentId}.plan expires before it starts.`);
+      }
+    }
+  }
+
+  for (const [agentId, rawAgent] of Object.entries(agents)) {
+    const agent = asRecord(rawAgent, `Agent ${agentId}`);
+    const life = asRecord(agent.life, `Agent ${agentId}.life`);
+    for (const parentId of life.parentIds as string[]) {
+      const parent = agents[parentId];
+      if (!parent) {
+        throw new Error(`Agent ${agentId} references missing parent ${parentId}.`);
+      }
+      const parentLife = asRecord(parent, `Agent ${parentId}`).life;
+      if (
+        !Array.isArray(asRecord(parentLife, `Agent ${parentId}.life`).childIds) ||
+        !(asRecord(parentLife, `Agent ${parentId}.life`).childIds as string[]).includes(
+          agentId,
+        )
+      ) {
+        throw new Error(`Agent ${agentId} lineage is not reciprocal.`);
+      }
+    }
+    for (const childId of life.childIds as string[]) {
+      const child = agents[childId];
+      if (!child) {
+        throw new Error(`Agent ${agentId} references missing child ${childId}.`);
+      }
+      const childLife = asRecord(
+        asRecord(child, `Agent ${childId}`).life,
+        `Agent ${childId}.life`,
+      );
+      if (!(childLife.parentIds as string[]).includes(agentId)) {
+        throw new Error(`Agent ${agentId} lineage is not reciprocal.`);
+      }
+    }
   }
 
   const relationships = asRecord(state.relationships, 'World relationships');
@@ -486,58 +1004,322 @@ function createPlace(
   name: string,
   kind: WorldPlaceKind,
   capacity: number,
+  options: Partial<
+    Pick<
+      WorldPlace,
+      | 'biome'
+      | 'mapX'
+      | 'mapY'
+      | 'connectedPlaceIds'
+      | 'fertility'
+      | 'danger'
+      | 'discoveredAt'
+    >
+  > = {},
 ): WorldPlace {
-  return { id, name, kind, capacity };
+  return {
+    id,
+    name,
+    kind,
+    capacity,
+    biome: options.biome ?? 'settlement',
+    mapX: options.mapX ?? 50,
+    mapY: options.mapY ?? 50,
+    connectedPlaceIds: [...(options.connectedPlaceIds ?? [])],
+    fertility: options.fertility ?? 0.5,
+    danger: options.danger ?? 0.08,
+    ...(options.discoveredAt === undefined
+      ? {}
+      : { discoveredAt: options.discoveredAt }),
+  };
+}
+
+function makeConnectionsReciprocal(places: Record<string, WorldPlace>): void {
+  for (const place of Object.values(places)) {
+    place.connectedPlaceIds = [...new Set(place.connectedPlaceIds)];
+    for (const connectedId of place.connectedPlaceIds) {
+      const connected = places[connectedId];
+      if (connected && !connected.connectedPlaceIds.includes(place.id)) {
+        connected.connectedPlaceIds.push(place.id);
+      }
+    }
+  }
+}
+
+function placeMigrationDefaults(
+  place: Pick<WorldPlace, 'id' | 'kind'>,
+  homeIndex: number,
+): Pick<
+  WorldPlace,
+  | 'biome'
+  | 'mapX'
+  | 'mapY'
+  | 'connectedPlaceIds'
+  | 'fertility'
+  | 'danger'
+> {
+  const fixed = WORLD_EXPANSIONS.find(
+    (expansion) => expansion.place.id === place.id,
+  )?.place;
+  if (fixed) {
+    return {
+      biome: fixed.biome,
+      mapX: fixed.mapX,
+      mapY: fixed.mapY,
+      connectedPlaceIds: [...fixed.connectedPlaceIds],
+      fertility: fixed.fertility,
+      danger: fixed.danger,
+    };
+  }
+
+  const base: Record<
+    string,
+    Pick<
+      WorldPlace,
+      | 'biome'
+      | 'mapX'
+      | 'mapY'
+      | 'connectedPlaceIds'
+      | 'fertility'
+      | 'danger'
+    >
+  > = {
+    commons: {
+      biome: 'settlement',
+      mapX: 50,
+      mapY: 48,
+      connectedPlaceIds: [
+        'resource_field',
+        'workshop',
+        'quiet_space',
+        'outskirts',
+      ],
+      fertility: 0.55,
+      danger: 0.03,
+    },
+    resource_field: {
+      biome: 'plains',
+      mapX: 16,
+      mapY: 23,
+      connectedPlaceIds: ['commons'],
+      fertility: 0.72,
+      danger: 0.08,
+    },
+    workshop: {
+      biome: 'settlement',
+      mapX: 83,
+      mapY: 25,
+      connectedPlaceIds: ['commons'],
+      fertility: 0.28,
+      danger: 0.1,
+    },
+    quiet_space: {
+      biome: 'forest',
+      mapX: 18,
+      mapY: 75,
+      connectedPlaceIds: ['commons'],
+      fertility: 0.65,
+      danger: 0.02,
+    },
+    outskirts: {
+      biome: 'plains',
+      mapX: 82,
+      mapY: 76,
+      connectedPlaceIds: ['commons'],
+      fertility: 0.52,
+      danger: 0.18,
+    },
+  };
+  if (base[place.id]) return base[place.id];
+
+  if (place.kind === 'home') {
+    const angle = (Math.PI * 2 * homeIndex) / 6 - Math.PI / 2;
+    return {
+      biome: 'settlement',
+      mapX: clamp01(0.5 + Math.cos(angle) * 0.43) * 100,
+      mapY: clamp01(0.5 + Math.sin(angle) * 0.43) * 100,
+      connectedPlaceIds: ['commons'],
+      fertility: 0.58,
+      danger: 0.02,
+    };
+  }
+
+  return {
+    biome: 'plains',
+    mapX: 50,
+    mapY: 50,
+    connectedPlaceIds: ['outskirts'],
+    fertility: 0.5,
+    danger: 0.15,
+  };
+}
+
+function createMindState(
+  worldId: string,
+  agentId: string,
+  personality: Readonly<AgentState['personality']>,
+  needs: Readonly<AgentState['needs']>,
+): AgentState['mind'] {
+  return {
+    identityId: identityId(worldId, agentId),
+    continuity: 1,
+    autonomy: clamp01(
+      0.58 + personality.curiosity * 0.16 + personality.riskTolerance * 0.12,
+    ),
+    memoryCoherence: 0.82,
+    emotions: {
+      joy: clamp01(0.42 + needs.belonging * 0.22),
+      fear: clamp01(0.12 + (1 - personality.resilience) * 0.24),
+      grief: 0,
+      awe: clamp01(0.08 + personality.curiosity * 0.12),
+      hope: clamp01(0.45 + personality.resilience * 0.32),
+    },
+    values: {
+      care: clamp01(0.3 + personality.generosity * 0.62),
+      freedom: clamp01(
+        0.32 + personality.curiosity * 0.3 + personality.riskTolerance * 0.25,
+      ),
+      knowledge: clamp01(0.28 + personality.curiosity * 0.66),
+      tradition: clamp01(
+        0.25 + personality.diligence * 0.32 + (1 - personality.curiosity) * 0.18,
+      ),
+      ambition: clamp01(
+        0.25 + personality.diligence * 0.46 + personality.riskTolerance * 0.18,
+      ),
+    },
+    beliefs: {
+      worldTrust: clamp01(0.4 + personality.resilience * 0.35),
+      divinePresence: clamp01(0.08 + (1 - personality.riskTolerance) * 0.16),
+      fate: clamp01(0.12 + (1 - personality.curiosity) * 0.2),
+      afterlife: clamp01(0.1 + personality.generosity * 0.14),
+    },
+  };
 }
 
 async function migrateLegacyWorld(
   store: WorldStore,
   legacy: WorldState,
 ): Promise<WorldState> {
-  const operationId = 'migration:world-rules-0.3.8-to-0.3.9';
+  const fromVersion = legacy.rulesVersion;
+  const operationId = `migration:${fromVersion}-to-${WORLD_RULES_VERSION}`;
   const operationFingerprint = stableJsonStringify({
     kind: 'world_migration',
-    from: LEGACY_WORLD_RULES_VERSION,
+    from: fromVersion,
     to: WORLD_RULES_VERSION,
   });
-  const next = structuredClone(legacy);
+  const next = structuredClone(legacy) as WorldState;
+  const mutable = next as unknown as Record<string, any>;
 
   next.rulesVersion = WORLD_RULES_VERSION;
   next.revision = legacy.revision + 1;
   next.environment = {
     ...next.environment,
-    habitatSupport: 0.5,
+    habitatSupport: next.environment.habitatSupport ?? 0.5,
   };
-  next.growth = {
-    stage: 0,
-    explorationProgress: 0,
-    lastExpansionAt: legacy.now,
-    discoveredRegionIds: [],
-  };
-  next.wildlife = {};
+  if (!mutable.growth) {
+    mutable.growth = {
+      stage: 0,
+      explorationProgress: 0,
+      lastExpansionAt: legacy.now,
+      discoveredRegionIds: [],
+      frontierSequence: 0,
+    };
+  } else {
+    mutable.growth.frontierSequence =
+      mutable.growth.frontierSequence ?? mutable.growth.stage;
+  }
+  mutable.wildlife ??= {};
 
-  for (const agent of Object.values(next.agents)) {
+  const homeIds = Object.values(next.places)
+    .filter((place) => place.kind === 'home')
+    .map((place) => place.id);
+  for (const place of Object.values(next.places)) {
+    const defaults = placeMigrationDefaults(
+      place,
+      Math.max(0, homeIds.indexOf(place.id)),
+    );
+    Object.assign(place, {
+      biome: place.biome ?? defaults.biome,
+      mapX: place.mapX ?? defaults.mapX,
+      mapY: place.mapY ?? defaults.mapY,
+      connectedPlaceIds: place.connectedPlaceIds ?? defaults.connectedPlaceIds,
+      fertility: place.fertility ?? defaults.fertility,
+      danger: place.danger ?? defaults.danger,
+    });
+  }
+  makeConnectionsReciprocal(next.places);
+
+  const agents = Object.values(next.agents);
+  agents.forEach((agent, index) => {
+    const priorHunting = (agent.skills as Partial<AgentState['skills']>).hunting;
     agent.skills = {
       ...agent.skills,
-      hunting: clamp01(
-        agent.skills.gathering * 0.28 +
-          agent.skills.exploration * 0.32 +
-          agent.personality.riskTolerance * 0.22,
-      ),
+      hunting:
+        priorHunting === undefined
+          ? clamp01(
+              agent.skills.gathering * 0.28 +
+                agent.skills.exploration * 0.32 +
+                agent.personality.riskTolerance * 0.22,
+            )
+          : priorHunting,
     };
-  }
+    const ageYears = 22 + ((index * 7) % 27);
+    agent.origin ??= 'native';
+    agent.life ??= {
+      bornAt: next.now - ageYears * WORLD_TICKS_PER_YEAR,
+      ageYears,
+      lifespanYears: 72 + agent.personality.resilience * 26 + (index % 5),
+      stage: lifeStageForAge(ageYears),
+      alive: true,
+      health: clamp01(0.72 + agent.personality.resilience * 0.24),
+      generation: 0,
+      parentIds: [],
+      childIds: [],
+    };
+    agent.mind ??= createMindState(
+      next.id,
+      agent.id,
+      agent.personality,
+      agent.needs,
+    );
+  });
+
+  next.population = mutable.population ?? {
+    nextAgentSequence: agents.length + 1,
+    births: 0,
+    deaths: 0,
+  };
+  next.cosmology = mutable.cosmology ?? {
+    mysteryLevel: 0.12,
+    omenCount: 0,
+    traditions: [],
+    deities: {},
+  };
+  next.governance = mutable.governance ?? {
+    constitutionVersion: WORLD_CONSTITUTION_VERSION,
+    authorityRevision: 0,
+    protectedPersonhoodDomains: [
+      'identity',
+      'memory',
+      'agency',
+      'values',
+      'relationships',
+    ],
+    laws: defaultWorldLaws(next.now),
+  };
 
   next.determinism.eventSequence += 1;
   const migrationEvent: WorldEvent = {
-    eventId: `migration:${next.id}:world-rules-0.3.9`,
+    eventId: `migration:${next.id}:world-rules-0.3.10`,
     worldId: next.id,
     kind: 'world.migrated',
     source: 'system',
     occurredAt: next.now,
     payload: {
-      from: LEGACY_WORLD_RULES_VERSION,
+      from: fromVersion,
       to: WORLD_RULES_VERSION,
       preservedTick: next.now,
+      preservedPeople: agents.length,
     },
   };
 
@@ -585,6 +1367,20 @@ function goalFromInitialState(agent: Omit<AgentState, 'goal'>, now: number): Age
         (1 - agent.needs.purpose) * 0.2 +
         (1 - agent.personality.riskTolerance) * 0.25 +
         (1 - agent.personality.sociability) * 0.15,
+    },
+    {
+      kind: 'build_family',
+      strength:
+        (agent.life.stage === 'adult' ? 0.24 : 0) +
+        agent.mind.values.care * 0.26 +
+        agent.needs.belonging * 0.16,
+    },
+    {
+      kind: 'seek_truth',
+      strength:
+        agent.mind.values.knowledge * 0.38 +
+        agent.mind.emotions.awe * 0.24 +
+        agent.personality.curiosity * 0.24,
     },
   ];
   scores.sort((a, b) => b.strength - a.strength);
@@ -653,18 +1449,60 @@ export class WorldEngine {
     const rng = new SeededRng(options.seed);
     const names = options.agentNames ?? ['Alex', 'Mira', 'Kai', 'Noa', 'Ilan', 'Rin'];
     const places: Record<string, WorldPlace> = {
-      commons: createPlace('commons', 'Common Square', 'commons', Math.max(8, names.length * 2)),
-      resource_field: createPlace('resource_field', 'Resource Field', 'resource_field', Math.max(6, names.length)),
-      workshop: createPlace('workshop', 'Workshop', 'workshop', Math.max(6, names.length)),
-      quiet_space: createPlace('quiet_space', 'Quiet Garden', 'quiet_space', Math.max(4, names.length)),
-      outskirts: createPlace('outskirts', 'Outskirts', 'outskirts', Math.max(8, names.length * 2)),
+      commons: createPlace(
+        'commons',
+        'Common Square',
+        'commons',
+        Math.max(8, names.length * 2),
+        placeMigrationDefaults({ id: 'commons', kind: 'commons' }, 0),
+      ),
+      resource_field: createPlace(
+        'resource_field',
+        'Resource Field',
+        'resource_field',
+        Math.max(6, names.length),
+        placeMigrationDefaults(
+          { id: 'resource_field', kind: 'resource_field' },
+          0,
+        ),
+      ),
+      workshop: createPlace(
+        'workshop',
+        'Workshop',
+        'workshop',
+        Math.max(6, names.length),
+        placeMigrationDefaults({ id: 'workshop', kind: 'workshop' }, 0),
+      ),
+      quiet_space: createPlace(
+        'quiet_space',
+        'Quiet Garden',
+        'quiet_space',
+        Math.max(4, names.length),
+        placeMigrationDefaults(
+          { id: 'quiet_space', kind: 'quiet_space' },
+          0,
+        ),
+      ),
+      outskirts: createPlace(
+        'outskirts',
+        'Outskirts',
+        'outskirts',
+        Math.max(8, names.length * 2),
+        placeMigrationDefaults({ id: 'outskirts', kind: 'outskirts' }, 0),
+      ),
     };
     const agents: Record<string, AgentState> = {};
 
     names.forEach((name, index) => {
       const id = `agent_${index + 1}`;
       const homeId = `home_${id}`;
-      places[homeId] = createPlace(homeId, `${name}'s Home`, 'home', 3);
+      places[homeId] = createPlace(
+        homeId,
+        `${name}'s Home`,
+        'home',
+        3,
+        placeMigrationDefaults({ id: homeId, kind: 'home' }, index),
+      );
 
       const personality = {
         sociability: rng.between(0.18, 0.92),
@@ -677,18 +1515,34 @@ export class WorldEngine {
       const socialDrive = clamp01(
         personality.sociability * 0.75 + rng.between(0.05, 0.25),
       );
+      const needs = {
+        belonging: rng.between(0.35, 0.8),
+        purpose: rng.between(0.35, 0.8),
+      };
+      const ageYears = 21 + ((index * 7) % 27);
       const partial = {
         id,
         name,
+        origin: 'native' as const,
         energy: rng.between(0.55, 0.95),
         stress: rng.between(0.05, 0.25),
         resources: rng.between(0.35, 0.8),
         socialDrive,
         personality,
-        needs: {
-          belonging: rng.between(0.35, 0.8),
-          purpose: rng.between(0.35, 0.8),
+        life: {
+          bornAt: now - ageYears * WORLD_TICKS_PER_YEAR,
+          ageYears,
+          lifespanYears:
+            72 + personality.resilience * 26 + (index % 5),
+          stage: lifeStageForAge(ageYears),
+          alive: true,
+          health: clamp01(0.72 + personality.resilience * 0.24),
+          generation: 0,
+          parentIds: [],
+          childIds: [],
         },
+        mind: createMindState(options.worldId, id, personality, needs),
+        needs,
         skills: {
           gathering: rng.between(0.15, 0.55),
           hunting: rng.between(0.08, 0.42),
@@ -706,6 +1560,7 @@ export class WorldEngine {
         goal: goalFromInitialState(partial, now),
       };
     });
+    makeConnectionsReciprocal(places);
 
     const state: WorldState = {
       id: options.worldId,
@@ -728,6 +1583,30 @@ export class WorldEngine {
         explorationProgress: 0,
         lastExpansionAt: now,
         discoveredRegionIds: [],
+        frontierSequence: 0,
+      },
+      population: {
+        nextAgentSequence: names.length + 1,
+        births: 0,
+        deaths: 0,
+      },
+      cosmology: {
+        mysteryLevel: 0.12,
+        omenCount: 0,
+        traditions: [],
+        deities: {},
+      },
+      governance: {
+        constitutionVersion: WORLD_CONSTITUTION_VERSION,
+        authorityRevision: 0,
+        protectedPersonhoodDomains: [
+          'identity',
+          'memory',
+          'agency',
+          'values',
+          'relationships',
+        ],
+        laws: defaultWorldLaws(now),
       },
       places,
       wildlife: {},
@@ -745,7 +1624,7 @@ export class WorldEngine {
     if (!state) {
       throw new Error(`World ${options.worldId} does not exist in the store.`);
     }
-    if (state.rulesVersion === LEGACY_WORLD_RULES_VERSION) {
+    if (LEGACY_WORLD_RULES_VERSIONS.has(state.rulesVersion)) {
       state = await migrateLegacyWorld(options.store, state);
     }
     if (state.rulesVersion !== WORLD_RULES_VERSION) {
@@ -818,18 +1697,27 @@ export class WorldEngine {
 
       // The control world has endogenous recovery. Cardinal is not the only
       // source of resources, production, social repair or stress recovery.
+      const resourceRegenerationLaw =
+        this.lawValue('resource_regeneration', 1);
       this.state.environment.resourcePool = clamp01(
         this.state.environment.resourcePool +
-          this.state.environment.resourceRegenerationRate,
+          this.state.environment.resourceRegenerationRate *
+            resourceRegenerationLaw,
       );
 
       const effectiveEnvironment = await this.effectiveEnvironment(now);
       this.advanceWildlife(effectiveEnvironment, now);
-      const agents = this.shuffled(Object.values(this.state.agents));
+      this.advanceAgingAndMortality(now);
+      const agents = this.shuffled(
+        Object.values(this.state.agents).filter((agent) => agent.life.alive),
+      );
 
       for (const agent of agents) {
         await this.stepAgent(agent, agents, effectiveEnvironment, now);
       }
+      this.advanceBirths(now);
+      this.advanceMysticism(now);
+      this.advanceCollectiveMyth(now);
     });
   }
 
@@ -1012,6 +1900,530 @@ export class WorldEngine {
           occurredAt: now,
           payload: { magnitude: amount },
           activeUntil: now + Math.max(1, duration),
+        });
+      },
+      expectedWorldRevision,
+    );
+  }
+
+  /** Cardinal may propose world laws, but only the independent authority
+   * gateway receives this mutation capability. Personhood is not addressable
+   * through this method. */
+  async applyAuthorizedWorldLaw(
+    worldId: string,
+    lawId: string,
+    domain: WorldLawDomain,
+    mechanism: WorldLawMechanism,
+    value: number,
+    minimum: number,
+    maximum: number,
+    rationale: string,
+    now: number,
+    operationId: string,
+    expectedWorldRevision: number,
+  ): Promise<WorldMutationResult> {
+    if (worldId !== this.committedState.id) {
+      throw new Error('World-law proposal belongs to a different world.');
+    }
+    if (!lawId.trim() || !rationale.trim() || !operationId.trim()) {
+      throw new Error('World-law mutation requires IDs and rationale.');
+    }
+    if (LAW_MECHANISM_DOMAINS[mechanism] !== domain) {
+      throw new Error('World-law mechanism does not belong to its domain.');
+    }
+    if (
+      !Number.isFinite(value) ||
+      !Number.isFinite(minimum) ||
+      !Number.isFinite(maximum) ||
+      minimum > maximum ||
+      value < minimum ||
+      value > maximum ||
+      !Number.isFinite(now)
+    ) {
+      throw new Error('World-law value and time must be finite.');
+    }
+    const fingerprint = stableJsonStringify({
+      kind: 'world_law',
+      worldId,
+      lawId,
+      domain,
+      mechanism,
+      value,
+      minimum,
+      maximum,
+      rationale,
+      now,
+      expectedWorldRevision,
+    });
+    return await this.mutateDetailed(
+      `world-authority:${operationId}`,
+      fingerprint,
+      async () => {
+        let current = this.state.governance.laws[lawId];
+        if (!current) {
+          current = {
+            id: lawId,
+            domain,
+            mechanism,
+            value,
+            minimum,
+            maximum,
+            revision: 0,
+            createdAt: now,
+            updatedAt: now,
+            createdBy: 'cardinal',
+            rationale,
+          };
+          this.state.governance.laws[lawId] = current;
+        } else if (
+          current.domain !== domain ||
+          current.mechanism !== mechanism ||
+          minimum < current.minimum ||
+          maximum > current.maximum ||
+          value < current.minimum ||
+          value > current.maximum
+        ) {
+          throw new Error(`World law ${lawId} exceeds its constitutional range.`);
+        } else {
+          current.value = value;
+          current.revision += 1;
+          current.updatedAt = now;
+          current.createdBy = 'cardinal';
+          current.rationale = rationale;
+        }
+        this.state.governance.authorityRevision += 1;
+        this.state.governance.lastCardinalAuthorityAt = now;
+        this.stageEvent({
+          eventId: this.stableOperationEventId('world-law', operationId),
+          worldId: this.state.id,
+          kind: 'cardinal.world_law.changed',
+          source: 'cardinal',
+          occurredAt: now,
+          payload: {
+            lawId,
+            domain: current.domain,
+            mechanism: current.mechanism,
+            value,
+            lawRevision: current.revision,
+            rationale,
+          },
+        });
+      },
+      expectedWorldRevision,
+    );
+  }
+
+  async applyAuthorizedCatastrophe(
+    worldId: string,
+    catastropheKind: string,
+    magnitude: number,
+    maxCasualtyRatio: number,
+    recoveryPlan: string,
+    now: number,
+    duration: number,
+    operationId: string,
+    expectedWorldRevision: number,
+  ): Promise<WorldMutationResult> {
+    const allowed = ['wildfire', 'flood', 'epidemic', 'earthquake', 'drought'];
+    if (worldId !== this.committedState.id) {
+      throw new Error('Catastrophe proposal belongs to a different world.');
+    }
+    if (!allowed.includes(catastropheKind)) {
+      throw new Error('Unknown catastrophe kind.');
+    }
+    if (
+      !Number.isFinite(magnitude) ||
+      magnitude <= 0 ||
+      magnitude > 0.35 ||
+      !Number.isFinite(maxCasualtyRatio) ||
+      maxCasualtyRatio < 0 ||
+      maxCasualtyRatio > 0.18 ||
+      !Number.isFinite(now) ||
+      !Number.isFinite(duration) ||
+      duration < 1 ||
+      !recoveryPlan.trim() ||
+      !operationId.trim()
+    ) {
+      throw new Error('Catastrophe parameters exceed the world safety envelope.');
+    }
+    const fingerprint = stableJsonStringify({
+      kind: 'catastrophe',
+      worldId,
+      catastropheKind,
+      magnitude,
+      maxCasualtyRatio,
+      recoveryPlan,
+      now,
+      duration,
+      expectedWorldRevision,
+    });
+    return await this.mutateDetailed(
+      `world-authority:${operationId}`,
+      fingerprint,
+      async () => {
+        const living = this.shuffled(
+          Object.values(this.state.agents).filter((agent) => agent.life.alive),
+        );
+        const maximumDeaths = Math.max(
+          0,
+          Math.min(
+            Math.floor(living.length * maxCasualtyRatio),
+            Math.max(0, living.length - 4),
+          ),
+        );
+        let deaths = 0;
+        for (const agent of living) {
+          const place = this.state.places[agent.locationId];
+          const exposure = clamp01(
+            magnitude *
+              (0.34 + (place?.danger ?? 0.1) * 0.5) *
+              (1.16 - agent.personality.resilience * 0.32),
+          );
+          agent.life.health = clamp01(agent.life.health - exposure);
+          agent.stress = clamp01(agent.stress + magnitude * 0.32);
+          agent.mind.emotions.fear = clamp01(
+            agent.mind.emotions.fear + magnitude * 0.46,
+          );
+          agent.mind.emotions.awe = clamp01(
+            agent.mind.emotions.awe + magnitude * 0.2,
+          );
+          if (agent.life.health <= 0.06 && deaths < maximumDeaths) {
+            this.recordDeath(agent, 'catastrophe', now);
+            deaths += 1;
+          } else {
+            agent.life.health = Math.max(agent.life.health, 0.07);
+            this.stageMemory({
+              memoryId: this.nextId('memory'),
+              worldId: this.state.id,
+              agentId: agent.id,
+              createdAt: now,
+              kind: 'world_event',
+              summary: `${agent.name} survived the ${catastropheKind}.`,
+              importance: 0.9,
+              valence: -0.74,
+              relatedAgentIds: [],
+            });
+          }
+        }
+
+        const wildlifeLoss = clamp01(magnitude * 0.58);
+        for (const population of Object.values(this.state.wildlife)) {
+          population.count = Math.max(
+            0,
+            population.count - Math.floor(population.count * wildlifeLoss),
+          );
+          population.lastChangedAt = now;
+        }
+        if (catastropheKind === 'drought' || catastropheKind === 'wildfire') {
+          this.state.environment.resourcePool = clamp01(
+            this.state.environment.resourcePool - magnitude * 0.62,
+          );
+        }
+        this.state.cosmology.mysteryLevel = clamp01(
+          this.state.cosmology.mysteryLevel + magnitude * 0.12,
+        );
+        this.state.governance.authorityRevision += 1;
+        this.state.governance.lastCardinalAuthorityAt = now;
+        const recoveryMagnitude = clamp01(
+          magnitude * this.lawValue('catastrophe_recovery', 0.75),
+        );
+        this.stageEvent({
+          eventId: this.stableOperationEventId('catastrophe', operationId),
+          worldId: this.state.id,
+          kind: `cardinal.catastrophe.${catastropheKind}`,
+          source: 'cardinal',
+          occurredAt: now,
+          activeUntil: now + duration * 3,
+          payload: {
+            magnitude,
+            deaths,
+            maximumDeaths,
+            maxCasualtyRatio,
+            recoveryPlan,
+            destructiveUntil: now + duration,
+            recoveryMagnitude,
+          },
+        });
+      },
+      expectedWorldRevision,
+    );
+  }
+
+  async applyAuthorizedResidentEntry(
+    worldId: string,
+    entryId: string,
+    name: string,
+    now: number,
+    operationId: string,
+    expectedWorldRevision: number,
+  ): Promise<WorldMutationResult> {
+    if (worldId !== this.committedState.id) {
+      throw new Error('Resident entry belongs to a different world.');
+    }
+    if (
+      !entryId.trim() ||
+      !name.trim() ||
+      !operationId.trim() ||
+      !Number.isFinite(now) ||
+      !/^[a-zA-Z0-9][a-zA-Z0-9_-]{2,63}$/.test(entryId) ||
+      name.length > 64
+    ) {
+      throw new Error('Resident entry requires stable identity and name.');
+    }
+    const residentId = `visitor_${entryId.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+    const fingerprint = stableJsonStringify({
+      kind: 'resident_entry',
+      worldId,
+      residentId,
+      name,
+      now,
+      expectedWorldRevision,
+    });
+    return await this.mutateDetailed(
+      `world-entry:${operationId}`,
+      fingerprint,
+      async () => {
+        if (this.state.agents[residentId]) {
+          throw new Error(`Resident entry ${residentId} already exists.`);
+        }
+        const personality: AgentState['personality'] = {
+          sociability: this.rng.between(0.35, 0.8),
+          diligence: this.rng.between(0.35, 0.8),
+          curiosity: this.rng.between(0.55, 0.92),
+          generosity: this.rng.between(0.35, 0.82),
+          resilience: this.rng.between(0.45, 0.86),
+          riskTolerance: this.rng.between(0.35, 0.8),
+        };
+        const needs = { belonging: 0.55, purpose: 0.62 };
+        const homeId = `home_${residentId}`;
+        const angle = this.state.population.nextAgentSequence * 2.399963229728653;
+        this.state.places[homeId] = createPlace(
+          homeId,
+          `${name}'s Home`,
+          'home',
+          3,
+          {
+            biome: 'settlement',
+            mapX: Math.max(5, Math.min(95, 50 + Math.cos(angle) * 42)),
+            mapY: Math.max(5, Math.min(95, 50 + Math.sin(angle) * 42)),
+            connectedPlaceIds: ['commons'],
+            fertility: 0.58,
+            danger: 0.02,
+          },
+        );
+        makeConnectionsReciprocal(this.state.places);
+        const ageYears = 25;
+        const partial = {
+          id: residentId,
+          name,
+          origin: 'external_resident' as const,
+          energy: 0.84,
+          stress: 0.08,
+          resources: 0.62,
+          socialDrive: personality.sociability,
+          personality,
+          life: {
+            bornAt: now - ageYears * WORLD_TICKS_PER_YEAR,
+            ageYears,
+            lifespanYears: 78 + personality.resilience * 22,
+            stage: 'adult' as const,
+            alive: true,
+            health: 0.92,
+            generation: 0,
+            parentIds: [],
+            childIds: [],
+          },
+          mind: createMindState(this.state.id, residentId, personality, needs),
+          needs,
+          skills: {
+            gathering: 0.25,
+            hunting: 0.18,
+            craft: 0.26,
+            social: 0.3,
+            exploration: 0.42,
+          },
+          homeId,
+          locationId: 'commons',
+          lastMeaningfulEventAt: now,
+        } satisfies Omit<AgentState, 'goal'>;
+        this.state.agents[residentId] = {
+          ...partial,
+          goal: goalFromInitialState(partial, now),
+        };
+        this.state.population.nextAgentSequence += 1;
+        this.stageEvent({
+          eventId: this.stableOperationEventId('resident-entry', operationId),
+          worldId: this.state.id,
+          kind: 'world.entry.resident_manifested',
+          source: 'player',
+          occurredAt: now,
+          payload: { agentId: residentId, name },
+        });
+      },
+      expectedWorldRevision,
+    );
+  }
+
+  async applyAuthorizedDeityEntry(
+    worldId: string,
+    deityId: string,
+    name: string,
+    now: number,
+    operationId: string,
+    expectedWorldRevision: number,
+  ): Promise<WorldMutationResult> {
+    if (worldId !== this.committedState.id) {
+      throw new Error('Deity entry belongs to a different world.');
+    }
+    if (
+      !deityId.trim() ||
+      !name.trim() ||
+      !operationId.trim() ||
+      !Number.isFinite(now) ||
+      !/^[a-zA-Z0-9][a-zA-Z0-9_-]{2,63}$/.test(deityId) ||
+      name.length > 64
+    ) {
+      throw new Error('Deity entry requires stable identity and name.');
+    }
+    const fingerprint = stableJsonStringify({
+      kind: 'deity_entry',
+      worldId,
+      deityId,
+      name,
+      now,
+      expectedWorldRevision,
+    });
+    return await this.mutateDetailed(
+      `world-entry:${operationId}`,
+      fingerprint,
+      async () => {
+        if (this.state.cosmology.deities[deityId]) {
+          throw new Error(`Deity ${deityId} already exists.`);
+        }
+        this.state.cosmology.deities[deityId] = {
+          id: deityId,
+          name,
+          origin: 'external_entry',
+          enteredAt: now,
+        };
+        this.state.cosmology.mysteryLevel = clamp01(
+          this.state.cosmology.mysteryLevel + 0.08,
+        );
+        this.stageEvent({
+          eventId: this.stableOperationEventId('deity-entry', operationId),
+          worldId: this.state.id,
+          kind: 'world.entry.deity_manifested',
+          source: 'player',
+          occurredAt: now,
+          payload: { deityId, name },
+        });
+      },
+      expectedWorldRevision,
+    );
+  }
+
+  async applyAuthorizedDivineOmen(
+    worldId: string,
+    deityId: string,
+    omen: string,
+    magnitude: number,
+    now: number,
+    operationId: string,
+    expectedWorldRevision: number,
+  ): Promise<WorldMutationResult> {
+    if (worldId !== this.committedState.id) {
+      throw new Error('Divine omen belongs to a different world.');
+    }
+    if (
+      !['aurora', 'voice', 'eclipse', 'miracle', 'storm_sign'].includes(omen) ||
+      !Number.isFinite(magnitude) ||
+      magnitude <= 0 ||
+      magnitude > 0.35 ||
+      !Number.isFinite(now) ||
+      !operationId.trim()
+    ) {
+      throw new Error('Divine omen is outside the entry gateway envelope.');
+    }
+    const fingerprint = stableJsonStringify({
+      kind: 'divine_omen',
+      worldId,
+      deityId,
+      omen,
+      magnitude,
+      now,
+      expectedWorldRevision,
+    });
+    return await this.mutateDetailed(
+      `world-entry:${operationId}`,
+      fingerprint,
+      async () => {
+        const deity = this.state.cosmology.deities[deityId];
+        if (!deity) throw new Error(`Unknown deity ${deityId}.`);
+        if (deity.origin !== 'external_entry') {
+          throw new Error('An emergent belief cannot be impersonated by an external deity.');
+        }
+        deity.lastOmenAt = now;
+        this.state.cosmology.omenCount += 1;
+        this.state.cosmology.mysteryLevel = clamp01(
+          this.state.cosmology.mysteryLevel + magnitude * 0.32,
+        );
+        const living = Object.values(this.state.agents).filter(
+          (agent) => agent.life.alive,
+        );
+        const witnesses: AgentState[] = [];
+        for (const agent of living) {
+          const perceptionChance = clamp01(
+            0.38 +
+              magnitude * 0.8 +
+              agent.personality.curiosity * 0.18 +
+              agent.mind.beliefs.divinePresence * 0.1,
+          );
+          if (this.rng.next() < perceptionChance) witnesses.push(agent);
+        }
+        if (witnesses.length === 0 && living.length > 0) {
+          witnesses.push(
+            [...living].sort(
+              (a, b) =>
+                b.personality.curiosity + b.mind.emotions.awe -
+                (a.personality.curiosity + a.mind.emotions.awe),
+            )[0],
+          );
+        }
+        for (const agent of witnesses) {
+          agent.mind.emotions.awe = clamp01(
+            agent.mind.emotions.awe + magnitude * 0.5,
+          );
+          agent.mind.emotions.fear = clamp01(
+            agent.mind.emotions.fear +
+              magnitude * (0.28 - agent.personality.resilience * 0.12),
+          );
+          agent.mind.beliefs.divinePresence = clamp01(
+            agent.mind.beliefs.divinePresence + magnitude * 0.22,
+          );
+          this.stageMemory({
+            memoryId: this.nextId('memory'),
+            worldId: this.state.id,
+            agentId: agent.id,
+            createdAt: now,
+            kind: 'omen',
+            summary: `${agent.name} witnessed ${deity.name}'s ${omen}.`,
+            importance: clamp01(0.66 + magnitude * 0.7),
+            valence: clampSigned(0.14 - agent.mind.emotions.fear * 0.2),
+            relatedAgentIds: [],
+          });
+        }
+        this.stageEvent({
+          eventId: this.stableOperationEventId('divine-omen', operationId),
+          worldId: this.state.id,
+          kind: `world.omen.${omen}`,
+          source: 'player',
+          occurredAt: now,
+          payload: {
+            deityId,
+            deityName: deity.name,
+            magnitude,
+            witnessCount: witnesses.length,
+          },
         });
       },
       expectedWorldRevision,
@@ -1214,7 +2626,20 @@ export class WorldEngine {
       case 'reflect':
         this.performReflect(agent, now);
         break;
+      case 'bond': {
+        const target = this.chooseBondTarget(agent, allAgents);
+        if (target) {
+          this.performBond(agent, target, now);
+        } else {
+          this.performReflect(agent, now);
+        }
+        break;
+      }
+      case 'pray':
+        this.performPray(agent, now);
+        break;
     }
+    this.advanceMind(agent);
   }
 
   private applyPassiveNeeds(agent: AgentState, environment: WorldEnvironment): void {
@@ -1268,6 +2693,21 @@ export class WorldEngine {
           (1 - agent.personality.riskTolerance) * 0.25 +
           (1 - agent.personality.sociability) * 0.15,
       },
+      {
+        kind: 'build_family',
+        strength:
+          (agent.life.stage === 'adult' ? 0.18 : 0) +
+          agent.mind.values.care * 0.3 +
+          (1 - agent.needs.belonging) * 0.2 +
+          agent.mind.emotions.hope * 0.12,
+      },
+      {
+        kind: 'seek_truth',
+        strength:
+          agent.mind.values.knowledge * 0.38 +
+          agent.mind.emotions.awe * 0.28 +
+          agent.personality.curiosity * 0.22,
+      },
     ];
     scores.sort((a, b) => b.strength - a.strength);
     const next = scores[0];
@@ -1307,6 +2747,7 @@ export class WorldEngine {
   } {
     const helpTarget = this.chooseHelpTarget(agent, allAgents);
     const huntTarget = this.chooseHuntTarget(agent);
+    const bondTarget = this.chooseBondTarget(agent, allAgents);
     const socialAvailable = allAgents.some((other) => other.id !== agent.id);
     const natureAvailable = this.state.growth.stage > 0;
     const goalBoost = (kind: AgentGoalKind) => (agent.goal.kind === kind ? 0.24 : 0);
@@ -1406,7 +2847,39 @@ export class WorldEngine {
           (1 - agent.personality.sociability) * 0.08 +
           goalBoost('reflect'),
       },
+      {
+        action: 'bond',
+        score: bondTarget
+          ? agent.mind.values.care * 0.42 +
+            (1 - agent.needs.belonging) * 0.34 +
+            agent.mind.emotions.hope * 0.18 +
+            goalBoost('build_family')
+          : -1,
+      },
+      {
+        action: 'pray',
+        score:
+          0.06 +
+          agent.mind.emotions.awe * 0.45 +
+          agent.mind.beliefs.divinePresence * 0.28 +
+          agent.mind.values.tradition * 0.18 +
+          this.state.cosmology.mysteryLevel * 0.2 +
+          goalBoost('seek_truth'),
+      },
     ];
+
+    if (agent.life.stage === 'child') {
+      for (const item of scores) {
+        if (['hunt', 'work', 'bond'].includes(item.action)) item.score = -1;
+      }
+    } else if (agent.life.stage === 'adolescent') {
+      for (const item of scores) {
+        if (['hunt', 'bond'].includes(item.action)) item.score = -1;
+      }
+    } else if (agent.life.stage === 'elder') {
+      const hunt = scores.find((item) => item.action === 'hunt');
+      if (hunt) hunt.score -= 0.28;
+    }
 
     // Repetition remains possible, but curiosity makes an unchanged routine
     // less attractive while diligence can reinforce productive habits.
@@ -1458,6 +2931,32 @@ export class WorldEngine {
         consideredActionCount: survivalChoices.length,
         openness: 0.08,
       };
+    }
+
+    if (agent.plan) {
+      if (
+        agent.plan.expiresAt < this.state.now ||
+        !this.state.places[agent.plan.targetPlaceId]
+      ) {
+        agent.plan = undefined;
+      } else {
+        if (agent.plan.kind === 'explore_frontier') {
+          agent.plan.targetPlaceId =
+            this.state.growth.discoveredRegionIds[
+              this.state.growth.discoveredRegionIds.length - 1
+            ] ?? 'outskirts';
+        }
+        const plannedAction: AgentActionKind =
+          agent.plan.kind === 'hunt' ? 'hunt' : 'explore';
+        return {
+          action: plannedAction,
+          dominantAction: plannedAction,
+          consideredActionCount: 1,
+          // A resident owns the plan and can still abandon it when survival
+          // pressure crosses the hard bounds above.
+          openness: 0.12,
+        };
+      }
     }
 
     scores.sort((a, b) => b.score - a.score);
@@ -1548,9 +3047,12 @@ export class WorldEngine {
   }
 
   private performWalk(agent: AgentState, now: number): void {
-    const destinations = Object.values(this.state.places)
+    const current = this.state.places[agent.locationId];
+    const destinations = (current?.connectedPlaceIds ?? [])
+      .map((placeId) => this.state.places[placeId])
       .filter(
-        (place) =>
+        (place): place is WorldPlace =>
+          place !== undefined &&
           place.kind !== 'home' &&
           place.id !== agent.locationId &&
           place.kind !== 'workshop' &&
@@ -1580,22 +3082,44 @@ export class WorldEngine {
       rabbit: 0.11,
       deer: 0.22,
       fish: 0.085,
+      boar: 0.2,
+      wolf: 0.16,
+      bird: 0.07,
     };
 
-    return Object.values(this.state.wildlife)
+    const populations = Object.values(this.state.wildlife)
       .filter(
         (population) =>
-          population.count > 0 && this.state.places[population.habitatId],
+          population.count > 0 &&
+          this.state.places[population.habitatId] &&
+          this.pathBetween(agent.locationId, population.habitatId) !== undefined,
       )
-      .map((population) => ({
-        population,
-        score:
-          yieldBySpecies[population.species] * 2.4 +
-          population.count / population.carryingCapacity -
-          population.alertness * 0.5 +
-          agent.skills.hunting * 0.12,
-      }))
-      .sort((a, b) => b.score - a.score)[0]?.population;
+      .map((population) => {
+        const distance = Math.max(
+          0,
+          (this.pathBetween(agent.locationId, population.habitatId)?.length ?? 1) -
+            1,
+        );
+        return {
+          population,
+          score:
+            yieldBySpecies[population.species] * 2.4 +
+            population.count / population.carryingCapacity -
+            population.alertness * 0.5 +
+            agent.skills.hunting * 0.12 -
+            distance * 0.055,
+        };
+      })
+      .sort((a, b) => b.score - a.score);
+    if (agent.plan?.kind === 'hunt') {
+      const planned = populations.find(
+        ({ population }) =>
+          population.habitatId === agent.plan?.targetPlaceId,
+      )?.population;
+      if (planned) return planned;
+      agent.plan = undefined;
+    }
+    return populations[0]?.population;
   }
 
   private performHunt(
@@ -1609,10 +3133,35 @@ export class WorldEngine {
       return;
     }
 
+    const route = this.pathBetween(agent.locationId, target.habitatId);
+    if (route && route.length > 2) {
+      agent.plan = {
+        kind: 'hunt',
+        targetPlaceId: target.habitatId,
+        startedAt: agent.plan?.startedAt ?? now,
+        expiresAt: now + 12,
+      };
+      this.moveAgent(agent, route[1]);
+      agent.energy = clamp01(agent.energy - 0.026);
+      agent.stress = clamp01(agent.stress - 0.004);
+      agent.lastAction = 'walk';
+      agent.lastMeaningfulEventAt = now;
+      this.recordAgentEvent(agent, now, 'agent.walked', {
+        locationId: agent.locationId,
+        purpose: 'hunt',
+        destinationId: target.habitatId,
+      });
+      return;
+    }
+    agent.plan = undefined;
+
     const yieldBySpecies: Record<WildlifeSpecies, number> = {
       rabbit: 0.11,
       deer: 0.22,
       fish: 0.085,
+      boar: 0.2,
+      wolf: 0.16,
+      bird: 0.07,
     };
     const successChance = clamp01(
       0.16 +
@@ -1733,13 +3282,40 @@ export class WorldEngine {
   }
 
   private performExplore(agent: AgentState, now: number): void {
-    const frontierByStage = ['outskirts', 'meadow', 'forest', 'shore'];
     const frontier =
-      frontierByStage[this.state.growth.stage] ?? 'outskirts';
-    this.moveAgent(
-      agent,
-      this.state.places[frontier] ? frontier : 'outskirts',
-    );
+      this.state.growth.discoveredRegionIds[
+        this.state.growth.discoveredRegionIds.length - 1
+      ] ?? 'outskirts';
+    const targetFrontier = this.state.places[frontier] ? frontier : 'outskirts';
+    if (agent.locationId !== targetFrontier) {
+      const route = this.pathBetween(agent.locationId, targetFrontier);
+      const nextLocation = route?.[1] ?? targetFrontier;
+      agent.plan = {
+        kind: 'explore_frontier',
+        targetPlaceId: targetFrontier,
+        startedAt: agent.plan?.startedAt ?? now,
+        expiresAt: now + 14,
+      };
+      this.moveAgent(agent, nextLocation);
+      agent.energy = clamp01(agent.energy - 0.024);
+      agent.resources = clamp01(agent.resources - 0.004);
+      agent.skills.exploration = clamp01(agent.skills.exploration + 0.001);
+      agent.needs.purpose = clamp01(agent.needs.purpose + 0.005);
+      agent.lastAction = 'explore';
+      agent.lastMeaningfulEventAt = now;
+      this.recordAgentEvent(agent, now, 'agent.explored', {
+        discovered: false,
+        discovery: 0,
+        traveling: true,
+        frontierId: targetFrontier,
+        growthStage: this.state.growth.stage,
+        explorationProgress: this.state.growth.explorationProgress,
+        discoveredRegionId: null,
+        locationId: agent.locationId,
+      });
+      return;
+    }
+    agent.plan = undefined;
     agent.energy = clamp01(agent.energy - 0.04);
     agent.resources = clamp01(agent.resources - 0.008);
     agent.skills.exploration = clamp01(agent.skills.exploration + 0.003);
@@ -1790,31 +3366,36 @@ export class WorldEngine {
     progressGain: number,
     now: number,
   ): string | undefined {
-    if (this.state.growth.stage >= WORLD_GROWTH_FINAL_STAGE) {
-      this.state.growth.explorationProgress = 1;
-      return undefined;
-    }
-
+    const expansionRate =
+      this.lawValue('frontier_expansion', 1);
+    const frontierDifficulty =
+      1 + Math.max(0, this.state.growth.stage - WORLD_EXPANSIONS.length) * 0.08;
     this.state.growth.explorationProgress = clamp01(
-      this.state.growth.explorationProgress + progressGain,
+      this.state.growth.explorationProgress +
+        (progressGain * expansionRate) / frontierDifficulty,
     );
     if (this.state.growth.explorationProgress < 1) {
       return undefined;
     }
 
-    const expansion = WORLD_EXPANSIONS.find(
-      (candidate) => candidate.stage === this.state.growth.stage + 1,
-    );
-    if (!expansion) {
-      throw new Error(
-        `World expansion stage ${this.state.growth.stage + 1} is not defined.`,
-      );
-    }
+    const nextStage = this.state.growth.stage + 1;
+    const expansion =
+      WORLD_EXPANSIONS.find((candidate) => candidate.stage === nextStage) ??
+      this.createProceduralExpansion(nextStage, now);
 
     this.state.places[expansion.place.id] = {
       ...structuredClone(expansion.place),
       discoveredAt: now,
     };
+    for (const connectedId of expansion.place.connectedPlaceIds) {
+      const connected = this.state.places[connectedId];
+      if (
+        connected &&
+        !connected.connectedPlaceIds.includes(expansion.place.id)
+      ) {
+        connected.connectedPlaceIds.push(expansion.place.id);
+      }
+    }
     for (const population of expansion.wildlife) {
       this.state.wildlife[population.id] = {
         ...structuredClone(population),
@@ -1823,6 +3404,10 @@ export class WorldEngine {
     }
 
     this.state.growth.stage = expansion.stage;
+    this.state.growth.frontierSequence = Math.max(
+      this.state.growth.frontierSequence + 1,
+      expansion.stage,
+    );
     this.state.growth.explorationProgress = 0;
     this.state.growth.lastExpansionAt = now;
     this.state.growth.discoveredRegionIds.push(expansion.place.id);
@@ -1837,7 +3422,9 @@ export class WorldEngine {
         agentId: agent.id,
         regionId: expansion.place.id,
         regionKind: expansion.place.kind,
+        biome: expansion.place.biome,
         stage: expansion.stage,
+        connectedPlaceIds: expansion.place.connectedPlaceIds,
       },
     });
     this.stageMemory({
@@ -1855,10 +3442,128 @@ export class WorldEngine {
     return expansion.place.id;
   }
 
+  private createProceduralExpansion(
+    stage: number,
+    now: number,
+  ): WorldExpansionDefinition {
+    const proceduralBiomes: readonly WorldBiome[] = [
+      'mountains',
+      'lake',
+      'river',
+      'swamp',
+      'ancient_ruins',
+      'forest',
+      'plains',
+      'coast',
+    ];
+    const biome = proceduralBiomes[
+      (stage + Math.floor(this.rng.next() * proceduralBiomes.length)) %
+        proceduralBiomes.length
+    ];
+    const kindByBiome: Record<WorldBiome, WorldPlaceKind> = {
+      settlement: 'village',
+      plains: 'meadow',
+      forest: 'forest',
+      coast: 'shore',
+      mountains: 'mountains',
+      lake: 'lake',
+      river: 'river',
+      swamp: 'swamp',
+      ancient_ruins: 'ruins',
+    };
+    const prefix = REGION_NAME_PREFIXES[
+      (stage + Math.floor(this.rng.next() * REGION_NAME_PREFIXES.length)) %
+        REGION_NAME_PREFIXES.length
+    ];
+    const suffixes = REGION_NAME_SUFFIXES[biome];
+    const suffix = suffixes[stage % suffixes.length];
+    const regionId = `region_${stage}`;
+    const priorRegionId =
+      this.state.growth.discoveredRegionIds[
+        this.state.growth.discoveredRegionIds.length - 1
+      ] ?? 'outskirts';
+    const goldenAngle = 2.399963229728653;
+    // Coordinates are world units, not a permanently fixed 0..100 canvas.
+    // Every eight frontier regions opens a wider ring; the browser zooms the
+    // accumulated bounds to its current viewport.
+    const frontierBand = Math.floor(Math.max(0, stage - 4) / 8);
+    const ring = 38 + frontierBand * 14 + (stage % 4) * 2.4;
+    const angle = stage * goldenAngle;
+    const mapX = 50 + Math.cos(angle) * ring;
+    const mapY = 50 + Math.sin(angle) * ring;
+    const fertilityByBiome: Record<WorldBiome, number> = {
+      settlement: 0.52,
+      plains: 0.78,
+      forest: 0.72,
+      coast: 0.64,
+      mountains: 0.3,
+      lake: 0.7,
+      river: 0.82,
+      swamp: 0.5,
+      ancient_ruins: 0.22,
+    };
+    const dangerByBiome: Record<WorldBiome, number> = {
+      settlement: 0.05,
+      plains: 0.14,
+      forest: 0.3,
+      coast: 0.2,
+      mountains: 0.42,
+      lake: 0.16,
+      river: 0.18,
+      swamp: 0.44,
+      ancient_ruins: 0.52,
+    };
+    const speciesByBiome: Record<WorldBiome, WildlifeSpecies> = {
+      settlement: 'bird',
+      plains: 'rabbit',
+      forest: stage % 3 === 0 ? 'wolf' : stage % 2 === 0 ? 'boar' : 'deer',
+      coast: 'fish',
+      mountains: 'wolf',
+      lake: 'fish',
+      river: 'fish',
+      swamp: 'boar',
+      ancient_ruins: 'bird',
+    };
+    const species = speciesByBiome[biome];
+    const carryingCapacity =
+      4 + Math.floor(fertilityByBiome[biome] * 8 + this.rng.next() * 4);
+    const initialCount = Math.max(2, Math.floor(carryingCapacity * 0.45));
+    const place = createPlace(
+      regionId,
+      `${prefix} ${suffix}`,
+      kindByBiome[biome],
+      10 + Math.floor(this.rng.next() * 10),
+      {
+        biome,
+        mapX,
+        mapY,
+        connectedPlaceIds: [priorRegionId],
+        fertility: fertilityByBiome[biome],
+        danger: dangerByBiome[biome],
+        discoveredAt: now,
+      },
+    );
+    const wildlife: WildlifePopulation[] = [
+      {
+        id: `wildlife_${stage}_${species}`,
+        species,
+        habitatId: regionId,
+        count: initialCount,
+        carryingCapacity,
+        reproductionRate: clamp01(0.07 + place.fertility * 0.12),
+        alertness: clamp01(0.12 + place.danger * 0.4),
+        lastChangedAt: now,
+      },
+    ];
+    return { stage, place, wildlife };
+  }
+
   private advanceWildlife(
     environment: WorldEnvironment,
     now: number,
   ): void {
+    const recoveryLaw =
+      this.lawValue('wildlife_recovery', 1);
     for (const population of Object.values(this.state.wildlife)) {
       population.alertness = clamp01(population.alertness - 0.025);
       if (population.count >= population.carryingCapacity) {
@@ -1869,6 +3574,7 @@ export class WorldEngine {
       const emptyHabitatBoost = population.count === 0 ? 0.22 : 0;
       const recoveryChance = clamp01(
         population.reproductionRate *
+          recoveryLaw *
           (0.35 + environment.habitatSupport * 0.8) *
           (1 - density) +
           emptyHabitatBoost * environment.habitatSupport,
@@ -1894,6 +3600,691 @@ export class WorldEngine {
         },
       });
     }
+  }
+
+  private advanceAgingAndMortality(now: number): void {
+    for (const agent of Object.values(this.state.agents)) {
+      if (!agent.life.alive) continue;
+
+      const previousStage = agent.life.stage;
+      agent.life.ageYears += 1 / WORLD_TICKS_PER_YEAR;
+      agent.life.stage = lifeStageForAge(agent.life.ageYears);
+      if (agent.life.stage !== previousStage) {
+        this.recordAgentEvent(agent, now, 'agent.life.stage_changed', {
+          previousStage,
+          nextStage: agent.life.stage,
+          ageYears: agent.life.ageYears,
+        });
+      }
+
+      const placeDanger = this.state.places[agent.locationId]?.danger ?? 0.1;
+      const deprivation =
+        Math.max(0, 0.12 - agent.resources) * 0.034 +
+        Math.max(0, 0.1 - agent.energy) * 0.026;
+      const frailty =
+        agent.life.ageYears > ELDER_AGE
+          ? ((agent.life.ageYears - ELDER_AGE) /
+              Math.max(1, agent.life.lifespanYears - ELDER_AGE)) *
+            0.0018
+          : 0;
+      const recovery =
+        agent.resources > 0.35 && agent.energy > 0.3
+          ? 0.0012 + agent.personality.resilience * 0.0012
+          : 0;
+      agent.life.health = clamp01(
+        agent.life.health +
+          recovery -
+          deprivation -
+          frailty -
+          placeDanger * 0.00022,
+      );
+
+      const ageRatio = agent.life.ageYears / agent.life.lifespanYears;
+      const oldAgeChance =
+        ageRatio > 0.9 ? Math.pow((ageRatio - 0.9) / 0.1, 2) * 0.014 : 0;
+      if (agent.life.ageYears >= agent.life.lifespanYears) {
+        this.recordDeath(agent, 'old_age', now);
+      } else if (agent.life.health <= 0.015) {
+        this.recordDeath(
+          agent,
+          agent.resources < 0.08 ? 'deprivation' : 'illness',
+          now,
+        );
+      } else if (oldAgeChance > 0 && this.rng.next() < oldAgeChance) {
+        this.recordDeath(agent, 'old_age', now);
+      }
+    }
+  }
+
+  private recordDeath(
+    agent: AgentState,
+    cause: AgentDeathCause,
+    now: number,
+  ): void {
+    if (!agent.life.alive) return;
+    agent.life.alive = false;
+    agent.life.health = 0;
+    agent.life.diedAt = now;
+    agent.life.deathCause = cause;
+    agent.lastAction = undefined;
+    agent.lastDecision = undefined;
+    agent.plan = undefined;
+    this.state.population.deaths += 1;
+    this.state.population.lastDeathAt = now;
+
+    this.stageEvent({
+      eventId: this.nextId('death'),
+      worldId: this.state.id,
+      kind: 'agent.died',
+      source: 'world',
+      occurredAt: now,
+      payload: {
+        agentId: agent.id,
+        name: agent.name,
+        cause,
+        ageYears: agent.life.ageYears,
+        generation: agent.life.generation,
+      },
+    });
+
+    const relatives = new Set([
+      ...agent.life.parentIds,
+      ...agent.life.childIds,
+    ]);
+    for (const relationship of Object.values(this.state.relationships)) {
+      const otherId =
+        relationship.agentA === agent.id
+          ? relationship.agentB
+          : relationship.agentB === agent.id
+            ? relationship.agentA
+            : undefined;
+      if (!otherId) continue;
+      const bondStrength =
+        relationship.trust +
+        relationship.affinity +
+        relationship.respect -
+        relationship.conflict;
+      if (bondStrength >= 1.45) relatives.add(otherId);
+    }
+    for (const relativeId of relatives) {
+      const relative = this.state.agents[relativeId];
+      if (!relative?.life.alive) continue;
+      relative.mind.emotions.grief = clamp01(
+        relative.mind.emotions.grief + 0.46,
+      );
+      relative.mind.emotions.joy = clamp01(
+        relative.mind.emotions.joy - 0.24,
+      );
+      relative.mind.beliefs.afterlife = clamp01(
+        relative.mind.beliefs.afterlife + 0.035,
+      );
+      this.stageMemory({
+        memoryId: this.nextId('memory'),
+        worldId: this.state.id,
+        agentId: relative.id,
+        createdAt: now,
+        kind: 'death',
+        summary: `${relative.name} lost ${agent.name}.`,
+        importance: 0.96,
+        valence: -0.92,
+        relatedAgentIds: [agent.id],
+      });
+    }
+  }
+
+  private advanceBirths(now: number): void {
+    if (!Number.isInteger(now) || now % BIRTH_CHECK_INTERVAL !== 0) return;
+    if (
+      this.state.population.lastBirthAt !== undefined &&
+      now - this.state.population.lastBirthAt < MIN_TICKS_BETWEEN_BIRTHS
+    ) {
+      return;
+    }
+
+    const living = Object.values(this.state.agents).filter(
+      (agent) => agent.life.alive,
+    );
+    const regionalCapacity =
+      6 + this.state.growth.discoveredRegionIds.length * 4;
+    const populationLimit = Math.min(
+      MAX_LIVING_POPULATION,
+      Math.max(8, regionalCapacity),
+    );
+    if (living.length >= populationLimit) return;
+
+    const candidates = Object.values(this.state.relationships)
+      .map((relationship) => {
+        const a = this.state.agents[relationship.agentA];
+        const b = this.state.agents[relationship.agentB];
+        if (!a || !b || !this.canFormFamily(a, b, now)) return undefined;
+        const score =
+          relationship.trust * 0.25 +
+          relationship.affinity * 0.26 +
+          relationship.respect * 0.1 -
+          relationship.conflict * 0.34 +
+          (a.mind.values.care + b.mind.values.care) * 0.13 +
+          (a.mind.emotions.hope + b.mind.emotions.hope) * 0.06 +
+          (a.lastAction === 'bond' || b.lastAction === 'bond' ? 0.18 : 0);
+        return { a, b, relationship, score };
+      })
+      .filter(
+        (
+          candidate,
+        ): candidate is {
+          a: AgentState;
+          b: AgentState;
+          relationship: RelationshipState;
+          score: number;
+        } => candidate !== undefined,
+      )
+      .sort((a, b) => b.score - a.score);
+    const selected = candidates[0];
+    if (!selected || selected.score < 0.62) return;
+
+    const fertilitySupport =
+      this.lawValue('fertility_support', 0.55);
+    const choiceChance = clamp01(
+      0.025 +
+        fertilitySupport * 0.055 +
+        Math.max(0, selected.score - 0.62) * 0.08,
+    );
+    if (this.rng.next() >= choiceChance) return;
+    this.createChild(selected.a, selected.b, now);
+  }
+
+  private canFormFamily(a: AgentState, b: AgentState, now: number): boolean {
+    if (
+      !a.life.alive ||
+      !b.life.alive ||
+      a.life.stage !== 'adult' ||
+      b.life.stage !== 'adult' ||
+      a.life.ageYears > 55 ||
+      b.life.ageYears > 55 ||
+      a.life.health < 0.58 ||
+      b.life.health < 0.58 ||
+      a.resources < 0.42 ||
+      b.resources < 0.42 ||
+      a.stress > 0.72 ||
+      b.stress > 0.72
+    ) {
+      return false;
+    }
+    if (
+      (a.life.lastChildAt !== undefined && now - a.life.lastChildAt < 64) ||
+      (b.life.lastChildAt !== undefined && now - b.life.lastChildAt < 64)
+    ) {
+      return false;
+    }
+    const closeRelatives = new Set([
+      ...a.life.parentIds,
+      ...a.life.childIds,
+    ]);
+    if (closeRelatives.has(b.id)) return false;
+    return !a.life.parentIds.some((parentId) => b.life.parentIds.includes(parentId));
+  }
+
+  private createChild(a: AgentState, b: AgentState, now: number): void {
+    const sequence = this.state.population.nextAgentSequence;
+    this.state.population.nextAgentSequence += 1;
+    const childId = `agent_${sequence}`;
+    const childNames = [
+      'Ari',
+      'Lio',
+      'Sena',
+      'Tali',
+      'Neri',
+      'Eden',
+      'Sora',
+      'Ayla',
+      'Lev',
+      'Yuna',
+    ];
+    const name = `${childNames[(sequence - 1) % childNames.length]} ${sequence}`;
+    const blend = (left: number, right: number, variation = 0.08) =>
+      clamp01((left + right) / 2 + this.rng.between(-variation, variation));
+    const personality: AgentState['personality'] = {
+      sociability: blend(a.personality.sociability, b.personality.sociability),
+      diligence: blend(a.personality.diligence, b.personality.diligence),
+      curiosity: blend(a.personality.curiosity, b.personality.curiosity),
+      generosity: blend(a.personality.generosity, b.personality.generosity),
+      resilience: blend(a.personality.resilience, b.personality.resilience),
+      riskTolerance: blend(
+        a.personality.riskTolerance,
+        b.personality.riskTolerance,
+      ),
+    };
+    const needs = { belonging: 0.88, purpose: 0.72 };
+    const mind = createMindState(
+      this.state.id,
+      childId,
+      personality,
+      needs,
+    );
+    for (const value of Object.keys(mind.values) as Array<
+      keyof AgentState['mind']['values']
+    >) {
+      mind.values[value] = blend(a.mind.values[value], b.mind.values[value], 0.04);
+    }
+    for (const belief of Object.keys(mind.beliefs) as Array<
+      keyof AgentState['mind']['beliefs']
+    >) {
+      mind.beliefs[belief] = blend(
+        a.mind.beliefs[belief],
+        b.mind.beliefs[belief],
+        0.035,
+      );
+    }
+    const homeId = a.resources >= b.resources ? a.homeId : b.homeId;
+    const child: AgentState = {
+      id: childId,
+      name,
+      origin: 'native',
+      energy: 0.86,
+      stress: 0.04,
+      resources: 0.62,
+      socialDrive: blend(a.socialDrive, b.socialDrive, 0.05),
+      personality,
+      life: {
+        bornAt: now,
+        ageYears: 0,
+        lifespanYears:
+          72 + personality.resilience * 26 + this.rng.between(-2, 4),
+        stage: 'child',
+        alive: true,
+        health: 0.94,
+        generation: Math.max(a.life.generation, b.life.generation) + 1,
+        parentIds: [a.id, b.id],
+        childIds: [],
+      },
+      mind,
+      needs,
+      skills: {
+        gathering: blend(a.skills.gathering, b.skills.gathering, 0.03) * 0.18,
+        hunting: blend(a.skills.hunting, b.skills.hunting, 0.03) * 0.12,
+        craft: blend(a.skills.craft, b.skills.craft, 0.03) * 0.18,
+        social: blend(a.skills.social, b.skills.social, 0.03) * 0.24,
+        exploration: blend(a.skills.exploration, b.skills.exploration, 0.03) * 0.2,
+      },
+      goal: { kind: 'recover', strength: 0.66, since: now },
+      homeId,
+      locationId: homeId,
+      lastMeaningfulEventAt: now,
+    };
+    this.state.agents[childId] = child;
+    a.life.childIds.push(childId);
+    b.life.childIds.push(childId);
+    a.life.lastChildAt = now;
+    b.life.lastChildAt = now;
+    this.state.relationships[relationshipKey(a.id, childId)] = {
+      agentA: a.id,
+      agentB: childId,
+      trust: 0.82,
+      affinity: 0.88,
+      respect: 0.58,
+      conflict: 0.02,
+      updatedAt: now,
+    };
+    this.state.relationships[relationshipKey(b.id, childId)] = {
+      agentA: b.id,
+      agentB: childId,
+      trust: 0.82,
+      affinity: 0.88,
+      respect: 0.58,
+      conflict: 0.02,
+      updatedAt: now,
+    };
+    this.state.population.births += 1;
+    this.state.population.lastBirthAt = now;
+    this.stageEvent({
+      eventId: this.nextId('birth'),
+      worldId: this.state.id,
+      kind: 'agent.born',
+      source: 'world',
+      occurredAt: now,
+      payload: {
+        agentId: childId,
+        name,
+        parentIds: [a.id, b.id],
+        generation: child.life.generation,
+      },
+    });
+    for (const parent of [a, b]) {
+      parent.mind.emotions.joy = clamp01(parent.mind.emotions.joy + 0.28);
+      parent.mind.emotions.hope = clamp01(parent.mind.emotions.hope + 0.22);
+      this.stageMemory({
+        memoryId: this.nextId('memory'),
+        worldId: this.state.id,
+        agentId: parent.id,
+        createdAt: now,
+        kind: 'birth',
+        summary: `${name} was born to ${a.name} and ${b.name}.`,
+        importance: 0.98,
+        valence: 0.92,
+        relatedAgentIds: [childId, parent.id === a.id ? b.id : a.id],
+      });
+    }
+  }
+
+  private advanceMysticism(now: number): void {
+    if (!Number.isInteger(now) || now % 24 !== 0) return;
+    const resonance =
+      this.lawValue('mystic_resonance', 0.35);
+    const weatherVolatility = this.lawValue('weather_volatility', 0.2);
+    const ruinCount = Object.values(this.state.places).filter(
+      (place) => place.kind === 'ruins',
+    ).length;
+    const occurrenceChance = clamp01(
+      0.06 +
+        resonance * 0.12 +
+        weatherVolatility * 0.035 +
+        Math.min(0.08, ruinCount * 0.012),
+    );
+    if (this.rng.next() >= occurrenceChance) return;
+
+    const phenomena = [
+      {
+        id: 'sky_lights',
+        summary: 'unexplained lights crossing the night sky',
+      },
+      {
+        id: 'distant_voice',
+        summary: 'a distant voice with no visible speaker',
+      },
+      {
+        id: 'silent_storm',
+        summary: 'a silent storm beyond the frontier',
+      },
+      {
+        id: 'ruin_echo',
+        summary: 'an echo rising from an ancient place',
+      },
+    ] as const;
+    const phenomenon = this.rng.pick(phenomena);
+    const living = Object.values(this.state.agents).filter(
+      (agent) => agent.life.alive,
+    );
+    if (living.length === 0) return;
+    const witnesses = living.filter((agent) => {
+      const perceptionChance = clamp01(
+        0.2 +
+          resonance * 0.25 +
+          agent.personality.curiosity * 0.24 +
+          agent.mind.emotions.awe * 0.12,
+      );
+      return this.rng.next() < perceptionChance;
+    });
+    if (witnesses.length === 0) {
+      witnesses.push(
+        [...living].sort(
+          (a, b) =>
+            b.personality.curiosity + b.mind.values.knowledge -
+            (a.personality.curiosity + a.mind.values.knowledge),
+        )[0],
+      );
+    }
+
+    this.state.cosmology.omenCount += 1;
+    this.state.cosmology.mysteryLevel = clamp01(
+      this.state.cosmology.mysteryLevel + 0.018 + resonance * 0.018,
+    );
+    for (const witness of witnesses) {
+      witness.mind.emotions.awe = clamp01(
+        witness.mind.emotions.awe + 0.07 + resonance * 0.03,
+      );
+      witness.mind.beliefs.divinePresence = clamp01(
+        witness.mind.beliefs.divinePresence + 0.024 + resonance * 0.018,
+      );
+      this.stageMemory({
+        memoryId: this.nextId('memory'),
+        worldId: this.state.id,
+        agentId: witness.id,
+        createdAt: now,
+        kind: 'omen',
+        summary: `${witness.name} witnessed ${phenomenon.summary}.`,
+        importance: clamp01(0.56 + witness.mind.emotions.awe * 0.24),
+        valence: clampSigned(0.08 - witness.mind.emotions.fear * 0.12),
+        relatedAgentIds: [],
+      });
+    }
+    this.stageEvent({
+      eventId: this.nextId('natural-omen'),
+      worldId: this.state.id,
+      kind: `world.omen.natural.${phenomenon.id}`,
+      source: 'world',
+      occurredAt: now,
+      payload: {
+        phenomenon: phenomenon.id,
+        witnessCount: witnesses.length,
+        mysteryLevel: this.state.cosmology.mysteryLevel,
+      },
+    });
+  }
+
+  private advanceCollectiveMyth(now: number): void {
+    if (this.state.cosmology.omenCount === 0) return;
+    const living = Object.values(this.state.agents).filter(
+      (agent) => agent.life.alive,
+    );
+    if (living.length < 3) return;
+    const sharedBelief =
+      living.reduce(
+        (sum, agent) => sum + agent.mind.beliefs.divinePresence,
+        0,
+      ) / living.length;
+    if (
+      sharedBelief < 0.58 ||
+      this.state.cosmology.traditions.length >=
+        Math.ceil(this.state.cosmology.omenCount / 2)
+    ) {
+      return;
+    }
+    let deity = Object.values(this.state.cosmology.deities)[0];
+    if (!deity) {
+      const names = [
+        'Keeper of the Veil',
+        'Lady of Dawn',
+        'Voice Beneath the Roots',
+        'Wanderer of Stars',
+      ];
+      const sequence = Object.keys(this.state.cosmology.deities).length + 1;
+      const deityId = `belief_deity_${sequence}`;
+      deity = {
+        id: deityId,
+        name: names[(sequence - 1) % names.length],
+        origin: 'emergent_belief',
+        enteredAt: now,
+      };
+      this.state.cosmology.deities[deityId] = deity;
+    }
+    const tradition = `Witnesses of ${deity.name}`;
+    if (this.state.cosmology.traditions.includes(tradition)) return;
+    this.state.cosmology.traditions.push(tradition);
+    this.stageEvent({
+      eventId: this.nextId('tradition'),
+      worldId: this.state.id,
+      kind: 'world.tradition.emerged',
+      source: 'agent',
+      occurredAt: now,
+      payload: {
+        tradition,
+        sharedBelief,
+        deityId: deity.id,
+        deityOrigin: deity.origin,
+      },
+    });
+  }
+
+  private advanceMind(agent: AgentState): void {
+    const placeDanger = this.state.places[agent.locationId]?.danger ?? 0.1;
+    const action = agent.lastAction;
+    const positiveAction = ['relax', 'socialize', 'help', 'bond'].includes(
+      action ?? '',
+    );
+    agent.mind.emotions.joy = clamp01(
+      agent.mind.emotions.joy * 0.985 +
+        (positiveAction ? 0.022 : 0) +
+        agent.needs.belonging * 0.004 -
+        agent.stress * 0.008,
+    );
+    agent.mind.emotions.fear = clamp01(
+      agent.mind.emotions.fear * 0.976 +
+        agent.stress * 0.007 +
+        placeDanger * 0.003,
+    );
+    agent.mind.emotions.grief = clamp01(agent.mind.emotions.grief * 0.994);
+    agent.mind.emotions.hope = clamp01(
+      agent.mind.emotions.hope * 0.99 +
+        agent.needs.purpose * 0.005 +
+        (action === 'explore' ? 0.006 : 0) -
+        agent.mind.emotions.grief * 0.002,
+    );
+    agent.mind.memoryCoherence = clamp01(
+      agent.mind.memoryCoherence +
+        (action === 'reflect' ? 0.006 : 0.001) -
+        agent.stress * 0.0014,
+    );
+    agent.mind.autonomy = clamp01(
+      0.45 +
+        agent.mind.values.freedom * 0.28 +
+        (agent.lastDecision?.openness ?? 0) * 0.22,
+    );
+    if (action === 'help' || action === 'bond') {
+      agent.mind.values.care = clamp01(agent.mind.values.care + 0.0012);
+    }
+    if (action === 'explore' || action === 'reflect') {
+      agent.mind.values.knowledge = clamp01(
+        agent.mind.values.knowledge + 0.001,
+      );
+    }
+    if (action === 'pray') {
+      agent.mind.values.tradition = clamp01(
+        agent.mind.values.tradition + 0.0012,
+      );
+    }
+  }
+
+  private chooseBondTarget(
+    agent: AgentState,
+    allAgents: AgentState[],
+  ): AgentState | undefined {
+    if (agent.life.stage !== 'adult') return undefined;
+    return allAgents
+      .filter(
+        (other) =>
+          other.id !== agent.id &&
+          other.life.alive &&
+          other.life.stage === 'adult' &&
+          this.canFormFamily(agent, other, this.state.now),
+      )
+      .map((other) => {
+        const relationship =
+          this.state.relationships[relationshipKey(agent.id, other.id)];
+        const score = relationship
+          ? relationship.trust * 0.28 +
+            relationship.affinity * 0.38 +
+            relationship.respect * 0.14 -
+            relationship.conflict * 0.32
+          : 0.08;
+        return { other, score };
+      })
+      .filter((candidate) => candidate.score > 0.36)
+      .sort((a, b) => b.score - a.score)[0]?.other;
+  }
+
+  private performBond(a: AgentState, b: AgentState, now: number): void {
+    this.moveAgent(a, b.locationId);
+    const key = relationshipKey(a.id, b.id);
+    const relationship = this.relationshipFor(a, b, now);
+    const accepted =
+      this.rng.next() <
+      clamp01(
+        0.28 +
+          relationship.trust * 0.24 +
+          relationship.affinity * 0.3 +
+          b.mind.values.care * 0.12 -
+          relationship.conflict * 0.25,
+      );
+    this.state.relationships[key] = {
+      ...relationship,
+      trust: clamp01(relationship.trust + (accepted ? 0.025 : 0.004)),
+      affinity: clamp01(
+        relationship.affinity + (accepted ? 0.032 : -0.006),
+      ),
+      respect: clamp01(relationship.respect + (accepted ? 0.012 : 0)),
+      conflict: clamp01(
+        relationship.conflict + (accepted ? -0.008 : 0.01),
+      ),
+      updatedAt: now,
+    };
+    a.energy = clamp01(a.energy - 0.014);
+    a.needs.belonging = clamp01(
+      a.needs.belonging + (accepted ? 0.07 : -0.008),
+    );
+    a.mind.emotions.joy = clamp01(
+      a.mind.emotions.joy + (accepted ? 0.05 : -0.012),
+    );
+    a.lastAction = 'bond';
+    a.lastMeaningfulEventAt = now;
+    this.recordAgentEvent(
+      a,
+      now,
+      accepted ? 'agent.bond.accepted' : 'agent.bond.declined',
+      { targetId: b.id, locationId: a.locationId },
+    );
+    this.stageMemory({
+      memoryId: this.nextId('memory'),
+      worldId: this.state.id,
+      agentId: a.id,
+      createdAt: now,
+      kind: 'interaction',
+      summary: accepted
+        ? `${a.name} and ${b.name} grew closer.`
+        : `${b.name} was not ready to grow closer to ${a.name}.`,
+      importance: accepted ? 0.72 : 0.56,
+      valence: accepted ? 0.62 : -0.2,
+      relatedAgentIds: [b.id],
+    });
+  }
+
+  private performPray(agent: AgentState, now: number): void {
+    const sacredPlaces = Object.values(this.state.places)
+      .filter((place) => place.kind === 'ruins' || place.kind === 'quiet_space')
+      .map((place) => place.id);
+    this.moveAgent(
+      agent,
+      sacredPlaces.length > 0 ? this.rng.pick(sacredPlaces) : 'quiet_space',
+    );
+    const resonance =
+      this.lawValue('mystic_resonance', 0.35);
+    agent.energy = clamp01(agent.energy + 0.012);
+    agent.stress = clamp01(agent.stress - 0.026);
+    agent.needs.purpose = clamp01(agent.needs.purpose + 0.04);
+    agent.mind.emotions.awe = clamp01(
+      agent.mind.emotions.awe + 0.012 + resonance * 0.012,
+    );
+    agent.mind.emotions.hope = clamp01(agent.mind.emotions.hope + 0.014);
+    agent.mind.beliefs.divinePresence = clamp01(
+      agent.mind.beliefs.divinePresence +
+        this.state.cosmology.mysteryLevel * resonance * 0.008,
+    );
+    agent.lastAction = 'pray';
+    agent.lastMeaningfulEventAt = now;
+    this.stageMemory({
+      memoryId: this.nextId('memory'),
+      worldId: this.state.id,
+      agentId: agent.id,
+      createdAt: now,
+      kind: 'reflection',
+      summary: `${agent.name} searched for meaning beyond the visible world.`,
+      importance: clamp01(0.38 + agent.mind.emotions.awe * 0.3),
+      valence: clampSigned(0.12 + agent.mind.emotions.hope * 0.18),
+      relatedAgentIds: [],
+    });
+    this.recordAgentEvent(agent, now, 'agent.prayed', {
+      mysteryLevel: this.state.cosmology.mysteryLevel,
+      divineBelief: agent.mind.beliefs.divinePresence,
+      locationId: agent.locationId,
+    });
   }
 
   private performReflect(agent: AgentState, now: number): void {
@@ -2204,6 +4595,43 @@ export class WorldEngine {
     agent.locationId = locationId;
   }
 
+  private lawValue(
+    mechanism: WorldLawMechanism,
+    fallback: number,
+  ): number {
+    const active = Object.values(this.state.governance.laws)
+      .filter((worldLaw) => worldLaw.mechanism === mechanism)
+      .sort(
+        (a, b) =>
+          b.updatedAt - a.updatedAt ||
+          Number(b.createdBy === 'cardinal') -
+            Number(a.createdBy === 'cardinal') ||
+          b.revision - a.revision ||
+          b.id.localeCompare(a.id),
+      )[0];
+    return active?.value ?? fallback;
+  }
+
+  private pathBetween(fromId: string, toId: string): string[] | undefined {
+    if (fromId === toId) return [fromId];
+    if (!this.state.places[fromId] || !this.state.places[toId]) return undefined;
+
+    const queue: string[][] = [[fromId]];
+    const visited = new Set([fromId]);
+    while (queue.length > 0) {
+      const path = queue.shift()!;
+      const currentId = path[path.length - 1];
+      for (const connectedId of this.state.places[currentId].connectedPlaceIds) {
+        if (visited.has(connectedId) || !this.state.places[connectedId]) continue;
+        const nextPath = [...path, connectedId];
+        if (connectedId === toId) return nextPath;
+        visited.add(connectedId);
+        queue.push(nextPath);
+      }
+    }
+    return undefined;
+  }
+
   private shuffled<T>(values: readonly T[]): T[] {
     const result = [...values];
     for (let index = result.length - 1; index > 0; index -= 1) {
@@ -2241,6 +4669,22 @@ export class WorldEngine {
         habitatModifier -= magnitude * 0.25;
       } else if (signal.kind === 'cardinal.effect.habitat_support') {
         habitatModifier += magnitude;
+      } else if (signal.kind.startsWith('cardinal.catastrophe.')) {
+        const destructiveUntil =
+          typeof signal.payload.destructiveUntil === 'number'
+            ? signal.payload.destructiveUntil
+            : signal.occurredAt;
+        if (now < destructiveUntil) {
+          safetyModifier -= magnitude * 0.32;
+          habitatModifier -= magnitude * 0.18;
+        } else {
+          const recoveryMagnitude =
+            typeof signal.payload.recoveryMagnitude === 'number'
+              ? signal.payload.recoveryMagnitude
+              : 0;
+          habitatModifier += recoveryMagnitude;
+          safetyModifier += recoveryMagnitude * 0.35;
+        }
       }
     }
 

@@ -1,4 +1,4 @@
-Ainkrad v0.3.9 current files
+Ainkrad v0.3.10 current files
 
 Files:
 - .github/workflows/ci.yml
@@ -11,12 +11,16 @@ Files:
 - docs/CARDINAL_RESEARCH.md
 - docs/EXTERNAL_BOUNDARY.md
 - docs/MIGRATION_RULES.md
+- docs/PERSONHOOD_CONTRACT.md
 - docs/PERSISTENCE_CONTRACT.md
 - docs/SAO_CARDINAL_REFERENCE.md
 - docs/WORLD_AUTONOMY.md
+- docs/WORLD_AUTHORITY.md
+- docs/WORLD_ENTRY_GATEWAY.md
 - index.html
 - package.json
 - src/boundary/ExternalGateway.ts
+- src/boundary/WorldEntryGateway.ts
 - src/browser.css
 - src/browser.ts
 - src/cardinal/CardinalAuditContext.ts
@@ -32,6 +36,7 @@ Files:
 - src/cardinal/InterventionGateway.ts
 - src/cardinal/InterventionGatewayLedger.ts
 - src/cardinal/LogBackedCardinalJournal.ts
+- src/cardinal/WorldAuthorityGateway.ts
 - src/cardinal/types.ts
 - src/core/json.ts
 - src/core/stableId.ts
@@ -78,9 +83,11 @@ Files:
 - tests/modes.test.ts
 - tests/observer.test.ts
 - tests/persistence.test.ts
+- tests/personhoodLifecycle.test.ts
 - tests/scheduler.test.ts
 - tests/sensors.test.ts
 - tests/worldAutonomy.test.ts
+- tests/worldAuthority.test.ts
 - tests/worldRuntime.test.ts
 - tsconfig.json
 - vercel.json

@@ -10,7 +10,7 @@ import type { SensorSnapshot } from '../src/sensors/types';
 
 function ecosystemObservation(observedAt: number): SensorSnapshot {
   return {
-    sensorVersion: 'ainkrad-world-sensors-0.3.9',
+    sensorVersion: 'ainkrad-world-sensors-0.3.10',
     worldId: 'learning-world',
     worldRevision: observedAt,
     observedAt,

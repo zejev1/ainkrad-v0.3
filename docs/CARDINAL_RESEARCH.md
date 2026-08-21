@@ -21,7 +21,9 @@ This is important for falsifiability: an investigator can inspect which records 
 
 ## Evidence-derived experience
 
-In v0.3.9 Cardinal gains experience from journaled observation cycles, ecosystem observations, evaluated outcomes and predictions whose expected direction was observed. Level and capabilities are recomputed from those records; they are not a writable score that Cardinal can award itself.
+In v0.3.10 Cardinal gains experience from journaled observation cycles, ecosystem observations, evaluated outcomes and predictions whose expected direction was observed. Level and capabilities are recomputed from those records; they are not a writable score that Cardinal can award itself.
+
+Later evidence thresholds unlock world-rule design, demographic stewardship and finally catastrophe modeling. These are proposal capabilities only. Aggregate architecture observations exclude resident minds, and the independent world-authority gateway remains the only holder of the matching world mutation capability.
 
 The initial capabilities are read-only world observation and autonomy protection. Trend reasoning, ecosystem observation and outcome learning unlock only after explicit evidence counts. Temporary habitat-support planning requires both level 2 and eight ecosystem observations.
 

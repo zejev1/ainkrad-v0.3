@@ -24,7 +24,7 @@ import type {
   InterventionProposal,
 } from './types';
 
-export const CARDINAL_POLICY_VERSION = 'ainkrad-cardinal-policy-0.3.9';
+export const CARDINAL_POLICY_VERSION = 'ainkrad-cardinal-policy-0.3.10';
 export const DEFAULT_CARDINAL_PREDICTION_HORIZON = 4;
 export const MAX_CARDINAL_PREDICTION_HORIZON = 16;
 

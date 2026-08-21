@@ -2,7 +2,7 @@ import type { EventReader } from '../world/events';
 import type { WorldState } from '../world/types';
 import type { CardinalMetrics, SensorSnapshot } from './types';
 
-export const WORLD_SENSOR_VERSION = 'ainkrad-world-sensors-0.3.9';
+export const WORLD_SENSOR_VERSION = 'ainkrad-world-sensors-0.3.10';
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const SOCIAL_CONTACT_WINDOW = 8;
@@ -29,8 +29,15 @@ export class WorldSensors {
       );
     }
 
-    const agents = Object.values(world.agents);
-    const relationships = Object.values(world.relationships);
+    const agents = Object.values(world.agents).filter(
+      (agent) => agent.life?.alive !== false,
+    );
+    const livingAgentIds = new Set(agents.map((agent) => agent.id));
+    const relationships = Object.values(world.relationships).filter(
+      (relationship) =>
+        livingAgentIds.has(relationship.agentA) &&
+        livingAgentIds.has(relationship.agentB),
+    );
     const wildlife = Object.values(world.wildlife ?? {});
     const activeSignals = await this.events.activeSignals(world.id, now);
     const recent = await this.events.recent(world.id, SENSOR_EVENT_READ_LIMIT, now);
@@ -96,7 +103,12 @@ export class WorldSensors {
         averageEnergy * 0.2,
     );
 
-    const exploredWorldRatio = clamp01((world.growth?.stage ?? 0) / 3);
+    const frontierStage = world.growth?.stage ?? 0;
+    // The frontier is unbounded, so there is no truthful finite "percent of
+    // the whole world". This maturity curve keeps every new region visible to
+    // Cardinal while approaching, but never reaching, total completion.
+    const exploredWorldRatio =
+      frontierStage === 0 ? 0 : frontierStage / (frontierStage + 3);
     const wildlifePressure =
       wildlife.length === 0
         ? 0
@@ -106,7 +118,7 @@ export class WorldSensors {
             0,
           ) / wildlife.length;
     const ecologicalDiversity = clamp01(
-      new Set(wildlife.map((population) => population.species)).size / 3,
+      new Set(wildlife.map((population) => population.species)).size / 6,
     );
 
     // Cardinal's own prior interventions are context, not independent evidence

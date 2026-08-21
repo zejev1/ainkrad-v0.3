@@ -21,7 +21,7 @@ The engine does not adopt its working mutation until the commit succeeds.
 
 ## Browser adapter
 
-The v0.3.9 live page uses IndexedDB as a concrete `WorldStore` adapter. Its world commit is one read-write transaction across:
+The v0.3.10 live page uses IndexedDB as a concrete `WorldStore` adapter. Its world commit is one read-write transaction across:
 
 - the current world projection;
 - the stable operation record;
@@ -33,6 +33,8 @@ The transaction checks the current per-world revision and all event/memory ident
 Cardinal research and independent simulation-gateway records use indexed append-only stream entries with a compare-and-append head. Records are not rewritten as one growing array. Recreating the live runtime reconstructs evaluation counts, intervention counts, cooldown and pending recovery from these streams.
 
 Multiple tabs must not become independent writers over one browser-local world. The live worker uses an exclusive Web Lock when supported and broadcasts committed frames to waiting tabs. The storage revision check remains the final protection for browsers without that lock.
+
+Broadcast frames carry a v0.3.10 protocol version. A newly deployed tab ignores frames from an older still-open worker instead of attempting to render a legacy world shape.
 
 IndexedDB provides durable continuity for the same browser profile and origin. It does not make the browser an always-on service. Closing every page stops execution; clearing site data removes the local database. A future 24/7 runtime must implement the same ports on an independent host without giving Cardinal control of the runtime or external gateway.
 
@@ -63,7 +65,7 @@ Every world snapshot carries `rulesVersion`.
 
 A runtime must not silently resume a world created by incompatible world rules. A version mismatch requires an explicit migration or a new experiment.
 
-The reviewed `0.3.8 -> 0.3.9` migration is itself one idempotent world operation. It atomically writes the upgraded projection and a `world.migrated` event while preserving the old society and logical clock. A failed or concurrent migration cannot expose a half-upgraded ecology.
+The reviewed migration from either `0.3.8` or deployed `0.3.9` to `0.3.10` is itself one idempotent world operation. It atomically writes the upgraded projection and a `world.migrated` event while preserving society, ecology, RNG future and logical clock. A failed or concurrent migration cannot expose a half-upgraded life-cycle or governance projection.
 
 The same rule applies to research interpretation:
 

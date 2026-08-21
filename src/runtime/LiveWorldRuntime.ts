@@ -6,6 +6,12 @@ import { LogBackedCardinalJournal } from '../cardinal/LogBackedCardinalJournal';
 import { CardinalObserver } from '../cardinal/CardinalObserver';
 import { CardinalRuntime } from '../cardinal/CardinalRuntime';
 import {
+  CardinalWorldArchitect,
+  IndependentWorldAuthorityGateway,
+  observeWorldArchitecture,
+  type WorldAuthorityRecord,
+} from '../cardinal/WorldAuthorityGateway';
+import {
   IndependentInterventionGateway,
   INTERVENTION_GATEWAY_POLICY_VERSION,
 } from '../cardinal/InterventionGateway';
@@ -58,6 +64,7 @@ export interface LiveWorldFrame {
   disturbances: LiveWorldDisturbance[];
   evaluation?: CardinalEvaluation;
   intervention?: InterventionRecord;
+  worldAuthority?: WorldAuthorityRecord;
   evaluationCount: number;
   executedInterventionCount: number;
   recentEvents: WorldEvent[];
@@ -84,6 +91,8 @@ export class LiveWorldRuntime {
     private readonly journal: LogBackedCardinalJournal,
     private readonly cardinal: CardinalRuntime,
     private readonly gateway: IndependentInterventionGateway,
+    private readonly worldArchitect: CardinalWorldArchitect,
+    private readonly worldAuthorityGateway: IndependentWorldAuthorityGateway,
     private readonly auditor: CardinalAuditor,
     private evaluationCount: number,
     private executedInterventionCount: number,
@@ -138,6 +147,8 @@ export class LiveWorldRuntime {
       journal,
       cardinal,
       gateway,
+      new CardinalWorldArchitect(),
+      new IndependentWorldAuthorityGateway(world),
       new CardinalAuditor(),
       evaluations.length,
       interventions.filter((intervention) => intervention.executed).length,
@@ -205,6 +216,7 @@ export class LiveWorldRuntime {
     );
 
     let intervention: InterventionRecord | undefined;
+    let worldAuthority: WorldAuthorityRecord | undefined;
 
     if (evaluation) {
       this.evaluationCount += 1;
@@ -237,6 +249,26 @@ export class LiveWorldRuntime {
           independentAuditContext,
         ),
       );
+
+      if (this.mode === 'intervene' && !intervention?.executed) {
+        const authorityEvidence = await this.store.recent(
+          this.world.snapshot().id,
+          16,
+          tick,
+        );
+        const authorityProposal = this.worldArchitect.consider(
+          observeWorldArchitecture(this.world.snapshot()),
+          evaluation.experience,
+          authorityEvidence,
+        );
+        if (authorityProposal) {
+          worldAuthority = await this.worldAuthorityGateway.execute(
+            authorityProposal,
+            this.world.snapshot(),
+            evaluation.experience,
+          );
+        }
+      }
     }
 
     const observation = await this.sensors.observe(
@@ -259,6 +291,7 @@ export class LiveWorldRuntime {
       disturbances: dueDisturbances,
       evaluation,
       intervention,
+      worldAuthority,
       evaluationCount: this.evaluationCount,
       executedInterventionCount: this.executedInterventionCount,
       recentEvents,

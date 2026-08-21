@@ -9,6 +9,7 @@ import { WorldRevisionConflictError } from '../world/persistence';
 const TICK_DELAY_MS = 700;
 const WORLD_LOCK_NAME = 'ainkrad-v0-3-live-world-writer';
 const WORLD_CHANNEL_NAME = 'ainkrad-v0-3-live-world-frames';
+const FRAME_PROTOCOL_VERSION = 'ainkrad-live-frame-0.3.10';
 
 const disturbances: readonly LiveWorldDisturbance[] = [
   { tick: 12, kind: 'resource_shock', magnitude: 0.6 },
@@ -17,8 +18,16 @@ const disturbances: readonly LiveWorldDisturbance[] = [
 ];
 
 type LiveWorldWorkerMessage =
-  | { type: 'frame'; frame: LiveWorldFrame }
-  | { type: 'fatal'; message: string };
+  | {
+      type: 'frame';
+      protocolVersion: typeof FRAME_PROTOCOL_VERSION;
+      frame: LiveWorldFrame;
+    }
+  | {
+      type: 'fatal';
+      protocolVersion: typeof FRAME_PROTOCOL_VERSION;
+      message: string;
+    };
 
 const workerScope = self as unknown as {
   postMessage(message: LiveWorldWorkerMessage): void;
@@ -28,10 +37,12 @@ const frameChannel = new BroadcastChannel(WORLD_CHANNEL_NAME);
 
 frameChannel.addEventListener(
   'message',
-  (event: MessageEvent<LiveWorldWorkerMessage>) => {
+  (event: MessageEvent<Partial<LiveWorldWorkerMessage>>) => {
     // A waiting tab remains a read-only mirror of the tab that owns the
-    // exclusive world-writer lock.
-    workerScope.postMessage(event.data);
+    // exclusive world-writer lock. Frames from an older deployment are
+    // ignored so a legacy tab cannot crash the newly migrated interface.
+    if (event.data.protocolVersion !== FRAME_PROTOCOL_VERSION) return;
+    workerScope.postMessage(event.data as LiveWorldWorkerMessage);
   },
 );
 
@@ -53,7 +64,11 @@ async function runForever(): Promise<void> {
   while (true) {
     try {
       const frame = await runtime.tick();
-      const message = { type: 'frame', frame } as const;
+      const message = {
+        type: 'frame',
+        protocolVersion: FRAME_PROTOCOL_VERSION,
+        frame,
+      } as const;
       workerScope.postMessage(message);
       frameChannel.postMessage(message);
     } catch (error) {
@@ -97,6 +112,7 @@ async function start(): Promise<void> {
 void start().catch((error: unknown) => {
   const message = {
     type: 'fatal',
+    protocolVersion: FRAME_PROTOCOL_VERSION,
     message:
       error instanceof Error
         ? error.message

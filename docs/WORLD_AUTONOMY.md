@@ -2,7 +2,7 @@
 
 Ainkrad is not a Cardinal demonstration with decorative NPCs. The world must be capable of producing its own successes, failures, adaptations and social structures without Cardinal.
 
-This document defines the v0.3.9 world layer that Cardinal is allowed to observe.
+This document defines the v0.3.10 world layer that Cardinal is allowed to observe.
 
 ## Causal ownership
 
@@ -11,12 +11,16 @@ NPC state belongs to the NPC/world simulation, not to Cardinal.
 Each agent persists:
 
 - identity and name;
+- native or external origin;
+- biological age, health, life stage, lifespan, lineage and generation;
 - energy, stress and personal resources;
 - social drive;
 - personality traits;
 - belonging and purpose needs;
 - gathering, hunting, craft, social and exploration skills;
 - a current derived goal;
+- persistent emotions, values and beliefs shaped by lived experience;
+- an interruptible multi-tick journey plan;
 - home and current location;
 - last autonomous action and meaningful-activity time.
 
@@ -26,11 +30,11 @@ Cardinal receives no capability that writes these fields directly. An authorized
 
 The initial settlement contains homes plus shared places for social contact, gathering, work, quiet reflection and exploration. It does not begin with the whole natural world already revealed.
 
-Resident exploration accumulates persistent frontier progress. Crossing each threshold opens exactly one next region: meadow, forest, then sea shore. The discovery commits the new place, its wildlife and append-only evidence atomically. Cardinal does not trigger discovery and cannot select the explorer.
+Resident exploration accumulates persistent frontier progress. The founding sequence is meadow, forest and sea shore. After that the frontier is unbounded: a seeded procedural generator creates connected mountains, lakes, rivers, swamps, ruins, villages, plains, forests and coasts. Every discovery commits the new place, topology, wildlife and append-only evidence atomically. Cardinal does not select the explorer.
 
 The first ecology is intentionally small: rabbits in the meadow, deer in the forest and fish at the shore. Populations have a carrying capacity, reproduction rate and alertness. They recover through an endogenous habitat cycle, including recovery from zero, so Cardinal is not the world's only path back from depletion.
 
-A place is part of persistent world state. NPC actions move them through that state. Appearance, animation and richer geometry can be layered on later without changing the causal rule that the world owns its inhabitants.
+A place is part of persistent world state. Connections are reciprocal and route plans move residents across the graph. Procedural coordinates expand in world units instead of being permanently clamped to one initial square; the UI may zoom them without changing causal geometry.
 
 ## Choice, not a fixed routine
 
@@ -48,6 +52,8 @@ Agents compare several locally available actions:
 - help;
 - explore;
 - reflect.
+- bond;
+- pray.
 
 Utility comes from current needs, personality, skills, goal, relationships and environmental conditions. Ordinary action selection does not mechanically execute the highest score. The agent forms a bounded set of reasonable alternatives, converts their relative utilities into seeded weights and chooses within that set. Curiosity and risk tolerance widen the choice window; persisted seeded randomness keeps the result reproducible.
 
@@ -58,6 +64,14 @@ Very low energy or resources can impose survival constraints, but these constrai
 The processing order of agents is shuffled by the persisted seeded RNG each tick. Array position must not grant `agent_1` a permanent first-mover privilege.
 
 Walking, relaxation and hunting are ordinary alternatives, not scheduled chores. Hunting can succeed or fail. It consumes energy, changes animal alertness, develops hunting skill and only removes an animal on success. Residents may continue gathering or working instead; no central process orders them to hunt.
+
+Exploration and hunting can create a short multi-tick plan. The resident keeps walking toward the chosen frontier or habitat instead of recomputing into a teleport on every tick. Exhaustion and survival pressure can interrupt the plan.
+
+## Life cycle and generations
+
+World time advances biological age. Health responds to recovery, frailty, danger and deprivation. Death ends action but does not delete the person, lineage, relationships or memories.
+
+Birth is a voluntary consequence of a sufficiently strong adult relationship plus health, resources, manageable stress, cooldown and carrying capacity. The child is a new identity with two reciprocal parents and a new generation. Cardinal cannot select partners or create a child directly. See `PERSONHOOD_CONTRACT.md`.
 
 ## Endogenous economy and recovery
 
@@ -84,15 +98,21 @@ Helping is an explicit action. An offer can be accepted or rejected. The simulat
 
 Social barriers alter opportunity to meet; they do not rewrite relationships or order agents not to speak. A failed attempt can itself become an autonomous world event.
 
-## Learning without a hidden mind
+## Persistent mind without a Cardinal writer
 
 Skills change through experience. Goals are derived from inspectable state: recovery pressure, resource security, belonging, contribution, curiosity and reflection. The goal is persisted so later analysis can reconstruct what the NPC was prioritizing.
 
-This is still a deliberately small cognitive model. It is not presented as human psychology. Its purpose is to create enough persistent, causal individuality for relationships and consequences to emerge before more sophisticated cognition is added.
+Emotions, values and beliefs are persisted and can change slowly through chosen actions and experienced births, deaths, omens and catastrophes. They are never intervention targets. This is still a deliberately small cognitive model and is not presented as human consciousness.
 
 ## Memory
 
 Interaction and reflection can create append-only long-term memories outside the hot world snapshot. Pair memories influence future target choice.
+
+Birth, death and omen memories preserve consequences that outlive one action cycle. A deceased resident is not removed from historical or relationship evidence.
+
+## Cosmology and mystery
+
+Rare endogenous phenomena can create witness memories and awe without commanding belief. Residents may pray or ignore them. Shared interpretation can eventually create traditions and an emergent belief-deity. An external deity may enter only through the independent entry gateway and cannot impersonate an emergent belief.
 
 Bounded decision reads are a performance rule only. They do not authorize deletion of older experimental memory evidence.
 
@@ -108,9 +128,11 @@ NPCs remain free to respond through their ordinary action model. This is essenti
 
 ## Ecology and Cardinal
 
-Read-only sensors derive explored-world ratio, wildlife pressure and ecological diversity from committed world state. They do not spawn animals or write habitat state.
+Read-only sensors derive frontier maturity, wildlife pressure and ecological diversity from committed world state. Because the frontier is unbounded, `exploredWorldRatio` is an asymptotic maturity curve rather than a false claim that the infinite world is 100% explored. Sensors do not spawn animals or write habitat state.
 
-Cardinal experience is reconstructed from append-only evaluations and outcomes. Repeated observations unlock analysis capabilities; they never unlock assignment of resident goals, actions, relationships, memories or skills. The only ecology intervention in v0.3.9 is a bounded temporary `habitat_support` proposal. It requires learned capability, independent Auditor approval and execution by the independent simulation gateway.
+Cardinal experience is reconstructed from append-only evaluations and outcomes. Repeated observations unlock analysis capabilities; they never unlock assignment of resident goals, actions, relationships, memories or skills. Temporary `habitat_support` still requires learned capability, independent Auditor approval and execution by the independent simulation gateway.
+
+At higher experience levels Cardinal may propose a registered world-law mechanism. The separate world-authority gateway validates the proposal and constitution. Cardinal's architecture observation includes aggregate frontier and population data, not resident minds. See `WORLD_AUTHORITY.md`.
 
 That proposal changes environmental recovery conditions only. Residents remain free to hunt, abstain, explore, work or rest. Natural population recovery remains available in OFF and OBSERVER modes.
 
@@ -126,7 +148,7 @@ Changing this metric meaning changes the sensor version.
 
 World RNG state, event sequence, agent state, places and relationships are persisted in the world projection. Reopening the same committed world must preserve the exact deterministic future.
 
-The explicit world-rules migration from v0.3.8 to v0.3.9 preserves logical time, RNG, residents, goals, locations and relationships. It adds ecology state and derives an initial hunting skill deterministically from each resident's already-persisted gathering, exploration and risk tolerance. It does not create replacement residents.
+The explicit world-rules migration accepts v0.3.8 and v0.3.9. It preserves logical time, RNG future, residents, goals, locations, relationships and prior v0.3.9 ecology. It adds life, mind, lineage, cosmology, topology and governance without creating replacement residents.
 
 Same seed + same world rules + same disturbances must reproduce the same autonomous state and history. Different seeds are allowed to generate different societies.
 

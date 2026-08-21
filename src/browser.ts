@@ -7,6 +7,7 @@ import type {
   AgentState,
   RelationshipState,
   WildlifeSpecies,
+  WorldPlaceKind,
   WorldState,
 } from './world/types';
 
@@ -27,6 +28,8 @@ const actionLabels: Record<AgentActionKind, string> = {
   help: 'помогает',
   explore: 'исследует мир',
   reflect: 'размышляет',
+  bond: 'строит близость',
+  pray: 'ищет высший смысл',
 };
 
 const actionIcons: Record<AgentActionKind, string> = {
@@ -40,6 +43,8 @@ const actionIcons: Record<AgentActionKind, string> = {
   help: '♥',
   explore: '⌁',
   reflect: '…',
+  bond: '∞',
+  pray: '✧',
 };
 
 const goalLabels: Record<AgentState['goal']['kind'], string> = {
@@ -49,6 +54,8 @@ const goalLabels: Record<AgentState['goal']['kind'], string> = {
   contribute: 'быть полезным',
   explore: 'узнать новое',
   reflect: 'разобраться в себе',
+  build_family: 'создать семью',
+  seek_truth: 'понять тайны мира',
 };
 
 const traitLabels: Record<keyof AgentState['personality'], string> = {
@@ -90,12 +97,18 @@ const wildlifeLabels: Record<WildlifeSpecies, string> = {
   rabbit: 'Кролики',
   deer: 'Олени',
   fish: 'Рыба',
+  boar: 'Кабаны',
+  wolf: 'Волки',
+  bird: 'Птицы',
 };
 
 const wildlifeIcons: Record<WildlifeSpecies, string> = {
   rabbit: '🐇',
   deer: '🦌',
   fish: '🐟',
+  boar: '🐗',
+  wolf: '🐺',
+  bird: '🐦',
 };
 
 const cardinalCapabilityLabels: Record<CardinalCapability, string> = {
@@ -105,6 +118,9 @@ const cardinalCapabilityLabels: Record<CardinalCapability, string> = {
   ecosystem_observation: 'наблюдение экосистемы',
   outcome_learning: 'обучение на последствиях',
   habitat_support_planning: 'планирование поддержки среды',
+  world_rule_design: 'проектирование законов мира',
+  demographic_stewardship: 'наблюдение поколений',
+  catastrophe_modeling: 'моделирование катастроф',
 };
 
 const homePoints: readonly MapPoint[] = [
@@ -120,7 +136,7 @@ app.innerHTML = `
   <div class="ainkrad-app">
     <header class="world-header">
       <div>
-        <p class="eyebrow">AINKRAD v0.3.9 · растущий мир</p>
+        <p class="eyebrow">AINKRAD v0.3.10 · живые поколения</p>
         <h1>Первый уровень</h1>
         <p class="world-subtitle">Жители открывают территории. Cardinal учится вместе с миром.</p>
       </div>
@@ -135,7 +151,7 @@ app.innerHTML = `
       <span>Тик <strong id="tick-value">0</strong></span>
       <span>Время <strong id="time-value">Рассвет</strong></span>
       <span>Жителей <strong id="population-value">6</strong></span>
-      <span>Территории <strong id="growth-value">0/3</strong></span>
+      <span>Территории <strong id="growth-value">0</strong></span>
       <span>Животные <strong id="wildlife-value">0</strong></span>
       <span>Общие ресурсы <strong id="resource-value">—</strong></span>
       <span class="save-state">Состояние <strong id="save-value">Загрузка…</strong></span>
@@ -193,6 +209,7 @@ app.innerHTML = `
           <dl class="resident-facts">
             <div><dt>Место</dt><dd id="resident-place">—</dd></div>
             <div><dt>Цель</dt><dd id="resident-goal">—</dd></div>
+            <div><dt>Жизнь</dt><dd id="resident-life">—</dd></div>
             <div><dt>Характер</dt><dd id="resident-traits">—</dd></div>
             <div><dt>Сильный навык</dt><dd id="resident-skill">—</dd></div>
             <div><dt>Выбор</dt><dd id="resident-choice">—</dd></div>
@@ -289,6 +306,7 @@ const residentName = requiredElement<HTMLElement>('resident-name');
 const residentActivity = requiredElement<HTMLElement>('resident-activity');
 const residentPlace = requiredElement<HTMLElement>('resident-place');
 const residentGoal = requiredElement<HTMLElement>('resident-goal');
+const residentLife = requiredElement<HTMLElement>('resident-life');
 const residentTraits = requiredElement<HTMLElement>('resident-traits');
 const residentSkill = requiredElement<HTMLElement>('resident-skill');
 const residentChoice = requiredElement<HTMLElement>('resident-choice');
@@ -318,8 +336,71 @@ let continuityAnnounced = false;
 const clampMapCoordinate = (value: number) =>
   Math.max(4.5, Math.min(95.5, value));
 
-function pointForPlace(placeId: string, agentIndex = 0): MapPoint {
+function normalizeWorldCoordinates(
+  world: Readonly<WorldState>,
+  mapX: number,
+  mapY: number,
+): Pick<MapPoint, 'x' | 'y'> {
+  const places = Object.values(world.places);
+  const minX = Math.min(...places.map((place) => place.mapX));
+  const maxX = Math.max(...places.map((place) => place.mapX));
+  const minY = Math.min(...places.map((place) => place.mapY));
+  const maxY = Math.max(...places.map((place) => place.mapY));
+  const spanX = Math.max(12, maxX - minX);
+  const spanY = Math.max(12, maxY - minY);
+  const paddingX = spanX * 0.08;
+  const paddingY = spanY * 0.08;
+
+  return {
+    x: clampMapCoordinate(
+      5 + ((mapX - minX + paddingX) / (spanX + paddingX * 2)) * 90,
+    ),
+    y: clampMapCoordinate(
+      5 + ((mapY - minY + paddingY) / (spanY + paddingY * 2)) * 90,
+    ),
+  };
+}
+
+function pointForPlace(
+  placeId: string,
+  agentIndex = 0,
+  world?: Readonly<WorldState>,
+): MapPoint {
   const publicPoint = publicPlacePoints[placeId];
+  const place = world?.places[placeId];
+  if (place && world) {
+    const symbolByKind: Partial<Record<WorldPlaceKind, string>> = {
+      home: '⌂',
+      commons: '◆',
+      resource_field: '✦',
+      workshop: '⚒',
+      quiet_space: '♣',
+      outskirts: '▲',
+      mountains: '△',
+      lake: '◉',
+      river: '≈',
+      swamp: '♨',
+      ruins: '⌘',
+      village: '⌂',
+      meadow: '❀',
+      forest: '♠',
+      shore: '≈',
+    };
+    const normalized = normalizeWorldCoordinates(
+      world,
+      place.mapX,
+      place.mapY,
+    );
+    return {
+      ...normalized,
+      label:
+        publicPoint?.label ??
+        (place.kind === 'home'
+          ? place.name.replace("'s Home", ' — дом')
+          : place.name),
+      symbol: publicPoint?.symbol ?? symbolByKind[place.kind] ?? '•',
+    };
+  }
   if (publicPoint) return publicPoint;
   if (placeId.startsWith('home_')) {
     return homePoints[agentIndex % homePoints.length];
@@ -340,43 +421,54 @@ function displayPlaceName(
 function renderPlaces(world: Readonly<WorldState>): void {
   const agentIds = Object.keys(world.agents);
   for (const [placeId, place] of Object.entries(world.places)) {
-    if (placeElements.has(placeId)) continue;
     const homeAgentIndex = agentIds.findIndex(
       (agentId) => world.agents[agentId]?.homeId === placeId,
     );
-    const point = pointForPlace(placeId, Math.max(0, homeAgentIndex));
-    const placeElement = document.createElement('div');
-    placeElement.className = `map-place map-place--${place.kind}`;
+    const point = pointForPlace(
+      placeId,
+      Math.max(0, homeAgentIndex),
+      world,
+    );
+    let placeElement = placeElements.get(placeId);
+    if (!placeElement) {
+      placeElement = document.createElement('div');
+      placeElement.className = `map-place map-place--${place.kind}`;
+      placeElement.innerHTML = `
+        <span class="place-building" aria-hidden="true">
+          <span class="place-symbol"></span>
+        </span>
+        <span class="place-label"></span>
+        <span class="place-count">0</span>
+      `;
+      placesLayer.append(placeElement);
+      placeElements.set(placeId, placeElement);
+    }
     placeElement.style.left = `${point.x}%`;
     placeElement.style.top = `${point.y}%`;
     placeElement.setAttribute('aria-label', point.label);
-    placeElement.innerHTML = `
-      <span class="place-building" aria-hidden="true">
-        <span class="place-symbol">${point.symbol}</span>
-      </span>
-      <span class="place-label">${point.label}</span>
-      <span class="place-count">0</span>
-    `;
-    placesLayer.append(placeElement);
-    placeElements.set(placeId, placeElement);
+    const symbol = placeElement.querySelector<HTMLElement>('.place-symbol');
+    const label = placeElement.querySelector<HTMLElement>('.place-label');
+    if (symbol) symbol.textContent = point.symbol;
+    if (label) label.textContent = point.label;
   }
 }
 
 function renderWildlife(world: Readonly<WorldState>): void {
   for (const [populationId, population] of Object.entries(world.wildlife)) {
+    const habitat = pointForPlace(population.habitatId, 0, world);
+    const offsets: Record<WildlifeSpecies, { x: number; y: number }> = {
+      rabbit: { x: 6, y: 4 },
+      deer: { x: 7, y: 5 },
+      fish: { x: -6, y: -5 },
+      boar: { x: 5, y: 5 },
+      wolf: { x: -5, y: 4 },
+      bird: { x: 3, y: -5 },
+    };
+    const offset = offsets[population.species];
     let element = wildlifeElements.get(populationId);
     if (!element) {
-      const habitat = pointForPlace(population.habitatId);
-      const offsets: Record<WildlifeSpecies, { x: number; y: number }> = {
-        rabbit: { x: 6, y: 4 },
-        deer: { x: 7, y: 5 },
-        fish: { x: -6, y: -5 },
-      };
-      const offset = offsets[population.species];
       element = document.createElement('div');
       element.className = `wildlife-population wildlife-population--${population.species}`;
-      element.style.left = `${clampMapCoordinate(habitat.x + offset.x)}%`;
-      element.style.top = `${clampMapCoordinate(habitat.y + offset.y)}%`;
       element.innerHTML = `
         <span class="wildlife-icon" aria-hidden="true">${wildlifeIcons[population.species]}</span>
         <span class="wildlife-count"></span>
@@ -384,6 +476,9 @@ function renderWildlife(world: Readonly<WorldState>): void {
       wildlifeLayer.append(element);
       wildlifeElements.set(populationId, element);
     }
+
+    element.style.left = `${clampMapCoordinate(habitat.x + offset.x)}%`;
+    element.style.top = `${clampMapCoordinate(habitat.y + offset.y)}%`;
 
     const label = wildlifeLabels[population.species];
     const count = element.querySelector<HTMLElement>('.wildlife-count');
@@ -471,7 +566,9 @@ function closestRelationship(
 function updateSelection(): void {
   if (!lastFrame) return;
 
-  const agents = Object.values(lastFrame.world.agents);
+  const agents = Object.values(lastFrame.world.agents).filter(
+    (agent) => agent.life.alive,
+  );
   const selected =
     agents.find((agent) => agent.id === selectedAgentId) ?? agents[0];
   if (!selected) return;
@@ -494,6 +591,9 @@ function updateSelection(): void {
     : 'осматривается';
   residentPlace.textContent = displayPlaceName(lastFrame.world, selected);
   residentGoal.textContent = goalLabels[selected.goal.kind];
+  residentLife.textContent = `${Math.floor(selected.life.ageYears)} лет · поколение ${selected.life.generation} · ${
+    selected.origin === 'native' ? 'рождён здесь' : 'вошёл извне'
+  }`;
   residentTraits.textContent = strongestTraits(selected);
   residentSkill.textContent = strongestSkill(selected);
 
@@ -517,7 +617,9 @@ function updateSelection(): void {
         : relationship.agentA;
     const other = lastFrame.world.agents[otherId];
     relationshipNote.textContent = other
-      ? `Ближе всего: ${other.name} · доверие ${Math.round(relationship.trust * 100)}%`
+      ? other.life.alive
+        ? `Ближе всего: ${other.name} · доверие ${Math.round(relationship.trust * 100)}%`
+        : `Помнит ${other.name} · связь не исчезла после смерти`
       : 'Связи продолжают меняться.';
   } else {
     relationshipNote.textContent = 'Связи ещё формируются.';
@@ -580,6 +682,7 @@ function eventText(
       if (typeof event.payload.discoveredRegionId === 'string') {
         return `${name} открыл: ${
           publicPlacePoints[event.payload.discoveredRegionId]?.label ??
+          world.places[event.payload.discoveredRegionId]?.name ??
           event.payload.discoveredRegionId
         }`;
       }
@@ -588,6 +691,18 @@ function eventText(
         : `${name} исследует окраину`;
     case 'agent.reflected':
       return `${name} ушёл поразмышлять`;
+    case 'agent.prayed':
+      return `${name} пытается понять тайны мира`;
+    case 'agent.bond.accepted':
+      return `${name} стал кому-то ближе`;
+    case 'agent.bond.declined':
+      return `${name} получил время всё обдумать`;
+    case 'agent.born':
+      return `${name} родился — началась новая жизнь`;
+    case 'agent.died':
+      return `${name} умер, но его история осталась в мире`;
+    case 'agent.life.stage_changed':
+      return `${name} перешёл в новый период жизни`;
     case 'agent.socialize.blocked':
       return `${name} не смог найти компанию`;
     case 'agent.help.accepted': {
@@ -624,7 +739,11 @@ function eventText(
     case 'world.region.discovered': {
       const regionId = event.payload.regionId;
       return typeof regionId === 'string'
-        ? `Карта выросла: ${publicPlacePoints[regionId]?.label ?? regionId}`
+        ? `Карта выросла: ${
+            publicPlacePoints[regionId]?.label ??
+            world.places[regionId]?.name ??
+            regionId
+          }`
         : 'Жители открыли новую территорию';
     }
     case 'world.wildlife.recovered': {
@@ -637,6 +756,31 @@ function eventText(
       return 'Одна из популяций животных исчезла из поля зрения';
     case 'world.migrated':
       return 'Старый мир продолжен по новым правилам';
+    case 'world.tradition.emerged':
+      return 'В мире родилась новая традиция';
+    case 'world.entry.resident_manifested':
+      return 'В мир вошёл новый внешний житель';
+    case 'world.entry.deity_manifested':
+      return 'Мир почувствовал присутствие неизвестной силы';
+    case 'world.omen.aurora':
+    case 'world.omen.voice':
+    case 'world.omen.eclipse':
+    case 'world.omen.miracle':
+    case 'world.omen.storm_sign':
+      return 'Жители стали свидетелями необъяснимого знамения';
+    case 'world.omen.natural.sky_lights':
+    case 'world.omen.natural.distant_voice':
+    case 'world.omen.natural.silent_storm':
+    case 'world.omen.natural.ruin_echo':
+      return 'В мире произошло необъяснимое явление';
+    case 'cardinal.world_law.changed':
+      return 'Cardinal предложил новый закон, gateway его разрешил';
+    case 'cardinal.catastrophe.wildfire':
+    case 'cardinal.catastrophe.flood':
+    case 'cardinal.catastrophe.epidemic':
+    case 'cardinal.catastrophe.earthquake':
+    case 'cardinal.catastrophe.drought':
+      return 'Мир переживает разрешённую системную катастрофу';
     case 'cardinal.intervention.resource_relief':
       return 'Gateway подтвердил ресурсную помощь';
     case 'cardinal.effect.open_shared_space':
@@ -707,11 +851,20 @@ function updateWorldTime(tick: number): void {
 
 function updateWorld(frame: Readonly<LiveWorldFrame>): void {
   lastFrame = structuredClone(frame);
-  worldMap.dataset.growth = String(frame.world.growth.stage);
+  worldMap.dataset.growth = String(Math.min(3, frame.world.growth.stage));
   renderPlaces(frame.world);
   renderWildlife(frame.world);
 
-  const agents = Object.values(frame.world.agents);
+  const agents = Object.values(frame.world.agents).filter(
+    (agent) => agent.life.alive,
+  );
+  const livingAgentIds = new Set(agents.map((agent) => agent.id));
+  for (const [agentId, avatar] of avatarElements) {
+    if (livingAgentIds.has(agentId)) continue;
+    avatar.remove();
+    avatarElements.delete(agentId);
+    previousLocations.delete(agentId);
+  }
   if (!selectedAgentId) selectedAgentId = agents[0]?.id;
 
   const occupancy = new Map<string, AgentState[]>();
@@ -730,7 +883,7 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
 
   agents.forEach((agent, index) => {
     const avatar = ensureAvatar(agent, index);
-    const base = pointForPlace(agent.locationId, index);
+    const base = pointForPlace(agent.locationId, index, frame.world);
     const residentsHere = occupancy.get(agent.locationId) ?? [agent];
     const localIndex = residentsHere.findIndex((item) => item.id === agent.id);
     const angle =
@@ -756,6 +909,13 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
     avatar.classList.toggle('is-reflecting', agent.lastAction === 'reflect');
     avatar.classList.toggle('is-socializing', agent.lastAction === 'socialize');
     avatar.classList.toggle('is-helping', agent.lastAction === 'help');
+    avatar.classList.toggle('is-child', agent.life.stage === 'child');
+    avatar.classList.toggle(
+      'is-adolescent',
+      agent.life.stage === 'adolescent',
+    );
+    avatar.classList.toggle('is-elder', agent.life.stage === 'elder');
+    avatar.dataset.lifeStage = agent.life.stage;
     avatar.dataset.action = agent.lastAction ?? 'idle';
 
     const actionBubble = avatar.querySelector<HTMLElement>('.action-bubble');
@@ -776,12 +936,9 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
 
   tickValue.textContent = String(frame.tick);
   populationValue.textContent = String(agents.length);
-  growthValue.textContent =
-    frame.world.growth.stage >= 3
-      ? '3/3'
-      : `${frame.world.growth.stage}/3 · ${Math.round(
-          frame.world.growth.explorationProgress * 100,
-        )}%`;
+  growthValue.textContent = `${frame.world.growth.stage} · ${Math.round(
+    frame.world.growth.explorationProgress * 100,
+  )}%`;
   wildlifeValue.textContent = String(
     Object.values(frame.world.wildlife).reduce(
       (sum, population) => sum + population.count,
@@ -842,8 +999,16 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
 }
 
 type LiveWorldWorkerMessage =
-  | { type: 'frame'; frame: LiveWorldFrame }
-  | { type: 'fatal'; message: string };
+  | {
+      type: 'frame';
+      protocolVersion: 'ainkrad-live-frame-0.3.10';
+      frame: LiveWorldFrame;
+    }
+  | {
+      type: 'fatal';
+      protocolVersion: 'ainkrad-live-frame-0.3.10';
+      message: string;
+    };
 
 const liveWorldWorker = new Worker(
   new URL('./runtime/liveWorld.worker.ts', import.meta.url),
