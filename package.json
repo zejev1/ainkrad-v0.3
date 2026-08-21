@@ -5,6 +5,7 @@
   "description": "Experimental autonomous world for developing and testing Cardinal.",
   "type": "module",
   "scripts": {
+    "build": "vite build",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "check": "npm run typecheck && npm run test",
@@ -14,6 +15,7 @@
     "node": ">=22"
   },
   "devDependencies": {
+    "vite": "7.0.4",
     "tsx": "4.19.3",
     "typescript": "5.8.3",
     "vitest": "3.1.1"
