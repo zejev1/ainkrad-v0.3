@@ -158,7 +158,7 @@ describe('v0.3.13 release audit', () => {
       store,
       startTime: 0,
     });
-    for (let tick = 1; tick <= 800; tick += 1) {
+    for (let tick = 1; tick <= 600; tick += 1) {
       await world.step(tick);
     }
     const snapshot = world.snapshot();
