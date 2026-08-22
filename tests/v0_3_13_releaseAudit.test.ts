@@ -68,6 +68,35 @@ describe('v0.3.13 release audit', () => {
       expect(migrated.agents[id].race).toBe('human');
       expect((migrated.agents[id].progression?.level ?? 0)).toBeGreaterThanOrEqual(1);
     }
+        for (let tick = 1; tick <= 180; tick += 1) {
+      await opened.step(tick);
+    }
+
+    const continued = opened.snapshot();
+    const continuedHumans = Object.values(continued.agents).filter(
+      (agent) =>
+        agent.life.alive &&
+        (agent.race ?? 'human') === 'human',
+    );
+
+    expect(continuedHumans.length).toBeGreaterThanOrEqual(3);
+
+    for (const id of survivingIds) {
+      expect(continued.agents[id].life.alive).toBe(true);
+    }
+
+    const observation = await new WorldSensors(store).observe(
+      continued,
+      continued.now,
+    );
+
+    expect(
+      observation.metrics.livingPopulation,
+    ).toBeGreaterThanOrEqual(3);
+
+    expect(
+      observation.metrics.reproductivePairPotential,
+    ).toBeGreaterThanOrEqual(1);
   });
 
   it('keeps Cardinal accumulated experience across policy/sensor advancement', async () => {
