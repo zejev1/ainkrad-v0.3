@@ -84,7 +84,7 @@ describe('Human-like bodies and growing civilization', () => {
       seed: 'monster-growth-test',
       store,
     });
-    for (let tick = 1; tick <= 400; tick += 1) {
+    for (let tick = 1; tick <= 800; tick += 1) {
       await world.step(tick);
     }
 
@@ -100,7 +100,7 @@ describe('Human-like bodies and growing civilization', () => {
     ).toBe(true);
 
     const entryGateway = new IndependentWorldEntryGateway(world);
-    for (let index = 1; index <= 6; index += 1) {
+    for (let index = 1; index <= 36; index += 1) {
       const expected = world.snapshot();
       const result = await entryGateway.enter(
         {
@@ -115,7 +115,7 @@ describe('Human-like bodies and growing civilization', () => {
       );
       expect(result.authorized).toBe(true);
     }
-    for (let tick = 401; tick <= 456; tick += 1) {
+    for (let tick = 801; tick <= 1400; tick += 1) {
       await world.step(tick);
     }
 

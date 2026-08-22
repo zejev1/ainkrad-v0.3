@@ -12,6 +12,9 @@ import type { AppendOnlyLog } from './AppendOnlyLog';
 import { AppendOnlyLogConflictError } from './AppendOnlyLog';
 
 const DATABASE_VERSION = 1;
+const TICK_OPERATION_RETENTION = 2_048;
+const TICK_OPERATION_PRUNE_INTERVAL = 300;
+const MAX_TICK_OPERATION_PRUNE_PER_PASS = 4_096;
 
 const STORES = {
   worlds: 'worlds',
@@ -481,6 +484,15 @@ export class IndexedDbWorldStore implements WorldStore {
       operations.add({ ...operation, key: opKey } satisfies StoredOperation);
       await completion;
 
+      if (batch.operationId.startsWith('tick:')) {
+        const tick = Number(batch.operationId.slice('tick:'.length));
+        try {
+          await this.pruneOldTickOperations(batch.worldId, tick);
+        } catch {
+          // Retention maintenance must never turn a successful world commit into a failure.
+        }
+      }
+
       return {
         committed: true,
         duplicate: false,
@@ -491,6 +503,38 @@ export class IndexedDbWorldStore implements WorldStore {
       await abortTransaction(transaction, completion);
       throw error;
     }
+  }
+
+  private async pruneOldTickOperations(
+    worldId: string,
+    currentTick: number,
+  ): Promise<void> {
+    if (
+      !Number.isInteger(currentTick) ||
+      currentTick < TICK_OPERATION_RETENTION ||
+      currentTick % TICK_OPERATION_PRUNE_INTERVAL !== 0
+    ) return;
+
+    const database = await this.database;
+    const transaction = database.transaction(STORES.operations, 'readwrite');
+    const completion = transactionComplete(transaction);
+    const request = transaction.objectStore(STORES.operations).openCursor();
+    const cutoff = currentTick - TICK_OPERATION_RETENTION;
+    let deleted = 0;
+    request.addEventListener('success', () => {
+      const cursor = request.result;
+      if (!cursor || deleted >= MAX_TICK_OPERATION_PRUNE_PER_PASS) return;
+      const operation = cursor.value as StoredOperation;
+      if (operation.worldId === worldId && operation.operationId.startsWith('tick:')) {
+        const tick = Number(operation.operationId.slice('tick:'.length));
+        if (Number.isInteger(tick) && tick < cutoff) {
+          cursor.delete();
+          deleted += 1;
+        }
+      }
+      cursor.continue();
+    });
+    await completion;
   }
 
   async get(

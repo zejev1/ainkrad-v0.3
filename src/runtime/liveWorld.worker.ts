@@ -20,10 +20,14 @@ const WORLD_LOCK_NAME = 'ainkrad-v0-3-live-world-writer';
 const WORLD_CHANNEL_NAME = 'ainkrad-v0-3-live-world-frames';
 const CLOCK_CHANNEL_NAME = 'ainkrad-v0-3-world-clock-control';
 const CONSOLE_CHANNEL_NAME = 'ainkrad-v0-3-cardinal-console';
-const FRAME_PROTOCOL_VERSION = 'ainkrad-live-frame-0.3.12';
+const STORAGE_CHECK_INTERVAL_TICKS = 300;
+const AINKRAD_STORAGE_SOFT_BUDGET_BYTES = 2 * 1024 * 1024 * 1024;
+const AINKRAD_STORAGE_CRITICAL_BUDGET_BYTES = 4 * 1024 * 1024 * 1024;
+const FRAME_PROTOCOL_VERSION = 'ainkrad-live-frame-0.3.13';
 const COMPATIBLE_FRAME_PROTOCOLS = new Set([
   'ainkrad-live-frame-0.3.10',
   'ainkrad-live-frame-0.3.11',
+  'ainkrad-live-frame-0.3.12',
   FRAME_PROTOCOL_VERSION,
 ]);
 
@@ -203,6 +207,20 @@ const sleep = (milliseconds: number) =>
 
 async function runForever(): Promise<void> {
   const persistence = createIndexedDbPersistence();
+  if (navigator.storage?.persist) {
+    try {
+      const persistent = await navigator.storage.persist();
+      if (!persistent) {
+        console.warn(
+          '[Ainkrad storage] Browser did not grant persistent storage; canonical remote persistence is still required.',
+        );
+      }
+    } catch {
+      console.warn(
+        '[Ainkrad storage] Persistent-storage request failed; continuing without deleting local history.',
+      );
+    }
+  }
   const runtime = await LiveWorldRuntime.create({
     mode: 'intervene',
     seed: 'ainkrad-browser-world',
@@ -231,6 +249,36 @@ async function runForever(): Promise<void> {
       } as const;
       workerScope.postMessage(message);
       frameChannel.postMessage(message);
+
+      if (
+        frame.tick % STORAGE_CHECK_INTERVAL_TICKS === 0 &&
+        navigator.storage?.estimate
+      ) {
+        try {
+          const estimate = await navigator.storage.estimate();
+          const usage = estimate.usage ?? 0;
+          const quota = estimate.quota ?? 0;
+          if (
+            usage >= AINKRAD_STORAGE_CRITICAL_BUDGET_BYTES ||
+            (quota > 0 && usage / quota >= 0.5)
+          ) {
+            console.error(
+              '[Ainkrad storage] CRITICAL: local experiment storage is approaching an unsafe size.',
+              { usage, quota },
+            );
+          } else if (
+            usage >= AINKRAD_STORAGE_SOFT_BUDGET_BYTES ||
+            (quota > 0 && usage / quota >= 0.25)
+          ) {
+            console.warn(
+              '[Ainkrad storage] Warning: local experiment storage is growing.',
+              { usage, quota },
+            );
+          }
+        } catch {
+          // Storage diagnostics must never stop the autonomous world.
+        }
+      }
     } catch (error) {
       if (error instanceof WorldRevisionConflictError) {
         // Browsers without Web Locks can briefly overlap workers. Reload the

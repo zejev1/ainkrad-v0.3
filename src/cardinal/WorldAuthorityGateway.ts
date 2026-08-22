@@ -16,7 +16,7 @@ import type {
 import type { CardinalExperienceState } from './types';
 
 export const WORLD_AUTHORITY_GATEWAY_POLICY_VERSION =
-  'ainkrad-world-authority-gateway-0.3.10';
+  'ainkrad-world-authority-gateway-0.3.13';
 
 export type CardinalCatastropheKind =
   | 'wildfire'
@@ -77,6 +77,10 @@ export interface WorldArchitectureObservation {
   observedAt: number;
   growth: WorldGrowthState;
   livingPopulation: number;
+  sapientPopulation: number;
+  raceDiversity: number;
+  reproductivePairPotential: number;
+  lastHumanBirthAt?: number;
   totalBirths: number;
   totalDeaths: number;
   lastBirthAt?: number;
@@ -93,8 +97,47 @@ export function observeWorldArchitecture(
     observedAt: world.now,
     growth: world.growth,
     livingPopulation: Object.values(world.agents).filter(
+      (agent) => agent.life.alive && (agent.race ?? 'human') === 'human',
+    ).length,
+    sapientPopulation: Object.values(world.agents).filter(
       (agent) => agent.life.alive,
     ).length,
+    raceDiversity: new Set(
+      Object.values(world.agents)
+        .filter((agent) => agent.life.alive)
+        .map((agent) => agent.race ?? 'human'),
+    ).size,
+    reproductivePairPotential: Math.min(
+      Object.values(world.agents).filter(
+        (agent) =>
+          agent.life.alive &&
+          (agent.race ?? 'human') === 'human' &&
+          agent.life.stage === 'adult' &&
+          agent.life.ageYears <= 55 &&
+          agent.life.health >= 0.4 &&
+          agent.sex === 'male',
+      ).length,
+      Object.values(world.agents).filter(
+        (agent) =>
+          agent.life.alive &&
+          (agent.race ?? 'human') === 'human' &&
+          agent.life.stage === 'adult' &&
+          agent.life.ageYears <= 55 &&
+          agent.life.health >= 0.4 &&
+          agent.sex === 'female',
+      ).length,
+    ),
+    ...(() => {
+      const born = Object.values(world.agents)
+        .filter(
+          (agent) =>
+            (agent.race ?? 'human') === 'human' &&
+            agent.life.generation > 0,
+        )
+        .map((agent) => agent.life.bornAt)
+        .filter((value) => Number.isFinite(value));
+      return born.length === 0 ? {} : { lastHumanBirthAt: Math.max(...born) };
+    })(),
     totalBirths: world.population.births,
     totalDeaths: world.population.deaths,
     ...(world.population.lastBirthAt === undefined
@@ -336,7 +379,8 @@ export class IndependentWorldAuthorityGateway {
       return 'Catastrophe exceeds magnitude, casualty or duration limits.';
     }
     const livingPopulation = Object.values(expectedWorld.agents).filter(
-      (agent) => agent.life.alive,
+      (agent) =>
+        agent.life.alive && (agent.race ?? 'human') === 'human',
     ).length;
     if (livingPopulation < 12) {
       return 'Population is too small for Cardinal to authorize a catastrophe.';
@@ -344,7 +388,7 @@ export class IndependentWorldAuthorityGateway {
     if (
       livingPopulation -
         Math.floor(livingPopulation * proposal.predictedCasualtyRatio) <
-      4
+      8
     ) {
       return 'Catastrophe could breach the minimum surviving population.';
     }
@@ -407,10 +451,10 @@ export class CardinalWorldArchitect {
 
     const living = world.livingPopulation;
     const fertilityLaw = world.laws.fertility_support;
-    const birthDormancy = world.observedAt - (world.lastBirthAt ?? 0);
+    const birthDormancy = world.observedAt - (world.lastHumanBirthAt ?? world.lastBirthAt ?? 0);
     if (
       fertilityLaw &&
-      living < Math.max(4, world.growth.stage + 4) &&
+      (living < 100 || world.reproductivePairPotential < 2) &&
       birthDormancy >= WORLD_LIFECYCLE_OBSERVATION_WINDOW &&
       fertilityLaw.value < 0.82
     ) {

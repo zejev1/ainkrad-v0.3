@@ -42,24 +42,67 @@ import type {
   WildlifeSpecies,
 } from './types';
 
-export const WORLD_RULES_VERSION = 'ainkrad-world-rules-0.3.12';
+export const WORLD_RULES_VERSION = 'ainkrad-world-rules-0.3.13';
 const LEGACY_WORLD_RULES_VERSIONS = new Set([
   'ainkrad-world-rules-0.3.8',
   'ainkrad-world-rules-0.3.9',
   'ainkrad-world-rules-0.3.10',
   'ainkrad-world-rules-0.3.11',
+  'ainkrad-world-rules-0.3.12',
 ]);
 export const WORLD_CONSTITUTION_VERSION = 'ainkrad-constitution-0.3.10';
 export { WORLD_TICKS_PER_YEAR } from './WorldClock';
 const MIN_ADULT_AGE = 18;
 const ELDER_AGE = 62;
 const BIRTH_CHECK_INTERVAL = 12;
-const MAX_LIVING_POPULATION = 96;
+const MAX_LIVING_POPULATION = 128;
 const LEGACY_WORLD_TICKS_PER_YEAR = 96;
 const MIN_WORLD_MINUTES_BETWEEN_BIRTHS = WORLD_MINUTES_PER_YEAR * 0.8;
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const clampSigned = (value: number) => Math.max(-1, Math.min(1, value));
+const ROUTINE_EVENT_SAMPLE_INTERVAL = 1800;
+const SAPIENT_RACES = ['human', 'goblin', 'orc', 'ogre'] as const;
+
+function levelForExperience(experience: number): number {
+  return Math.max(1, Math.min(100, 1 + Math.floor(Math.sqrt(Math.max(0, experience) / 24))));
+}
+
+function progressionFromAgent(agent: Readonly<AgentState>): NonNullable<AgentState['progression']> {
+  const skillAverage =
+    (agent.skills.gathering +
+      agent.skills.hunting +
+      agent.skills.craft +
+      agent.skills.social +
+      agent.skills.exploration) /
+    5;
+  const livedAdultYears = Math.max(0, agent.life.ageYears - 18);
+  const experience = Math.max(0, skillAverage * 90 + livedAdultYears * 1.2 + agent.life.generation * 18);
+  return {
+    level: levelForExperience(experience),
+    experience,
+    objectControlAuthority: clamp01(skillAverage * 0.72 + agent.skills.craft * 0.18),
+    systemControlAuthority: clamp01(agent.mind.values.knowledge * 0.34 + agent.personality.curiosity * 0.28 + agent.skills.exploration * 0.2),
+    combatMastery: clamp01(agent.skills.hunting * 0.62 + agent.life.physiology.strength * 0.22),
+    sacredArts: clamp01(agent.mind.values.knowledge * 0.22 + agent.mind.emotions.awe * 0.28 + agent.mind.beliefs.divinePresence * 0.18),
+  };
+}
+
+const ROUTINE_AGENT_EVENT_KINDS = new Set([
+  'agent.rested',
+  'agent.relaxed',
+  'agent.walked',
+  'agent.gathered',
+  'agent.worked',
+  'agent.explored',
+  'agent.reflected',
+  'agent.prayed',
+  'agent.hunted',
+  'agent.socialize.blocked',
+  'agent.goal.changed',
+  'agent.help.rejected',
+  'agent.bond.declined',
+]);
 
 const ACTION_KINDS: readonly AgentActionKind[] = [
   'rest',
@@ -958,6 +1001,25 @@ function assertWorldState(value: unknown): asserts value is WorldState {
     if (!['native', 'external_resident'].includes(agent.origin as string)) {
       throw new Error(`Agent ${agentId}.origin is invalid.`);
     }
+    if (!['male', 'female'].includes(agent.sex as string)) {
+      throw new Error(`Agent ${agentId}.sex is invalid.`);
+    }
+    if (!SAPIENT_RACES.includes(agent.race as (typeof SAPIENT_RACES)[number])) {
+      throw new Error(`Agent ${agentId}.race is invalid.`);
+    }
+    const progression = asRecord(agent.progression, `Agent ${agentId}.progression`);
+    const level = nonNegativeInteger(progression.level, `Agent ${agentId}.progression.level`);
+    if (level < 1 || level > 100) {
+      throw new Error(`Agent ${agentId}.progression.level is out of range.`);
+    }
+    if (finiteNumber(progression.experience, `Agent ${agentId}.progression.experience`) < 0) {
+      throw new Error(`Agent ${agentId}.progression.experience must be non-negative.`);
+    }
+    assertUnitFields(
+      progression,
+      ['objectControlAuthority', 'systemControlAuthority', 'combatMastery', 'sacredArts'],
+      `Agent ${agentId}.progression`,
+    );
     assertUnitFields(
       agent,
       ['energy', 'stress', 'resources', 'socialDrive'],
@@ -1029,7 +1091,7 @@ function assertWorldState(value: unknown): asserts value is WorldState {
     }
     if (
       life.deathCause !== undefined &&
-      !['old_age', 'illness', 'deprivation', 'catastrophe', 'monster'].includes(
+      !['old_age', 'illness', 'deprivation', 'catastrophe', 'wildlife', 'monster'].includes(
         life.deathCause as AgentDeathCause,
       )
     ) {
@@ -1486,6 +1548,10 @@ function rebuildSettlementProjection(
     const id = place.settlementId ?? place.id;
     place.settlementId = id;
     const existing = prior[id];
+    const memberPlaceIds = Object.values(places)
+      .filter((candidate) => candidate.settlementId === id)
+      .map((candidate) => candidate.id)
+      .sort();
     settlements[id] = {
       id,
       name: place.name,
@@ -1494,9 +1560,7 @@ function rebuildSettlementProjection(
       centerX: place.mapX,
       centerY: place.mapY,
       radius: existing?.radius ?? (place.kind === 'city' ? 16 : 11),
-      memberPlaceIds: [...new Set([...(existing?.memberPlaceIds ?? []), place.id])]
-        .filter((placeId) => places[placeId]?.settlementId === id)
-        .sort(),
+      memberPlaceIds,
       foundedAt: existing?.foundedAt ?? place.discoveredAt ?? foundedAt,
     };
   }
@@ -1637,6 +1701,68 @@ async function migrateLegacyWorld(
     mutable.settlements ?? {},
     0,
   );
+
+  // v0.3.13 gives every already-existing secondary settlement local daily-life
+  // facilities. This preserves the existing experiment instead of requiring a
+  // reset just to receive the new settlement model.
+  for (const settlement of Object.values(next.settlements)) {
+    if (settlement.id === 'settlement_ainkrad') continue;
+    const center = next.places[settlement.centerPlaceId];
+    if (!center) continue;
+
+    // v0.3.12 city promotion created an artificial direct road to founding
+    // commons. Remove only that generated shortcut; organic frontier links remain.
+    center.connectedPlaceIds = center.connectedPlaceIds.filter(
+      (placeId) => placeId !== 'commons',
+    );
+    if (next.places.commons) {
+      next.places.commons.connectedPlaceIds =
+        next.places.commons.connectedPlaceIds.filter(
+          (placeId) => placeId !== center.id,
+        );
+    }
+
+    const localServices: Array<{
+      suffix: string;
+      name: string;
+      kind: WorldPlaceKind;
+      dx: number;
+      dy: number;
+      fertility: number;
+    }> = [
+      { suffix: 'field', name: 'Поля', kind: 'resource_field', dx: -4.8, dy: 2.4, fertility: 0.76 },
+      { suffix: 'workshop', name: 'Мастерская', kind: 'workshop', dx: 4.6, dy: 1.8, fertility: 0.3 },
+      { suffix: 'quiet', name: 'Тихий сад', kind: 'quiet_space', dx: 0.8, dy: -4.5, fertility: 0.62 },
+    ];
+
+    for (const service of localServices) {
+      const serviceId = `${settlement.id}_${service.suffix}`;
+      if (next.places[serviceId]) continue;
+      next.places[serviceId] = createPlace(
+        serviceId,
+        `${settlement.name}: ${service.name}`,
+        service.kind,
+        10,
+        {
+          biome: service.kind === 'resource_field' ? 'plains' : 'settlement',
+          mapX: center.mapX + service.dx,
+          mapY: center.mapY + service.dy,
+          connectedPlaceIds: [center.id],
+          fertility: service.fertility,
+          danger: 0.04,
+          surface: 'land',
+          settlementId: settlement.id,
+          discoveredAt: next.now,
+        },
+      );
+    }
+  }
+  makeConnectionsReciprocal(next.places);
+  next.settlements = rebuildSettlementProjection(
+    next.places,
+    next.settlements,
+    0,
+  );
   next.routes = rebuildWorldRoutes(next.places, mutable.routes ?? {});
 
   if (
@@ -1670,6 +1796,68 @@ async function migrateLegacyWorld(
   }
 
   const agents = Object.values(next.agents);
+  const inferredSex = new Map<string, 'male' | 'female'>();
+  for (const agent of agents) {
+    if (agent.sex === 'male' || agent.sex === 'female') {
+      inferredSex.set(agent.id, agent.sex);
+    }
+  }
+  const historicalParentPairs: Array<[string, string]> = [];
+  for (const child of agents) {
+    const parentIds = child.life?.parentIds ?? [];
+    if (parentIds.length >= 2 && next.agents[parentIds[0]] && next.agents[parentIds[1]]) {
+      historicalParentPairs.push([parentIds[0], parentIds[1]]);
+    }
+  }
+  for (let pass = 0; pass < Math.max(1, agents.length); pass += 1) {
+    let changed = false;
+    for (const [parentAId, parentBId] of historicalParentPairs) {
+      const sexA = inferredSex.get(parentAId);
+      const sexB = inferredSex.get(parentBId);
+      if (sexA && !sexB) {
+        inferredSex.set(parentBId, sexA === 'male' ? 'female' : 'male');
+        changed = true;
+      } else if (!sexA && sexB) {
+        inferredSex.set(parentAId, sexB === 'male' ? 'female' : 'male');
+        changed = true;
+      } else if (!sexA && !sexB) {
+        const indexA = agents.findIndex((agent) => agent.id === parentAId);
+        const seedSex = indexA % 2 === 0 ? 'male' : 'female';
+        inferredSex.set(parentAId, seedSex);
+        inferredSex.set(parentBId, seedSex === 'male' ? 'female' : 'male');
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+
+  // v0.3.12 had no biological-sex field. Preserve historical parent
+  // pairings first, then balance previously-unknown living residents.
+  // This prevents migration itself from creating a demographic dead end;
+  // it never chooses partners or commands reproduction.
+  let livingMales = agents.filter(
+    (agent) => agent.life?.alive && inferredSex.get(agent.id) === 'male',
+  ).length;
+  let livingFemales = agents.filter(
+    (agent) => agent.life?.alive && inferredSex.get(agent.id) === 'female',
+  ).length;
+  for (const agent of agents.filter(
+    (candidate) => candidate.life?.alive && !inferredSex.has(candidate.id),
+  )) {
+    const sex = livingMales <= livingFemales ? 'male' : 'female';
+    inferredSex.set(agent.id, sex);
+    if (sex === 'male') livingMales += 1;
+    else livingFemales += 1;
+  }
+  let totalMales = [...inferredSex.values()].filter((sex) => sex === 'male').length;
+  let totalFemales = [...inferredSex.values()].filter((sex) => sex === 'female').length;
+  for (const agent of agents.filter((candidate) => !inferredSex.has(candidate.id))) {
+    const sex = totalMales <= totalFemales ? 'male' : 'female';
+    inferredSex.set(agent.id, sex);
+    if (sex === 'male') totalMales += 1;
+    else totalFemales += 1;
+  }
+
   agents.forEach((agent, index) => {
     if (agent.plan && !next.places[agent.plan.targetPlaceId]) {
       agent.plan = undefined;
@@ -1688,6 +1876,7 @@ async function migrateLegacyWorld(
     };
     const ageYears = 22 + ((index * 7) % 27);
     agent.origin ??= 'native';
+    agent.sex ??= inferredSex.get(agent.id) ?? (index % 2 === 0 ? 'male' : 'female');
     agent.life ??= {
       bornAt: next.now - ageYears * WORLD_TICKS_PER_YEAR,
       ageYears,
@@ -1727,13 +1916,31 @@ async function migrateLegacyWorld(
       agent.personality,
       agent.needs,
     );
+    agent.race ??= 'human';
+    agent.progression ??= progressionFromAgent(agent);
     const location = next.places[agent.locationId] ?? next.places[agent.homeId];
-    agent.position = {
-      x: location.mapX,
-      y: location.mapY,
-      layerId: 'surface',
-    };
-    agent.movement = undefined;
+    if (fromVersion !== 'ainkrad-world-rules-0.3.12') {
+      agent.position = {
+        x: location.mapX,
+        y: location.mapY,
+        layerId: 'surface',
+      };
+      agent.movement = undefined;
+    } else {
+      // v0.3.12 already has the current 2D movement model. Preserve a resident's
+      // exact position and unfinished route across the v0.3.13 migration.
+      agent.position ??= {
+        x: location.mapX,
+        y: location.mapY,
+        layerId: 'surface',
+      };
+      if (
+        agent.movement &&
+        !next.places[agent.movement.targetPlaceId]
+      ) {
+        agent.movement = undefined;
+      }
+    }
   });
 
   next.population = mutable.population ?? {
@@ -1770,7 +1977,7 @@ async function migrateLegacyWorld(
 
   next.determinism.eventSequence += 1;
   const migrationEvent: WorldEvent = {
-    eventId: `migration:${next.id}:world-rules-0.3.12`,
+    eventId: `migration:${next.id}:world-rules-0.3.13`,
     worldId: next.id,
     kind: 'world.migrated',
     source: 'system',
@@ -1984,6 +2191,16 @@ export class WorldEngine {
         id,
         name,
         origin: 'native' as const,
+        sex: (index % 2 === 0 ? 'male' : 'female') as AgentState['sex'],
+        race: 'human' as const,
+        progression: {
+          level: 1,
+          experience: 0,
+          objectControlAuthority: 0.08,
+          systemControlAuthority: 0.06,
+          combatMastery: 0.05,
+          sacredArts: 0.02,
+        },
         energy: rng.between(0.55, 0.95),
         stress: rng.between(0.05, 0.25),
         resources: rng.between(0.35, 0.8),
@@ -2205,6 +2422,8 @@ export class WorldEngine {
       }
       this.advanceBirths(now, elapsedWorldMinutes);
       this.advanceSettlements(now);
+      this.advanceVoluntaryResettlement(now);
+      this.advanceSapientRaces(now);
       this.advanceMysticism(now);
       this.advanceCollectiveMyth(now);
     });
@@ -2557,11 +2776,18 @@ export class WorldEngine {
           0,
           Math.min(
             Math.floor(living.length * maxCasualtyRatio),
-            Math.max(0, living.length - 4),
+            Math.max(0, living.length - 8),
           ),
         );
         let deaths = 0;
+        const livingByRace = new Map<string, number>();
+        for (const resident of living) {
+          const race = resident.race ?? 'human';
+          livingByRace.set(race, (livingByRace.get(race) ?? 0) + 1);
+        }
         for (const agent of living) {
+          const race = agent.race ?? 'human';
+          const raceFloor = race === 'human' ? 8 : 2;
           const place = this.state.places[agent.locationId];
           const exposure = clamp01(
             magnitude *
@@ -2576,8 +2802,14 @@ export class WorldEngine {
           agent.mind.emotions.awe = clamp01(
             agent.mind.emotions.awe + magnitude * 0.2,
           );
-          if (agent.life.health <= 0.06 && deaths < maximumDeaths) {
+          const canLoseMember = (livingByRace.get(race) ?? 0) > raceFloor;
+          if (
+            agent.life.health <= 0.06 &&
+            deaths < maximumDeaths &&
+            canLoseMember
+          ) {
             this.recordDeath(agent, 'catastrophe', now);
+            livingByRace.set(race, (livingByRace.get(race) ?? 1) - 1);
             deaths += 1;
           } else {
             agent.life.health = Math.max(agent.life.health, 0.07);
@@ -2702,6 +2934,16 @@ export class WorldEngine {
           id: residentId,
           name,
           origin: 'external_resident' as const,
+          sex: (this.rng.next() < 0.5 ? 'male' : 'female') as AgentState['sex'],
+          race: 'human' as const,
+          progression: {
+            level: 1,
+            experience: 0,
+            objectControlAuthority: 0.12,
+            systemControlAuthority: 0.1,
+            combatMastery: 0.08,
+            sacredArts: 0.04,
+          },
           energy: 0.84,
           stress: 0.08,
           resources: 0.62,
@@ -3105,7 +3347,11 @@ export class WorldEngine {
             this.performBlockedSocialize(agent, now);
           } else {
             const target = await this.chooseSocialTarget(agent, others);
-            await this.interact(agent, target, now);
+            if (target) {
+              await this.interact(agent, target, now);
+            } else {
+              this.performBlockedSocialize(agent, now);
+            }
           }
         }
         break;
@@ -3138,7 +3384,7 @@ export class WorldEngine {
         this.performPray(agent, now);
         break;
     }
-    this.advanceMonsterEncounter(agent, now);
+    this.advanceMonsterEncounter(agent, environment, now);
     this.advanceMind(agent);
   }
 
@@ -3250,7 +3496,12 @@ export class WorldEngine {
     const helpTarget = this.chooseHelpTarget(agent, allAgents);
     const huntTarget = this.chooseHuntTarget(agent);
     const bondTarget = this.chooseBondTarget(agent, allAgents);
-    const socialAvailable = allAgents.some((other) => other.id !== agent.id);
+    const socialAvailable = allAgents.some(
+      (other) =>
+        other.id !== agent.id &&
+        other.life.alive &&
+        other.locationId === agent.locationId,
+    );
     const natureAvailable = this.state.growth.stage > 0;
     const goalBoost = (kind: AgentGoalKind) => (agent.goal.kind === kind ? 0.24 : 0);
     const body = agent.life.physiology;
@@ -3542,6 +3793,46 @@ export class WorldEngine {
     };
   }
 
+  private homeSettlementId(agent: AgentState): string | undefined {
+    return this.state.places[agent.homeId]?.settlementId;
+  }
+
+  private localPlace(
+    agent: AgentState,
+    kinds: readonly WorldPlaceKind[],
+    fallback: string,
+  ): string {
+    const settlementId = this.homeSettlementId(agent);
+    if (settlementId) {
+      const candidates = Object.values(this.state.places)
+        .filter(
+          (place) =>
+            place.settlementId === settlementId &&
+            kinds.includes(place.kind) &&
+            this.pathBetween(agent.locationId, place.id) !== undefined,
+        )
+        .sort((a, b) => {
+          const da = Math.hypot(a.mapX - agent.position.x, a.mapY - agent.position.y);
+          const db = Math.hypot(b.mapX - agent.position.x, b.mapY - agent.position.y);
+          return da - db;
+        });
+      if (candidates[0]) return candidates[0].id;
+
+      const settlement = this.state.settlements[settlementId];
+      if (
+        settlement?.centerPlaceId &&
+        this.pathBetween(agent.locationId, settlement.centerPlaceId)
+      ) {
+        return settlement.centerPlaceId;
+      }
+    }
+    return this.state.places[fallback] ? fallback : agent.homeId;
+  }
+
+  private localCommons(agent: AgentState): string {
+    return this.localPlace(agent, ['commons', 'village', 'city'], agent.homeId);
+  }
+
   private performRest(agent: AgentState, now: number): void {
     this.moveAgent(agent, agent.homeId);
     agent.energy = clamp01(
@@ -3558,12 +3849,26 @@ export class WorldEngine {
   }
 
   private performRelax(agent: AgentState, now: number): void {
-    const naturalPlaces = ['quiet_space', 'meadow', 'forest', 'shore'].filter(
-      (placeId) => this.state.places[placeId],
-    );
-    const destinations =
-      naturalPlaces.length > 0 ? naturalPlaces : [agent.homeId];
-    const destination = this.rng.pick(destinations);
+    const homeSettlementId = this.homeSettlementId(agent);
+    const naturalPlaces = Object.values(this.state.places)
+      .filter(
+        (place) =>
+          ['quiet_space', 'meadow', 'forest', 'shore'].includes(place.kind) &&
+          this.pathBetween(agent.locationId, place.id) !== undefined,
+      )
+      .map((place) => ({
+        place,
+        weight:
+          (place.settlementId === homeSettlementId ? 1.4 : 0.55) +
+          place.fertility * 0.35 -
+          place.danger * 0.7,
+      }))
+      .sort((a, b) => b.weight - a.weight);
+    const localWindow = naturalPlaces.slice(0, Math.min(4, naturalPlaces.length));
+    const destination =
+      localWindow.length > 0
+        ? this.rng.pick(localWindow).place.id
+        : agent.homeId;
 
     this.moveAgent(agent, destination);
     agent.energy = clamp01(
@@ -3597,7 +3902,7 @@ export class WorldEngine {
       )
       .map((place) => place.id);
     const destination =
-      destinations.length > 0 ? this.rng.pick(destinations) : 'commons';
+      destinations.length > 0 ? this.rng.pick(destinations) : this.localCommons(agent);
 
     this.moveAgent(agent, destination);
     agent.energy = clamp01(
@@ -3750,15 +4055,17 @@ export class WorldEngine {
     let monsterCountered = false;
     let monsterDamage = 0;
     if (
-      target.isMonster &&
+      target.threat >= 0.25 &&
       target.count > 0 &&
       (!succeeded || this.rng.next() < target.threat * 0.38)
     ) {
       monsterCountered = true;
       monsterDamage = clamp01(
         target.threat *
-          this.rng.between(0.12, 0.34) *
-          (1.18 - agent.life.physiology.strength * 0.38),
+          this.rng.between(0.1, 0.3) *
+          (1.18 - agent.life.physiology.strength * 0.38) *
+          (1 - environment.safetySupport * 0.42) *
+          (1 - (agent.progression?.combatMastery ?? 0) * 0.22),
       );
       agent.life.health = clamp01(agent.life.health - monsterDamage);
       agent.stress = clamp01(agent.stress + target.threat * 0.24);
@@ -3783,27 +4090,31 @@ export class WorldEngine {
 
     if (monsterCountered) {
       this.stageEvent({
-        eventId: this.nextId('monster-encounter'),
+        eventId: this.nextId(target.isMonster ? 'monster-encounter' : 'wildlife-encounter'),
         worldId: this.state.id,
-        kind: 'world.monster.encountered',
+        kind: target.isMonster
+          ? 'world.monster.encountered'
+          : 'world.wildlife.defensive_encounter',
         source: 'world',
         occurredAt: now,
         payload: {
           agentId: agent.id,
           species: target.species,
           habitatId: target.habitatId,
+          reason: 'self_defense',
           damage: monsterDamage,
           survived: agent.life.health > 0.04,
         },
       });
       const lethalChance = clamp01(
-        target.threat *
+        (target.threat *
           (1 - agent.life.physiology.strength) *
-          0.16 +
-          (agent.life.health < 0.18 ? 0.22 : 0),
+          0.14 +
+          (agent.life.health < 0.18 ? 0.18 : 0)) *
+          (1 - environment.safetySupport * 0.58),
       );
       if (agent.life.health <= 0.04 || this.rng.next() < lethalChance) {
-        this.recordDeath(agent, 'monster', now);
+        this.recordDeath(agent, target.isMonster ? 'monster' : 'wildlife', now);
       }
     }
 
@@ -3824,7 +4135,7 @@ export class WorldEngine {
   }
 
   private performBlockedSocialize(agent: AgentState, now: number): void {
-    this.moveAgent(agent, 'commons');
+    this.moveAgent(agent, this.localCommons(agent));
     agent.energy = clamp01(agent.energy - 0.01);
     agent.stress = clamp01(agent.stress + 0.018);
     agent.needs.belonging = clamp01(agent.needs.belonging - 0.015);
@@ -3838,7 +4149,7 @@ export class WorldEngine {
   }
 
   private performGather(agent: AgentState, now: number): void {
-    this.moveAgent(agent, 'resource_field');
+    this.moveAgent(agent, this.localPlace(agent, ['resource_field'], 'resource_field'));
     const available = this.state.environment.resourcePool;
     const effort =
       0.025 +
@@ -3863,7 +4174,7 @@ export class WorldEngine {
   }
 
   private performWork(agent: AgentState, now: number): void {
-    this.moveAgent(agent, 'workshop');
+    this.moveAgent(agent, this.localPlace(agent, ['workshop'], 'workshop'));
     const produced =
       0.018 +
       agent.skills.craft * 0.05 +
@@ -4050,6 +4361,109 @@ export class WorldEngine {
     return expansion.place.id;
   }
 
+  private advanceVoluntaryResettlement(now: number): void {
+    if (!Number.isInteger(now) || now % 24 !== 0) return;
+
+    const settlements = Object.values(this.state.settlements);
+    if (settlements.length < 2) return;
+
+    const adults = this.shuffled(
+      Object.values(this.state.agents).filter(
+        (agent) =>
+          agent.life.alive &&
+          agent.life.stage === 'adult' &&
+          !agent.movement &&
+          !agent.plan &&
+          agent.resources >= 0.24 &&
+          agent.stress <= 0.78,
+      ),
+    );
+
+    for (const agent of adults) {
+      const currentSettlementId = this.homeSettlementId(agent);
+      const willingness = clamp01(
+        agent.personality.curiosity * 0.27 +
+          agent.personality.riskTolerance * 0.2 +
+          agent.mind.values.ambition * 0.2 +
+          agent.skills.exploration * 0.18 +
+          (1 - agent.needs.purpose) * 0.15,
+      );
+      if (willingness < 0.58) continue;
+      if (this.rng.next() >= 0.015 + willingness * 0.045) continue;
+
+      const options = settlements
+        .filter(
+          (settlement) =>
+            settlement.id !== currentSettlementId &&
+            this.pathBetween(agent.locationId, settlement.centerPlaceId) !== undefined,
+        )
+        .map((settlement) => {
+          const center = this.state.places[settlement.centerPlaceId];
+          const distance = Math.max(
+            0,
+            (this.pathBetween(agent.locationId, settlement.centerPlaceId)?.length ?? 1) - 1,
+          );
+          const score =
+            willingness * 0.5 +
+            (center?.fertility ?? 0.5) * 0.28 -
+            (center?.danger ?? 0.1) * 0.35 -
+            distance * 0.025;
+          return { settlement, score };
+        })
+        .sort((a, b) => b.score - a.score);
+
+      const selected = options[0]?.settlement;
+      if (!selected) continue;
+
+      const homes = selected.memberPlaceIds
+        .map((placeId) => this.state.places[placeId])
+        .filter((place): place is WorldPlace => place?.kind === 'home')
+        .sort((a, b) => a.id.localeCompare(b.id));
+      const home = homes.find((candidate) => {
+        const occupants = Object.values(this.state.agents).filter(
+          (other) => other.life.alive && other.homeId === candidate.id,
+        ).length;
+        return occupants < candidate.capacity;
+      });
+      if (!home) continue;
+
+      const priorHomeId = agent.homeId;
+      const priorSettlementId = currentSettlementId ?? null;
+      agent.homeId = home.id;
+      this.moveAgent(agent, selected.centerPlaceId);
+      agent.needs.purpose = clamp01(agent.needs.purpose + 0.06);
+      agent.mind.emotions.hope = clamp01(agent.mind.emotions.hope + 0.04);
+      agent.lastMeaningfulEventAt = now;
+
+      this.stageEvent({
+        eventId: this.nextId('resettlement'),
+        worldId: this.state.id,
+        kind: 'agent.resettled',
+        source: 'agent',
+        occurredAt: now,
+        payload: {
+          agentId: agent.id,
+          priorHomeId,
+          priorSettlementId,
+          settlementId: selected.id,
+          homeId: home.id,
+          willingness,
+        },
+      });
+      this.stageMemory({
+        memoryId: this.nextId('memory'),
+        worldId: this.state.id,
+        agentId: agent.id,
+        createdAt: now,
+        kind: 'world_event',
+        summary: `${agent.name} chose to make a new home in ${selected.name}.`,
+        importance: 0.78,
+        valence: 0.52,
+        relatedAgentIds: [],
+      });
+    }
+  }
+
   private advanceSettlements(now: number): void {
     if (!Number.isInteger(now) || now % 24 !== 0) return;
     const living = Object.values(this.state.agents).filter(
@@ -4070,6 +4484,29 @@ export class WorldEngine {
           -1 - (sequence % Math.max(1, this.state.growth.discoveredRegionIds.length)),
         ) ?? 'outskirts';
       const anchor = this.state.places[frontierId] ?? this.state.places.outskirts;
+      const pioneerCandidates = this.shuffled(
+        Object.values(this.state.agents).filter(
+          (agent) =>
+            agent.life.alive &&
+            agent.life.stage === 'adult' &&
+            agent.locationId === frontierId &&
+            agent.resources >= 0.28 &&
+            !agent.movement,
+        ),
+      );
+      const willingFounders = pioneerCandidates.filter((agent) => {
+        const willingness = clamp01(
+          agent.personality.curiosity * 0.24 +
+            agent.personality.diligence * 0.2 +
+            agent.personality.riskTolerance * 0.14 +
+            agent.mind.values.ambition * 0.2 +
+            agent.mind.values.care * 0.12 +
+            agent.skills.exploration * 0.1,
+        );
+        return willingness >= 0.52 && this.rng.next() < 0.1 + willingness * 0.28;
+      });
+      if (willingFounders.length < 2) return;
+
       const names = [
         'Ривен',
         'Лунная Долина',
@@ -4117,6 +4554,79 @@ export class WorldEngine {
           },
         );
       }
+      const localServices: Array<{
+        suffix: string;
+        name: string;
+        kind: WorldPlaceKind;
+        dx: number;
+        dy: number;
+        fertility: number;
+      }> = [
+        { suffix: 'field', name: 'Поля', kind: 'resource_field', dx: -4.8, dy: 2.4, fertility: 0.76 },
+        { suffix: 'workshop', name: 'Мастерская', kind: 'workshop', dx: 4.6, dy: 1.8, fertility: 0.3 },
+        { suffix: 'quiet', name: 'Тихий сад', kind: 'quiet_space', dx: 0.8, dy: -4.5, fertility: 0.62 },
+      ];
+      for (const service of localServices) {
+        const serviceId = `${id}_${service.suffix}`;
+        this.state.places[serviceId] = createPlace(
+          serviceId,
+          `${this.state.places[id].name}: ${service.name}`,
+          service.kind,
+          10,
+          {
+            biome: service.kind === 'resource_field' ? 'plains' : 'settlement',
+            mapX: this.state.places[id].mapX + service.dx,
+            mapY: this.state.places[id].mapY + service.dy,
+            connectedPlaceIds: [id],
+            fertility: service.fertility,
+            danger: 0.04,
+            surface: 'land',
+            settlementId: id,
+            discoveredAt: now,
+          },
+        );
+      }
+      const settlementHomes = [1, 2, 3]
+        .map((index) => this.state.places[`${id}_house_${index}`])
+        .filter((place): place is WorldPlace => place !== undefined);
+      for (let index = 0; index < willingFounders.length; index += 1) {
+        const founder = willingFounders[index];
+        const home = settlementHomes[index % settlementHomes.length];
+        if (!home) break;
+        const priorHomeId = founder.homeId;
+        founder.homeId = home.id;
+        this.moveAgent(founder, id);
+        founder.needs.purpose = clamp01(founder.needs.purpose + 0.08);
+        founder.mind.emotions.hope = clamp01(founder.mind.emotions.hope + 0.06);
+        founder.lastMeaningfulEventAt = now;
+        this.stageEvent({
+          eventId: this.nextId('settlement-founder'),
+          worldId: this.state.id,
+          kind: 'agent.resettled',
+          source: 'agent',
+          occurredAt: now,
+          payload: {
+            agentId: founder.id,
+            priorHomeId,
+            settlementId: id,
+            homeId: home.id,
+            reason: 'voluntary_founder',
+          },
+        });
+        this.stageMemory({
+          memoryId: this.nextId('memory'),
+          worldId: this.state.id,
+          agentId: founder.id,
+          createdAt: now,
+          kind: 'world_event',
+          summary: `${founder.name} chose to help found ${this.state.places[id].name}.`,
+          importance: 0.9,
+          valence: 0.68,
+          relatedAgentIds: willingFounders
+            .filter((other) => other.id !== founder.id)
+            .map((other) => other.id),
+        });
+      }
       makeConnectionsReciprocal(this.state.places);
       this.rebuildSpatialProjection();
       this.stageEvent({
@@ -4145,16 +4655,27 @@ export class WorldEngine {
 
     const village = settlements
       .filter((place) => place.kind === 'village')
-      .sort((a, b) => (a.discoveredAt ?? 0) - (b.discoveredAt ?? 0))[0];
+      .map((place) => ({
+        place,
+        residents: Object.values(this.state.agents).filter(
+          (agent) =>
+            agent.life.alive &&
+            this.homeSettlementId(agent) === place.id,
+        ).length,
+      }))
+      .filter(({ residents }) => residents >= 10)
+      .sort(
+        (a, b) =>
+          b.residents - a.residents ||
+          (a.place.discoveredAt ?? 0) - (b.place.discoveredAt ?? 0),
+      )[0]?.place;
     if (!village) return;
     village.kind = 'city';
     village.name = village.name.replace('Поселение', 'Город');
     village.capacity = Math.max(20, village.capacity * 2);
     village.fertility = clamp01(village.fertility + 0.08);
-    if (!village.connectedPlaceIds.includes('commons')) {
-      village.connectedPlaceIds.push('commons');
-      makeConnectionsReciprocal(this.state.places);
-    }
+    // City promotion preserves organically opened roads. It does not create
+    // an artificial direct route back to the founding commons.
     this.rebuildSpatialProjection();
     this.stageEvent({
       eventId: this.nextId('city'),
@@ -4356,20 +4877,26 @@ export class WorldEngine {
 
       population.count += 1;
       population.lastChangedAt = now;
-      this.stageEvent({
-        eventId: this.nextId('wildlife'),
-        worldId: this.state.id,
-        kind: 'world.wildlife.recovered',
-        source: 'world',
-        occurredAt: now,
-        payload: {
-          populationId: population.id,
-          species: population.species,
-          habitatId: population.habitatId,
-          count: population.count,
-          carryingCapacity: population.carryingCapacity,
-        },
-      });
+      if (
+        now <= 240 ||
+        Math.floor(now) % ROUTINE_EVENT_SAMPLE_INTERVAL === 0 ||
+        population.count === population.carryingCapacity
+      ) {
+        this.stageEvent({
+          eventId: this.nextId('wildlife'),
+          worldId: this.state.id,
+          kind: 'world.wildlife.recovered',
+          source: 'world',
+          occurredAt: now,
+          payload: {
+            populationId: population.id,
+            species: population.species,
+            habitatId: population.habitatId,
+            count: population.count,
+            carryingCapacity: population.carryingCapacity,
+          },
+        });
+      }
     }
   }
 
@@ -4532,13 +5059,11 @@ export class WorldEngine {
       (agent) => agent.life.alive,
     );
     const regionalCapacity =
-      6 + this.state.growth.discoveredRegionIds.length * 4;
+      12 + this.state.growth.discoveredRegionIds.length * 12;
     const populationLimit = Math.min(
       MAX_LIVING_POPULATION,
       Math.max(8, regionalCapacity),
     );
-    if (living.length >= populationLimit) return;
-
     const candidates = Object.values(this.state.relationships)
       .map((relationship) => {
         const a = this.state.agents[relationship.agentA];
@@ -4567,6 +5092,12 @@ export class WorldEngine {
       .sort((a, b) => b.score - a.score);
     const selected = candidates[0];
     if (!selected || selected.score < 0.62) return;
+    const selectedRace = selected.a.race ?? 'human';
+    const sameRaceLiving = living.filter(
+      (agent) => (agent.race ?? 'human') === selectedRace,
+    ).length;
+    const raceLimit = selectedRace === 'human' ? populationLimit : Math.min(16, populationLimit);
+    if (sameRaceLiving >= raceLimit) return;
 
     const fertilitySupport =
       this.lawValue('fertility_support', 0.55);
@@ -4590,6 +5121,8 @@ export class WorldEngine {
       !b.life.alive ||
       a.life.stage !== 'adult' ||
       b.life.stage !== 'adult' ||
+      a.sex === b.sex ||
+      (a.race ?? 'human') !== (b.race ?? 'human') ||
       a.life.ageYears > 55 ||
       b.life.ageYears > 55 ||
       a.life.health < 0.58 ||
@@ -4677,6 +5210,16 @@ export class WorldEngine {
       id: childId,
       name,
       origin: 'native',
+      sex: this.rng.next() < 0.5 ? 'male' : 'female',
+      race: a.race ?? 'human',
+      progression: {
+        level: 1,
+        experience: 0,
+        objectControlAuthority: 0,
+        systemControlAuthority: 0,
+        combatMastery: 0,
+        sacredArts: 0,
+      },
       energy: 0.86,
       stress: 0.04,
       resources: 0.62,
@@ -4775,6 +5318,185 @@ export class WorldEngine {
         relatedAgentIds: [childId, parent.id === a.id ? b.id : a.id],
       });
     }
+  }
+
+  private advanceSapientRaces(now: number): void {
+    if (!Number.isInteger(now) || now < 600 || now % 24 !== 0) return;
+
+    const plans: Array<{
+      race: NonNullable<AgentState['race']>;
+      minimumStage: number;
+      villageName: string;
+      names: readonly string[];
+    }> = [
+      {
+        race: 'goblin',
+        minimumStage: 5,
+        villageName: 'Поселение зелёных равнин',
+        names: ['Ruk', 'Mog', 'Vera', 'Nim'],
+      },
+      {
+        race: 'orc',
+        minimumStage: 8,
+        villageName: 'Поселение каменного клана',
+        names: ['Gar', 'Dorn', 'Lira', 'Ona'],
+      },
+      {
+        race: 'ogre',
+        minimumStage: 11,
+        villageName: 'Поселение великанов',
+        names: ['Bram', 'Tor', 'Mara', 'Sia'],
+      },
+    ];
+
+    const plan = plans.find(
+      (candidate) =>
+        this.state.growth.stage >= candidate.minimumStage &&
+        !Object.values(this.state.agents).some(
+          (agent) => agent.race === candidate.race,
+        ),
+    );
+    if (!plan) return;
+
+    const frontierId =
+      this.state.growth.discoveredRegionIds.at(-1) ?? 'outskirts';
+    const anchor = this.state.places[frontierId] ?? this.state.places.outskirts;
+    if (!anchor) return;
+
+    const settlementId = `settlement_${plan.race}_1`;
+    if (this.state.places[settlementId]) return;
+    const raceIndex = plans.findIndex((candidate) => candidate.race === plan.race);
+    const angle = (raceIndex + 1) * 1.77;
+    this.state.places[settlementId] = createPlace(
+      settlementId,
+      plan.villageName,
+      'village',
+      16,
+      {
+        biome: 'settlement',
+        mapX: anchor.mapX + Math.cos(angle) * 9,
+        mapY: anchor.mapY + Math.sin(angle) * 9,
+        connectedPlaceIds: [frontierId],
+        fertility: clamp01(0.5 + anchor.fertility * 0.18),
+        danger: 0.07,
+        surface: 'land',
+        settlementId,
+        discoveredAt: now,
+      },
+    );
+
+    const founders: string[] = [];
+    for (let index = 0; index < 4; index += 1) {
+      const agentId = `${plan.race}_${index + 1}`;
+      const homeId = `home_${agentId}`;
+      const homeAngle = angle + (Math.PI * 2 * index) / 4;
+      this.state.places[homeId] = createPlace(
+        homeId,
+        `Дом ${plan.names[index]}`,
+        'home',
+        4,
+        {
+          biome: 'settlement',
+          mapX: this.state.places[settlementId].mapX + Math.cos(homeAngle) * 3.4,
+          mapY: this.state.places[settlementId].mapY + Math.sin(homeAngle) * 3.4,
+          connectedPlaceIds: [settlementId],
+          fertility: 0.56,
+          danger: 0.05,
+          surface: 'land',
+          settlementId,
+          discoveredAt: now,
+        },
+      );
+
+      const personality: AgentState['personality'] = {
+        sociability: this.rng.between(0.28, 0.82),
+        diligence: this.rng.between(0.3, 0.86),
+        curiosity: this.rng.between(0.28, 0.86),
+        generosity: this.rng.between(0.24, 0.82),
+        resilience: this.rng.between(0.45, 0.92),
+        riskTolerance: this.rng.between(0.38, 0.9),
+      };
+      const needs = { belonging: 0.7, purpose: 0.62 };
+      const ageYears = 20 + index * 3;
+      const lifespanBase = plan.race === 'goblin' ? 68 : plan.race === 'orc' ? 82 : 96;
+      const health = 0.9;
+      const partial = {
+        id: agentId,
+        name: plan.names[index],
+        origin: 'native' as const,
+        sex: (index % 2 === 0 ? 'male' : 'female') as AgentState['sex'],
+        race: plan.race,
+        progression: {
+          level: 1,
+          experience: 0,
+          objectControlAuthority: 0.1,
+          systemControlAuthority: 0.06,
+          combatMastery: plan.race === 'goblin' ? 0.12 : plan.race === 'orc' ? 0.18 : 0.22,
+          sacredArts: 0.03,
+        },
+        energy: 0.82,
+        stress: 0.08,
+        resources: 0.58,
+        socialDrive: personality.sociability,
+        personality,
+        life: {
+          bornAt: now - ageYears * WORLD_TICKS_PER_YEAR,
+          ageYears,
+          lifespanYears: lifespanBase + personality.resilience * 16,
+          stage: lifeStageForAge(ageYears),
+          alive: true,
+          health,
+          physiology: physiologyForAge(
+            ageYears,
+            lifespanBase + personality.resilience * 16,
+            health,
+          ),
+          generation: 0,
+          parentIds: [],
+          childIds: [],
+        },
+        mind: createMindState(this.state.id, agentId, personality, needs),
+        needs,
+        skills: {
+          gathering: this.rng.between(0.18, 0.45),
+          hunting: this.rng.between(0.22, 0.52),
+          craft: this.rng.between(0.16, 0.44),
+          social: this.rng.between(0.18, 0.48),
+          exploration: this.rng.between(0.22, 0.55),
+        },
+        homeId,
+        locationId: settlementId,
+        position: {
+          x: this.state.places[settlementId].mapX,
+          y: this.state.places[settlementId].mapY,
+          layerId: 'surface' as const,
+        },
+        lastMeaningfulEventAt: now,
+      } satisfies Omit<AgentState, 'goal'>;
+      this.state.agents[agentId] = {
+        ...partial,
+        goal: goalFromInitialState(partial, now),
+      };
+      founders.push(agentId);
+    }
+
+    makeConnectionsReciprocal(this.state.places);
+    this.rebuildSpatialProjection();
+    this.stageEvent({
+      eventId: this.nextId('sapient-race'),
+      worldId: this.state.id,
+      kind: 'world.sapient_race.emerged',
+      source: 'world',
+      occurredAt: now,
+      payload: {
+        race: plan.race,
+        settlementId,
+        founderIds: founders.join(','),
+        humanPopulation: Object.values(this.state.agents).filter(
+          (agent) => agent.life.alive && (agent.race ?? 'human') === 'human',
+        ).length,
+      },
+    });
   }
 
   private advanceMysticism(now: number): void {
@@ -4928,12 +5650,16 @@ export class WorldEngine {
     });
   }
 
-  private advanceMonsterEncounter(agent: AgentState, now: number): void {
+  private advanceMonsterEncounter(
+    agent: AgentState,
+    environment: WorldEnvironment,
+    now: number,
+  ): void {
     if (!agent.life.alive || agent.lastAction === 'hunt') return;
     const monster = Object.values(this.state.wildlife)
       .filter(
         (population) =>
-          population.isMonster &&
+          (population.isMonster || population.threat >= 0.28) &&
           population.count > 0 &&
           population.habitatId === agent.locationId,
       )
@@ -4941,25 +5667,41 @@ export class WorldEngine {
     if (!monster) return;
 
     const placeDanger = this.state.places[agent.locationId]?.danger ?? 0.5;
+    const safetyFactor = 1 - environment.safetySupport * 0.78;
+    const territoryPressure = clamp01(
+      monster.count / Math.max(1, monster.carryingCapacity),
+    );
+    const intrusionPressure =
+      agent.lastAction === 'explore'
+        ? 0.018
+        : agent.lastAction === 'gather'
+          ? 0.009
+          : 0.003;
     const encounterChance = clamp01(
-      0.008 +
-        monster.threat * placeDanger * 0.055 +
-        (agent.lastAction === 'explore' ? 0.025 : 0),
+      (0.002 +
+        monster.threat * placeDanger * 0.04 +
+        territoryPressure * monster.threat * 0.018 +
+        intrusionPressure) *
+        Math.max(0.12, safetyFactor),
     );
     if (this.rng.next() >= encounterChance) return;
 
     const evasion = clamp01(
       agent.life.physiology.mobility * 0.42 +
         agent.skills.exploration * 0.18 +
-        agent.personality.riskTolerance * 0.08,
+        agent.personality.riskTolerance * 0.08 +
+        (agent.progression?.combatMastery ?? 0) * 0.16 +
+        (agent.progression?.objectControlAuthority ?? 0) * 0.08,
     );
     const escaped = this.rng.next() < evasion;
     const damage = escaped
       ? 0
       : clamp01(
           monster.threat *
-            this.rng.between(0.08, 0.28) *
-            (1.15 - agent.life.physiology.endurance * 0.3),
+            this.rng.between(0.07, 0.24) *
+            (1.15 - agent.life.physiology.endurance * 0.3) *
+            (1 - environment.safetySupport * 0.42) *
+            (1 - (agent.progression?.combatMastery ?? 0) * 0.22),
         );
     agent.life.health = clamp01(agent.life.health - damage);
     agent.stress = clamp01(agent.stress + monster.threat * (escaped ? 0.12 : 0.28));
@@ -4971,15 +5713,18 @@ export class WorldEngine {
     );
 
     this.stageEvent({
-      eventId: this.nextId('monster-encounter'),
+      eventId: this.nextId(monster.isMonster ? 'monster-encounter' : 'wildlife-encounter'),
       worldId: this.state.id,
-      kind: 'world.monster.encountered',
+      kind: monster.isMonster
+        ? 'world.monster.encountered'
+        : 'world.wildlife.defensive_encounter',
       source: 'world',
       occurredAt: now,
       payload: {
         agentId: agent.id,
         species: monster.species,
         habitatId: monster.habitatId,
+        reason: 'territorial_defense',
         escaped,
         damage,
         survived: agent.life.health > 0.035,
@@ -5000,11 +5745,13 @@ export class WorldEngine {
     const lethalChance = escaped
       ? 0
       : clamp01(
-          monster.threat * (1 - agent.life.physiology.strength) * 0.12 +
-            (agent.life.health < 0.14 ? 0.18 : 0),
+          (monster.threat * (1 - agent.life.physiology.strength) * 0.1 +
+            (agent.life.health < 0.14 ? 0.15 : 0)) *
+            (1 - environment.safetySupport * 0.6) *
+            (1 - (agent.progression?.combatMastery ?? 0) * 0.32),
         );
     if (agent.life.health <= 0.035 || this.rng.next() < lethalChance) {
-      this.recordDeath(agent, 'monster', now);
+      this.recordDeath(agent, monster.isMonster ? 'monster' : 'wildlife', now);
     }
   }
 
@@ -5068,6 +5815,7 @@ export class WorldEngine {
           other.id !== agent.id &&
           other.life.alive &&
           other.life.stage === 'adult' &&
+          other.locationId === agent.locationId &&
           this.canFormFamily(agent, other, this.state.now),
       )
       .map((other) => {
@@ -5142,11 +5890,19 @@ export class WorldEngine {
 
   private performPray(agent: AgentState, now: number): void {
     const sacredPlaces = Object.values(this.state.places)
-      .filter((place) => place.kind === 'ruins' || place.kind === 'quiet_space')
-      .map((place) => place.id);
+      .filter(
+        (place) =>
+          (place.kind === 'ruins' || place.kind === 'quiet_space') &&
+          this.pathBetween(agent.locationId, place.id) !== undefined,
+      )
+      .sort((a, b) => {
+        const da = Math.hypot(a.mapX - agent.position.x, a.mapY - agent.position.y);
+        const db = Math.hypot(b.mapX - agent.position.x, b.mapY - agent.position.y);
+        return da - db;
+      });
     this.moveAgent(
       agent,
-      sacredPlaces.length > 0 ? this.rng.pick(sacredPlaces) : 'quiet_space',
+      sacredPlaces[0]?.id ?? this.localPlace(agent, ['quiet_space'], agent.homeId),
     );
     const resonance =
       this.lawValue('mystic_resonance', 0.35);
@@ -5163,17 +5919,23 @@ export class WorldEngine {
     );
     agent.lastAction = 'pray';
     agent.lastMeaningfulEventAt = now;
-    this.stageMemory({
-      memoryId: this.nextId('memory'),
-      worldId: this.state.id,
-      agentId: agent.id,
-      createdAt: now,
-      kind: 'reflection',
-      summary: `${agent.name} searched for meaning beyond the visible world.`,
-      importance: clamp01(0.38 + agent.mind.emotions.awe * 0.3),
-      valence: clampSigned(0.12 + agent.mind.emotions.hope * 0.18),
-      relatedAgentIds: [],
-    });
+    const prayerIsMeaningful =
+      agent.mind.emotions.awe >= 0.42 ||
+      agent.mind.beliefs.divinePresence >= 0.52 ||
+      Math.floor(now) % ROUTINE_EVENT_SAMPLE_INTERVAL === 0;
+    if (prayerIsMeaningful) {
+      this.stageMemory({
+        memoryId: this.nextId('memory'),
+        worldId: this.state.id,
+        agentId: agent.id,
+        createdAt: now,
+        kind: 'reflection',
+        summary: `${agent.name} searched for meaning beyond the visible world.`,
+        importance: clamp01(0.38 + agent.mind.emotions.awe * 0.3),
+        valence: clampSigned(0.12 + agent.mind.emotions.hope * 0.18),
+        relatedAgentIds: [],
+      });
+    }
     this.recordAgentEvent(agent, now, 'agent.prayed', {
       mysteryLevel: this.state.cosmology.mysteryLevel,
       divineBelief: agent.mind.beliefs.divinePresence,
@@ -5182,7 +5944,7 @@ export class WorldEngine {
   }
 
   private performReflect(agent: AgentState, now: number): void {
-    this.moveAgent(agent, 'quiet_space');
+    this.moveAgent(agent, this.localPlace(agent, ['quiet_space'], agent.homeId));
     agent.energy = clamp01(agent.energy + 0.025);
     agent.stress = clamp01(
       agent.stress - 0.055 - agent.personality.resilience * 0.025,
@@ -5191,17 +5953,24 @@ export class WorldEngine {
     agent.lastAction = 'reflect';
     agent.lastMeaningfulEventAt = now;
 
-    this.stageMemory({
-      memoryId: this.nextId('memory'),
-      worldId: this.state.id,
-      agentId: agent.id,
-      createdAt: now,
-      kind: 'reflection',
-      summary: `${agent.name} reflected on recent needs and priorities.`,
-      importance: clamp01(0.35 + agent.stress * 0.3),
-      valence: clampSigned(0.15 - agent.stress * 0.2),
-      relatedAgentIds: [],
-    });
+    const reflectionIsMeaningful =
+      agent.stress >= 0.65 ||
+      agent.mind.emotions.grief >= 0.35 ||
+      agent.mind.emotions.awe >= 0.45 ||
+      Math.floor(now) % ROUTINE_EVENT_SAMPLE_INTERVAL === 0;
+    if (reflectionIsMeaningful) {
+      this.stageMemory({
+        memoryId: this.nextId('memory'),
+        worldId: this.state.id,
+        agentId: agent.id,
+        createdAt: now,
+        kind: 'reflection',
+        summary: `${agent.name} reflected on recent needs and priorities.`,
+        importance: clamp01(0.35 + agent.stress * 0.3),
+        valence: clampSigned(0.15 - agent.stress * 0.2),
+        relatedAgentIds: [],
+      });
+    }
 
     this.recordAgentEvent(agent, now, 'agent.reflected', {
       stress: agent.stress,
@@ -5212,7 +5981,12 @@ export class WorldEngine {
 
   private chooseHelpTarget(agent: AgentState, allAgents: AgentState[]): AgentState | undefined {
     const candidates = allAgents
-      .filter((other) => other.id !== agent.id)
+      .filter(
+        (other) =>
+          other.id !== agent.id &&
+          other.life.alive &&
+          other.locationId === agent.locationId,
+      )
       .map((other) => {
         const relationship = this.state.relationships[relationshipKey(agent.id, other.id)];
         const need =
@@ -5305,14 +6079,20 @@ export class WorldEngine {
   private async chooseSocialTarget(
     agent: AgentState,
     others: AgentState[],
-  ): Promise<AgentState> {
-    if (this.rng.next() < 0.18) {
-      return this.rng.pick(others);
+  ): Promise<AgentState | undefined> {
+    const present = others.filter(
+      (other) =>
+        other.life.alive &&
+        other.locationId === agent.locationId,
+    );
+    if (present.length === 0) return undefined;
+    if (this.rng.next() < 0.08) {
+      return this.rng.pick(present);
     }
 
     const weighted: Array<{ other: AgentState; weight: number }> = [];
 
-    for (const other of others) {
+    for (const other of present) {
       const relationship = this.state.relationships[relationshipKey(agent.id, other.id)];
       let weight = 0.55;
 
@@ -5338,11 +6118,21 @@ export class WorldEngine {
         weight += memoryValence * 0.16;
       }
 
-      // Similar interests help, but do not make unlike people impossible to meet.
+      // Similar interests help, but locality matters. Long-distance contact
+      // remains possible for travellers; ordinary residents prefer their own settlement.
       const curiosityCompatibility = 1 - Math.abs(
         agent.personality.curiosity - other.personality.curiosity,
       );
       weight += curiosityCompatibility * 0.08;
+      const sameSettlement =
+        this.homeSettlementId(agent) !== undefined &&
+        this.homeSettlementId(agent) === this.homeSettlementId(other);
+      const routeDistance = Math.max(
+        0,
+        (this.pathBetween(agent.locationId, other.locationId)?.length ?? 1) - 1,
+      );
+      weight += sameSettlement ? 0.32 : 0;
+      weight -= routeDistance * 0.055;
 
       weighted.push({
         other,
@@ -5364,8 +6154,7 @@ export class WorldEngine {
   }
 
   private async interact(a: AgentState, b: AgentState, now: number): Promise<void> {
-    this.moveAgent(a, 'commons');
-    this.moveAgent(b, 'commons');
+    if (a.locationId !== b.locationId) return;
     const key = relationshipKey(a.id, b.id);
     const current = this.relationshipFor(a, b, now);
 
@@ -5424,20 +6213,36 @@ export class WorldEngine {
         ? `${a.name} and ${b.name} had a constructive interaction.`
         : `${a.name} and ${b.name} had a tense interaction.`;
 
-    const memories: MemoryRecord[] = [a, b].map((agent) => ({
-      memoryId: this.nextId('memory'),
-      worldId: this.state.id,
-      agentId: agent.id,
-      createdAt: now,
-      kind: 'interaction',
-      summary,
-      importance: clamp01(0.4 + Math.abs(sentiment) * 0.5),
-      valence: sentiment,
-      relatedAgentIds: [agent.id === a.id ? b.id : a.id],
-    }));
+    // Human-like memory is selective. Relationship state preserves ordinary
+    // social continuity; only exceptional moments, or periodically sampled
+    // meaningful moments, become permanent episodic memories.
+    const memoryPair = [a.id, b.id].sort().join('::');
+    let memorySlot = 0;
+    for (let index = 0; index < memoryPair.length; index += 1) {
+      memorySlot = (memorySlot * 31 + memoryPair.charCodeAt(index)) >>> 0;
+    }
+    const interactionIntensity = Math.abs(sentiment);
+    const rememberInteraction =
+      now <= 240 ||
+      interactionIntensity >= 0.72 ||
+      (interactionIntensity >= 0.35 &&
+        (Math.floor(now) + memorySlot) % ROUTINE_EVENT_SAMPLE_INTERVAL === 0);
+    if (rememberInteraction) {
+      const memories: MemoryRecord[] = [a, b].map((agent) => ({
+        memoryId: this.nextId('memory'),
+        worldId: this.state.id,
+        agentId: agent.id,
+        createdAt: now,
+        kind: 'interaction',
+        summary,
+        importance: clamp01(0.4 + Math.abs(sentiment) * 0.5),
+        valence: sentiment,
+        relatedAgentIds: [agent.id === a.id ? b.id : a.id],
+      }));
 
-    for (const memory of memories) {
-      this.stageMemory(memory);
+      for (const memory of memories) {
+        this.stageMemory(memory);
+      }
     }
 
     this.recordRelationshipEvent(next, sentiment, now);
@@ -5464,6 +6269,18 @@ export class WorldEngine {
     sentiment: number,
     now: number,
   ): void {
+    const pair = `${relationship.agentA}::${relationship.agentB}`;
+    let stableSlot = 0;
+    for (let index = 0; index < pair.length; index += 1) {
+      stableSlot = (stableSlot * 31 + pair.charCodeAt(index)) >>> 0;
+    }
+    const intensity = Math.abs(sentiment);
+    const exceptionalChange = intensity >= 0.75;
+    const sampledMeaningfulChange =
+      intensity >= 0.42 &&
+      (Math.floor(now) + stableSlot) % ROUTINE_EVENT_SAMPLE_INTERVAL === 0;
+    if (now > 240 && !exceptionalChange && !sampledMeaningfulChange) return;
+
     this.stageEvent({
       eventId: this.nextId('relationship'),
       worldId: this.state.id,
@@ -5700,12 +6517,103 @@ export class WorldEngine {
     };
   }
 
+  private ensureProgression(agent: AgentState): NonNullable<AgentState['progression']> {
+    agent.progression ??= progressionFromAgent(agent);
+    return agent.progression;
+  }
+
+  private advanceProgressionFromEvent(
+    agent: AgentState,
+    kind: string,
+    now: number,
+  ): void {
+    const gainByEvent: Record<string, number> = {
+      'agent.worked': 1.1,
+      'agent.gathered': 0.8,
+      'agent.hunted': 1.9,
+      'agent.explored': 1.35,
+      'agent.help.accepted': 0.55,
+      'agent.bond.accepted': 0.45,
+      'agent.reflected': 0.28,
+      'agent.prayed': 0.42,
+    };
+    const gain = gainByEvent[kind] ?? 0;
+    if (gain <= 0 || !agent.life.alive) return;
+
+    const progression = this.ensureProgression(agent);
+    const previousLevel = progression.level;
+    progression.experience += gain;
+    progression.level = levelForExperience(progression.experience);
+
+    if (kind === 'agent.hunted') {
+      progression.combatMastery = clamp01(progression.combatMastery + 0.0028);
+      progression.objectControlAuthority = clamp01(
+        progression.objectControlAuthority + 0.0018,
+      );
+    } else if (kind === 'agent.worked' || kind === 'agent.gathered') {
+      progression.objectControlAuthority = clamp01(
+        progression.objectControlAuthority + 0.0015,
+      );
+    } else if (kind === 'agent.explored') {
+      progression.objectControlAuthority = clamp01(
+        progression.objectControlAuthority + 0.001,
+      );
+      progression.systemControlAuthority = clamp01(
+        progression.systemControlAuthority + 0.0011,
+      );
+    } else if (kind === 'agent.reflected' || kind === 'agent.prayed') {
+      progression.systemControlAuthority = clamp01(
+        progression.systemControlAuthority + 0.0014,
+      );
+      progression.sacredArts = clamp01(progression.sacredArts + 0.0012);
+    }
+
+    if (progression.level > previousLevel) {
+      this.stageEvent({
+        eventId: this.nextId('level'),
+        worldId: this.state.id,
+        kind: 'agent.level.changed',
+        source: 'agent',
+        occurredAt: now,
+        payload: {
+          agentId: agent.id,
+          race: agent.race ?? 'human',
+          previousLevel,
+          level: progression.level,
+          experience: progression.experience,
+        },
+      });
+      this.stageMemory({
+        memoryId: this.nextId('memory'),
+        worldId: this.state.id,
+        agentId: agent.id,
+        createdAt: now,
+        kind: 'world_event',
+        summary: `${agent.name} reached level ${progression.level} through lived experience.`,
+        importance: 0.66,
+        valence: 0.52,
+        relatedAgentIds: [],
+      });
+    }
+  }
+
   private recordAgentEvent(
     agent: AgentState,
     now: number,
     kind: string,
     payload: Record<string, string | number | boolean | null>,
   ): void {
+    this.advanceProgressionFromEvent(agent, kind, now);
+    if (ROUTINE_AGENT_EVENT_KINDS.has(kind) && now > 240) {
+      let stableSlot = 0;
+      for (let index = 0; index < agent.id.length; index += 1) {
+        stableSlot = (stableSlot * 31 + agent.id.charCodeAt(index)) >>> 0;
+      }
+      if ((Math.floor(now) + stableSlot) % ROUTINE_EVENT_SAMPLE_INTERVAL !== 0) {
+        return;
+      }
+    }
+
     const decisionEvidence: Record<
       string,
       string | number | boolean | null

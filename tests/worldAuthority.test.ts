@@ -184,7 +184,7 @@ describe('Independent world authority', () => {
     const living = Object.values(after.agents).filter(
       (agent) => agent.life.alive,
     ).length;
-    expect(living).toBeGreaterThanOrEqual(4);
+    expect(living).toBeGreaterThanOrEqual(8);
     expect(Object.keys(expected.agents).length - living).toBeLessThanOrEqual(
       Math.floor(12 * 0.15),
     );

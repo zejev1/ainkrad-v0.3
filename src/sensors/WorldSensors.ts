@@ -2,7 +2,7 @@ import type { EventReader } from '../world/events';
 import type { WorldState } from '../world/types';
 import type { CardinalMetrics, SensorSnapshot } from './types';
 
-export const WORLD_SENSOR_VERSION = 'ainkrad-world-sensors-0.3.11';
+export const WORLD_SENSOR_VERSION = 'ainkrad-world-sensors-0.3.13';
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const SOCIAL_CONTACT_WINDOW = 8;
@@ -46,6 +46,77 @@ export class WorldSensors {
     const activeSignals = await this.events.activeSignals(world.id, now);
     const recent = await this.events.recent(world.id, SENSOR_EVENT_READ_LIMIT, now);
 
+    const recentDeaths = recent.filter((event) => event.kind === 'agent.died');
+    const recentBirths = recent.filter((event) => event.kind === 'agent.born');
+    const humanDeaths = recentDeaths.filter((event) => {
+      const agentId = event.payload.agentId;
+      const agent = typeof agentId === 'string' ? world.agents[agentId] : undefined;
+      return (agent?.race ?? 'human') === 'human';
+    });
+    const humanBirths = recentBirths.filter((event) => {
+      const agentId = event.payload.agentId;
+      const agent = typeof agentId === 'string' ? world.agents[agentId] : undefined;
+      return (agent?.race ?? 'human') === 'human';
+    });
+    const monsterDeaths = humanDeaths.filter(
+      (event) => event.payload.cause === 'monster',
+    ).length;
+    const wildlifeAttackDeaths = humanDeaths.filter(
+      (event) => event.payload.cause === 'wildlife',
+    ).length;
+    const sapientPopulation = agents.length;
+    const humanAgents = agents.filter(
+      (agent) => (agent.race ?? 'human') === 'human',
+    );
+    const livingPopulation = humanAgents.length;
+    const raceDiversity = new Set(
+      agents.map((agent) => agent.race ?? 'human'),
+    ).size;
+    const reproductiveAdults = humanAgents.filter(
+      (agent) =>
+        agent.life.stage === 'adult' &&
+        agent.life.ageYears <= 55 &&
+        agent.life.health >= 0.4,
+    );
+    const reproductiveAdultMales = reproductiveAdults.filter(
+      (agent) => agent.sex === 'male',
+    ).length;
+    const reproductiveAdultFemales = reproductiveAdults.filter(
+      (agent) => agent.sex === 'female',
+    ).length;
+    const reproductivePairPotential = Math.min(
+      reproductiveAdultMales,
+      reproductiveAdultFemales,
+    );
+    const reproductiveContinuity = clamp01(reproductivePairPotential / 2);
+    const civilizationPressure = clamp01(1 - livingPopulation / 100);
+    const sizeCriticality =
+      livingPopulation <= 7
+        ? 1
+        : livingPopulation < 20
+          ? 0.78
+          : livingPopulation < 100
+            ? clamp01(0.42 + (100 - livingPopulation) / 250)
+            : 0;
+    const reproductiveCriticality =
+      livingPopulation >= 4
+        ? clamp01((1 - reproductiveContinuity) * (livingPopulation < 20 ? 0.92 : 0.62))
+        : 1;
+    const civilizationCriticality = Math.max(
+      sizeCriticality,
+      reproductiveCriticality,
+    );
+    const recentDeathPressure = clamp01(
+      Math.max(0, humanDeaths.length - humanBirths.length) /
+        Math.max(7, livingPopulation + humanDeaths.length),
+    );
+    const monsterDeathShare =
+      humanDeaths.length === 0 ? 0 : monsterDeaths / humanDeaths.length;
+    const wildlifeAttackDeathShare =
+      humanDeaths.length === 0
+        ? 0
+        : wildlifeAttackDeaths / humanDeaths.length;
+
     const activeAgents = agents.filter(
       (agent) => now - agent.lastMeaningfulEventAt <= 5,
     ).length;
@@ -60,6 +131,11 @@ export class WorldSensors {
     // to create a relationship row months ago. Persistent relationship state is
     // still used separately for conflict/quality metrics.
     const connected = new Set<string>();
+    for (const relationship of relationships) {
+      if (relationship.updatedAt < now - SOCIAL_CONTACT_WINDOW) continue;
+      connected.add(relationship.agentA);
+      connected.add(relationship.agentB);
+    }
     for (const event of recent) {
       if (
         event.source !== 'agent' ||
@@ -114,6 +190,24 @@ export class WorldSensors {
                 (population.count / population.carryingCapacity),
             0,
           ) / monsters.length;
+    const wildlifeDangerPressure =
+      ordinaryWildlife.length === 0
+        ? 0
+        : clamp01(
+            ordinaryWildlife.reduce(
+              (sum, population) =>
+                sum +
+                (population.threat >= 0.28
+                  ? population.threat *
+                    (population.count / population.carryingCapacity)
+                  : 0),
+              0,
+            ) / ordinaryWildlife.length,
+          );
+    const monsterPressure = clamp01(
+      frontierMonsterPressure * 0.62 +
+        recentMonsterEncounterPressure * 0.38,
+    );
     const safetyPressure = clamp01(
       1 - world.environment.safetySupport +
         safetySignalPressure +
@@ -198,6 +292,20 @@ export class WorldSensors {
     }
 
     const metrics: CardinalMetrics = {
+      livingPopulation,
+      sapientPopulation,
+      raceDiversity,
+      reproductiveAdultMales,
+      reproductiveAdultFemales,
+      reproductivePairPotential,
+      reproductiveContinuity,
+      civilizationPressure,
+      civilizationCriticality,
+      recentDeathPressure,
+      wildlifeAttackDeathShare: clamp01(wildlifeAttackDeathShare),
+      monsterDeathShare: clamp01(monsterDeathShare),
+      wildlifeDangerPressure,
+      monsterPressure,
       populationActivity: clamp01(populationActivity),
       averageStress: clamp01(averageStress),
       socialIsolation: clamp01(socialIsolation),

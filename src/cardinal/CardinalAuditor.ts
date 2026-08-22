@@ -19,7 +19,8 @@ function metricValue(
   metrics: CardinalMetrics,
   metric: CardinalPredictionMetric,
 ): number {
-  return metrics[metric];
+  const value = metrics[metric];
+  return typeof value === 'number' ? value : 0;
 }
 
 export class CardinalAuditor {
@@ -259,6 +260,13 @@ export class CardinalAuditor {
     kind: CardinalProblemKind,
     metrics: CardinalMetrics,
   ): boolean {
+    if (kind === 'civilization_collapse') {
+      return (
+        metrics.livingPopulation <= 7 ||
+        metrics.civilizationCriticality >= 0.9 ||
+        (metrics.recentDeathPressure > 0.2 && metrics.monsterDeathShare > 0.35)
+      );
+    }
     if (kind === 'resource_fragility') {
       return metrics.resourcePressure > 0.88 && metrics.recoveryCapacity < 0.3;
     }
@@ -344,6 +352,7 @@ export class CardinalAuditor {
   private interventionKindForProblem(
     kind: CardinalProblemKind,
   ): InterventionRecord['proposal']['kind'] {
+    if (kind === 'civilization_collapse') return 'safety_support';
     if (kind === 'resource_fragility') return 'resource_relief';
     if (kind === 'social_fragmentation') return 'open_shared_space';
     if (kind === 'ecosystem_fragility') return 'habitat_support';
@@ -362,6 +371,12 @@ export class CardinalAuditor {
     const legacyBefore = evaluation.metrics as Partial<CardinalMetrics>;
     const before: CardinalMetrics = {
       ...evaluation.metrics,
+      livingPopulation: legacyBefore.livingPopulation ?? 100,
+      civilizationPressure: legacyBefore.civilizationPressure ?? 0,
+      civilizationCriticality: legacyBefore.civilizationCriticality ?? 0,
+      recentDeathPressure: legacyBefore.recentDeathPressure ?? 0,
+      monsterDeathShare: legacyBefore.monsterDeathShare ?? 0,
+      monsterPressure: legacyBefore.monsterPressure ?? 0,
       exploredWorldRatio: legacyBefore.exploredWorldRatio ?? 0,
       wildlifePressure: legacyBefore.wildlifePressure ?? 0,
       ecologicalDiversity: legacyBefore.ecologicalDiversity ?? 0,

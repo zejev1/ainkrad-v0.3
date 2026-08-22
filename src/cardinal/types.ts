@@ -3,6 +3,7 @@ import type { CardinalMetrics } from '../sensors/types';
 export type CardinalMode = 'off' | 'observer' | 'intervene';
 
 export type CardinalProblemKind =
+  | 'civilization_collapse'
   | 'resource_fragility'
   | 'social_fragmentation'
   | 'safety_instability'
@@ -16,6 +17,7 @@ export type InterventionKind =
   | 'habitat_support';
 
 export type CardinalPredictionMetric =
+  | 'civilizationCriticality'
   | 'resourcePressure'
   | 'socialIsolation'
   | 'safetyPressure'

@@ -24,7 +24,7 @@ import type {
   InterventionProposal,
 } from './types';
 
-export const CARDINAL_POLICY_VERSION = 'ainkrad-cardinal-policy-0.3.11';
+export const CARDINAL_POLICY_VERSION = 'ainkrad-cardinal-policy-0.3.13';
 export const DEFAULT_CARDINAL_PREDICTION_HORIZON = 4;
 export const MAX_CARDINAL_PREDICTION_HORIZON = 16;
 
@@ -48,6 +48,52 @@ interface CandidateDefinition {
 }
 
 const CANDIDATES: readonly CandidateDefinition[] = [
+  {
+    problemKind: 'civilization_collapse',
+    interventionKind: 'safety_support',
+    severity: (metrics) =>
+      (metrics.civilizationCriticality ?? 0) +
+      (metrics.recentDeathPressure ?? 0) * 0.55 +
+      (metrics.monsterDeathShare ?? 0) * (metrics.monsterPressure ?? 0) * 0.45 +
+      (metrics.wildlifeAttackDeathShare ?? 0) *
+        (metrics.wildlifeDangerPressure ?? 0) *
+        0.3,
+    qualifies: (metrics) =>
+      ((metrics.livingPopulation ?? 100) <= 7 ||
+        (metrics.recentDeathPressure ?? 0) > 0.08 ||
+        (metrics.civilizationCriticality ?? 0) >= 0.78) &&
+      ((metrics.monsterDeathShare ?? 0) +
+          (metrics.wildlifeAttackDeathShare ?? 0) > 0.2 ||
+        (metrics.monsterPressure ?? 0) > 0.48 ||
+        (metrics.wildlifeDangerPressure ?? 0) > 0.34 ||
+        metrics.safetyPressure > 0.82),
+    critical: (metrics) =>
+      ((metrics.livingPopulation ?? 100) <= 7 &&
+        ((metrics.monsterDeathShare ?? 0) +
+            (metrics.wildlifeAttackDeathShare ?? 0) > 0.1 ||
+          (metrics.monsterPressure ?? 0) > 0.3 ||
+          (metrics.wildlifeDangerPressure ?? 0) > 0.25 ||
+          metrics.safetyPressure > 0.72)) ||
+      ((metrics.civilizationCriticality ?? 0) >= 0.9 &&
+        ((metrics.monsterDeathShare ?? 0) +
+            (metrics.wildlifeAttackDeathShare ?? 0) > 0.25 ||
+          (metrics.monsterPressure ?? 0) > 0.55 ||
+          (metrics.wildlifeDangerPressure ?? 0) > 0.42 ||
+          metrics.safetyPressure > 0.9)) ||
+      ((metrics.recentDeathPressure ?? 0) > 0.2 &&
+        (metrics.monsterDeathShare ?? 0) +
+          (metrics.wildlifeAttackDeathShare ?? 0) > 0.35),
+    trendMetric: 'civilizationCriticality',
+    predictionMetric: 'safetyPressure',
+    reason:
+      'Civilization has fallen below the full-society floor or is losing residents faster than it can recover.',
+    expectedOutcome:
+      'Create a bounded survival window by reducing systemic danger while residents retain every personal decision.',
+    claim:
+      'The human civilization is in demographic decline; recent mortality and hostile pressure threaten its ability to continue.',
+    falsifier:
+      'The hypothesis weakens if population stabilizes, death pressure falls and civilization criticality declines without Cardinal assistance.',
+  },
   {
     problemKind: 'resource_fragility',
     interventionKind: 'resource_relief',
@@ -221,6 +267,9 @@ export class CardinalCore {
         `same_kind_in_progress=${autonomyAssessment.activeOrUnresolvedSameKindIds.length}`,
         `cardinal_level=${experience.level}`,
         `cardinal_experience=${experience.totalExperience}`,
+        `living_population=${observation.metrics.livingPopulation}`,
+        `reproductive_pairs=${observation.metrics.reproductivePairPotential}`,
+        `reproductive_continuity=${observation.metrics.reproductiveContinuity.toFixed(3)}`,
       );
 
       const capabilityReady =
@@ -371,7 +420,9 @@ export class CardinalCore {
     const previousMetric = supporting.at(-1)?.metrics[definition.trendMetric];
     const currentMetric = observation.metrics[definition.trendMetric];
     const trend = trendFromDelta(
-      typeof previousMetric === 'number' ? currentMetric - previousMetric : 0,
+      typeof previousMetric === 'number' && typeof currentMetric === 'number'
+        ? currentMetric - previousMetric
+        : 0,
     );
 
     const priorHypothesis = [...supporting]

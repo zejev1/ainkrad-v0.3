@@ -1,4 +1,4 @@
-Ainkrad v0.3.12 current files
+Ainkrad v0.3.13 current files
 
 Files:
 - .github/workflows/ci.yml
@@ -92,6 +92,7 @@ Files:
 - tests/personhoodLifecycle.test.ts
 - tests/scheduler.test.ts
 - tests/sensors.test.ts
+- tests/v0_3_13_releaseAudit.test.ts
 - tests/worldAutonomy.test.ts
 - tests/worldAuthority.test.ts
 - tests/worldClockCivilization.test.ts

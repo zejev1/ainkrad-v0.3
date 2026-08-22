@@ -1,6 +1,6 @@
 {
   "name": "ainkrad-v0-3",
-  "version": "0.3.12",
+  "version": "0.3.13",
   "private": true,
   "description": "Experimental autonomous world for developing and testing Cardinal.",
   "type": "module",

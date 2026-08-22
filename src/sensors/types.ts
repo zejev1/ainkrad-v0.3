@@ -1,4 +1,18 @@
 export interface CardinalMetrics {
+  livingPopulation: number;
+  sapientPopulation: number;
+  raceDiversity: number;
+  reproductiveAdultMales: number;
+  reproductiveAdultFemales: number;
+  reproductivePairPotential: number;
+  reproductiveContinuity: number;
+  civilizationPressure: number;
+  civilizationCriticality: number;
+  recentDeathPressure: number;
+  wildlifeAttackDeathShare: number;
+  monsterDeathShare: number;
+  wildlifeDangerPressure: number;
+  monsterPressure: number;
   populationActivity: number;
   averageStress: number;
   socialIsolation: number;

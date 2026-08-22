@@ -101,6 +101,13 @@ const skillLabels: Record<keyof AgentState['skills'], string> = {
   exploration: 'исследование',
 };
 
+const raceLabels: Record<NonNullable<AgentState['race']>, string> = {
+  human: 'человек',
+  goblin: 'гоблин',
+  orc: 'орк',
+  ogre: 'огр',
+};
+
 interface MapPoint {
   x: number;
   y: number;
@@ -177,6 +184,7 @@ const cardinalDeferLabels: Record<CardinalDeferReason, string> = {
 };
 
 const cardinalProblemLabels: Record<CardinalProblemKind, string> = {
+  civilization_collapse: 'угроза краха человеческой цивилизации',
   resource_fragility: 'нехватка общих и личных ресурсов',
   social_fragmentation: 'одиночество и распад социальных связей',
   safety_instability: 'опасная среда и угроза жизни',
@@ -192,6 +200,7 @@ const interventionLabels: Record<InterventionKind, string> = {
 };
 
 const predictionMetricLabels: Record<CardinalPredictionMetric, string> = {
+  civilizationCriticality: 'критичность состояния цивилизации',
   resourcePressure: 'ресурсное давление',
   socialIsolation: 'социальная изоляция',
   safetyPressure: 'давление опасности',
@@ -995,7 +1004,11 @@ function strongestSkill(agent: Readonly<AgentState>): string {
   const strongest = (Object.entries(agent.skills) as Array<
     [keyof AgentState['skills'], number]
   >).sort((a, b) => b[1] - a[1])[0];
-  return `${skillLabels[strongest[0]]} · ${Math.round(strongest[1] * 100)}%`;
+  const progression = agent.progression;
+  const level = progression?.level ?? 1;
+  const control = Math.round((progression?.objectControlAuthority ?? 0) * 100);
+  const system = Math.round((progression?.systemControlAuthority ?? 0) * 100);
+  return `ур. ${level} · ${skillLabels[strongest[0]]} ${Math.round(strongest[1] * 100)}% · OC ${control}% · SC ${system}%`;
 }
 
 function emotionalSummary(agent: Readonly<AgentState>): string {
@@ -1077,7 +1090,7 @@ function updateSelection(): void {
   residentPlace.textContent = displayPlaceName(lastFrame.world, selected);
   residentGoal.textContent = goalLabels[selected.goal.kind];
   const age = ageParts(selected.life.ageYears);
-  residentLife.textContent = `${age.years} лет ${age.months} мес · поколение ${selected.life.generation} · ${
+  residentLife.textContent = `${age.years} лет ${age.months} мес · ${raceLabels[selected.race ?? 'human']} · поколение ${selected.life.generation} · ${
     selected.origin === 'native' ? 'рождён здесь' : 'вошёл извне'
   }`;
   residentEmotion.textContent = emotionalSummary(selected);
@@ -1252,6 +1265,20 @@ function eventText(
           : 'чудовище';
       return `${name} встретил в глуши: ${monster}`;
     }
+    case 'world.sapient_race.emerged': {
+      const race = String(event.payload.race ?? 'unknown');
+      const label =
+        race === 'goblin'
+          ? 'гоблинов'
+          : race === 'orc'
+            ? 'орков'
+            : race === 'ogre'
+              ? 'огров'
+              : race;
+      return `В мире возник самостоятельный разумный народ: ${label}`;
+    }
+    case 'agent.level.changed':
+      return `${name} достиг уровня ${String(event.payload.level ?? '?')}`;
     case 'world.settlement.founded':
       return `Жители основали ${String(event.payload.name ?? 'новое поселение')}`;
     case 'world.city.emerged':
@@ -1460,7 +1487,10 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
   });
 
   tickValue.textContent = String(frame.tick);
-  populationValue.textContent = String(agents.length);
+  const humanPopulation = agents.filter(
+    (agent) => (agent.race ?? 'human') === 'human',
+  ).length;
+  populationValue.textContent = `${humanPopulation} людей · ${agents.length} разумных`;
   growthValue.textContent = `${Object.keys(frame.world.places).length} мест · +${Math.round(
     frame.world.growth.explorationProgress * 100,
   )}%`;
@@ -1902,20 +1932,38 @@ function closeCardinalConsole(): void {
 type LiveWorldWorkerMessage =
   | {
       type: 'frame';
-      protocolVersion: 'ainkrad-live-frame-0.3.12';
+      protocolVersion: 'ainkrad-live-frame-0.3.13';
       frame: LiveWorldFrame;
     }
   | {
       type: 'cardinal_console';
-      protocolVersion: 'ainkrad-live-frame-0.3.12';
+      protocolVersion: 'ainkrad-live-frame-0.3.13';
       requestId: string;
       snapshot: CardinalConsoleSnapshot;
     }
   | {
       type: 'fatal';
-      protocolVersion: 'ainkrad-live-frame-0.3.12';
+      protocolVersion: 'ainkrad-live-frame-0.3.13';
       message: string;
     };
+
+async function requestPersistentAinkradStorage(): Promise<void> {
+  if (!navigator.storage?.persist) return;
+  try {
+    const alreadyPersistent =
+      typeof navigator.storage.persisted === 'function'
+        ? await navigator.storage.persisted()
+        : false;
+    if (alreadyPersistent) return;
+    const granted = await navigator.storage.persist();
+    if (!granted) {
+      console.warn('[Ainkrad storage] Persistent local storage was not granted.');
+    }
+  } catch {
+    console.warn('[Ainkrad storage] Persistent-storage request failed.');
+  }
+}
+void requestPersistentAinkradStorage();
 
 const liveWorldWorker = new Worker(
   new URL('./runtime/liveWorld.worker.ts', import.meta.url),

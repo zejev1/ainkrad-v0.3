@@ -48,6 +48,10 @@ import type {
   WorldSpeedMultiplier,
 } from '../world/WorldClock';
 
+const CARDINAL_BASE_CYCLE_INTERVAL = 300;
+const CARDINAL_CRITICAL_CYCLE_INTERVAL = 10;
+const CARDINAL_SIGNAL_BURST_TICKS = 4;
+
 export interface LiveWorldDisturbance {
   tick: number;
   kind: WorldDisturbanceKind;
@@ -143,6 +147,7 @@ function cardinalActivityFromHistory(
  */
 export class LiveWorldRuntime {
   private currentTick: number;
+  private cardinalBurstUntil = 0;
 
   private constructor(
     private readonly mode: CardinalMode,
@@ -318,30 +323,51 @@ export class LiveWorldRuntime {
       );
     }
 
+    const beforeStep = this.world.snapshot();
     const clock = this.clockGateway.current();
     await this.world.step(tick, clock.worldMinutesPerTick);
     await this.observeDueOutcomes(tick);
 
-    const independentAuditObservation =
-      this.mode === 'off'
-        ? undefined
-        : await this.auditorSensors.observe(this.world.snapshot(), tick);
+    const afterStep = this.world.snapshot();
+    const livingPopulation = Object.values(afterStep.agents).filter(
+      (agent) =>
+        agent.life.alive && (agent.race ?? 'human') === 'human',
+    ).length;
+    const deathOccurred =
+      afterStep.population.deaths > beforeStep.population.deaths;
+    const birthOccurred =
+      afterStep.population.births > beforeStep.population.births;
+    const criticalPopulation =
+      livingPopulation <= 7 && afterStep.population.deaths > 0;
+    if (dueDisturbances.length > 0 || deathOccurred || birthOccurred) {
+      this.cardinalBurstUntil = Math.max(
+        this.cardinalBurstUntil,
+        tick + CARDINAL_SIGNAL_BURST_TICKS - 1,
+      );
+    }
+    const cardinalDue =
+      this.mode !== 'off' &&
+      (tick <= 3 ||
+        tick <= this.cardinalBurstUntil ||
+        tick % CARDINAL_BASE_CYCLE_INTERVAL === 0 ||
+        (criticalPopulation && tick % CARDINAL_CRITICAL_CYCLE_INTERVAL === 0));
 
-    const independentAuditContext =
-      this.mode === 'off'
-        ? undefined
-        : await buildCardinalAuditContext(
-            this.journal,
-            this.world.snapshot().id,
-            tick,
-            WORLD_SENSOR_VERSION,
-          );
+    const independentAuditObservation = cardinalDue
+      ? await this.auditorSensors.observe(afterStep, tick)
+      : undefined;
 
-    const evaluation = await this.cardinal.cycle(
-      this.mode,
-      this.world.snapshot(),
-      tick,
-    );
+    const independentAuditContext = cardinalDue
+      ? await buildCardinalAuditContext(
+          this.journal,
+          afterStep.id,
+          tick,
+          WORLD_SENSOR_VERSION,
+        )
+      : undefined;
+
+    const evaluation = cardinalDue
+      ? await this.cardinal.cycle(this.mode, afterStep, tick)
+      : undefined;
 
     let intervention: InterventionRecord | undefined;
     let worldAuthority: WorldAuthorityRecord | undefined;

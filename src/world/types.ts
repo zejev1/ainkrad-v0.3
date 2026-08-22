@@ -23,6 +23,17 @@ export type AgentActionKind =
   | 'pray';
 
 export type AgentOrigin = 'native' | 'external_resident';
+export type AgentSex = 'male' | 'female';
+export type AgentRace = 'human' | 'goblin' | 'orc' | 'ogre';
+
+export interface AgentProgressionState {
+  level: number;
+  experience: number;
+  objectControlAuthority: number;
+  systemControlAuthority: number;
+  combatMastery: number;
+  sacredArts: number;
+}
 
 export type AgentLifeStage =
   | 'child'
@@ -35,6 +46,7 @@ export type AgentDeathCause =
   | 'illness'
   | 'deprivation'
   | 'catastrophe'
+  | 'wildlife'
   | 'monster';
 
 export interface AgentPhysiologyState {
@@ -170,6 +182,9 @@ export interface AgentState {
   id: string;
   name: string;
   origin: AgentOrigin;
+  sex?: AgentSex;
+  race?: AgentRace;
+  progression?: AgentProgressionState;
 
   energy: number;
   stress: number;
