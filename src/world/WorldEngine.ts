@@ -4505,7 +4505,71 @@ export class WorldEngine {
         );
         return willingness >= 0.52 && this.rng.next() < 0.1 + willingness * 0.28;
       });
-      if (willingFounders.length < 2) return;
+            if (willingFounders.length < 2) {
+        const cities = settlements.filter((place) => place.kind === 'city');
+        const desiredCities = Math.min(
+          Math.floor(this.state.growth.stage / 8),
+          Math.floor(living / 12),
+        );
+
+        if (cities.length < desiredCities) {
+          const cityCandidate = [...settlements, this.state.places.commons]
+            .filter(
+              (place) =>
+                place.kind === 'village' ||
+                (place.id === 'commons' && place.kind === 'commons'),
+            )
+            .map((place) => ({
+              place,
+              residents: Object.values(this.state.agents).filter(
+                (agent) =>
+                  agent.life.alive &&
+                  this.homeSettlementId(agent) ===
+                    (place.settlementId ?? place.id),
+              ).length,
+            }))
+            .filter(({ residents }) => residents >= 10)
+            .sort(
+              (a, b) =>
+                b.residents - a.residents ||
+                (a.place.discoveredAt ?? 0) -
+                  (b.place.discoveredAt ?? 0),
+            )[0]?.place;
+
+          if (cityCandidate) {
+            cityCandidate.kind = 'city';
+            cityCandidate.name = cityCandidate.name.replace(
+              'Поселение',
+              'Город',
+            );
+            cityCandidate.capacity = Math.max(
+              20,
+              cityCandidate.capacity * 2,
+            );
+            cityCandidate.fertility = clamp01(
+              cityCandidate.fertility + 0.08,
+            );
+
+            this.rebuildSpatialProjection();
+
+            this.stageEvent({
+              eventId: this.nextId('city'),
+              worldId: this.state.id,
+              kind: 'world.city.emerged',
+              source: 'agent',
+              occurredAt: now,
+              payload: {
+                cityId: cityCandidate.id,
+                name: cityCandidate.name,
+                livingPopulation: living,
+                worldStage: this.state.growth.stage,
+              },
+            });
+          }
+        }
+
+        return;
+      }
 
       const names = [
         'Ривен',
