@@ -4653,14 +4653,19 @@ export class WorldEngine {
     );
     if (cities.length >= desiredCities) return;
 
-    const village = settlements
-      .filter((place) => place.kind === 'village')
+        const village = [...settlements, this.state.places.commons]
+      .filter(
+        (place) =>
+          place.kind === 'village' ||
+          (place.id === 'commons' && place.kind === 'commons'),
+      )
       .map((place) => ({
         place,
         residents: Object.values(this.state.agents).filter(
           (agent) =>
             agent.life.alive &&
-            this.homeSettlementId(agent) === place.id,
+            this.homeSettlementId(agent) ===
+              (place.settlementId ?? place.id),
         ).length,
       }))
       .filter(({ residents }) => residents >= 10)
