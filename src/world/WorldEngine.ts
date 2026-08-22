@@ -3500,7 +3500,7 @@ export class WorldEngine {
       (other) =>
         other.id !== agent.id &&
         other.life.alive &&
-        this.pathBetween(agent.locationId, other.locationId) !== undefined,
+        other.locationId === agent.locationId,
     );
     const natureAvailable = this.state.growth.stage > 0;
     const goalBoost = (kind: AgentGoalKind) => (agent.goal.kind === kind ? 0.24 : 0);
