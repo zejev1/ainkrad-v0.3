@@ -35,7 +35,7 @@ const COMPATIBLE_FRAME_PROTOCOLS = new Set([
 // Test disturbances must never run automatically in the persistent live world.
 // Dedicated tests may still inject disturbances through LiveWorldRuntime.
 const disturbances: readonly LiveWorldDisturbance[] = [];
-const recurringDisturbances: readonly LiveWorldDisturbance[] = [];
+const recurringDisturbances = [] as const;
 
 type LiveWorldWorkerMessage =
   | {
