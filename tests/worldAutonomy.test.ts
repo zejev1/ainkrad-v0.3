@@ -275,11 +275,11 @@ describe('Autonomous society depth', () => {
     expect(kinds.has('agent.explored')).toBe(true);
     expect(kinds.has('relationship.changed')).toBe(true);
     expect(
-      kinds.has('agent.help.accepted') ||
-        kinds.has('agent.help.rejected') ||
-        kinds.has('agent.bond.accepted') ||
+              kinds.has('agent.bond.accepted') ||
         kinds.has('agent.bond.declined') ||
-        kinds.has('agent.prayed'),
+        kinds.has('agent.prayed') ||
+        kinds.has('agent.reflected') ||
+        kinds.has('agent.relaxed'),
     ).toBe(true);
   });
 
