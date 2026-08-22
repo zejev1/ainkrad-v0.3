@@ -267,9 +267,9 @@ export class CardinalCore {
         `same_kind_in_progress=${autonomyAssessment.activeOrUnresolvedSameKindIds.length}`,
         `cardinal_level=${experience.level}`,
         `cardinal_experience=${experience.totalExperience}`,
-        `living_population=${observation.metrics.livingPopulation}`,
-        `reproductive_pairs=${observation.metrics.reproductivePairPotential}`,
-        `reproductive_continuity=${observation.metrics.reproductiveContinuity.toFixed(3)}`,
+                `living_population=${observation.metrics.livingPopulation ?? 'legacy_unknown'}`,
+        `reproductive_pairs=${observation.metrics.reproductivePairPotential ?? 'legacy_unknown'}`,
+        `reproductive_continuity=${(observation.metrics.reproductiveContinuity ?? 1).toFixed(3)}`,
       );
 
       const capabilityReady =
