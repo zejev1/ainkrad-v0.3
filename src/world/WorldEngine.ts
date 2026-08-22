@@ -3392,7 +3392,7 @@ export class WorldEngine {
     agent.energy = clamp01(
       agent.energy - (0.016 + (1 - agent.life.physiology.endurance) * 0.014),
     );
-    agent.resources = clamp01(agent.resources - 0.006);
+    agent.resources = clamp01(agent.resources - 0.004);
     agent.needs.belonging = clamp01(agent.needs.belonging - 0.012);
     agent.needs.purpose = clamp01(agent.needs.purpose - 0.008);
     agent.stress = clamp01(
@@ -3500,7 +3500,7 @@ export class WorldEngine {
       (other) =>
         other.id !== agent.id &&
         other.life.alive &&
-        other.locationId === agent.locationId,
+        this.pathBetween(agent.locationId, other.locationId) !== undefined,
     );
     const natureAvailable = this.state.growth.stage > 0;
     const goalBoost = (kind: AgentGoalKind) => (agent.goal.kind === kind ? 0.24 : 0);
