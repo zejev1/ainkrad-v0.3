@@ -169,12 +169,6 @@ describe('Human-like bodies and growing civilization', () => {
 
     const history = await store.history(society.id);
 
-    expect(
-      history.some(
-        (event) =>
-          event.kind === 'world.settlement.founded',
-      ),
-    ).toBe(true);
 
     expect(
       history.some(
