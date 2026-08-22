@@ -3698,7 +3698,7 @@ export class WorldEngine {
         openness: 0,
       };
     }
-    if (agent.resources < 0.08) {
+    if (agent.resources < 0.16) {
       const survivalChoices = scores
         .filter(
           (item) =>
