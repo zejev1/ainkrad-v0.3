@@ -387,7 +387,10 @@ export type WorldLawMechanism =
   | 'resource_regeneration'
   | 'mystic_resonance'
   | 'weather_volatility'
-  | 'catastrophe_recovery';
+  | 'catastrophe_recovery'
+  | 'settlement_cohesion'
+  | 'habitat_integrity'
+  | 'civilization_continuity';
 
 export interface WorldLawState {
   id: string;
@@ -440,6 +443,10 @@ export interface WorldDeterminismState {
 
 export interface WorldState {
   id: string;
+  /** Logical world epoch. Optional only for legacy fixtures before migration. */
+  epoch?: number;
+  /** Absolute logical tick at which the current epoch began. */
+  epochStartedAt?: number;
   now: number;
   revision: number;
   rulesVersion: string;

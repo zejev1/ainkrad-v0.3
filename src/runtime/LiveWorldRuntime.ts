@@ -12,6 +12,7 @@ import {
   observeWorldArchitecture,
   type WorldAuthorityRecord,
 } from '../cardinal/WorldAuthorityGateway';
+import { IndependentWorldEntryGateway } from '../boundary/WorldEntryGateway';
 import {
   IndependentInterventionGateway,
   INTERVENTION_GATEWAY_POLICY_VERSION,
@@ -51,6 +52,52 @@ import type {
 const CARDINAL_BASE_CYCLE_INTERVAL = 300;
 const CARDINAL_CRITICAL_CYCLE_INTERVAL = 10;
 const CARDINAL_SIGNAL_BURST_TICKS = 4;
+
+const DEFAULT_LIVE_FOUNDER_NAMES = [
+  'Aron', 'Mira', 'Kai', 'Noa', 'Ilan', 'Rin', 'Lea', 'Daren', 'Sora', 'Talia',
+] as const;
+const RECOVERY_COHORT = [
+  ['recovery_0314_01', 'Aren'], ['recovery_0314_02', 'Selene'],
+  ['recovery_0314_03', 'Leon'], ['recovery_0314_04', 'Aria'],
+  ['recovery_0314_05', 'Dain'], ['recovery_0314_06', 'Liora'],
+  ['recovery_0314_07', 'Niko'], ['recovery_0314_08', 'Elin'],
+  ['recovery_0314_09', 'Rian'], ['recovery_0314_10', 'Maya'],
+] as const;
+
+async function ensureRecoveryCohort(world: WorldEngine): Promise<number> {
+  const snapshot = world.snapshot();
+  const livingHumans = Object.values(snapshot.agents).filter(
+    (agent) => agent.life.alive && (agent.race ?? 'human') === 'human',
+  ).length;
+  const present = RECOVERY_COHORT.filter(([entryId]) =>
+    snapshot.agents[`visitor_${entryId}`],
+  ).length;
+  if (livingHumans > 7 && present === 0) return 0;
+  if (present === RECOVERY_COHORT.length) return 0;
+
+  let added = 0;
+  const gateway = new IndependentWorldEntryGateway(world);
+  for (const [entryId, name] of RECOVERY_COHORT) {
+    if (world.snapshot().agents[`visitor_${entryId}`]) continue;
+    const expected = world.snapshot();
+    const record = await gateway.enter(
+      {
+        requestId: `v0.3.14-recovery:${entryId}`,
+        worldId: expected.id,
+        externalIdentityId: entryId,
+        displayName: name,
+        role: 'resident',
+        requestedAt: expected.now,
+      },
+      expected,
+    );
+    if (!record.authorized) {
+      throw new Error(`Recovery cohort entry ${entryId} was denied: ${record.reason}`);
+    }
+    added += 1;
+  }
+  return added;
+}
 
 export interface LiveWorldDisturbance {
   tick: number;
@@ -184,8 +231,12 @@ export class LiveWorldRuntime {
           worldId,
           seed: options.seed,
           store,
+          agentNames: [...DEFAULT_LIVE_FOUNDER_NAMES],
           startTime: 0,
         });
+    const recoveryEntriesAdded = existing
+      ? await ensureRecoveryCohort(world)
+      : 0;
     const sensors = new WorldSensors(store);
     const auditorSensors = new WorldSensors(store);
     const observer = new CardinalObserver(sensors);
@@ -208,7 +259,7 @@ export class LiveWorldRuntime {
       store.recent(worldId, 96),
     ]);
 
-    return new LiveWorldRuntime(
+    const runtime = new LiveWorldRuntime(
       options.mode ?? 'intervene',
       options.disturbances ?? [],
       options.recurringDisturbances ?? [],
@@ -239,6 +290,10 @@ export class LiveWorldRuntime {
         resumedFromTick: existing?.now ?? 0,
       },
     );
+    if (recoveryEntriesAdded > 0) {
+      runtime.cardinalBurstUntil = world.snapshot().now + CARDINAL_SIGNAL_BURST_TICKS;
+    }
+    return runtime;
   }
 
   async synchronize(): Promise<void> {
@@ -260,6 +315,18 @@ export class LiveWorldRuntime {
 
   setWorldSpeed(speedId: unknown, multiplier: unknown): WorldClockControl {
     return this.clockGateway.set(speedId, multiplier);
+  }
+
+  async resetWorld(seed = 'ainkrad-browser-world'): Promise<WorldState> {
+    const current = this.world.snapshot();
+    await this.world.resetEpoch(
+      seed,
+      DEFAULT_LIVE_FOUNDER_NAMES,
+      `epoch-${(current.epoch ?? 1) + 1}`,
+    );
+    await this.synchronize();
+    this.cardinalBurstUntil = this.currentTick + CARDINAL_SIGNAL_BURST_TICKS;
+    return this.world.snapshot();
   }
 
   async cardinalConsole(): Promise<CardinalConsoleSnapshot> {
@@ -337,8 +404,7 @@ export class LiveWorldRuntime {
       afterStep.population.deaths > beforeStep.population.deaths;
     const birthOccurred =
       afterStep.population.births > beforeStep.population.births;
-    const criticalPopulation =
-      livingPopulation <= 7 && afterStep.population.deaths > 0;
+    const criticalPopulation = livingPopulation <= 7;
     if (dueDisturbances.length > 0 || deathOccurred || birthOccurred) {
       this.cardinalBurstUntil = Math.max(
         this.cardinalBurstUntil,
@@ -362,6 +428,7 @@ export class LiveWorldRuntime {
           afterStep.id,
           tick,
           WORLD_SENSOR_VERSION,
+          afterStep.epochStartedAt ?? 0,
         )
       : undefined;
 
@@ -410,14 +477,17 @@ export class LiveWorldRuntime {
         ),
       );
 
-      if (this.mode === 'intervene' && !intervention?.executed) {
-        const authorityEvidence = await this.store.recent(
-          this.world.snapshot().id,
+      if (this.mode === 'intervene') {
+        const authoritySnapshot = this.world.snapshot();
+        const authorityEvidence = (await this.store.recent(
+          authoritySnapshot.id,
           16,
           tick,
+        )).filter(
+          (event) => event.occurredAt >= (authoritySnapshot.epochStartedAt ?? 0),
         );
         const authorityProposal = this.worldArchitect.consider(
-          observeWorldArchitecture(this.world.snapshot()),
+          observeWorldArchitecture(authoritySnapshot),
           evaluation.experience,
           authorityEvidence,
         );
@@ -483,7 +553,9 @@ export class LiveWorldRuntime {
       intervention: InterventionRecord;
     }>
   > {
-    const worldId = this.world.snapshot().id;
+    const worldSnapshot = this.world.snapshot();
+    const worldId = worldSnapshot.id;
+    const epochFloor = worldSnapshot.epochStartedAt ?? 0;
 
     const [evaluations, interventions, outcomes] = await Promise.all([
       this.journal.recentEvaluations(worldId, 512),
@@ -499,12 +571,15 @@ export class LiveWorldRuntime {
     );
 
     const resolved = new Set(
-      outcomes.map((outcome) => outcome.interventionId),
+      outcomes
+        .filter((outcome) => outcome.observedAt >= epochFloor)
+        .map((outcome) => outcome.interventionId),
     );
 
     return interventions
       .filter(
         (intervention) =>
+          intervention.requestedAt >= epochFloor &&
           intervention.executed &&
           !resolved.has(intervention.interventionId),
       )

@@ -30,6 +30,7 @@ export class CardinalRuntime {
       observation.observedAt,
       this.core.policyVersion,
       observation.sensorVersion,
+      world.epochStartedAt ?? 0,
     );
     const evaluation = this.core.evaluate(mode, observation, research);
     await this.journal.appendEvaluation(evaluation);

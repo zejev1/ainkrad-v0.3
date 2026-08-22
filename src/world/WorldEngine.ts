@@ -42,15 +42,16 @@ import type {
   WildlifeSpecies,
 } from './types';
 
-export const WORLD_RULES_VERSION = 'ainkrad-world-rules-0.3.13';
+export const WORLD_RULES_VERSION = 'ainkrad-world-rules-0.3.14';
 const LEGACY_WORLD_RULES_VERSIONS = new Set([
   'ainkrad-world-rules-0.3.8',
   'ainkrad-world-rules-0.3.9',
   'ainkrad-world-rules-0.3.10',
   'ainkrad-world-rules-0.3.11',
   'ainkrad-world-rules-0.3.12',
+  'ainkrad-world-rules-0.3.13',
 ]);
-export const WORLD_CONSTITUTION_VERSION = 'ainkrad-constitution-0.3.10';
+export const WORLD_CONSTITUTION_VERSION = 'ainkrad-constitution-0.3.14';
 export { WORLD_TICKS_PER_YEAR } from './WorldClock';
 const MIN_ADULT_AGE = 18;
 const ELDER_AGE = 62;
@@ -179,6 +180,50 @@ const BIOMES: readonly WorldBiome[] = [
   'ancient_ruins',
 ];
 
+const HABITAT_BIOMES: Record<WildlifeSpecies, readonly WorldBiome[]> = {
+  rabbit: ['plains', 'forest'],
+  deer: ['plains', 'forest'],
+  fish: ['coast', 'lake', 'river'],
+  boar: ['forest', 'plains', 'swamp'],
+  wolf: ['forest', 'mountains', 'plains'],
+  bird: ['plains', 'forest', 'coast', 'ancient_ruins'],
+  dire_wolf: ['forest', 'mountains', 'ancient_ruins'],
+  ogre: ['swamp', 'mountains', 'ancient_ruins'],
+  wraith: ['ancient_ruins', 'swamp'],
+};
+
+function isHabitatCompatible(
+  species: WildlifeSpecies,
+  place: Readonly<WorldPlace> | undefined,
+): boolean {
+  if (!place) return false;
+  if (!HABITAT_BIOMES[species].includes(place.biome)) return false;
+  if (species === 'fish') return place.surface === 'water' || place.surface === 'shore';
+  return place.surface === 'land';
+}
+
+function isRaceOriginCompatible(
+  race: NonNullable<AgentState['race']>,
+  place: Readonly<WorldPlace>,
+  wildlife: Readonly<Record<string, WildlifePopulation>>,
+): boolean {
+  if (place.surface !== 'land' || place.biome === 'settlement') return false;
+  if (race === 'human') return true;
+  const allowed: Record<Exclude<NonNullable<AgentState['race']>, 'human'>, readonly WorldBiome[]> = {
+    goblin: ['plains', 'forest', 'swamp'],
+    orc: ['mountains', 'ancient_ruins'],
+    ogre: ['swamp', 'mountains', 'ancient_ruins'],
+  };
+  if (!allowed[race].includes(place.biome)) return false;
+  if (race === 'goblin') return true;
+  return Object.values(wildlife).some(
+    (population) =>
+      population.isMonster &&
+      population.count > 0 &&
+      population.habitatId === place.id,
+  );
+}
+
 const LAW_MECHANISM_DOMAINS: Record<WorldLawMechanism, WorldLawDomain> = {
   frontier_expansion: 'geography',
   wildlife_recovery: 'ecology',
@@ -187,6 +232,9 @@ const LAW_MECHANISM_DOMAINS: Record<WorldLawMechanism, WorldLawDomain> = {
   mystic_resonance: 'cosmology',
   weather_volatility: 'climate',
   catastrophe_recovery: 'ecology',
+  settlement_cohesion: 'geography',
+  habitat_integrity: 'ecology',
+  civilization_continuity: 'demography',
 };
 
 interface WorldExpansionDefinition {
@@ -338,6 +386,36 @@ function law(
 
 function defaultWorldLaws(now: number): Record<string, WorldLawState> {
   const laws = [
+    law(
+      'settlement_cohesion',
+      'geography',
+      'settlement_cohesion',
+      1,
+      1,
+      1,
+      now,
+      'Homes, markets and workshops form a coherent settlement core; fields and farms sit at its edge.',
+    ),
+    law(
+      'habitat_integrity',
+      'ecology',
+      'habitat_integrity',
+      1,
+      1,
+      1,
+      now,
+      'Wildlife and monsters may originate and recover only in physically compatible habitats.',
+    ),
+    law(
+      'civilization_continuity',
+      'demography',
+      'civilization_continuity',
+      1,
+      1,
+      1,
+      now,
+      'Demographic collapse outranks optional frontier acceleration while every resident keeps personal agency.',
+    ),
     law(
       'frontier_expansion_rate',
       'geography',
@@ -1447,8 +1525,8 @@ function placeMigrationDefaults(
     },
     resource_field: {
       biome: 'plains',
-      mapX: 42,
-      mapY: 57,
+      mapX: 56,
+      mapY: 52,
       connectedPlaceIds: ['commons'],
       fertility: 0.72,
       danger: 0.08,
@@ -1457,8 +1535,8 @@ function placeMigrationDefaults(
     },
     workshop: {
       biome: 'settlement',
-      mapX: 57,
-      mapY: 47,
+      mapX: 52.5,
+      mapY: 49,
       connectedPlaceIds: ['commons'],
       fertility: 0.28,
       danger: 0.1,
@@ -1467,8 +1545,8 @@ function placeMigrationDefaults(
     },
     quiet_space: {
       biome: 'forest',
-      mapX: 45,
-      mapY: 42,
+      mapX: 47.5,
+      mapY: 47,
       connectedPlaceIds: ['commons'],
       fertility: 0.65,
       danger: 0.02,
@@ -1477,8 +1555,8 @@ function placeMigrationDefaults(
     },
     outskirts: {
       biome: 'plains',
-      mapX: 65,
-      mapY: 60,
+      mapX: 62,
+      mapY: 55,
       connectedPlaceIds: ['commons'],
       fertility: 0.52,
       danger: 0.18,
@@ -1490,7 +1568,7 @@ function placeMigrationDefaults(
 
   if (place.kind === 'home') {
     const angle = homeIndex * 2.399963229728653 - Math.PI / 2;
-    const ring = 6.2 + Math.floor(homeIndex / 7) * 2.4;
+    const ring = 3.2 + Math.floor(homeIndex / 8) * 1.8;
     return {
       biome: 'settlement',
       mapX: 50 + Math.cos(angle) * ring,
@@ -1540,12 +1618,19 @@ function rebuildSettlementProjection(
   prior: Readonly<Record<string, WorldSettlementState>> = {},
   foundedAt = 0,
 ): Record<string, WorldSettlementState> {
+  const main = mainSettlement(places, foundedAt);
+  const priorMain = prior[main.id];
+  if (priorMain?.kind === 'city') {
+    main.kind = 'city';
+    main.radius = Math.max(20, priorMain.radius);
+  }
   const settlements: Record<string, WorldSettlementState> = {
-    settlement_ainkrad: mainSettlement(places, foundedAt),
+    settlement_ainkrad: main,
   };
   for (const place of Object.values(places)) {
     if (place.kind !== 'village' && place.kind !== 'city') continue;
     const id = place.settlementId ?? place.id;
+    if (id === 'settlement_ainkrad') continue;
     place.settlementId = id;
     const existing = prior[id];
     const memberPlaceIds = Object.values(places)
@@ -1559,7 +1644,7 @@ function rebuildSettlementProjection(
       centerPlaceId: place.id,
       centerX: place.mapX,
       centerY: place.mapY,
-      radius: existing?.radius ?? (place.kind === 'city' ? 16 : 11),
+      radius: existing?.radius ?? (place.kind === 'city' ? 20 : 11),
       memberPlaceIds,
       foundedAt: existing?.foundedAt ?? place.discoveredAt ?? foundedAt,
     };
@@ -1623,6 +1708,8 @@ async function migrateLegacyWorld(
   const next = structuredClone(legacy) as WorldState;
   const mutable = next as unknown as Record<string, any>;
 
+  mutable.epoch ??= 1;
+  mutable.epochStartedAt ??= 0;
   next.rulesVersion = WORLD_RULES_VERSION;
   next.revision = legacy.revision + 1;
   next.environment = {
@@ -1695,12 +1782,40 @@ async function migrateLegacyWorld(
         : { settlementId: defaults.settlementId }),
     });
   }
+  const coreNames: Record<string, string> = {
+    commons: 'Площадь и рынок Айнкрада',
+    resource_field: 'Поля и фермы Айнкрада',
+    workshop: 'Мастерская Айнкрада',
+    quiet_space: 'Тихий сад Айнкрада',
+    outskirts: 'Окраина Айнкрада',
+  };
+  for (const [placeId, placeName] of Object.entries(coreNames)) {
+    if (next.places[placeId]) next.places[placeId].name = placeName;
+  }
   makeConnectionsReciprocal(next.places);
   next.settlements = rebuildSettlementProjection(
     next.places,
     mutable.settlements ?? {},
     0,
   );
+
+  for (const [populationId, population] of Object.entries(next.wildlife)) {
+    const currentHabitat = next.places[population.habitatId];
+    if (isHabitatCompatible(population.species, currentHabitat)) continue;
+    const replacement = Object.values(next.places)
+      .filter((place) => isHabitatCompatible(population.species, place))
+      .sort((a, b) => {
+        const ax = currentHabitat?.mapX ?? 50;
+        const ay = currentHabitat?.mapY ?? 50;
+        return (Math.hypot(a.mapX - ax, a.mapY - ay) - Math.hypot(b.mapX - ax, b.mapY - ay));
+      })[0];
+    if (replacement) {
+      population.habitatId = replacement.id;
+      population.lastChangedAt = next.now;
+    } else {
+      delete next.wildlife[populationId];
+    }
+  }
 
   // v0.3.13 gives every already-existing secondary settlement local daily-life
   // facilities. This preserves the existing experiment instead of requiring a
@@ -1730,9 +1845,9 @@ async function migrateLegacyWorld(
       dy: number;
       fertility: number;
     }> = [
-      { suffix: 'field', name: 'Поля', kind: 'resource_field', dx: -4.8, dy: 2.4, fertility: 0.76 },
-      { suffix: 'workshop', name: 'Мастерская', kind: 'workshop', dx: 4.6, dy: 1.8, fertility: 0.3 },
-      { suffix: 'quiet', name: 'Тихий сад', kind: 'quiet_space', dx: 0.8, dy: -4.5, fertility: 0.62 },
+      { suffix: 'field', name: 'Поля и фермы', kind: 'resource_field', dx: -5.6, dy: 2.2, fertility: 0.76 },
+      { suffix: 'workshop', name: 'Мастерская', kind: 'workshop', dx: 2.4, dy: 1.2, fertility: 0.3 },
+      { suffix: 'quiet', name: 'Тихий сад', kind: 'quiet_space', dx: -1.8, dy: -2.2, fertility: 0.62 },
     ];
 
     for (const service of localServices) {
@@ -1769,8 +1884,15 @@ async function migrateLegacyWorld(
     next.growth.stage >= 5 &&
     !Object.values(next.wildlife).some((population) => population.isMonster)
   ) {
-    const habitatId = next.growth.discoveredRegionIds.at(-1);
-    const habitat = habitatId ? next.places[habitatId] : undefined;
+    const habitat = [...next.growth.discoveredRegionIds]
+      .reverse()
+      .map((regionId) => next.places[regionId])
+      .find(
+        (place): place is WorldPlace =>
+          place !== undefined &&
+          place.surface === 'land' &&
+          ['forest', 'mountains', 'swamp', 'ancient_ruins'].includes(place.biome),
+      );
     if (habitat) {
       const species: WildlifeSpecies =
         habitat.biome === 'ancient_ruins'
@@ -1778,20 +1900,15 @@ async function migrateLegacyWorld(
           : habitat.biome === 'swamp'
             ? 'ogre'
             : 'dire_wolf';
-      const threat = legacyThreat[species];
-      next.wildlife[`monster_${next.growth.stage}_${species}`] = {
-        id: `monster_${next.growth.stage}_${species}`,
-        species,
-        habitatId: habitat.id,
-        count: 1,
-        carryingCapacity: 3,
-        reproductionRate: 0.018,
-        alertness: 0.74,
-        threat,
-        isMonster: true,
-        lastChangedAt: next.now,
-      };
-      habitat.danger = Math.max(habitat.danger, threat * 0.78);
+      if (isHabitatCompatible(species, habitat)) {
+        const threat = legacyThreat[species];
+        next.wildlife[`monster_${next.growth.stage}_${species}`] = {
+          id: `monster_${next.growth.stage}_${species}`, species, habitatId: habitat.id,
+          count: 1, carryingCapacity: 3, reproductionRate: 0.018, alertness: 0.74,
+          threat, isMonster: true, lastChangedAt: next.now,
+        };
+        habitat.danger = Math.max(habitat.danger, threat * 0.78);
+      }
     }
   }
 
@@ -1974,10 +2091,15 @@ async function migrateLegacyWorld(
     ],
     laws: defaultWorldLaws(next.now),
   };
+  next.governance.constitutionVersion = WORLD_CONSTITUTION_VERSION;
+  const requiredLaws = defaultWorldLaws(next.now);
+  for (const [lawId, requiredLaw] of Object.entries(requiredLaws)) {
+    next.governance.laws[lawId] ??= requiredLaw;
+  }
 
   next.determinism.eventSequence += 1;
   const migrationEvent: WorldEvent = {
-    eventId: `migration:${next.id}:world-rules-0.3.13`,
+    eventId: `migration:${next.id}:world-rules-0.3.14`,
     worldId: next.id,
     kind: 'world.migrated',
     source: 'system',
@@ -2118,14 +2240,14 @@ export class WorldEngine {
     const places: Record<string, WorldPlace> = {
       commons: createPlace(
         'commons',
-        'Common Square',
+        'Площадь и рынок Айнкрада',
         'commons',
         Math.max(8, names.length * 2),
         placeMigrationDefaults({ id: 'commons', kind: 'commons' }, 0),
       ),
       resource_field: createPlace(
         'resource_field',
-        'Resource Field',
+        'Поля и фермы Айнкрада',
         'resource_field',
         Math.max(6, names.length),
         placeMigrationDefaults(
@@ -2135,14 +2257,14 @@ export class WorldEngine {
       ),
       workshop: createPlace(
         'workshop',
-        'Workshop',
+        'Мастерская Айнкрада',
         'workshop',
         Math.max(6, names.length),
         placeMigrationDefaults({ id: 'workshop', kind: 'workshop' }, 0),
       ),
       quiet_space: createPlace(
         'quiet_space',
-        'Quiet Garden',
+        'Тихий сад Айнкрада',
         'quiet_space',
         Math.max(4, names.length),
         placeMigrationDefaults(
@@ -2152,7 +2274,7 @@ export class WorldEngine {
       ),
       outskirts: createPlace(
         'outskirts',
-        'Outskirts',
+        'Окраина Айнкрада',
         'outskirts',
         Math.max(8, names.length * 2),
         placeMigrationDefaults({ id: 'outskirts', kind: 'outskirts' }, 0),
@@ -2253,14 +2375,16 @@ export class WorldEngine {
 
     const state: WorldState = {
       id: options.worldId,
+      epoch: 1,
+      epochStartedAt: now,
       now,
       revision: 0,
       rulesVersion: WORLD_RULES_VERSION,
       environment: {
         resourcePool: 1,
         resourceRegenerationRate: 0.012,
-        socialOpportunity: 0.5,
-        safetySupport: 0.5,
+        socialOpportunity: 0.62,
+        safetySupport: 0.64,
         habitatSupport: 0.5,
       },
       determinism: {
@@ -2340,6 +2464,94 @@ export class WorldEngine {
     await this.runExclusive(async () => {
       await this.reloadFromStore();
     });
+  }
+
+  async resetEpoch(
+    seed: string,
+    founderNames: readonly string[],
+    operationId: string,
+  ): Promise<WorldMutationResult> {
+    if (!seed.trim() || !operationId.trim() || founderNames.length < 2) {
+      throw new Error('World reset requires a seed, operation ID and at least two founders.');
+    }
+    if (founderNames.some((name) => !name.trim() || name.length > 64)) {
+      throw new Error('World reset founder names are invalid.');
+    }
+    const resetAt = this.committedState.now + 512;
+    const nextEpoch = (this.committedState.epoch ?? 1) + 1;
+    const fingerprint = stableJsonStringify({ kind: 'world_epoch_reset', seed, founderNames, resetAt, nextEpoch });
+
+    return await this.mutateDetailed(
+      `world-reset:${operationId}`,
+      fingerprint,
+      async () => {
+        const priorSequence = this.state.determinism.eventSequence;
+        const rng = new SeededRng(`${seed}:epoch:${nextEpoch}`);
+        const names = [...founderNames];
+        const places: Record<string, WorldPlace> = {
+          commons: createPlace('commons', 'Площадь и рынок Айнкрада', 'commons', Math.max(20, names.length * 2), placeMigrationDefaults({ id: 'commons', kind: 'commons' }, 0)),
+          resource_field: createPlace('resource_field', 'Поля и фермы Айнкрада', 'resource_field', Math.max(12, names.length), placeMigrationDefaults({ id: 'resource_field', kind: 'resource_field' }, 0)),
+          workshop: createPlace('workshop', 'Мастерская Айнкрада', 'workshop', Math.max(10, names.length), placeMigrationDefaults({ id: 'workshop', kind: 'workshop' }, 0)),
+          quiet_space: createPlace('quiet_space', 'Тихий сад Айнкрада', 'quiet_space', Math.max(8, names.length), placeMigrationDefaults({ id: 'quiet_space', kind: 'quiet_space' }, 0)),
+          outskirts: createPlace('outskirts', 'Окраина Айнкрада', 'outskirts', Math.max(16, names.length * 2), placeMigrationDefaults({ id: 'outskirts', kind: 'outskirts' }, 0)),
+        };
+        const agents: Record<string, AgentState> = {};
+        names.forEach((name, index) => {
+          const id = `epoch_${nextEpoch}_agent_${index + 1}`;
+          const homeId = `home_${id}`;
+          places[homeId] = createPlace(homeId, `Дом ${name}`, 'home', 3, placeMigrationDefaults({ id: homeId, kind: 'home' }, index));
+          const personality = {
+            sociability: rng.between(0.25, 0.9), diligence: rng.between(0.25, 0.9), curiosity: rng.between(0.25, 0.9),
+            generosity: rng.between(0.25, 0.9), resilience: rng.between(0.35, 0.92), riskTolerance: rng.between(0.22, 0.86),
+          };
+          const socialDrive = clamp01(personality.sociability * 0.75 + rng.between(0.05, 0.25));
+          const needs = { belonging: rng.between(0.55, 0.82), purpose: rng.between(0.48, 0.78) };
+          const ageYears = 21 + ((index * 5) % 24);
+          const health = clamp01(0.78 + personality.resilience * 0.18);
+          const lifespanYears = 76 + personality.resilience * 24 + (index % 4);
+          const partial = {
+            id, name, origin: 'native' as const, sex: (index % 2 === 0 ? 'male' : 'female') as AgentState['sex'], race: 'human' as const,
+            progression: { level: 1, experience: 0, objectControlAuthority: 0.08, systemControlAuthority: 0.06, combatMastery: 0.05, sacredArts: 0.02 },
+            energy: rng.between(0.68, 0.94), stress: rng.between(0.04, 0.16), resources: rng.between(0.52, 0.78), socialDrive, personality,
+            life: { bornAt: resetAt - ageYears * WORLD_TICKS_PER_YEAR, ageYears, lifespanYears, stage: lifeStageForAge(ageYears), alive: true, health,
+              physiology: physiologyForAge(ageYears, lifespanYears, health), generation: 0, parentIds: [], childIds: [] },
+            mind: createMindState(this.state.id, id, personality, needs), needs,
+            skills: { gathering: rng.between(0.18, 0.5), hunting: rng.between(0.08, 0.38), craft: rng.between(0.18, 0.52), social: rng.between(0.18, 0.52), exploration: rng.between(0.16, 0.48) },
+            homeId, locationId: homeId, position: { x: places[homeId].mapX, y: places[homeId].mapY, layerId: 'surface' as const },
+            lastMeaningfulEventAt: resetAt,
+          } satisfies Omit<AgentState, 'goal'>;
+          agents[id] = { ...partial, goal: goalFromInitialState(partial, resetAt) };
+        });
+        makeConnectionsReciprocal(places);
+
+        this.state.now = resetAt;
+        this.state.epoch = nextEpoch;
+        this.state.epochStartedAt = resetAt;
+        this.state.rulesVersion = WORLD_RULES_VERSION;
+        this.state.environment = { resourcePool: 1, resourceRegenerationRate: 0.012, socialOpportunity: 0.62, safetySupport: 0.64, habitatSupport: 0.5 };
+        this.state.calendar = { elapsedWorldMinutes: 0 };
+        this.state.growth = { stage: 0, explorationProgress: 0, lastExpansionAt: resetAt, discoveredRegionIds: [], frontierSequence: 0 };
+        this.state.population = { nextAgentSequence: names.length + 1, births: 0, deaths: 0 };
+        this.state.cosmology = { mysteryLevel: 0.12, omenCount: 0, traditions: [], deities: {} };
+        this.state.governance = {
+          constitutionVersion: WORLD_CONSTITUTION_VERSION, authorityRevision: 0,
+          protectedPersonhoodDomains: ['identity', 'memory', 'agency', 'values', 'relationships'], laws: defaultWorldLaws(resetAt),
+        };
+        this.state.places = places;
+        this.state.routes = rebuildWorldRoutes(places);
+        this.state.settlements = rebuildSettlementProjection(places, {}, resetAt);
+        this.state.wildlife = {};
+        this.state.agents = agents;
+        this.state.relationships = {};
+        this.state.determinism.eventSequence = priorSequence;
+        this.rng.restore(rng.snapshot());
+
+        this.stageEvent({
+          eventId: this.nextId('world-reset'), worldId: this.state.id, kind: 'world.epoch.started', source: 'player', occurredAt: resetAt,
+          payload: { epoch: nextEpoch, founderCount: names.length, cardinalExperiencePreserved: true },
+        });
+      },
+    );
   }
 
   async handleInput(input: InputEnvelope, appliedAt: number): Promise<boolean> {
@@ -2934,7 +3146,9 @@ export class WorldEngine {
           id: residentId,
           name,
           origin: 'external_resident' as const,
-          sex: (this.rng.next() < 0.5 ? 'male' : 'female') as AgentState['sex'],
+          sex: (this.state.population.nextAgentSequence % 2 === 0
+            ? 'female'
+            : 'male') as AgentState['sex'],
           race: 'human' as const,
           progression: {
             level: 1,
@@ -4371,6 +4585,7 @@ export class WorldEngine {
       Object.values(this.state.agents).filter(
         (agent) =>
           agent.life.alive &&
+          agent.life.generation > 0 &&
           agent.life.stage === 'adult' &&
           !agent.movement &&
           !agent.plan &&
@@ -4466,296 +4681,200 @@ export class WorldEngine {
 
   private advanceSettlements(now: number): void {
     if (!Number.isInteger(now) || now % 24 !== 0) return;
-    const living = Object.values(this.state.agents).filter(
-      (agent) => agent.life.alive,
-    ).length;
-    const settlements = Object.values(this.state.places).filter(
-      (place) => place.kind === 'village' || place.kind === 'city',
+
+    const livingHumans = Object.values(this.state.agents).filter(
+      (agent) => agent.life.alive && (agent.race ?? 'human') === 'human',
     );
-    const desiredSettlements = Math.min(
-      Math.floor(this.state.growth.stage / 3),
-      Math.max(0, Math.floor((living - 3) / 3)),
-    );
+    const residentCount = (settlementId: string) =>
+      livingHumans.filter((agent) => this.homeSettlementId(agent) === settlementId).length;
 
-    if (settlements.length < desiredSettlements) {
-      const sequence = settlements.length + 1;
-      const frontierId =
-        this.state.growth.discoveredRegionIds.at(
-          -1 - (sequence % Math.max(1, this.state.growth.discoveredRegionIds.length)),
-        ) ?? 'outskirts';
-      const anchor = this.state.places[frontierId] ?? this.state.places.outskirts;
-      const pioneerCandidates = this.shuffled(
-        Object.values(this.state.agents).filter(
-          (agent) =>
-            agent.life.alive &&
-            agent.life.stage === 'adult' &&
-            agent.locationId === frontierId &&
-            agent.resources >= 0.28 &&
-            !agent.movement,
-        ),
-      );
-      const willingFounders = pioneerCandidates.filter((agent) => {
-        const willingness = clamp01(
-          agent.personality.curiosity * 0.24 +
-            agent.personality.diligence * 0.2 +
-            agent.personality.riskTolerance * 0.14 +
-            agent.mind.values.ambition * 0.2 +
-            agent.mind.values.care * 0.12 +
-            agent.skills.exploration * 0.1,
-        );
-        return willingness >= 0.52 && this.rng.next() < 0.1 + willingness * 0.28;
-      });
-            if (willingFounders.length < 2) {
-        const cities = settlements.filter((place) => place.kind === 'city');
-        const desiredCities = Math.min(
-          Math.floor(this.state.growth.stage / 8),
-          Math.floor(living / 12),
-        );
+    let promoted = false;
+    for (const settlement of Object.values(this.state.settlements)) {
+      const residents = residentCount(settlement.id);
+      if (settlement.kind !== 'village' || residents < 18) continue;
 
-        if (cities.length < desiredCities) {
-          const cityCandidate = [...settlements, this.state.places.commons]
-            .filter(
-              (place) =>
-                place.kind === 'village' ||
-                (place.id === 'commons' && place.kind === 'commons'),
-            )
-            .map((place) => ({
-              place,
-              residents: Object.values(this.state.agents).filter(
-                (agent) =>
-                  agent.life.alive &&
-                  this.homeSettlementId(agent) ===
-                    (place.settlementId ?? place.id),
-              ).length,
-            }))
-            .filter(({ residents }) => residents >= 10)
-            .sort(
-              (a, b) =>
-                b.residents - a.residents ||
-                (a.place.discoveredAt ?? 0) -
-                  (b.place.discoveredAt ?? 0),
-            )[0]?.place;
-
-          if (cityCandidate) {
-            cityCandidate.kind = 'city';
-            cityCandidate.name = cityCandidate.name.replace(
-              'Поселение',
-              'Город',
-            );
-            cityCandidate.capacity = Math.max(
-              20,
-              cityCandidate.capacity * 2,
-            );
-            cityCandidate.fertility = clamp01(
-              cityCandidate.fertility + 0.08,
-            );
-
-            this.rebuildSpatialProjection();
-
-            this.stageEvent({
-              eventId: this.nextId('city'),
-              worldId: this.state.id,
-              kind: 'world.city.emerged',
-              source: 'agent',
-              occurredAt: now,
-              payload: {
-                cityId: cityCandidate.id,
-                name: cityCandidate.name,
-                livingPopulation: living,
-                worldStage: this.state.growth.stage,
-              },
-            });
+      settlement.kind = 'city';
+      settlement.radius = Math.max(20, settlement.radius);
+      const center = this.state.places[settlement.centerPlaceId];
+      if (center) {
+        if (center.kind === 'village' || settlement.id === 'settlement_ainkrad') {
+          center.kind = 'city';
+          if (settlement.id !== 'settlement_ainkrad') {
+            center.name = center.name.replace('Поселение', 'Город');
+            settlement.name = settlement.name.replace('Поселение', 'Город');
           }
         }
-
-        return;
+        center.capacity = Math.max(24, center.capacity * 2);
+        center.fertility = clamp01(center.fertility + 0.06);
       }
+      this.stageEvent({
+        eventId: this.nextId('city'),
+        worldId: this.state.id,
+        kind: 'world.city.emerged',
+        source: 'agent',
+        occurredAt: now,
+        payload: {
+          cityId: settlement.id,
+          name: settlement.name,
+          residentPopulation: residents,
+          worldStage: this.state.growth.stage,
+        },
+      });
+      promoted = true;
+    }
+    if (promoted) {
+      this.rebuildSpatialProjection();
+      return;
+    }
 
-      const names = [
-        'Ривен',
-        'Лунная Долина',
-        'Эльм',
-        'Белый Брод',
-        'Сольвей',
-        'Звёздная Гавань',
-      ];
-      const id = `settlement_${sequence}`;
-      const angle = sequence * 2.399963229728653;
-      this.state.places[id] = createPlace(
-        id,
-        `Поселение ${names[(sequence - 1) % names.length]}`,
-        'village',
-        8 + sequence * 2,
+    // One stable home settlement per ~18 humans. The founding generation keeps
+    // Ainkrad as home; descendants may voluntarily found additional settlements.
+    const humanSettlements = Object.values(this.state.settlements).filter(
+      (settlement) =>
+        settlement.id === 'settlement_ainkrad' || residentCount(settlement.id) > 0,
+    );
+    const desiredHumanSettlements = Math.max(
+      1,
+      Math.floor(livingHumans.length / 18),
+    );
+    if (humanSettlements.length >= desiredHumanSettlements) return;
+    if (this.state.growth.discoveredRegionIds.length === 0) return;
+
+    const sequence = humanSettlements.length + 1;
+    const frontierId = this.state.growth.discoveredRegionIds.at(-1) ?? 'outskirts';
+    const anchor = this.state.places[frontierId] ?? this.state.places.outskirts;
+    if (!anchor || anchor.surface !== 'land') return;
+
+    const pioneerCandidates = this.shuffled(
+      livingHumans.filter(
+        (agent) =>
+          agent.life.generation > 0 &&
+          agent.life.stage === 'adult' &&
+          agent.locationId === frontierId &&
+          agent.resources >= 0.28 &&
+          !agent.movement,
+      ),
+    );
+    const willingFounders = pioneerCandidates.filter((agent) => {
+      const willingness = clamp01(
+        agent.personality.curiosity * 0.24 +
+          agent.personality.diligence * 0.2 +
+          agent.personality.riskTolerance * 0.14 +
+          agent.mind.values.ambition * 0.2 +
+          agent.mind.values.care * 0.12 +
+          agent.skills.exploration * 0.1,
+      );
+      return willingness >= 0.52 && this.rng.next() < 0.1 + willingness * 0.28;
+    });
+    if (willingFounders.length < 2) return;
+
+    const names = ['Ривен', 'Лунная Долина', 'Эльм', 'Белый Брод', 'Сольвей', 'Звёздная Гавань'];
+    const id = `settlement_${sequence}`;
+    const angle = sequence * 2.399963229728653;
+    this.state.places[id] = createPlace(
+      id,
+      `Поселение ${names[(sequence - 1) % names.length]}`,
+      'village',
+      24,
+      {
+        biome: 'settlement',
+        mapX: anchor.mapX + Math.cos(angle) * (8 + sequence),
+        mapY: anchor.mapY + Math.sin(angle) * (8 + sequence),
+        connectedPlaceIds: [frontierId],
+        fertility: clamp01(0.56 + anchor.fertility * 0.2),
+        danger: 0.05,
+        surface: 'land',
+        settlementId: id,
+        discoveredAt: now,
+      },
+    );
+
+    for (let districtIndex = 0; districtIndex < 4; districtIndex += 1) {
+      const districtAngle = angle + (Math.PI * 2 * districtIndex) / 4;
+      const districtId = `${id}_house_${districtIndex + 1}`;
+      this.state.places[districtId] = createPlace(
+        districtId,
+        `Дом поселенцев ${districtIndex + 1}`,
+        'home',
+        4,
         {
           biome: 'settlement',
-          mapX: anchor.mapX + Math.cos(angle) * (8 + sequence),
-          mapY: anchor.mapY + Math.sin(angle) * (8 + sequence),
-          connectedPlaceIds: [frontierId],
-          fertility: clamp01(0.56 + anchor.fertility * 0.2),
-          danger: 0.05,
+          mapX: this.state.places[id].mapX + Math.cos(districtAngle) * 3.2,
+          mapY: this.state.places[id].mapY + Math.sin(districtAngle) * 3.2,
+          connectedPlaceIds: [id],
+          fertility: 0.58,
+          danger: 0.04,
+          surface: 'land',
           settlementId: id,
           discoveredAt: now,
         },
       );
-      for (let districtIndex = 0; districtIndex < 3; districtIndex += 1) {
-        const districtAngle = angle + (Math.PI * 2 * districtIndex) / 3;
-        const districtId = `${id}_house_${districtIndex + 1}`;
-        this.state.places[districtId] = createPlace(
-          districtId,
-          `Дом поселенцев ${districtIndex + 1}`,
-          'home',
-          4,
-          {
-            biome: 'settlement',
-            mapX: this.state.places[id].mapX + Math.cos(districtAngle) * 3.8,
-            mapY: this.state.places[id].mapY + Math.sin(districtAngle) * 3.8,
-            connectedPlaceIds: [id],
-            fertility: 0.58,
-            danger: 0.04,
-            surface: 'land',
-            settlementId: id,
-            discoveredAt: now,
-          },
-        );
-      }
-      const localServices: Array<{
-        suffix: string;
-        name: string;
-        kind: WorldPlaceKind;
-        dx: number;
-        dy: number;
-        fertility: number;
-      }> = [
-        { suffix: 'field', name: 'Поля', kind: 'resource_field', dx: -4.8, dy: 2.4, fertility: 0.76 },
-        { suffix: 'workshop', name: 'Мастерская', kind: 'workshop', dx: 4.6, dy: 1.8, fertility: 0.3 },
-        { suffix: 'quiet', name: 'Тихий сад', kind: 'quiet_space', dx: 0.8, dy: -4.5, fertility: 0.62 },
-      ];
-      for (const service of localServices) {
-        const serviceId = `${id}_${service.suffix}`;
-        this.state.places[serviceId] = createPlace(
-          serviceId,
-          `${this.state.places[id].name}: ${service.name}`,
-          service.kind,
-          10,
-          {
-            biome: service.kind === 'resource_field' ? 'plains' : 'settlement',
-            mapX: this.state.places[id].mapX + service.dx,
-            mapY: this.state.places[id].mapY + service.dy,
-            connectedPlaceIds: [id],
-            fertility: service.fertility,
-            danger: 0.04,
-            surface: 'land',
-            settlementId: id,
-            discoveredAt: now,
-          },
-        );
-      }
-      const settlementHomes = [1, 2, 3]
-        .map((index) => this.state.places[`${id}_house_${index}`])
-        .filter((place): place is WorldPlace => place !== undefined);
-      for (let index = 0; index < willingFounders.length; index += 1) {
-        const founder = willingFounders[index];
-        const home = settlementHomes[index % settlementHomes.length];
-        if (!home) break;
-        const priorHomeId = founder.homeId;
-        founder.homeId = home.id;
-        this.moveAgent(founder, id);
-        founder.needs.purpose = clamp01(founder.needs.purpose + 0.08);
-        founder.mind.emotions.hope = clamp01(founder.mind.emotions.hope + 0.06);
-        founder.lastMeaningfulEventAt = now;
-        this.stageEvent({
-          eventId: this.nextId('settlement-founder'),
-          worldId: this.state.id,
-          kind: 'agent.resettled',
-          source: 'agent',
-          occurredAt: now,
-          payload: {
-            agentId: founder.id,
-            priorHomeId,
-            settlementId: id,
-            homeId: home.id,
-            reason: 'voluntary_founder',
-          },
-        });
-        this.stageMemory({
-          memoryId: this.nextId('memory'),
-          worldId: this.state.id,
-          agentId: founder.id,
-          createdAt: now,
-          kind: 'world_event',
-          summary: `${founder.name} chose to help found ${this.state.places[id].name}.`,
-          importance: 0.9,
-          valence: 0.68,
-          relatedAgentIds: willingFounders
-            .filter((other) => other.id !== founder.id)
-            .map((other) => other.id),
-        });
-      }
-      makeConnectionsReciprocal(this.state.places);
-      this.rebuildSpatialProjection();
-      this.stageEvent({
-        eventId: this.nextId('settlement'),
-        worldId: this.state.id,
-        kind: 'world.settlement.founded',
-        source: 'agent',
-        occurredAt: now,
-        payload: {
-          settlementId: id,
-          name: this.state.places[id].name,
-          connectedRegionId: frontierId,
-          livingPopulation: living,
-          worldStage: this.state.growth.stage,
-        },
-      });
-      return;
     }
 
-    const cities = settlements.filter((place) => place.kind === 'city');
-    const desiredCities = Math.min(
-      Math.floor(this.state.growth.stage / 8),
-      Math.floor(living / 12),
-    );
-    if (cities.length >= desiredCities) return;
+    const localServices: Array<{
+      suffix: string; name: string; kind: WorldPlaceKind; dx: number; dy: number; fertility: number;
+    }> = [
+      { suffix: 'field', name: 'Поля и фермы', kind: 'resource_field', dx: -5.6, dy: 2.2, fertility: 0.76 },
+      { suffix: 'workshop', name: 'Мастерская', kind: 'workshop', dx: 2.4, dy: 1.2, fertility: 0.3 },
+      { suffix: 'quiet', name: 'Тихий сад', kind: 'quiet_space', dx: -1.8, dy: -2.2, fertility: 0.62 },
+    ];
+    for (const service of localServices) {
+      const serviceId = `${id}_${service.suffix}`;
+      this.state.places[serviceId] = createPlace(
+        serviceId,
+        `${this.state.places[id].name}: ${service.name}`,
+        service.kind,
+        12,
+        {
+          biome: service.kind === 'resource_field' ? 'plains' : 'settlement',
+          mapX: this.state.places[id].mapX + service.dx,
+          mapY: this.state.places[id].mapY + service.dy,
+          connectedPlaceIds: [id],
+          fertility: service.fertility,
+          danger: 0.04,
+          surface: 'land',
+          settlementId: id,
+          discoveredAt: now,
+        },
+      );
+    }
 
-        const village = [...settlements, this.state.places.commons]
-      .filter(
-        (place) =>
-          place.kind === 'village' ||
-          (place.id === 'commons' && place.kind === 'commons'),
-      )
-      .map((place) => ({
-        place,
-        residents: Object.values(this.state.agents).filter(
-          (agent) =>
-            agent.life.alive &&
-            this.homeSettlementId(agent) ===
-              (place.settlementId ?? place.id),
-        ).length,
-      }))
-      .filter(({ residents }) => residents >= 10)
-      .sort(
-        (a, b) =>
-          b.residents - a.residents ||
-          (a.place.discoveredAt ?? 0) - (b.place.discoveredAt ?? 0),
-      )[0]?.place;
-    if (!village) return;
-    village.kind = 'city';
-    village.name = village.name.replace('Поселение', 'Город');
-    village.capacity = Math.max(20, village.capacity * 2);
-    village.fertility = clamp01(village.fertility + 0.08);
-    // City promotion preserves organically opened roads. It does not create
-    // an artificial direct route back to the founding commons.
+    const settlementHomes = [1, 2, 3, 4]
+      .map((index) => this.state.places[`${id}_house_${index}`])
+      .filter((place): place is WorldPlace => place !== undefined);
+    for (let index = 0; index < willingFounders.length; index += 1) {
+      const founder = willingFounders[index];
+      const home = settlementHomes[index % settlementHomes.length];
+      if (!home) break;
+      const priorHomeId = founder.homeId;
+      founder.homeId = home.id;
+      this.moveAgent(founder, id);
+      founder.needs.purpose = clamp01(founder.needs.purpose + 0.08);
+      founder.mind.emotions.hope = clamp01(founder.mind.emotions.hope + 0.06);
+      founder.lastMeaningfulEventAt = now;
+      this.stageEvent({
+        eventId: this.nextId('settlement-founder'),
+        worldId: this.state.id,
+        kind: 'agent.resettled',
+        source: 'agent',
+        occurredAt: now,
+        payload: { agentId: founder.id, priorHomeId, settlementId: id, homeId: home.id, reason: 'voluntary_founder' },
+      });
+    }
+
+    makeConnectionsReciprocal(this.state.places);
     this.rebuildSpatialProjection();
     this.stageEvent({
-      eventId: this.nextId('city'),
+      eventId: this.nextId('settlement'),
       worldId: this.state.id,
-      kind: 'world.city.emerged',
+      kind: 'world.settlement.founded',
       source: 'agent',
       occurredAt: now,
       payload: {
-        cityId: village.id,
-        name: village.name,
-        livingPopulation: living,
+        settlementId: id,
+        name: this.state.places[id].name,
+        connectedRegionId: frontierId,
+        livingPopulation: livingHumans.length,
         worldStage: this.state.growth.stage,
       },
     });
@@ -4888,26 +5007,29 @@ export class WorldEngine {
       },
     ];
     if (stage >= 5 && (stage - 5) % 3 === 0) {
-      const monsterSpecies: WildlifeSpecies =
-        biome === 'ancient_ruins'
-          ? 'wraith'
-          : biome === 'swamp'
-            ? 'ogre'
-            : 'dire_wolf';
-      const threat = ordinaryThreat[monsterSpecies];
-      place.danger = Math.max(place.danger, threat * 0.78);
-      wildlife.push({
-        id: `monster_${stage}_${monsterSpecies}`,
-        species: monsterSpecies,
-        habitatId: regionId,
-        count: 1 + (stage % 2),
-        carryingCapacity: 2 + (stage % 3),
-        reproductionRate: 0.018,
-        alertness: 0.72,
-        threat,
-        isMonster: true,
-        lastChangedAt: now,
-      });
+      const monsterByBiome: Partial<Record<WorldBiome, WildlifeSpecies>> = {
+        forest: 'dire_wolf',
+        mountains: 'dire_wolf',
+        swamp: 'ogre',
+        ancient_ruins: 'wraith',
+      };
+      const monsterSpecies = monsterByBiome[biome];
+      if (monsterSpecies && isHabitatCompatible(monsterSpecies, place)) {
+        const threat = ordinaryThreat[monsterSpecies];
+        place.danger = Math.max(place.danger, threat * 0.78);
+        wildlife.push({
+          id: `monster_${stage}_${monsterSpecies}`,
+          species: monsterSpecies,
+          habitatId: regionId,
+          count: 1 + (stage % 2),
+          carryingCapacity: 2 + (stage % 3),
+          reproductionRate: 0.018,
+          alertness: 0.72,
+          threat,
+          isMonster: true,
+          lastChangedAt: now,
+        });
+      }
     }
     return { stage, place, wildlife };
   }
@@ -4919,6 +5041,12 @@ export class WorldEngine {
     const recoveryLaw =
       this.lawValue('wildlife_recovery', 1);
     for (const population of Object.values(this.state.wildlife)) {
+      const habitat = this.state.places[population.habitatId];
+      if (!isHabitatCompatible(population.species, habitat)) {
+        population.count = 0;
+        population.lastChangedAt = now;
+        continue;
+      }
       population.alertness = clamp01(population.alertness - 0.025);
       if (population.count >= population.carryingCapacity) {
         continue;
@@ -5127,8 +5255,14 @@ export class WorldEngine {
     const living = Object.values(this.state.agents).filter(
       (agent) => agent.life.alive,
     );
-    const regionalCapacity =
-      12 + this.state.growth.discoveredRegionIds.length * 12;
+    const settlementCapacity = Object.values(this.state.settlements).reduce(
+      (sum, settlement) => sum + (settlement.kind === 'city' ? 36 : 24),
+      0,
+    );
+    const regionalCapacity = Math.max(
+      24,
+      settlementCapacity + this.state.growth.discoveredRegionIds.length * 12,
+    );
     const populationLimit = Math.min(
       MAX_LIVING_POPULATION,
       Math.max(8, regionalCapacity),
@@ -5226,7 +5360,7 @@ export class WorldEngine {
   private createChild(a: AgentState, b: AgentState, now: number): void {
     const sequence = this.state.population.nextAgentSequence;
     this.state.population.nextAgentSequence += 1;
-    const childId = `agent_${sequence}`;
+    const childId = `epoch_${this.state.epoch ?? 1}_agent_${sequence}`;
     const childNames = [
       'Ari',
       'Lio',
@@ -5391,45 +5525,37 @@ export class WorldEngine {
 
   private advanceSapientRaces(now: number): void {
     if (!Number.isInteger(now) || now < 600 || now % 24 !== 0) return;
+    const livingHumans = Object.values(this.state.agents).filter(
+      (agent) => agent.life.alive && (agent.race ?? 'human') === 'human',
+    ).length;
+    if (livingHumans < 10) return;
 
     const plans: Array<{
-      race: NonNullable<AgentState['race']>;
+      race: Exclude<NonNullable<AgentState['race']>, 'human'>;
       minimumStage: number;
       villageName: string;
       names: readonly string[];
     }> = [
-      {
-        race: 'goblin',
-        minimumStage: 5,
-        villageName: 'Поселение зелёных равнин',
-        names: ['Ruk', 'Mog', 'Vera', 'Nim'],
-      },
-      {
-        race: 'orc',
-        minimumStage: 8,
-        villageName: 'Поселение каменного клана',
-        names: ['Gar', 'Dorn', 'Lira', 'Ona'],
-      },
-      {
-        race: 'ogre',
-        minimumStage: 11,
-        villageName: 'Поселение великанов',
-        names: ['Bram', 'Tor', 'Mara', 'Sia'],
-      },
+      { race: 'goblin', minimumStage: 5, villageName: 'Поселение зелёных равнин', names: ['Ruk', 'Mog', 'Vera', 'Nim'] },
+      { race: 'orc', minimumStage: 8, villageName: 'Поселение каменного клана', names: ['Gar', 'Dorn', 'Lira', 'Ona'] },
+      { race: 'ogre', minimumStage: 11, villageName: 'Поселение великанов', names: ['Bram', 'Tor', 'Mara', 'Sia'] },
     ];
 
     const plan = plans.find(
       (candidate) =>
         this.state.growth.stage >= candidate.minimumStage &&
-        !Object.values(this.state.agents).some(
-          (agent) => agent.race === candidate.race,
-        ),
+        !Object.values(this.state.agents).some((agent) => agent.race === candidate.race),
     );
     if (!plan) return;
 
-    const frontierId =
-      this.state.growth.discoveredRegionIds.at(-1) ?? 'outskirts';
-    const anchor = this.state.places[frontierId] ?? this.state.places.outskirts;
+    const anchor = [...this.state.growth.discoveredRegionIds]
+      .reverse()
+      .map((regionId) => this.state.places[regionId])
+      .find(
+        (place): place is WorldPlace =>
+          place !== undefined &&
+          isRaceOriginCompatible(plan.race, place, this.state.wildlife),
+      );
     if (!anchor) return;
 
     const settlementId = `settlement_${plan.race}_1`;
@@ -5440,12 +5566,12 @@ export class WorldEngine {
       settlementId,
       plan.villageName,
       'village',
-      16,
+      20,
       {
         biome: 'settlement',
         mapX: anchor.mapX + Math.cos(angle) * 9,
         mapY: anchor.mapY + Math.sin(angle) * 9,
-        connectedPlaceIds: [frontierId],
+        connectedPlaceIds: [anchor.id],
         fertility: clamp01(0.5 + anchor.fertility * 0.18),
         danger: 0.07,
         surface: 'land',
@@ -5466,8 +5592,8 @@ export class WorldEngine {
         4,
         {
           biome: 'settlement',
-          mapX: this.state.places[settlementId].mapX + Math.cos(homeAngle) * 3.4,
-          mapY: this.state.places[settlementId].mapY + Math.sin(homeAngle) * 3.4,
+          mapX: this.state.places[settlementId].mapX + Math.cos(homeAngle) * 3.2,
+          mapY: this.state.places[settlementId].mapY + Math.sin(homeAngle) * 3.2,
           connectedPlaceIds: [settlementId],
           fertility: 0.56,
           danger: 0.05,
@@ -5496,75 +5622,54 @@ export class WorldEngine {
         sex: (index % 2 === 0 ? 'male' : 'female') as AgentState['sex'],
         race: plan.race,
         progression: {
-          level: 1,
-          experience: 0,
-          objectControlAuthority: 0.1,
-          systemControlAuthority: 0.06,
-          combatMastery: plan.race === 'goblin' ? 0.12 : plan.race === 'orc' ? 0.18 : 0.22,
-          sacredArts: 0.03,
+          level: 1, experience: 0, objectControlAuthority: 0.1, systemControlAuthority: 0.06,
+          combatMastery: plan.race === 'goblin' ? 0.12 : plan.race === 'orc' ? 0.18 : 0.22, sacredArts: 0.03,
         },
-        energy: 0.82,
-        stress: 0.08,
-        resources: 0.58,
-        socialDrive: personality.sociability,
-        personality,
+        energy: 0.82, stress: 0.08, resources: 0.58, socialDrive: personality.sociability, personality,
         life: {
-          bornAt: now - ageYears * WORLD_TICKS_PER_YEAR,
-          ageYears,
-          lifespanYears: lifespanBase + personality.resilience * 16,
-          stage: lifeStageForAge(ageYears),
-          alive: true,
-          health,
-          physiology: physiologyForAge(
-            ageYears,
-            lifespanBase + personality.resilience * 16,
-            health,
-          ),
-          generation: 0,
-          parentIds: [],
-          childIds: [],
+          bornAt: now - ageYears * WORLD_TICKS_PER_YEAR, ageYears,
+          lifespanYears: lifespanBase + personality.resilience * 16, stage: lifeStageForAge(ageYears),
+          alive: true, health,
+          physiology: physiologyForAge(ageYears, lifespanBase + personality.resilience * 16, health),
+          generation: 0, parentIds: [], childIds: [],
         },
         mind: createMindState(this.state.id, agentId, personality, needs),
         needs,
         skills: {
-          gathering: this.rng.between(0.18, 0.45),
-          hunting: this.rng.between(0.22, 0.52),
-          craft: this.rng.between(0.16, 0.44),
-          social: this.rng.between(0.18, 0.48),
+          gathering: this.rng.between(0.18, 0.45), hunting: this.rng.between(0.22, 0.52),
+          craft: this.rng.between(0.16, 0.44), social: this.rng.between(0.18, 0.48),
           exploration: this.rng.between(0.22, 0.55),
         },
-        homeId,
-        locationId: settlementId,
-        position: {
-          x: this.state.places[settlementId].mapX,
-          y: this.state.places[settlementId].mapY,
-          layerId: 'surface' as const,
-        },
+        homeId, locationId: settlementId,
+        position: { x: this.state.places[settlementId].mapX, y: this.state.places[settlementId].mapY, layerId: 'surface' as const },
         lastMeaningfulEventAt: now,
       } satisfies Omit<AgentState, 'goal'>;
-      this.state.agents[agentId] = {
-        ...partial,
-        goal: goalFromInitialState(partial, now),
-      };
+      this.state.agents[agentId] = { ...partial, goal: goalFromInitialState(partial, now) };
       founders.push(agentId);
+    }
+
+    const services = [
+      { suffix: 'field', name: 'Поля и фермы', kind: 'resource_field' as const, dx: -5.6, dy: 2.2, fertility: 0.74 },
+      { suffix: 'workshop', name: 'Мастерская', kind: 'workshop' as const, dx: 2.4, dy: 1.2, fertility: 0.3 },
+      { suffix: 'quiet', name: 'Тихое место', kind: 'quiet_space' as const, dx: -1.8, dy: -2.2, fertility: 0.6 },
+    ];
+    for (const service of services) {
+      const serviceId = `${settlementId}_${service.suffix}`;
+      this.state.places[serviceId] = createPlace(serviceId, `${plan.villageName}: ${service.name}`, service.kind, 10, {
+        biome: service.kind === 'resource_field' ? 'plains' : 'settlement',
+        mapX: this.state.places[settlementId].mapX + service.dx,
+        mapY: this.state.places[settlementId].mapY + service.dy,
+        connectedPlaceIds: [settlementId], fertility: service.fertility, danger: 0.05, surface: 'land',
+        settlementId, discoveredAt: now,
+      });
     }
 
     makeConnectionsReciprocal(this.state.places);
     this.rebuildSpatialProjection();
     this.stageEvent({
-      eventId: this.nextId('sapient-race'),
-      worldId: this.state.id,
-      kind: 'world.sapient_race.emerged',
-      source: 'world',
-      occurredAt: now,
-      payload: {
-        race: plan.race,
-        settlementId,
-        founderIds: founders.join(','),
-        humanPopulation: Object.values(this.state.agents).filter(
-          (agent) => agent.life.alive && (agent.race ?? 'human') === 'human',
-        ).length,
-      },
+      eventId: this.nextId('sapient-race'), worldId: this.state.id, kind: 'world.sapient_race.emerged', source: 'world', occurredAt: now,
+      payload: { race: plan.race, settlementId, originRegionId: anchor.id, originBiome: anchor.biome, founderIds: founders.join(','),
+        humanPopulation: Object.values(this.state.agents).filter((agent) => agent.life.alive && (agent.race ?? 'human') === 'human').length },
     });
   }
 

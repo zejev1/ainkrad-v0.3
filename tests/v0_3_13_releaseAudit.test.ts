@@ -68,7 +68,8 @@ describe('v0.3.13 release audit', () => {
       expect(migrated.agents[id].race).toBe('human');
       expect((migrated.agents[id].progression?.level ?? 0)).toBeGreaterThanOrEqual(1);
     }
-        for (let tick = 1; tick <= 180; tick += 1) {
+
+    for (let tick = 1; tick <= 180; tick += 1) {
       await opened.step(tick);
     }
 
@@ -185,6 +186,7 @@ describe('v0.3.13 release audit', () => {
       worldId: 'audit-races-levels',
       seed: 'audit-races-levels-seed',
       store,
+      agentNames: Array.from({ length: 12 }, (_, index) => `Resident ${index + 1}`),
       startTime: 0,
     });
     for (let tick = 1; tick <= 600; tick += 1) {

@@ -16,7 +16,7 @@ import type {
 import type { CardinalExperienceState } from './types';
 
 export const WORLD_AUTHORITY_GATEWAY_POLICY_VERSION =
-  'ainkrad-world-authority-gateway-0.3.13';
+  'ainkrad-world-authority-gateway-0.3.14';
 
 export type CardinalCatastropheKind =
   | 'wildfire'
@@ -199,6 +199,9 @@ const MECHANISM_DOMAINS: Record<WorldLawMechanism, WorldLawDomain> = {
   mystic_resonance: 'cosmology',
   weather_volatility: 'climate',
   catastrophe_recovery: 'ecology',
+  settlement_cohesion: 'geography',
+  habitat_integrity: 'ecology',
+  civilization_continuity: 'demography',
 };
 
 /**
@@ -307,20 +310,59 @@ export class IndependentWorldAuthorityGateway {
     ) {
       return 'Proposal lacks a bounded necessity claim and expected outcome.';
     }
+    const emergencyHumans = Object.values(expectedWorld.agents).filter(
+      (agent) => agent.life.alive && (agent.race ?? 'human') === 'human',
+    );
+    const emergencyReproductiveMales = emergencyHumans.filter(
+      (agent) =>
+        agent.life.stage === 'adult' &&
+        agent.life.ageYears <= 55 &&
+        agent.life.health >= 0.4 &&
+        agent.sex === 'male',
+    ).length;
+    const emergencyReproductiveFemales = emergencyHumans.filter(
+      (agent) =>
+        agent.life.stage === 'adult' &&
+        agent.life.ageYears <= 55 &&
+        agent.life.health >= 0.4 &&
+        agent.sex === 'female',
+    ).length;
+    const emergencyDemographicAuthority =
+      proposal.kind === 'world_law' &&
+      proposal.lawId === 'fertility_support' &&
+      expectedWorld.governance.laws.fertility_support?.mechanism ===
+        'fertility_support' &&
+      (emergencyHumans.length <= 7 ||
+        Math.min(
+          emergencyReproductiveMales,
+          emergencyReproductiveFemales,
+        ) < 1);
+
     if (
       expectedWorld.governance.lastCardinalAuthorityAt !== undefined &&
       proposal.proposedAt - expectedWorld.governance.lastCardinalAuthorityAt <
-        this.minimumInterval
+        this.minimumInterval &&
+      !emergencyDemographicAuthority
     ) {
       return 'World authority cooldown preserves time for autonomous adaptation.';
     }
 
     if (proposal.kind === 'world_law') {
-      if (!experience.capabilities.includes('world_rule_design')) {
+      const current = expectedWorld.governance.laws[proposal.lawId];
+      const emergencyDemographicAmendment = emergencyDemographicAuthority;
+      if (
+        !experience.capabilities.includes('world_rule_design') &&
+        !emergencyDemographicAmendment
+      ) {
         return 'Cardinal has not earned world-rule design capability.';
       }
-      if (proposal.necessity < 0.72 || proposal.evidenceEventIds.length < 3) {
-        return 'World-law proposal lacks persistent evidence.';
+      const requiredNecessity = emergencyDemographicAmendment ? 0.95 : 0.72;
+      const requiredEvidence = emergencyDemographicAmendment ? 0 : 3;
+      if (
+        proposal.necessity < requiredNecessity ||
+        proposal.evidenceEventIds.length < requiredEvidence
+      ) {
+        return 'World-law proposal lacks sufficient necessity or evidence.';
       }
       if (
         !/^[a-z][a-z0-9_]{2,63}$/.test(proposal.lawId) ||
@@ -341,7 +383,6 @@ export class IndependentWorldAuthorityGateway {
       ) {
         return 'World-law value is outside a bounded constitutional range.';
       }
-      const current = expectedWorld.governance.laws[proposal.lawId];
       if (
         current &&
         (current.domain !== proposal.domain ||
@@ -423,55 +464,66 @@ export class CardinalWorldArchitect {
     experience: Readonly<CardinalExperienceState>,
     recentEvents: readonly WorldEvent[],
   ): WorldLawProposal | undefined {
-    if (!experience.capabilities.includes('world_rule_design')) return undefined;
+    const canDesignWorldRules = experience.capabilities.includes('world_rule_design');
     const evidenceEventIds = recentEvents
       .filter((event) => event.source !== 'cardinal')
       .map((event) => event.eventId)
       .slice(0, 8);
-    if (evidenceEventIds.length < 3) return undefined;
-
-    const frontierLaw = world.laws.frontier_expansion_rate;
-    const frontierDormancy = world.observedAt - world.growth.lastExpansionAt;
-    if (frontierLaw && frontierDormancy >= 96 && frontierLaw.value < 2.1) {
-      const value = Math.min(frontierLaw.maximum, frontierLaw.value + 0.12);
-      return this.ruleProposal(
-        world,
-        frontierLaw.id,
-        frontierLaw.domain,
-        frontierLaw.mechanism,
-        value,
-        frontierLaw.minimum,
-        frontierLaw.maximum,
-        0.76,
-        'Resident exploration has remained active without opening a new region.',
-        'Slightly widen the discoverable frontier while residents still choose whether to explore.',
-        evidenceEventIds,
-      );
-    }
 
     const living = world.livingPopulation;
+    const demographicEmergency =
+      living <= 7 || world.reproductivePairPotential < 1;
+    if (!demographicEmergency && evidenceEventIds.length < 3) return undefined;
     const fertilityLaw = world.laws.fertility_support;
-    const birthDormancy = world.observedAt - (world.lastHumanBirthAt ?? world.lastBirthAt ?? 0);
+    const birthDormancy =
+      world.observedAt - (world.lastHumanBirthAt ?? world.lastBirthAt ?? 0);
+
     if (
       fertilityLaw &&
-      (living < 100 || world.reproductivePairPotential < 2) &&
-      birthDormancy >= WORLD_LIFECYCLE_OBSERVATION_WINDOW &&
-      fertilityLaw.value < 0.82
+      (demographicEmergency || canDesignWorldRules) &&
+      fertilityLaw.value < (demographicEmergency ? 0.96 : 0.82) &&
+      (demographicEmergency ||
+        ((living < 100 || world.reproductivePairPotential < 2) &&
+          birthDormancy >= WORLD_LIFECYCLE_OBSERVATION_WINDOW))
     ) {
       return this.ruleProposal(
         world,
         fertilityLaw.id,
         fertilityLaw.domain,
         fertilityLaw.mechanism,
-        Math.min(fertilityLaw.maximum, fertilityLaw.value + 0.06),
+        Math.min(
+          fertilityLaw.maximum,
+          fertilityLaw.value + (demographicEmergency ? 0.12 : 0.06),
+        ),
         fertilityLaw.minimum,
         fertilityLaw.maximum,
-        0.78,
-        'Population continuity is weakening across a full demographic observation window.',
-        'Improve environmental support for voluntary families without selecting partners or creating a birth directly.',
+        demographicEmergency ? 0.98 : 0.8,
+        demographicEmergency
+          ? 'Human civilization is below its continuity floor; demography outranks optional frontier acceleration.'
+          : 'Population continuity is weakening across a sustained demographic observation window.',
+        'Improve environmental support for voluntary families without choosing partners, relationships or births.',
         evidenceEventIds,
       );
     }
+
+    // Critical demography blocks only Cardinal-driven acceleration. Residents
+    // remain free to explore and discover through their own actions.
+    if (demographicEmergency) return undefined;
+    if (!canDesignWorldRules) return undefined;
+
+    const frontierLaw = world.laws.frontier_expansion_rate;
+    const frontierDormancy = world.observedAt - world.growth.lastExpansionAt;
+    if (frontierLaw && frontierDormancy >= 96 && frontierLaw.value < 2.1) {
+      const value = Math.min(frontierLaw.maximum, frontierLaw.value + 0.12);
+      return this.ruleProposal(
+        world, frontierLaw.id, frontierLaw.domain, frontierLaw.mechanism, value,
+        frontierLaw.minimum, frontierLaw.maximum, 0.76,
+        'Resident exploration has remained active without opening a new region.',
+        'Slightly widen the discoverable frontier while residents still choose whether to explore.',
+        evidenceEventIds,
+      );
+    }
+
     return undefined;
   }
 
@@ -513,4 +565,4 @@ export class CardinalWorldArchitect {
   }
 }
 
-const WORLD_LIFECYCLE_OBSERVATION_WINDOW = 192;
+const WORLD_LIFECYCLE_OBSERVATION_WINDOW = 48;

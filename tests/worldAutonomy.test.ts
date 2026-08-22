@@ -120,7 +120,7 @@ describe('World rules version', () => {
     const state = migrated.snapshot();
 
     expect(state.now).toBe(preservedTime);
-    expect(state.rulesVersion).toBe('ainkrad-world-rules-0.3.13');
+    expect(state.rulesVersion).toBe('ainkrad-world-rules-0.3.14');
     expect(state.growth.stage).toBe(0);
     expect(state.wildlife).toEqual({});
     expect(state.relationships).toEqual(preservedRelationships);
@@ -274,7 +274,7 @@ describe('Autonomous society depth', () => {
     expect(kinds.has('agent.gathered')).toBe(true);
     expect(kinds.has('agent.explored')).toBe(true);
     expect(kinds.has('relationship.changed')).toBe(true);
-        expect(
+    expect(
       kinds.has('agent.help.accepted') ||
         kinds.has('agent.help.rejected') ||
         kinds.has('agent.bond.accepted') ||

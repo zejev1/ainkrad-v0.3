@@ -2,7 +2,7 @@ import type { EventReader } from '../world/events';
 import type { WorldState } from '../world/types';
 import type { CardinalMetrics, SensorSnapshot } from './types';
 
-export const WORLD_SENSOR_VERSION = 'ainkrad-world-sensors-0.3.13';
+export const WORLD_SENSOR_VERSION = 'ainkrad-world-sensors-0.3.14';
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const SOCIAL_CONTACT_WINDOW = 8;
@@ -43,8 +43,13 @@ export class WorldSensors {
       (population) => population.isMonster !== true,
     );
     const monsters = wildlife.filter((population) => population.isMonster === true);
-    const activeSignals = await this.events.activeSignals(world.id, now);
-    const recent = await this.events.recent(world.id, SENSOR_EVENT_READ_LIMIT, now);
+    const epochFloor = world.epochStartedAt ?? 0;
+    const activeSignals = (await this.events.activeSignals(world.id, now)).filter(
+      (event) => event.occurredAt >= epochFloor,
+    );
+    const recent = (await this.events.recent(world.id, SENSOR_EVENT_READ_LIMIT, now)).filter(
+      (event) => event.occurredAt >= epochFloor,
+    );
 
     const recentDeaths = recent.filter((event) => event.kind === 'agent.died');
     const recentBirths = recent.filter((event) => event.kind === 'agent.born');

@@ -6,7 +6,7 @@ import type {
   InterventionRecord,
 } from './types';
 
-export const CARDINAL_AUDIT_CONTEXT_VERSION = 'ainkrad-cardinal-audit-context-0.3.10';
+export const CARDINAL_AUDIT_CONTEXT_VERSION = 'ainkrad-cardinal-audit-context-0.3.14';
 export const CARDINAL_AUDIT_HISTORY_WINDOW = 32;
 
 export interface CardinalAuditContext {
@@ -26,6 +26,7 @@ export async function buildCardinalAuditContext(
   worldId: string,
   currentObservedAt: number,
   sensorVersion: string,
+  contextFloor = Number.NEGATIVE_INFINITY,
 ): Promise<CardinalAuditContext> {
   const [evaluations, interventions, outcomes] = await Promise.all([
     journal.recentEvaluations(worldId, 96, currentObservedAt),
@@ -37,16 +38,23 @@ export async function buildCardinalAuditContext(
     .filter(
       (evaluation) =>
         evaluation.evaluatedAt < currentObservedAt &&
+        evaluation.evaluatedAt >= contextFloor &&
         evaluation.sensorVersion === sensorVersion,
     )
     .slice(-CARDINAL_AUDIT_HISTORY_WINDOW);
 
   const eligibleInterventions = interventions.filter(
-    (intervention) => intervention.requestedAt < currentObservedAt,
+    (intervention) =>
+      intervention.requestedAt < currentObservedAt &&
+      intervention.requestedAt >= contextFloor,
   );
   const allPriorOutcomeIds = new Set(
     outcomes
-      .filter((outcome) => outcome.observedAt < currentObservedAt)
+      .filter(
+        (outcome) =>
+          outcome.observedAt < currentObservedAt &&
+          outcome.observedAt >= contextFloor,
+      )
       .map((outcome) => outcome.interventionId),
   );
   const unresolvedExecuted = eligibleInterventions.filter(
@@ -67,6 +75,7 @@ export async function buildCardinalAuditContext(
     .filter(
       (outcome) =>
         outcome.observedAt < currentObservedAt &&
+        outcome.observedAt >= contextFloor &&
         outcome.sensorVersion === sensorVersion,
     )
     .slice(-CARDINAL_AUDIT_HISTORY_WINDOW);
@@ -81,6 +90,7 @@ export async function buildCardinalAuditContext(
       worldId,
       currentObservedAt,
       sensorVersion,
+      contextFloor,
       priorEvaluations,
       priorInterventions,
       priorOutcomes,

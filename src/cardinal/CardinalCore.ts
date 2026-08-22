@@ -24,7 +24,7 @@ import type {
   InterventionProposal,
 } from './types';
 
-export const CARDINAL_POLICY_VERSION = 'ainkrad-cardinal-policy-0.3.13';
+export const CARDINAL_POLICY_VERSION = 'ainkrad-cardinal-policy-0.3.14';
 export const DEFAULT_CARDINAL_PREDICTION_HORIZON = 4;
 export const MAX_CARDINAL_PREDICTION_HORIZON = 16;
 
@@ -59,30 +59,15 @@ const CANDIDATES: readonly CandidateDefinition[] = [
         (metrics.wildlifeDangerPressure ?? 0) *
         0.3,
     qualifies: (metrics) =>
-      ((metrics.livingPopulation ?? 100) <= 7 ||
-        (metrics.recentDeathPressure ?? 0) > 0.08 ||
-        (metrics.civilizationCriticality ?? 0) >= 0.78) &&
-      ((metrics.monsterDeathShare ?? 0) +
-          (metrics.wildlifeAttackDeathShare ?? 0) > 0.2 ||
-        (metrics.monsterPressure ?? 0) > 0.48 ||
-        (metrics.wildlifeDangerPressure ?? 0) > 0.34 ||
-        metrics.safetyPressure > 0.82),
+      (metrics.livingPopulation ?? 100) <= 7 ||
+      (metrics.recentDeathPressure ?? 0) > 0.08 ||
+      (metrics.civilizationCriticality ?? 0) >= 0.78 ||
+      (metrics.reproductivePairPotential ?? 2) < 1,
     critical: (metrics) =>
-      ((metrics.livingPopulation ?? 100) <= 7 &&
-        ((metrics.monsterDeathShare ?? 0) +
-            (metrics.wildlifeAttackDeathShare ?? 0) > 0.1 ||
-          (metrics.monsterPressure ?? 0) > 0.3 ||
-          (metrics.wildlifeDangerPressure ?? 0) > 0.25 ||
-          metrics.safetyPressure > 0.72)) ||
-      ((metrics.civilizationCriticality ?? 0) >= 0.9 &&
-        ((metrics.monsterDeathShare ?? 0) +
-            (metrics.wildlifeAttackDeathShare ?? 0) > 0.25 ||
-          (metrics.monsterPressure ?? 0) > 0.55 ||
-          (metrics.wildlifeDangerPressure ?? 0) > 0.42 ||
-          metrics.safetyPressure > 0.9)) ||
-      ((metrics.recentDeathPressure ?? 0) > 0.2 &&
-        (metrics.monsterDeathShare ?? 0) +
-          (metrics.wildlifeAttackDeathShare ?? 0) > 0.35),
+      (metrics.livingPopulation ?? 100) <= 7 ||
+      (metrics.civilizationCriticality ?? 0) >= 0.9 ||
+      (metrics.reproductivePairPotential ?? 2) < 1 ||
+      (metrics.recentDeathPressure ?? 0) > 0.2,
     trendMetric: 'civilizationCriticality',
     predictionMetric: 'safetyPressure',
     reason:
@@ -267,7 +252,7 @@ export class CardinalCore {
         `same_kind_in_progress=${autonomyAssessment.activeOrUnresolvedSameKindIds.length}`,
         `cardinal_level=${experience.level}`,
         `cardinal_experience=${experience.totalExperience}`,
-                `living_population=${observation.metrics.livingPopulation ?? 'legacy_unknown'}`,
+        `living_population=${observation.metrics.livingPopulation ?? 'legacy_unknown'}`,
         `reproductive_pairs=${observation.metrics.reproductivePairPotential ?? 'legacy_unknown'}`,
         `reproductive_continuity=${(observation.metrics.reproductiveContinuity ?? 1).toFixed(3)}`,
       );

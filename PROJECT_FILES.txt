@@ -1,4 +1,4 @@
-Ainkrad v0.3.13 current files
+Ainkrad v0.3.14 current files
 
 Files:
 - .github/workflows/ci.yml
@@ -100,3 +100,6 @@ Files:
 - tests/worldSpatial.test.ts
 - tsconfig.json
 - vercel.json
+
+tests/v0_3_14_worldLogic.test.ts
+docs/V0_3_14_WORLD_LOGIC.md

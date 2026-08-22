@@ -225,6 +225,9 @@ const worldLawMechanismLabels: Record<WorldState['governance']['laws'][string]['
   mystic_resonance: 'сила знамений и мистических явлений',
   weather_volatility: 'изменчивость погоды',
   catastrophe_recovery: 'восстановление после катастроф',
+  settlement_cohesion: 'целостность поселений',
+  habitat_integrity: 'совместимость видов и среды',
+  civilization_continuity: 'приоритет продолжения цивилизации',
 };
 
 const phaseLabels = {
@@ -254,7 +257,7 @@ app.innerHTML = `
   <div class="ainkrad-app">
     <header class="world-header">
       <div>
-        <p class="eyebrow">AINKRAD v0.3.12 · физический мир</p>
+        <p class="eyebrow">AINKRAD v0.3.14 · физический мир</p>
         <h1 id="world-title">Мир · уровень 1</h1>
         <p class="world-subtitle">Время регулируется снаружи. Жители сами расширяют карту и проживают поколения.</p>
       </div>
@@ -293,6 +296,7 @@ app.innerHTML = `
         </select>
       </label>
       <button id="speed-multiplier" type="button" aria-label="Переключить ускорение в десять раз">×1</button>
+      <button id="reset-world" type="button" aria-label="Создать новый мир с сохранением опыта Cardinal">Новый мир</button>
       <small>Cardinal не имеет доступа</small>
     </section>
 
@@ -486,6 +490,7 @@ const resourceValue = requiredElement<HTMLElement>('resource-value');
 const saveValue = requiredElement<HTMLElement>('save-value');
 const worldSpeedSelect = requiredElement<HTMLSelectElement>('world-speed-select');
 const speedMultiplierButton = requiredElement<HTMLButtonElement>('speed-multiplier');
+const resetWorldButton = requiredElement<HTMLButtonElement>('reset-world');
 const clockRateValue = requiredElement<HTMLElement>('clock-rate-value');
 const evaluationValue = requiredElement<HTMLElement>('evaluation-value');
 const interventionValue = requiredElement<HTMLElement>('intervention-value');
@@ -1486,7 +1491,9 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
     );
   });
 
-  tickValue.textContent = String(frame.tick);
+  tickValue.textContent = String(
+    Math.max(0, frame.tick - (frame.world.epochStartedAt ?? 0)),
+  );
   const humanPopulation = agents.filter(
     (agent) => (agent.race ?? 'human') === 'human',
   ).length;
@@ -1647,6 +1654,12 @@ function lawExplanation(mechanism: WorldState['governance']['laws'][string]['mec
       'Ограничивает изменчивость внешних условий и будущих погодных событий.',
     catastrophe_recovery:
       'Определяет способность среды восстановиться после разрешённой катастрофы.',
+    settlement_cohesion:
+      'Дома, рынок и мастерские образуют компактное поселение, а поля и фермы располагаются у его края.',
+    habitat_integrity:
+      'Виды возникают и восстанавливаются только в физически подходящей среде обитания.',
+    civilization_continuity:
+      'При демографическом кризисе условия продолжения цивилизации важнее ускорения освоения новых территорий.',
   };
   return explanations[mechanism];
 }
@@ -2071,6 +2084,14 @@ worldSpeedSelect.addEventListener('change', () => {
 speedMultiplierButton.addEventListener('click', () => {
   preferredSpeedMultiplier = preferredSpeedMultiplier === 1 ? 10 : 1;
   publishClockControl();
+});
+
+resetWorldButton.addEventListener('click', () => {
+  const accepted = window.confirm(
+    'Создать новый мир? Текущая эпоха завершится, но накопленный опыт Cardinal сохранится.',
+  );
+  if (!accepted) return;
+  liveWorldWorker.postMessage({ type: 'reset_world' });
 });
 
 publishClockControl();

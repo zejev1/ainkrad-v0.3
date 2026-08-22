@@ -20,20 +20,20 @@ const WORLD_LOCK_NAME = 'ainkrad-v0-3-live-world-writer';
 const WORLD_CHANNEL_NAME = 'ainkrad-v0-3-live-world-frames';
 const CLOCK_CHANNEL_NAME = 'ainkrad-v0-3-world-clock-control';
 const CONSOLE_CHANNEL_NAME = 'ainkrad-v0-3-cardinal-console';
+const RESET_CHANNEL_NAME = 'ainkrad-v0-3-world-reset';
 const STORAGE_CHECK_INTERVAL_TICKS = 300;
 const AINKRAD_STORAGE_SOFT_BUDGET_BYTES = 2 * 1024 * 1024 * 1024;
 const AINKRAD_STORAGE_CRITICAL_BUDGET_BYTES = 4 * 1024 * 1024 * 1024;
-const FRAME_PROTOCOL_VERSION = 'ainkrad-live-frame-0.3.13';
-
+const FRAME_PROTOCOL_VERSION = 'ainkrad-live-frame-0.3.14';
 const COMPATIBLE_FRAME_PROTOCOLS = new Set([
   'ainkrad-live-frame-0.3.10',
   'ainkrad-live-frame-0.3.11',
   'ainkrad-live-frame-0.3.12',
+  'ainkrad-live-frame-0.3.13',
   FRAME_PROTOCOL_VERSION,
 ]);
 
-// Test disturbances must never run automatically in the persistent live world.
-// Dedicated tests may still inject disturbances through LiveWorldRuntime.
+// Test disturbances never run automatically in the persistent live world.
 const disturbances: readonly LiveWorldDisturbance[] = [];
 const recurringDisturbances = [] as const;
 
@@ -68,7 +68,8 @@ interface CardinalConsoleRequest {
 
 type LiveWorldWorkerCommand =
   | LiveWorldClockMessage
-  | CardinalConsoleRequest;
+  | CardinalConsoleRequest
+  | { type: 'reset_world' };
 
 type CardinalConsoleChannelMessage =
   | CardinalConsoleRequest
@@ -81,9 +82,10 @@ const workerScope = self as unknown as {
 const frameChannel = new BroadcastChannel(WORLD_CHANNEL_NAME);
 const clockChannel = new BroadcastChannel(CLOCK_CHANNEL_NAME);
 const consoleChannel = new BroadcastChannel(CONSOLE_CHANNEL_NAME);
-
+const resetChannel = new BroadcastChannel(RESET_CHANNEL_NAME);
 let activeRuntime: LiveWorldRuntime | undefined;
 let pendingClockControl: LiveWorldClockMessage | undefined;
+let pendingWorldReset = false;
 
 function applyClockControl(message: LiveWorldClockMessage): void {
   if (
@@ -92,7 +94,6 @@ function applyClockControl(message: LiveWorldClockMessage): void {
   ) {
     throw new Error('Rejected malformed external clock control.');
   }
-
   pendingClockControl = message;
   activeRuntime?.setWorldSpeed(message.speedId, message.multiplier);
 }
@@ -100,26 +101,26 @@ function applyClockControl(message: LiveWorldClockMessage): void {
 self.addEventListener(
   'message',
   (event: MessageEvent<Partial<LiveWorldWorkerCommand>>) => {
+    if (event.data.type === 'reset_world') {
+      if (activeRuntime) pendingWorldReset = true;
+      else resetChannel.postMessage({ type: 'reset_world' });
+      return;
+    }
+
     if (event.data.type === 'request_cardinal_console') {
       const request = event.data as CardinalConsoleRequest;
-
       if (!request.requestId?.trim()) return;
-
       if (activeRuntime) {
         void sendCardinalConsole(request.requestId, true);
       } else {
         consoleChannel.postMessage(request);
       }
-
       return;
     }
-
     if (event.data.type !== 'set_speed') return;
-
     try {
       const message = event.data as LiveWorldClockMessage;
       applyClockControl(message);
-
       // If this tab is a read-only mirror, the tab holding the world-writer
       // lock still receives the external console command.
       clockChannel.postMessage(message);
@@ -134,32 +135,23 @@ async function sendCardinalConsole(
   broadcast: boolean,
 ): Promise<void> {
   if (!activeRuntime) return;
-
   const message = {
     type: 'cardinal_console',
     protocolVersion: FRAME_PROTOCOL_VERSION,
     requestId,
     snapshot: await activeRuntime.cardinalConsole(),
   } as const;
-
   workerScope.postMessage(message);
-
-  if (broadcast) {
-    consoleChannel.postMessage(message);
-  }
+  if (broadcast) consoleChannel.postMessage(message);
 }
 
 consoleChannel.addEventListener(
   'message',
   (event: MessageEvent<CardinalConsoleChannelMessage>) => {
     if (event.data.type === 'request_cardinal_console') {
-      if (activeRuntime) {
-        void sendCardinalConsole(event.data.requestId, true);
-      }
-
+      if (activeRuntime) void sendCardinalConsole(event.data.requestId, true);
       return;
     }
-
     workerScope.postMessage({
       ...event.data,
       protocolVersion: FRAME_PROTOCOL_VERSION,
@@ -167,11 +159,14 @@ consoleChannel.addEventListener(
   },
 );
 
+resetChannel.addEventListener('message', (event: MessageEvent<{ type: 'reset_world' }>) => {
+  if (event.data.type === 'reset_world' && activeRuntime) pendingWorldReset = true;
+});
+
 clockChannel.addEventListener(
   'message',
   (event: MessageEvent<LiveWorldClockMessage>) => {
     if (event.data.type !== 'set_speed') return;
-
     try {
       applyClockControl(event.data);
     } catch {
@@ -192,7 +187,6 @@ frameChannel.addEventListener(
     ) {
       return;
     }
-
     workerScope.postMessage({
       ...event.data,
       protocolVersion: FRAME_PROTOCOL_VERSION,
@@ -205,11 +199,9 @@ const sleep = (milliseconds: number) =>
 
 async function runForever(): Promise<void> {
   const persistence = createIndexedDbPersistence();
-
   if (navigator.storage?.persist) {
     try {
       const persistent = await navigator.storage.persist();
-
       if (!persistent) {
         console.warn(
           '[Ainkrad storage] Browser did not grant persistent storage; canonical remote persistence is still required.',
@@ -221,7 +213,6 @@ async function runForever(): Promise<void> {
       );
     }
   }
-
   const runtime = await LiveWorldRuntime.create({
     mode: 'intervene',
     seed: 'ainkrad-browser-world',
@@ -232,9 +223,7 @@ async function runForever(): Promise<void> {
     controlLog: persistence.controlLog,
     durable: true,
   });
-
   activeRuntime = runtime;
-
   if (pendingClockControl) {
     runtime.setWorldSpeed(
       pendingClockControl.speedId,
@@ -244,14 +233,16 @@ async function runForever(): Promise<void> {
 
   while (true) {
     try {
+      if (pendingWorldReset) {
+        pendingWorldReset = false;
+        await runtime.resetWorld();
+      }
       const frame = await runtime.tick();
-
       const message = {
         type: 'frame',
         protocolVersion: FRAME_PROTOCOL_VERSION,
         frame,
       } as const;
-
       workerScope.postMessage(message);
       frameChannel.postMessage(message);
 
@@ -263,7 +254,6 @@ async function runForever(): Promise<void> {
           const estimate = await navigator.storage.estimate();
           const usage = estimate.usage ?? 0;
           const quota = estimate.quota ?? 0;
-
           if (
             usage >= AINKRAD_STORAGE_CRITICAL_BUDGET_BYTES ||
             (quota > 0 && usage / quota >= 0.5)
@@ -287,15 +277,13 @@ async function runForever(): Promise<void> {
       }
     } catch (error) {
       if (error instanceof WorldRevisionConflictError) {
-        // Browsers without Web Locks can briefly overlap workers.
-        // Reload the committed projection instead of losing or
-        // overwriting the world.
+        // Browsers without Web Locks can briefly overlap workers. Reload the
+        // committed projection instead of losing or overwriting the world.
         await runtime.synchronize();
       } else {
         throw error;
       }
     }
-
     await sleep(LIVE_TICK_DELAY_MS);
   }
 }
@@ -306,10 +294,7 @@ async function start(): Promise<void> {
       locks?: {
         request(
           name: string,
-          options: {
-            mode: 'exclusive';
-            ifAvailable?: boolean;
-          },
+          options: { mode: 'exclusive'; ifAvailable?: boolean },
           callback: (lock: unknown | null) => Promise<void>,
         ): Promise<void>;
       };
@@ -319,23 +304,16 @@ async function start(): Promise<void> {
   if (lockManager) {
     while (true) {
       let acquired = false;
-
       await lockManager.request(
         WORLD_LOCK_NAME,
-        {
-          mode: 'exclusive',
-          ifAvailable: true,
-        },
+        { mode: 'exclusive', ifAvailable: true },
         async (lock) => {
           if (!lock) return;
-
           acquired = true;
           await runForever();
         },
       );
-
       if (acquired) return;
-
       await sleep(1_500);
     }
   }
@@ -352,7 +330,6 @@ void start().catch((error: unknown) => {
         ? error.message
         : 'Unknown live-world error.',
   } as const;
-
   workerScope.postMessage(message);
   frameChannel.postMessage(message);
 });

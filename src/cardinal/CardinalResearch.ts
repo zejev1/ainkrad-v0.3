@@ -11,7 +11,7 @@ import type {
   InterventionRecord,
 } from './types';
 
-export const CARDINAL_RESEARCH_VERSION = 'ainkrad-cardinal-research-0.3.10';
+export const CARDINAL_RESEARCH_VERSION = 'ainkrad-cardinal-research-0.3.14';
 export const CARDINAL_RESEARCH_WINDOW = 12;
 export const CARDINAL_AUTONOMY_WINDOW = 16;
 export const CARDINAL_AUTONOMY_MAX_RECENT_INTERVENTIONS = 3;
@@ -31,6 +31,7 @@ export async function buildCardinalResearchContext(
   currentObservedAt: number,
   policyVersion: string,
   sensorVersion: string,
+  contextFloor = Number.NEGATIVE_INFINITY,
 ): Promise<CardinalResearchContext> {
   const [evaluations, interventions, outcomes, summary] = await Promise.all([
     journal.recentEvaluations(worldId, 64, currentObservedAt),
@@ -52,17 +53,24 @@ export async function buildCardinalResearchContext(
     .filter(
       (evaluation) =>
         evaluation.evaluatedAt < currentObservedAt &&
+        evaluation.evaluatedAt >= contextFloor &&
         evaluation.policyVersion === policyVersion &&
         evaluation.sensorVersion === sensorVersion,
     )
     .slice(-CARDINAL_RESEARCH_WINDOW);
 
   const eligibleInterventions = interventions.filter(
-    (intervention) => intervention.requestedAt < currentObservedAt,
+    (intervention) =>
+      intervention.requestedAt < currentObservedAt &&
+      intervention.requestedAt >= contextFloor,
   );
   const allPriorOutcomeIds = new Set(
     outcomes
-      .filter((outcome) => outcome.observedAt < currentObservedAt)
+      .filter(
+        (outcome) =>
+          outcome.observedAt < currentObservedAt &&
+          outcome.observedAt >= contextFloor,
+      )
       .map((outcome) => outcome.interventionId),
   );
   const unresolvedExecuted = eligibleInterventions.filter(
@@ -83,6 +91,7 @@ export async function buildCardinalResearchContext(
     .filter(
       (outcome) =>
         outcome.observedAt < currentObservedAt &&
+        outcome.observedAt >= contextFloor &&
         outcome.sensorVersion === sensorVersion,
     )
     .slice(-CARDINAL_RESEARCH_WINDOW);
@@ -91,6 +100,7 @@ export async function buildCardinalResearchContext(
     researchVersion: CARDINAL_RESEARCH_VERSION,
     policyVersion,
     sensorVersion,
+    contextFloor,
     evaluations: priorEvaluations,
     interventions: priorInterventions,
     outcomes: priorOutcomes,

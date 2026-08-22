@@ -20,7 +20,7 @@ import type {
 export const ABSOLUTE_MAX_INTERVENTION_MAGNITUDE = 0.25;
 export const ABSOLUTE_MAX_INTERVENTION_DURATION = 32;
 export const INTERVENTION_GATEWAY_POLICY_VERSION =
-  'ainkrad-intervention-gateway-0.3.13';
+  'ainkrad-intervention-gateway-0.3.14';
 
 const ALLOWED_INTERVENTION_KINDS = new Set<string>([
   'resource_relief',
