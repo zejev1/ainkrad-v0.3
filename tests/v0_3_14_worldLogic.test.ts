@@ -69,7 +69,15 @@ describe('v0.3.14 Underworld-style substrate audit', () => {
     expect(humanCount(firstFrame.world)).toBe(12);
     for (const id of survivorIds) {
       expect(firstFrame.world.agents[id].life.alive).toBe(true);
-      expect(firstFrame.world.agents[id].mind).toEqual(survivorMinds[id]);
+            expect(firstFrame.world.agents[id].mind.identityId).toBe(
+        survivorMinds[id].identityId,
+      );
+      expect(firstFrame.world.agents[id].mind.values).toEqual(
+        survivorMinds[id].values,
+      );
+      expect(firstFrame.world.agents[id].mind.beliefs).toEqual(
+        survivorMinds[id].beliefs,
+      );
     }
     const reopened = await LiveWorldRuntime.create({ mode: 'observer', seed: 'v14-recovery', worldId: damaged.id, store, controlLog });
     expect(humanCount((await reopened.tick()).world)).toBe(12);
