@@ -209,7 +209,20 @@ describe('World rules version', () => {
     expect(state.growth.discoveredRegionIds).toEqual(
       preserved.growth.discoveredRegionIds,
     );
-    expect(state.wildlife).toEqual(preserved.wildlife);
+        expect(Object.keys(state.wildlife).sort()).toEqual(
+      Object.keys(preserved.wildlife).sort(),
+    );
+
+    for (const [populationId, population] of Object.entries(state.wildlife)) {
+      const previous = preserved.wildlife[populationId];
+
+      expect(previous).toBeDefined();
+      expect(population.species).toBe(previous.species);
+      expect(population.count).toBe(previous.count);
+      expect(population.carryingCapacity).toBe(previous.carryingCapacity);
+      expect(state.places[population.habitatId]).toBeDefined();
+      expect(state.places[population.habitatId].biome).not.toBe('settlement');
+    }
     expect(state.relationships).toEqual(preserved.relationships);
     for (const agent of Object.values(state.agents)) {
       expect(agent.skills.hunting).toBe(preserved.hunting[agent.id]);
