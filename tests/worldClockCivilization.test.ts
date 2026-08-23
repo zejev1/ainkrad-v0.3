@@ -96,8 +96,12 @@ describe('Human-like bodies and growing civilization', () => {
       ),
     ).toBe(true);
     expect(
-      Object.values(frontier.places).some((place) => place.kind === 'village'),
-    ).toBe(true);
+      expect(
+  Object.values(frontier.settlements).some(
+    (settlement) =>
+      settlement.kind === 'village' || settlement.kind === 'city',
+  ),
+).toBe(true);
 
     const entryGateway = new IndependentWorldEntryGateway(world);
     for (let index = 1; index <= 36; index += 1) {
