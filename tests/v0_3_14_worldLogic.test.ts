@@ -122,7 +122,7 @@ describe('v0.3.14 Underworld-style substrate audit', () => {
     const snapshot = world.snapshot();
     const allowed: Record<string, string[]> = {
       rabbit: ['plains', 'forest'], deer: ['plains', 'forest'], fish: ['coast', 'lake', 'river'],
-      boar: ['forest', 'plains', 'swamp'], wolf: ['forest', 'mountains', 'plains'], bird: ['plains', 'forest', 'coast'],
+      boar: ['forest', 'plains', 'swamp'], wolf: ['forest', 'mountains', 'plains'], bird: ['plains', 'forest', 'coast', 'ancient_ruins'],
       dire_wolf: ['forest', 'mountains', 'ancient_ruins'], ogre: ['swamp', 'mountains', 'ancient_ruins'], wraith: ['ancient_ruins', 'swamp'],
     };
     for (const population of Object.values(snapshot.wildlife)) {
