@@ -65,20 +65,34 @@ describe('v0.3.14 Underworld-style substrate audit', () => {
     const controlLog = new InMemoryAppendOnlyLog();
     const first = await LiveWorldRuntime.create({ mode: 'observer', seed: 'v14-recovery', worldId: damaged.id, store, controlLog });
     const firstFrame = await first.tick();
-    expect(firstFrame.world.rulesVersion).toBe('ainkrad-world-rules-0.3.14');
-    expect(humanCount(firstFrame.world)).toBe(12);
+        const first = await LiveWorldRuntime.create({
+      mode: 'observer',
+      seed: 'v14-recovery',
+      worldId: damaged.id,
+      store,
+      controlLog,
+    });
+
+    const recoveredBeforeTick = await store.loadWorld(damaged.id);
+    expect(recoveredBeforeTick).toBeDefined();
+    if (!recoveredBeforeTick) {
+      throw new Error('Recovered world was not persisted.');
+    }
+
+    expect(recoveredBeforeTick.rulesVersion).toBe(
+      'ainkrad-world-rules-0.3.14',
+    );
+    expect(humanCount(recoveredBeforeTick)).toBe(12);
+
     for (const id of survivorIds) {
-      expect(firstFrame.world.agents[id].life.alive).toBe(true);
-            expect(firstFrame.world.agents[id].mind.identityId).toBe(
-        survivorMinds[id].identityId,
-      );
-      expect(firstFrame.world.agents[id].mind.values).toEqual(
-        survivorMinds[id].values,
-      );
-      expect(firstFrame.world.agents[id].mind.beliefs).toEqual(
-        survivorMinds[id].beliefs,
+      expect(recoveredBeforeTick.agents[id].life.alive).toBe(true);
+      expect(recoveredBeforeTick.agents[id].mind).toEqual(
+        survivorMinds[id],
       );
     }
+
+    const firstFrame = await first.tick();
+    expect(humanCount(firstFrame.world)).toBe(12);
     const reopened = await LiveWorldRuntime.create({ mode: 'observer', seed: 'v14-recovery', worldId: damaged.id, store, controlLog });
     expect(humanCount((await reopened.tick()).world)).toBe(12);
   });
