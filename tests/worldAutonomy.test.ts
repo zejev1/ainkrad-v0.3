@@ -446,8 +446,9 @@ describe('Autonomous society depth', () => {
     );
   });
 
-  it('does not guarantee control-world collapse merely because agents keep living', async () => {
-    const means: number[] = [];
+    it('keeps a resource-rich control world physiologically viable without Cardinal', async () => {
+    const meanHealth: number[] = [];
+
     for (const seed of ['viable-a', 'viable-b', 'viable-c']) {
       const store = new InMemoryWorldStore();
       const world = await WorldEngine.create({
@@ -456,14 +457,27 @@ describe('Autonomous society depth', () => {
         store,
         startTime: 0,
       });
-      for (let tick = 1; tick <= 350; tick += 1) await world.step(tick);
-      const agents = Object.values(world.snapshot().agents);
-      means.push(
-        agents.reduce((sum, agent) => sum + agent.resources, 0) / agents.length,
+
+      for (let tick = 1; tick <= 350; tick += 1) {
+        await world.step(tick);
+      }
+
+      const state = world.snapshot();
+      const agents = Object.values(state.agents);
+
+      expect(agents.every((agent) => agent.life.alive)).toBe(true);
+      expect(state.environment.resourcePool).toBeGreaterThan(0.2);
+
+      meanHealth.push(
+        agents.reduce((sum, agent) => sum + agent.life.health, 0) /
+          agents.length,
       );
     }
 
-    expect(means.reduce((sum, value) => sum + value, 0) / means.length).toBeGreaterThan(0.3);
+    expect(
+      meanHealth.reduce((sum, value) => sum + value, 0) /
+        meanHealth.length,
+    ).toBeGreaterThan(0.75);
   });
 
   it('rejects a same-version persisted world whose required agent structures are corrupted', async () => {
