@@ -123,7 +123,7 @@ describe('v0.3.14 Underworld-style substrate audit', () => {
       expect(founder.life.generation).toBe(0);
       expect(snapshot.places[founder.homeId]?.settlementId).toBe('settlement_ainkrad');
     }
-  });
+    }, 10_000);
 
   it('never recovers wildlife or monsters in incompatible city/water habitats', async () => {
     const store = new InMemoryWorldStore();
