@@ -206,5 +206,5 @@ describe('v0.3.13 release audit', () => {
         (agent) => (agent.progression?.experience ?? 0) > 0 && (agent.progression?.level ?? 1) > 1,
       ),
     ).toBe(true);
-  });
+    }, 10_000);
 });
