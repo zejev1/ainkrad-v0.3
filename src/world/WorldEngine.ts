@@ -5127,11 +5127,17 @@ export class WorldEngine {
               Math.max(1, agent.life.lifespanYears - ELDER_AGE)) *
             0.0018
           : 0;
+            const resourceRecoveryFactor = clamp01(
+        (agent.resources - 0.08) / 0.27,
+      );
+      const energyRecoveryFactor = clamp01(
+        (agent.energy - 0.1) / 0.2,
+      );
       const recovery =
-        agent.resources > 0.35 && agent.energy > 0.3
-          ? (0.0012 + agent.personality.resilience * 0.0012) *
-            agent.life.physiology.recovery
-          : 0;
+        (0.0012 + agent.personality.resilience * 0.0012) *
+        agent.life.physiology.recovery *
+        resourceRecoveryFactor *
+        energyRecoveryFactor;
       agent.life.health = clamp01(
         agent.life.health +
           recovery -
