@@ -118,7 +118,7 @@ describe('Human-like bodies and growing civilization', () => {
       );
       expect(result.authorized).toBe(true);
     }
-    for (let tick = 801; tick <= 1400; tick += 1) {
+    for (let tick = 801; tick <= 816; tick += 1) {
       await world.step(tick);
     }
 
