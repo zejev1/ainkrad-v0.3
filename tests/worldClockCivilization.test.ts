@@ -95,7 +95,6 @@ describe('Human-like bodies and growing civilization', () => {
         (population) => population.isMonster && population.threat >= 0.7,
       ),
     ).toBe(true);
-    expect(
       expect(
   Object.values(frontier.settlements).some(
     (settlement) =>
