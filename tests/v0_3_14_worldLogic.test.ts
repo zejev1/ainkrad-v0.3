@@ -63,8 +63,7 @@ describe('v0.3.14 Underworld-style substrate audit', () => {
     const store = new InMemoryWorldStore();
     await store.initializeWorld(damaged);
     const controlLog = new InMemoryAppendOnlyLog();
-    const first = await LiveWorldRuntime.create({ mode: 'observer', seed: 'v14-recovery', worldId: damaged.id, store, controlLog });
-    const firstFrame = await first.tick();
+    
         const first = await LiveWorldRuntime.create({
       mode: 'observer',
       seed: 'v14-recovery',
