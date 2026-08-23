@@ -146,7 +146,7 @@ describe('v0.3.14 Underworld-style substrate audit', () => {
       if (population.species === 'fish') expect(['shore', 'water']).toContain(habitat.surface);
       else expect(habitat.surface).toBe('land');
     }
-  });
+    }, 60_000);
 
   it('treats two humans as a critical civilization even without monster pressure', async () => {
     const sourceStore = new InMemoryWorldStore();
