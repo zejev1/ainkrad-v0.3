@@ -50,7 +50,9 @@ export interface FalsifiablePrediction {
   metric: CardinalPredictionMetric;
   direction: 'decrease';
   minimumImprovement: number;
-  horizon: number;
+  horizonWorldMinutes: number;
+  /** Tick-only legacy evidence may contain this field; modern math ignores it. */
+  horizon?: number;
   statement: string;
 }
 
@@ -77,7 +79,7 @@ export type CardinalDeferReason =
   | 'capability_not_ready';
 
 export interface CardinalAutonomyAssessment {
-  window: number;
+  windowWorldMinutes: number;
   recentExecutedInterventionIds: string[];
   activeOrUnresolvedInterventionIds: string[];
   activeOrUnresolvedSameKindIds: string[];
@@ -100,7 +102,10 @@ export interface InterventionProposal {
 export interface CardinalEvaluation {
   evaluationId: string;
   worldId: string;
+  worldEpoch: number;
+  /** Technical ordering/idempotency coordinate only. */
   evaluatedAt: number;
+  evaluatedWorldMinutes: number;
   observedWorldRevision: number;
   sensorVersion: string;
   policyVersion: string;
@@ -131,10 +136,18 @@ export interface InterventionRecord {
   interventionId: string;
   evaluationId: string;
   worldId: string;
+  worldEpoch: number;
+  policyVersion: string;
+  sensorVersion: string;
+  researchVersion: string;
+  /** Technical ordering/idempotency coordinate only. */
   requestedAt: number;
+  requestedWorldMinutes: number;
   observedWorldRevision: number;
   gatewayPolicyVersion: string;
-  authorizedEffectDuration: number;
+  authorizedEffectDurationWorldMinutes: number;
+  /** Tick-only legacy evidence may contain this field; modern math ignores it. */
+  authorizedEffectDuration?: number;
   proposal: InterventionProposal;
   authorized: boolean;
   authorizationReason: string;
@@ -148,7 +161,12 @@ export interface InterventionOutcomeRecord {
   worldId: string;
   interventionId: string;
   evaluationId: string;
+  worldEpoch: number;
+  policyVersion: string;
+  researchVersion: string;
+  /** Technical ordering/idempotency coordinate only. */
   observedAt: number;
+  observedWorldMinutes: number;
   sensorVersion: string;
   beforeWorldRevision: number;
   afterWorldRevision: number;
@@ -171,7 +189,10 @@ export interface InterventionOutcomeRecord {
 export interface AuditRecord {
   auditId: string;
   worldId: string;
+  worldEpoch: number;
+  /** Technical ordering/idempotency coordinate only. */
   auditedAt: number;
+  auditedWorldMinutes: number;
   stage: 'decision' | 'outcome';
   evaluationId: string;
   interventionId?: string;

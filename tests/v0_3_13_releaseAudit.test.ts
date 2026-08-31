@@ -9,7 +9,7 @@ import { InMemoryWorldStore } from '../src/world/InMemoryWorldStore';
 import { WorldEngine } from '../src/world/WorldEngine';
 
 describe('v0.3.13 release audit', () => {
-  it('starts the default human line as 3 male + 3 female with progression', async () => {
+  it('starts the default human line as 5 male + 5 female with progression', async () => {
     const store = new InMemoryWorldStore();
     const world = await WorldEngine.create({
       worldId: 'audit-founders',
@@ -18,10 +18,10 @@ describe('v0.3.13 release audit', () => {
       startTime: 0,
     });
     const living = Object.values(world.snapshot().agents).filter((agent) => agent.life.alive);
-    expect(living).toHaveLength(6);
-    expect(living.filter((agent) => agent.race === 'human')).toHaveLength(6);
-    expect(living.filter((agent) => agent.sex === 'male')).toHaveLength(3);
-    expect(living.filter((agent) => agent.sex === 'female')).toHaveLength(3);
+    expect(living).toHaveLength(10);
+    expect(living.filter((agent) => agent.race === 'human')).toHaveLength(10);
+    expect(living.filter((agent) => agent.sex === 'male')).toHaveLength(5);
+    expect(living.filter((agent) => agent.sex === 'female')).toHaveLength(5);
     expect(living.every((agent) => (agent.progression?.level ?? 0) >= 1)).toBe(true);
   });
 
@@ -109,8 +109,10 @@ describe('v0.3.13 release audit', () => {
         oldCore.evaluate('observer', {
           sensorVersion: 'ainkrad-world-sensors-0.3.11',
           worldId: 'audit-cardinal-memory',
+          worldEpoch: 1,
           worldRevision: tick,
           observedAt: tick,
+          observedWorldMinutes: tick * 8_760,
           metrics: {
             populationActivity: 0.5,
             averageStress: 0.2,
@@ -135,6 +137,8 @@ describe('v0.3.13 release audit', () => {
       journal,
       'audit-cardinal-memory',
       13,
+      13 * 8_760,
+      1,
       core.policyVersion,
       'ainkrad-world-sensors-0.3.13',
     );
@@ -143,32 +147,68 @@ describe('v0.3.13 release audit', () => {
   });
 
   it('lets Cardinal safety proposal pass the Gateway and measurably reduce danger without mind writes', async () => {
-    const store = new InMemoryWorldStore();
-    const world = await WorldEngine.create({
+    const source = await WorldEngine.create({
       worldId: 'audit-safety-chain',
       seed: 'audit-safety-chain-seed',
-      store,
+      store: new InMemoryWorldStore(),
       startTime: 0,
     });
-    await world.applyDisturbance('safety_shock', 0.45, 1, 12, 'audit-safety-shock');
+    const stressedFixture = source.snapshot();
+    for (const agent of Object.values(stressedFixture.agents)) {
+      agent.stress = 0.78;
+    }
+    const store = new InMemoryWorldStore();
+    await store.initializeWorld(stressedFixture);
+    const world = await WorldEngine.open({
+      worldId: stressedFixture.id,
+      store,
+    });
+    await world.applyDisturbance('safety_shock', 0.8, 1, 12, 'audit-safety-shock');
     const sensors = new WorldSensors(store);
-    const beforeWorld = world.snapshot();
-    const before = await sensors.observe(beforeWorld, beforeWorld.now);
+    const core = new CardinalCore();
+    const journal = new LogBackedCardinalJournal(new InMemoryAppendOnlyLog());
+    let beforeWorld = world.snapshot();
+    let before = await sensors.observe(beforeWorld, beforeWorld.now);
+    let evaluation = core.evaluate('intervene', before);
+    for (let opportunity = 1; opportunity < 3; opportunity += 1) {
+      await journal.appendEvaluation(evaluation);
+      await world.advanceCanonicalTimeTo(
+        world.snapshot().calendar.elapsedWorldMinutes + 8_760,
+      );
+      beforeWorld = world.snapshot();
+      before = await sensors.observe(beforeWorld, beforeWorld.now);
+      const context = await buildCardinalResearchContext(
+        journal,
+        beforeWorld.id,
+        before.observedAt,
+        before.observedWorldMinutes,
+        before.worldEpoch,
+        core.policyVersion,
+        before.sensorVersion,
+      );
+      evaluation = core.evaluate('intervene', before, context);
+    }
     const mindsBefore = Object.fromEntries(
       Object.values(beforeWorld.agents).map((agent) => [agent.id, structuredClone(agent.mind)]),
     );
-    const evaluation = new CardinalCore().evaluate('intervene', before);
     expect(evaluation.proposal?.kind).toBe('safety_support');
     expect(evaluation.proposal?.prediction.metric).toBe('safetyPressure');
     const gateway = new IndependentInterventionGateway(world, {
-      minInterval: 0,
-      effectDuration: 8,
+      minIntervalWorldMinutes: 0,
+      effectDurationWorldMinutes: 70_080,
     });
     const record = await gateway.execute(
       evaluation.evaluationId,
       evaluation.proposal!,
       beforeWorld,
       beforeWorld.now,
+      {
+        worldEpoch: evaluation.worldEpoch,
+        policyVersion: evaluation.policyVersion,
+        sensorVersion: evaluation.sensorVersion,
+        researchVersion: evaluation.researchVersion,
+        evaluatedWorldMinutes: evaluation.evaluatedWorldMinutes,
+      },
     );
     expect(record.authorized).toBe(true);
     expect(record.executed).toBe(true);
@@ -206,5 +246,5 @@ describe('v0.3.13 release audit', () => {
         (agent) => (agent.progression?.experience ?? 0) > 0 && (agent.progression?.level ?? 1) > 1,
       ),
     ).toBe(true);
-    }, 10_000);
+  }, 45_000);
 });

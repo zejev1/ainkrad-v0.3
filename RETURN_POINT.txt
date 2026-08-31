@@ -1,0 +1,68 @@
+AINKRAD v0.3.18 FINAL SOURCE RETURN POINT
+Date: 2026-08-31 UTC
+Status: implementation and release audit complete; ready for SPCK staging
+
+SOURCE AUTHORITY
+- Continue from this v0.3.18 tree. It is the v15-derived autonomous world with
+  the complete v16/v17 foundations and additive v18 Underworld layer.
+- Correct read-only verified GitHub parent:
+  dad1dc0f72bd0883f801b93e3da4cae1587b6270 on branch main at
+  https://github.com/zejev1/ainkrad-v0.3.git
+- GitHub and Vercel remain read-only to the assistant. Do not commit or push.
+- No Convex connection, adapter or credential belongs in this project.
+
+FINAL v0.3.18 IMPLEMENTATION
+- Physical routes advance continuously; decisions and Cardinal opportunities
+  remain on the fixed canonical Ainkrad-time grid.
+- Closed-browser restoration uses an epoch-scoped absolute target, executes all
+  semantic quanta and batches persistence/UI work. Progress exposes percent
+  and ETA; a 200-year benchmark completed in 43.128 seconds.
+- Hunger, real meals and local stocks constrain life. Completed actions require
+  arrival at compatible fields, forests, mountains, water or workshops.
+- Fifteen livelihood paths arise from repeated lived work and vocational fit,
+  never Cardinal assignment or settlement quotas. Safe chores can begin before
+  adulthood; dangerous adult actions retain age gates.
+- Descendants can independently volunteer for frontier expeditions, reconsider
+  at camp, found settlements or return. Generation-zero founders may guide but
+  never permanently leave Ainkrad.
+- Settlement abandonment, ruins, reoccupation, contact, resource transfer and
+  voluntary conflict remain material world events.
+- Russian conversation and Cyrillic literacy grow from witnessed interaction.
+  The observer exposes only bounded persisted audible dialogue.
+- The original strategy-style map adds roads, work zones, smaller residents,
+  exact resident selection and three mobile text sizes without copied assets.
+- Cardinal gained read-only aggregate observations only. It has no resident
+  mind, action, identity, language or profession writer.
+- Player entry is a dormant schema/authority foundation. Production login,
+  avatar and controls remain disabled.
+- Ordinary territorial wildlife remains dangerous but less lethal than true
+  monsters. Monsters physically attack and feed; kills still leave remains.
+
+EXECUTED FINAL CHECKS
+- TypeScript: PASS.
+- Full sequential regression: PASS, 38/38 files and 160/160 tests.
+- Cardinal x1/x10/x100 equal-time causality: PASS.
+- OFF/OBSERVER world equivalence: PASS.
+- Production Vite build and dedicated worker: PASS.
+- Production HTTP/worker smoke: PASS.
+- 100-year run: 20 living, 11 moving, 7 settlements; 4 expeditions founded,
+  1 returned and 1 failed; 15.573 seconds.
+- 138-year run: 38 living, 16 moving, 6 settlements; 24.516 seconds.
+- 200-year run: 88 living, 40 moving, 7 settlements; 43.128 seconds.
+- Real cloud-browser local preview: NOT PASS. Both local URLs were blocked with
+  ERR_BLOCKED_BY_CLIENT; this limitation is recorded honestly and requires a
+  real mobile Vercel smoke after the user's SPCK push.
+- Human-readable evidence: TEST_RESULTS_v0.3.18.md.
+- Machine-readable evidence: docs/V0_3_18_RELEASE_AUDIT.json.
+
+FINAL PACKAGING
+- Overlay this source without its old .git/node_modules/dist/CPU profiles onto
+  a clean staging tree whose .git HEAD is exactly dad1dc0 on main.
+- Regenerate SHA256SUMS.txt, verify it, run typecheck/tests/build on staging,
+  remove generated dependencies/output and ZIP project contents at archive
+  root including .git. Do not commit or push.
+
+SPCK HANDOFF
+- Git email: zejev1@users.noreply.github.com
+- Commit message:
+  feat(v0.3.18): deepen autonomous livelihoods and Underworld foundations

@@ -7,8 +7,10 @@ import type { SensorSnapshot } from '../src/sensors/types';
 const observation: SensorSnapshot = {
   sensorVersion: 'ainkrad-world-sensors-0.3.3',
   worldId: 'world_1',
+  worldEpoch: 1,
   worldRevision: 7,
   observedAt: 10,
+  observedWorldMinutes: 87_600,
   metrics: {
     populationActivity: 0.5,
     averageStress: 0.4,
@@ -68,10 +70,15 @@ function auditIntervention(): InterventionRecord {
     interventionId: 'intervention_previous',
     evaluationId: 'evaluation_previous',
     worldId: 'world_1',
+    worldEpoch: 1,
+    policyVersion: 'ainkrad-cardinal-policy-0.3.15',
+    sensorVersion: 'ainkrad-world-sensors-0.3.3',
+    researchVersion: CARDINAL_RESEARCH_VERSION,
     requestedAt: 8,
+    requestedWorldMinutes: 70_080,
     observedWorldRevision: 8,
     gatewayPolicyVersion: 'gateway-test',
-    authorizedEffectDuration: 8,
+    authorizedEffectDurationWorldMinutes: 70_080,
     proposal: {
       proposalId: 'proposal_previous',
       worldId: 'world_1',
@@ -84,7 +91,7 @@ function auditIntervention(): InterventionRecord {
         metric: 'resourcePressure',
         direction: 'decrease',
         minimumImprovement: 0.01,
-        horizon: 4,
+        horizonWorldMinutes: 35_040,
         statement: 'resourcePressure should decrease.',
       },
     },
@@ -102,6 +109,7 @@ describe('Cardinal Auditor autonomy reconstruction', () => {
     const pressuredObservation: SensorSnapshot = {
       ...observation,
       observedAt: 10,
+      observedWorldMinutes: 87_600,
       worldRevision: 10,
       metrics: {
         ...observation.metrics,

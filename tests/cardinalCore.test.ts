@@ -16,8 +16,10 @@ function observation(
   return {
     sensorVersion: 'ainkrad-world-sensors-0.3.3',
     worldId: 'world_1',
+    worldEpoch: 1,
     worldRevision: observedAt,
     observedAt,
+    observedWorldMinutes: observedAt * 8_760,
     metrics: {
       populationActivity: 0.4,
       averageStress: 0.3,
@@ -121,10 +123,15 @@ function syntheticExecutedIntervention(
     interventionId: id,
     evaluationId: `evaluation_${id}`,
     worldId: 'world_1',
+    worldEpoch: 1,
+    policyVersion: 'ainkrad-cardinal-policy-0.3.15',
+    sensorVersion: 'ainkrad-world-sensors-0.3.3',
+    researchVersion: CARDINAL_RESEARCH_VERSION,
     requestedAt,
+    requestedWorldMinutes: requestedAt * 8_760,
     observedWorldRevision: requestedAt,
     gatewayPolicyVersion: 'gateway-test',
-    authorizedEffectDuration: effectDuration,
+    authorizedEffectDurationWorldMinutes: effectDuration * 8_760,
     proposal: {
       proposalId: `proposal_${id}`,
       worldId: 'world_1',
@@ -137,7 +144,7 @@ function syntheticExecutedIntervention(
         metric: 'resourcePressure',
         direction: 'decrease',
         minimumImprovement: 0.01,
-        horizon: 4,
+        horizonWorldMinutes: 35_040,
         statement: 'resourcePressure should decrease.',
       },
     },
@@ -159,8 +166,12 @@ function syntheticOutcome(
     worldId: intervention.worldId,
     interventionId: intervention.interventionId,
     evaluationId: intervention.evaluationId,
+    worldEpoch: intervention.worldEpoch,
+    policyVersion: intervention.policyVersion,
+    researchVersion: intervention.researchVersion,
     observedAt,
-    sensorVersion: 'ainkrad-world-sensors-0.3.3',
+    observedWorldMinutes: observedAt * 8_760,
+    sensorVersion: intervention.sensorVersion,
     beforeWorldRevision: intervention.observedWorldRevision,
     afterWorldRevision: intervention.committedWorldRevision ?? intervention.observedWorldRevision + 1,
     evidenceEventIds: [`outcome_event_${observedAt}`],
@@ -212,12 +223,12 @@ describe('Cardinal experimental discipline', () => {
     const first = core.evaluate('intervene', observation(metrics, 14), research([]));
     const second = core.evaluate('intervene', observation(metrics, 15), research([first]));
     const interventions = [
-      syntheticExecutedIntervention('old_1', 1, 1),
-      syntheticExecutedIntervention('old_2', 5, 1),
-      syntheticExecutedIntervention('old_3', 9, 1),
+      syntheticExecutedIntervention('old_1', 2, 1),
+      syntheticExecutedIntervention('old_2', 6, 1),
+      syntheticExecutedIntervention('old_3', 10, 1),
     ];
     const outcomes = interventions.map((item, index) =>
-      syntheticOutcome(item, [2, 6, 10][index]),
+      syntheticOutcome(item, [3, 7, 11][index]),
     );
     const context: CardinalResearchContext = {
       researchVersion: CARDINAL_RESEARCH_VERSION,
@@ -240,12 +251,12 @@ describe('Cardinal experimental discipline', () => {
     const core = new CardinalCore();
     const criticalMetrics = { resourcePressure: 0.96, recoveryCapacity: 0.2 };
     const interventions = [
-      syntheticExecutedIntervention('old_1', 1, 1),
-      syntheticExecutedIntervention('old_2', 5, 1),
-      syntheticExecutedIntervention('old_3', 9, 1),
+      syntheticExecutedIntervention('old_1', 2, 1),
+      syntheticExecutedIntervention('old_2', 6, 1),
+      syntheticExecutedIntervention('old_3', 10, 1),
     ];
     const outcomes = interventions.map((item, index) =>
-      syntheticOutcome(item, [2, 6, 10][index]),
+      syntheticOutcome(item, [3, 7, 11][index]),
     );
     const context: CardinalResearchContext = {
       researchVersion: CARDINAL_RESEARCH_VERSION,

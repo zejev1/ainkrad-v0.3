@@ -17,7 +17,7 @@ export type WorldSpeedId =
   | 'month_per_minute'
   | 'year_per_minute';
 
-export type WorldSpeedMultiplier = 1 | 10;
+export type WorldSpeedMultiplier = 1 | 10 | 100;
 
 export interface WorldSpeedPreset {
   id: WorldSpeedId;
@@ -89,7 +89,7 @@ export function isWorldSpeedId(value: unknown): value is WorldSpeedId {
 export function isWorldSpeedMultiplier(
   value: unknown,
 ): value is WorldSpeedMultiplier {
-  return value === 1 || value === 10;
+  return value === 1 || value === 10 || value === 100;
 }
 
 export function worldSpeedPreset(id: WorldSpeedId): WorldSpeedPreset {

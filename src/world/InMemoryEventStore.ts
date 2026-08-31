@@ -47,7 +47,10 @@ export class InMemoryEventStore implements EventStore {
     history.push(stored);
     this.byWorld.set(stored.worldId, history);
 
-    if (stored.activeUntil !== undefined) {
+    if (
+      stored.activeUntil !== undefined ||
+      stored.activeUntilWorldMinutes !== undefined
+    ) {
       const signals = this.signalsByWorld.get(stored.worldId) ?? [];
       signals.push(stored);
       this.signalsByWorld.set(stored.worldId, signals);
@@ -88,19 +91,44 @@ export class InMemoryEventStore implements EventStore {
       .map((event) => structuredClone(event));
   }
 
-  async activeSignals(worldId: string, now: number): Promise<WorldEvent[]> {
+  async activeSignals(
+    worldId: string,
+    now: number,
+    worldMinutes?: number,
+  ): Promise<WorldEvent[]> {
     if (!Number.isFinite(now)) {
       throw new Error('EventStore activeSignals time must be finite.');
+    }
+    if (
+      worldMinutes !== undefined &&
+      (!Number.isFinite(worldMinutes) || worldMinutes < 0)
+    ) {
+      throw new Error(
+        'EventStore activeSignals worldMinutes must be finite and non-negative.',
+      );
     }
 
     // Pure read: observing a future time must not destroy the ability to inspect
     // what was active at an earlier time. This matters for replay and auditing.
     return (this.signalsByWorld.get(worldId) ?? [])
       .filter(
-        (event) =>
-          event.occurredAt <= now &&
-          event.activeUntil !== undefined &&
-          event.activeUntil > now,
+        (event) => {
+          if (
+            worldMinutes !== undefined &&
+            event.occurredWorldMinutes !== undefined &&
+            event.activeUntilWorldMinutes !== undefined
+          ) {
+            return (
+              event.occurredWorldMinutes <= worldMinutes &&
+              event.activeUntilWorldMinutes > worldMinutes
+            );
+          }
+          return (
+            event.occurredAt <= now &&
+            event.activeUntil !== undefined &&
+            event.activeUntil > now
+          );
+        },
       )
       .map((event) => structuredClone(event));
   }

@@ -152,14 +152,23 @@ function parseEntry(raw: string): JournalEntry {
   }
 
   if (candidate.kind === 'intervention') {
-    const duration = value.authorizedEffectDuration;
+    const durationWorldMinutes =
+      value.authorizedEffectDurationWorldMinutes;
+    const legacyDuration = value.authorizedEffectDuration;
     if (
-      typeof duration !== 'number' ||
-      !Number.isFinite(duration) ||
-      duration < 1
+      !(
+        typeof durationWorldMinutes === 'number' &&
+        Number.isFinite(durationWorldMinutes) &&
+        durationWorldMinutes >= 1
+      ) &&
+      !(
+        typeof legacyDuration === 'number' &&
+        Number.isFinite(legacyDuration) &&
+        legacyDuration >= 1
+      )
     ) {
       throw new Error(
-        'Cardinal journal intervention is missing a valid authorized effect duration.',
+        'Cardinal journal intervention is missing a valid canonical or legacy authorized effect duration.',
       );
     }
   }

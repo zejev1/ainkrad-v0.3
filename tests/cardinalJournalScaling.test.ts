@@ -44,8 +44,10 @@ function observation(observedAt: number): SensorSnapshot {
   return {
     sensorVersion: 'ainkrad-world-sensors-0.3.11',
     worldId: 'mature-journal',
+    worldEpoch: 1,
     worldRevision: observedAt,
     observedAt,
+    observedWorldMinutes: observedAt * 8_760,
     metrics: {
       populationActivity: 0.5,
       averageStress: 0.25,
@@ -86,6 +88,8 @@ describe('Mature Cardinal journal scaling', () => {
         restarted,
         'mature-journal',
         tick,
+        tick * 8_760,
+        1,
         core.policyVersion,
         observation(tick).sensorVersion,
       );

@@ -15,6 +15,10 @@ export * from './cardinal/InMemoryCardinalJournal';
 export * from './cardinal/LogBackedCardinalJournal';
 export * from './cardinal/InterventionGateway';
 export * from './cardinal/InterventionGatewayLedger';
+export * from './cardinal/portable/AinkradCardinalAdapters';
+export * from './cardinal/portable/CardinalExperienceTransfer';
+export * from './cardinal/portable/PortableCardinalRuntime';
+export * from './cardinal/portable/types';
 export * from './cardinal/WorldAuthorityGateway';
 export * from './cardinal/types';
 
@@ -37,6 +41,9 @@ export * from './runtime/scheduler/types';
 
 export * from './sensors/types';
 export * from './sensors/WorldSensors';
+
+export * from './v16/SocietyFoundationV16';
+export * from './v16/TruthfulInspectorsV16';
 
 export * from './world/events';
 export * from './world/InMemoryEventStore';

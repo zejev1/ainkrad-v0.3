@@ -13,12 +13,19 @@ export interface WorldEvent {
   worldId: string;
   kind: string;
   source: WorldEventSource;
+  /** Technical ordering/idempotency coordinate only. */
   occurredAt: number;
+  /** Canonical semantic time for modern v0.3.15 evidence. */
+  occurredWorldMinutes?: number;
+  /** Epoch identity is optional only for historical pre-v0.3.15 events. */
+  worldEpoch?: number;
   payload: JsonObject;
 
   // If present, this event is also an active signal until this time.
   // Expiration only ends current influence. The historical event remains.
   activeUntil?: number;
+  /** Canonical expiration; authoritative when present. */
+  activeUntilWorldMinutes?: number;
 
   correlationId?: string;
 }
@@ -39,7 +46,11 @@ export interface EventReader {
     limit: number,
     atOrBefore?: number,
   ): Promise<WorldEvent[]>;
-  activeSignals(worldId: string, now: number): Promise<WorldEvent[]>;
+  activeSignals(
+    worldId: string,
+    now: number,
+    worldMinutes?: number,
+  ): Promise<WorldEvent[]>;
 }
 
 export interface EventWriter {

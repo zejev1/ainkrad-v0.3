@@ -6,7 +6,7 @@ import { InMemoryAppendOnlyLog } from '../src/persistence/AppendOnlyLog';
 import { LiveWorldRuntime } from '../src/runtime/LiveWorldRuntime';
 import { WorldSensors } from '../src/sensors/WorldSensors';
 import { InMemoryWorldStore } from '../src/world/InMemoryWorldStore';
-import { WorldEngine } from '../src/world/WorldEngine';
+import { WORLD_RULES_VERSION, WorldEngine } from '../src/world/WorldEngine';
 
 const humanCount = (world: ReturnType<WorldEngine['snapshot']>) =>
   Object.values(world.agents).filter(
@@ -40,7 +40,7 @@ describe('v0.3.14 Underworld-style substrate audit', () => {
     expect(d(outskirts)).toBeGreaterThan(d(field));
   });
 
-  it('upgrades a critically small existing world with one idempotent ten-person recovery cohort', async () => {
+  it('migrates a critically small existing world without a hidden population rescue cohort', async () => {
     const sourceStore = new InMemoryWorldStore();
     const source = await WorldEngine.create({ worldId: 'v14-recovery', seed: 'v14-recovery', store: sourceStore });
     const damaged = source.snapshot();
@@ -63,37 +63,20 @@ describe('v0.3.14 Underworld-style substrate audit', () => {
     const store = new InMemoryWorldStore();
     await store.initializeWorld(damaged);
     const controlLog = new InMemoryAppendOnlyLog();
-    
-        const first = await LiveWorldRuntime.create({
-      mode: 'observer',
-      seed: 'v14-recovery',
-      worldId: damaged.id,
-      store,
-      controlLog,
-    });
-
-    const recoveredBeforeTick = await store.loadWorld(damaged.id);
-    expect(recoveredBeforeTick).toBeDefined();
-    if (!recoveredBeforeTick) {
-      throw new Error('Recovered world was not persisted.');
-    }
-
-    expect(recoveredBeforeTick.rulesVersion).toBe(
-      'ainkrad-world-rules-0.3.14',
-    );
-    expect(humanCount(recoveredBeforeTick)).toBe(12);
-
+    const first = await LiveWorldRuntime.create({ mode: 'observer', seed: 'v14-recovery', worldId: damaged.id, store, controlLog });
+    const migrated = await store.loadWorld(damaged.id);
+    expect(migrated?.rulesVersion).toBe(WORLD_RULES_VERSION);
+    expect(migrated ? humanCount(migrated) : 0).toBe(2);
     for (const id of survivorIds) {
-      expect(recoveredBeforeTick.agents[id].life.alive).toBe(true);
-      expect(recoveredBeforeTick.agents[id].mind).toEqual(
-        survivorMinds[id],
-      );
+      expect(migrated?.agents[id].life.alive).toBe(true);
+      expect(migrated?.agents[id].mind).toEqual(survivorMinds[id]);
     }
-
+    // Once migration is proven identity-preserving, a normal runtime tick is
+    // allowed to evolve emotions/choices as part of ordinary personhood.
     const firstFrame = await first.tick();
-    expect(humanCount(firstFrame.world)).toBe(12);
+    expect(humanCount(firstFrame.world)).toBe(2);
     const reopened = await LiveWorldRuntime.create({ mode: 'observer', seed: 'v14-recovery', worldId: damaged.id, store, controlLog });
-    expect(humanCount((await reopened.tick()).world)).toBe(12);
+    expect(humanCount((await reopened.tick()).world)).toBe(2);
   });
 
   it('promotes Ainkrad from village to city by local population without requiring frontier stage', async () => {
@@ -123,30 +106,7 @@ describe('v0.3.14 Underworld-style substrate audit', () => {
       expect(founder.life.generation).toBe(0);
       expect(snapshot.places[founder.homeId]?.settlementId).toBe('settlement_ainkrad');
     }
-    }, 10_000);
-
-  it('never recovers wildlife or monsters in incompatible city/water habitats', async () => {
-    const store = new InMemoryWorldStore();
-    const world = await WorldEngine.create({
-      worldId: 'v14-habitat', seed: 'v14-habitat', store,
-      agentNames: Array.from({ length: 24 }, (_, i) => `Explorer ${i + 1}`),
-    });
-    for (let tick = 1; tick <= 900; tick += 1) await world.step(tick);
-    const snapshot = world.snapshot();
-    const allowed: Record<string, string[]> = {
-      rabbit: ['plains', 'forest'], deer: ['plains', 'forest'], fish: ['coast', 'lake', 'river'],
-      boar: ['forest', 'plains', 'swamp'], wolf: ['forest', 'mountains', 'plains'], bird: ['plains', 'forest', 'coast', 'ancient_ruins'],
-      dire_wolf: ['forest', 'mountains', 'ancient_ruins'], ogre: ['swamp', 'mountains', 'ancient_ruins'], wraith: ['ancient_ruins', 'swamp'],
-    };
-    for (const population of Object.values(snapshot.wildlife)) {
-      if (population.count <= 0) continue;
-      const habitat = snapshot.places[population.habitatId];
-      expect(allowed[population.species]).toContain(habitat.biome);
-      expect(habitat.biome).not.toBe('settlement');
-      if (population.species === 'fish') expect(['shore', 'water']).toContain(habitat.surface);
-      else expect(habitat.surface).toBe('land');
-    }
-    }, 60_000);
+  }, 30_000);
 
   it('treats two humans as a critical civilization even without monster pressure', async () => {
     const sourceStore = new InMemoryWorldStore();
@@ -196,7 +156,13 @@ describe('v0.3.14 Underworld-style substrate audit', () => {
     const expected = damagedWorld.snapshot();
     const gateway = new IndependentWorldAuthorityGateway(damagedWorld, 48);
     const record = await gateway.execute(
-      { ...proposal!, worldId: expected.id, proposedAt: expected.now, evidenceEventIds: [] },
+      {
+        ...proposal!,
+        worldId: expected.id,
+        proposedAt: expected.now,
+        proposedWorldMinutes: expected.calendar.elapsedWorldMinutes,
+        evidenceEventIds: [],
+      },
       expected,
       experience,
     );

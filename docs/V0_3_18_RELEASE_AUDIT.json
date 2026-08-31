@@ -1,0 +1,206 @@
+{
+  "release": "v0.3.18",
+  "generatedAtUtc": "2026-08-31T06:26:41Z",
+  "sourceAuthority": {
+    "repository": "https://github.com/zejev1/ainkrad-v0.3.git",
+    "branch": "main",
+    "readOnlyVerifiedGithubParent": "dad1dc0f72bd0883f801b93e3da4cae1587b6270",
+    "githubWritePerformed": false,
+    "vercelWritePerformed": false,
+    "convexConnected": false,
+    "cardinalExternalGatewayIndependent": true
+  },
+  "verification": {
+    "typecheck": {
+      "passed": true,
+      "command": "tsc -p tsconfig.json"
+    },
+    "regression": {
+      "passed": true,
+      "command": "vitest run --minWorkers=1 --maxWorkers=1 --testTimeout=60000",
+      "filesPassed": 38,
+      "filesTotal": 38,
+      "testsPassed": 160,
+      "testsTotal": 160,
+      "durationSeconds": 59.34
+    },
+    "productionBuild": {
+      "passed": true,
+      "command": "vite build",
+      "viteVersion": "7.0.4",
+      "dedicatedWorkerEmitted": true,
+      "workerBundleKilobytes": 407.45
+    },
+    "productionHttpSmoke": {
+      "passed": true,
+      "indexStatus": 200,
+      "applicationMountPresent": true,
+      "workerStatus": 200,
+      "workerContentType": "text/javascript",
+      "workerBytes": 401781,
+      "catchUpProgressProtocolPresent": true
+    },
+    "realBrowserSmoke": {
+      "passed": false,
+      "attempted": true,
+      "reason": "Cloud Chrome blocked both local preview addresses with ERR_BLOCKED_BY_CLIENT",
+      "falsePassClaimed": false,
+      "requiredAfterUserDeploy": true
+    },
+    "uiContract": {
+      "passed": true,
+      "tests": 5,
+      "catchUpOverlay": true,
+      "mobileTextScaling": true,
+      "residentPicker": true,
+      "professionAndSatiety": true,
+      "audibleConversations": true,
+      "independentPointerLayers": true
+    },
+    "cardinalEqualTime": {
+      "passed": true,
+      "multipliers": [1, 10, 100],
+      "currentEpochCountersOnly": true,
+      "newObservationFieldsReadOnly": true,
+      "residentMindWriterAdded": false,
+      "residentActionWriterAdded": false,
+      "residentIdentityWriterAdded": false
+    },
+    "migration": {
+      "passed": true,
+      "additive": true,
+      "atomic": true,
+      "idempotent": true,
+      "sameVersionNestedRepair": true,
+      "preservesResidents": true,
+      "preservesRelationships": true,
+      "preservesWorldTime": true,
+      "preservesRngFuture": true,
+      "preservesCardinalExperience": true
+    },
+    "offlineCatchUp": {
+      "passed": true,
+      "epochScopedAbsoluteTarget": true,
+      "allSemanticQuantaExecuted": true,
+      "boundedPersistenceBatches": true,
+      "visibleProgressAndEta": true,
+      "duplicateTabsCannotDoubleAdd": true,
+      "maximumRequestedYearsCompletedUnderOneMinute": 200
+    }
+  },
+  "longRun": {
+    "runner": "real autonomous LiveWorldRuntime; no injected residents, couples, expeditions, professions or outcomes",
+    "runs": [
+      {
+        "years": 100,
+        "seed": "v18-expedition-audit-100",
+        "elapsedSeconds": 15.573,
+        "living": 20,
+        "moving": 11,
+        "outsideHomeShare": 0.15,
+        "settlements": 7,
+        "settlementStatuses": {
+          "inhabited": 6,
+          "ruins": 1
+        },
+        "expeditions": {
+          "prepared": 6,
+          "founded": 4,
+          "returned": 1,
+          "failed": 1,
+          "preparedMemberGenerations": [[1, 1], [1, 1], [1, 1], [1, 1], [2, 3], [3, 4, 2]],
+          "generationZeroPermanentFounder": false
+        }
+      },
+      {
+        "years": 138,
+        "seed": "v18-final-longrun-138",
+        "elapsedSeconds": 24.516,
+        "living": 38,
+        "moving": 16,
+        "outsideHomeShare": 0.1579,
+        "settlements": 6,
+        "settlementStatuses": {
+          "inhabited": 2,
+          "ruins": 4
+        },
+        "expeditions": {
+          "prepared": 4,
+          "founded": 2,
+          "returned": 1,
+          "failed": 1
+        }
+      },
+      {
+        "years": 200,
+        "seed": "v18-final-longrun-138",
+        "elapsedSeconds": 43.128,
+        "living": 88,
+        "moving": 40,
+        "outsideHomeShare": 0.1477,
+        "cumulativeOutsideActions": 40746,
+        "cumulativeProductiveActions": 38733,
+        "settlements": 7,
+        "settlementStatuses": {
+          "inhabited": 3,
+          "ruins": 4
+        },
+        "expeditions": {
+          "prepared": 5,
+          "founded": 3,
+          "returned": 1,
+          "failed": 1
+        },
+        "generations": {
+          "1": 1,
+          "2": 3,
+          "3": 10,
+          "4": 18,
+          "5": 12,
+          "6": 13,
+          "7": 14,
+          "8": 16,
+          "9": 1
+        },
+        "actionShares": {
+          "walk": 0.4586,
+          "gather": 0.1425,
+          "socialize": 0.1099,
+          "work": 0.0367,
+          "explore": 0.019,
+          "pray": 0.0111
+        },
+        "deathCauses": {
+          "monster": 34,
+          "old_age": 54,
+          "wildlife": 4,
+          "illness": 9
+        },
+        "livingRaces": {
+          "human": 52,
+          "ogre": 36
+        }
+      }
+    ]
+  },
+  "worldRules": {
+    "storedResourcesNeverFabricated": true,
+    "placeValidCompletedWork": true,
+    "physicalTravelBeforeAction": true,
+    "voluntaryExpeditionDeparture": true,
+    "voluntaryCampReconsideration": true,
+    "generationZeroFoundersRooted": true,
+    "professionsFromLivedPracticeNotQuotas": true,
+    "russianAndCyrillicEvidence": true,
+    "playerEntryProductionEnabled": false,
+    "gradual2dTo3dInvariant": true,
+    "underworldDirectionInvariant": true
+  },
+  "releaseDecision": {
+    "passed": true,
+    "limitations": [
+      "Final real-browser local preview was blocked by the Work cloud browser; the deployed Vercel build still requires the mobile click and console smoke.",
+      "Autonomy does not guarantee survival of every sapient race in every seed; the 200-year audit naturally lost goblin and orc lineages."
+    ]
+  }
+}

@@ -21,15 +21,20 @@ const WORLD_CHANNEL_NAME = 'ainkrad-v0-3-live-world-frames';
 const CLOCK_CHANNEL_NAME = 'ainkrad-v0-3-world-clock-control';
 const CONSOLE_CHANNEL_NAME = 'ainkrad-v0-3-cardinal-console';
 const RESET_CHANNEL_NAME = 'ainkrad-v0-3-world-reset';
+const OFFLINE_CLOCK_CHANNEL_NAME = 'ainkrad-v0-3-offline-clock';
 const STORAGE_CHECK_INTERVAL_TICKS = 300;
 const AINKRAD_STORAGE_SOFT_BUDGET_BYTES = 2 * 1024 * 1024 * 1024;
 const AINKRAD_STORAGE_CRITICAL_BUDGET_BYTES = 4 * 1024 * 1024 * 1024;
-const FRAME_PROTOCOL_VERSION = 'ainkrad-live-frame-0.3.14';
+const FRAME_PROTOCOL_VERSION = 'ainkrad-live-frame-0.3.18';
 const COMPATIBLE_FRAME_PROTOCOLS = new Set([
   'ainkrad-live-frame-0.3.10',
   'ainkrad-live-frame-0.3.11',
   'ainkrad-live-frame-0.3.12',
   'ainkrad-live-frame-0.3.13',
+  'ainkrad-live-frame-0.3.14',
+  'ainkrad-live-frame-0.3.15',
+  'ainkrad-live-frame-0.3.16',
+  'ainkrad-live-frame-0.3.17',
   FRAME_PROTOCOL_VERSION,
 ]);
 
@@ -50,6 +55,19 @@ type LiveWorldWorkerMessage =
       snapshot: CardinalConsoleSnapshot;
     }
   | {
+      type: 'catch_up_progress';
+      protocolVersion: typeof FRAME_PROTOCOL_VERSION;
+      worldEpoch: number;
+      fromWorldMinutes: number;
+      currentWorldMinutes: number;
+      targetWorldMinutes: number;
+      percent: number;
+      elapsedRealMs: number;
+      estimatedRemainingMs: number | null;
+      semanticQuantaProcessed: number;
+      completed: boolean;
+    }
+  | {
       type: 'fatal';
       protocolVersion: typeof FRAME_PROTOCOL_VERSION;
       message: string;
@@ -66,8 +84,15 @@ interface CardinalConsoleRequest {
   requestId: string;
 }
 
+interface OfflineClockCatchUpMessage {
+  type: 'catch_up_world_time';
+  worldEpoch: number;
+  targetWorldMinutes: number;
+}
+
 type LiveWorldWorkerCommand =
   | LiveWorldClockMessage
+  | OfflineClockCatchUpMessage
   | CardinalConsoleRequest
   | { type: 'reset_world' };
 
@@ -83,9 +108,20 @@ const frameChannel = new BroadcastChannel(WORLD_CHANNEL_NAME);
 const clockChannel = new BroadcastChannel(CLOCK_CHANNEL_NAME);
 const consoleChannel = new BroadcastChannel(CONSOLE_CHANNEL_NAME);
 const resetChannel = new BroadcastChannel(RESET_CHANNEL_NAME);
+const offlineClockChannel = new BroadcastChannel(OFFLINE_CLOCK_CHANNEL_NAME);
 let activeRuntime: LiveWorldRuntime | undefined;
 let pendingClockControl: LiveWorldClockMessage | undefined;
 let pendingWorldReset = false;
+let pendingOfflineCatchUp: OfflineClockCatchUpMessage | undefined;
+let catchUpTracker:
+  | {
+      worldEpoch: number;
+      startWorldMinutes: number;
+      targetWorldMinutes: number;
+      startedRealMs: number;
+      semanticQuantaProcessed: number;
+    }
+  | undefined;
 
 function applyClockControl(message: LiveWorldClockMessage): void {
   if (
@@ -96,6 +132,24 @@ function applyClockControl(message: LiveWorldClockMessage): void {
   }
   pendingClockControl = message;
   activeRuntime?.setWorldSpeed(message.speedId, message.multiplier);
+}
+
+function applyOfflineCatchUp(message: OfflineClockCatchUpMessage): void {
+  if (
+    !Number.isInteger(message.worldEpoch) ||
+    message.worldEpoch < 1 ||
+    !Number.isFinite(message.targetWorldMinutes) ||
+    message.targetWorldMinutes < 0
+  ) {
+    throw new Error('Rejected malformed offline world-clock target.');
+  }
+  if (
+    !pendingOfflineCatchUp ||
+    pendingOfflineCatchUp.worldEpoch !== message.worldEpoch ||
+    message.targetWorldMinutes > pendingOfflineCatchUp.targetWorldMinutes
+  ) {
+    pendingOfflineCatchUp = message;
+  }
 }
 
 self.addEventListener(
@@ -114,6 +168,16 @@ self.addEventListener(
         void sendCardinalConsole(request.requestId, true);
       } else {
         consoleChannel.postMessage(request);
+      }
+      return;
+    }
+    if (event.data.type === 'catch_up_world_time') {
+      try {
+        const message = event.data as OfflineClockCatchUpMessage;
+        applyOfflineCatchUp(message);
+        offlineClockChannel.postMessage(message);
+      } catch {
+        // Malformed wall-clock requests never enter canonical world time.
       }
       return;
     }
@@ -162,6 +226,18 @@ consoleChannel.addEventListener(
 resetChannel.addEventListener('message', (event: MessageEvent<{ type: 'reset_world' }>) => {
   if (event.data.type === 'reset_world' && activeRuntime) pendingWorldReset = true;
 });
+
+offlineClockChannel.addEventListener(
+  'message',
+  (event: MessageEvent<OfflineClockCatchUpMessage>) => {
+    if (event.data.type !== 'catch_up_world_time') return;
+    try {
+      applyOfflineCatchUp(event.data);
+    } catch {
+      // Cross-tab messages receive the same strict validation.
+    }
+  },
+);
 
 clockChannel.addEventListener(
   'message',
@@ -235,9 +311,95 @@ async function runForever(): Promise<void> {
     try {
       if (pendingWorldReset) {
         pendingWorldReset = false;
+        pendingOfflineCatchUp = undefined;
+        catchUpTracker = undefined;
         await runtime.resetWorld();
       }
-      const frame = await runtime.tick();
+      const beforeFrame = runtime.worldContinuityPosition();
+      let completedCatchUpThisLoop = false;
+      if (pendingOfflineCatchUp) {
+        if (pendingOfflineCatchUp.worldEpoch !== beforeFrame.worldEpoch) {
+          pendingOfflineCatchUp = undefined;
+          catchUpTracker = undefined;
+        } else {
+          const targetWorldMinutes = pendingOfflineCatchUp.targetWorldMinutes;
+          if (
+            targetWorldMinutes <=
+            beforeFrame.elapsedWorldMinutes + 1e-7
+          ) {
+            pendingOfflineCatchUp = undefined;
+            catchUpTracker = undefined;
+          } else {
+            if (
+              !catchUpTracker ||
+              catchUpTracker.worldEpoch !== pendingOfflineCatchUp.worldEpoch
+            ) {
+              catchUpTracker = {
+                worldEpoch: pendingOfflineCatchUp.worldEpoch,
+                startWorldMinutes: beforeFrame.elapsedWorldMinutes,
+                targetWorldMinutes,
+                startedRealMs: performance.now(),
+                semanticQuantaProcessed: 0,
+              };
+            } else {
+              catchUpTracker.targetWorldMinutes = Math.max(
+                catchUpTracker.targetWorldMinutes,
+                targetWorldMinutes,
+              );
+            }
+            const batch = await runtime.catchUpBatchTo(
+              catchUpTracker.targetWorldMinutes,
+            );
+            catchUpTracker.semanticQuantaProcessed +=
+              batch.semanticQuantaProcessed;
+            const elapsedRealMs = Math.max(
+              1,
+              performance.now() - catchUpTracker.startedRealMs,
+            );
+            const total = Math.max(
+              1,
+              catchUpTracker.targetWorldMinutes -
+                catchUpTracker.startWorldMinutes,
+            );
+            const processed = Math.max(
+              0,
+              batch.currentWorldMinutes - catchUpTracker.startWorldMinutes,
+            );
+            const percent = Math.max(0, Math.min(1, processed / total));
+            const estimatedRemainingMs =
+              processed <= 0
+                ? null
+                : Math.max(0, (elapsedRealMs / processed) * (total - processed));
+            const progressMessage = {
+              type: 'catch_up_progress',
+              protocolVersion: FRAME_PROTOCOL_VERSION,
+              worldEpoch: batch.worldEpoch,
+              fromWorldMinutes: catchUpTracker.startWorldMinutes,
+              currentWorldMinutes: batch.currentWorldMinutes,
+              targetWorldMinutes: catchUpTracker.targetWorldMinutes,
+              percent,
+              elapsedRealMs,
+              estimatedRemainingMs,
+              semanticQuantaProcessed: catchUpTracker.semanticQuantaProcessed,
+              completed: batch.completed,
+            } as const;
+            workerScope.postMessage(progressMessage);
+            frameChannel.postMessage(progressMessage);
+            if (!batch.completed) {
+              // Yield to clock/reset requests without paying the old 25 ms
+              // delay after every small chunk.
+              await sleep(0);
+              continue;
+            }
+            pendingOfflineCatchUp = undefined;
+            catchUpTracker = undefined;
+            completedCatchUpThisLoop = true;
+          }
+        }
+      }
+      const frame = await runtime.tick(
+        completedCatchUpThisLoop ? 0 : undefined,
+      );
       const message = {
         type: 'frame',
         protocolVersion: FRAME_PROTOCOL_VERSION,

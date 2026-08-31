@@ -172,7 +172,10 @@ export class InMemoryWorldStore implements WorldStore {
       const history = this.eventsByWorld.get(event.worldId) ?? [];
       history.push(event);
       this.eventsByWorld.set(event.worldId, history);
-      if (event.activeUntil !== undefined) {
+      if (
+        event.activeUntil !== undefined ||
+        event.activeUntilWorldMinutes !== undefined
+      ) {
         const signals = this.signalsByWorld.get(event.worldId) ?? [];
         signals.push(event);
         this.signalsByWorld.set(event.worldId, signals);
@@ -212,7 +215,9 @@ export class InMemoryWorldStore implements WorldStore {
     return {
       committed: true,
       duplicate: false,
-      state: structuredClone(nextState),
+      // batch.nextState remains owned by the caller; the store keeps the
+      // separate clone above as its durable projection.
+      state: batch.nextState,
       operation: structuredClone(operation),
     };
   }
@@ -248,17 +253,42 @@ export class InMemoryWorldStore implements WorldStore {
       .map((event) => structuredClone(event));
   }
 
-  async activeSignals(worldId: string, now: number): Promise<WorldEvent[]> {
+  async activeSignals(
+    worldId: string,
+    now: number,
+    worldMinutes?: number,
+  ): Promise<WorldEvent[]> {
     if (!Number.isFinite(now)) {
       throw new Error('WorldStore activeSignals time must be finite.');
+    }
+    if (
+      worldMinutes !== undefined &&
+      (!Number.isFinite(worldMinutes) || worldMinutes < 0)
+    ) {
+      throw new Error(
+        'WorldStore activeSignals worldMinutes must be finite and non-negative.',
+      );
     }
 
     return (this.signalsByWorld.get(worldId) ?? [])
       .filter(
-        (event) =>
-          event.occurredAt <= now &&
-          event.activeUntil !== undefined &&
-          event.activeUntil > now,
+        (event) => {
+          if (
+            worldMinutes !== undefined &&
+            event.occurredWorldMinutes !== undefined &&
+            event.activeUntilWorldMinutes !== undefined
+          ) {
+            return (
+              event.occurredWorldMinutes <= worldMinutes &&
+              event.activeUntilWorldMinutes > worldMinutes
+            );
+          }
+          return (
+            event.occurredAt <= now &&
+            event.activeUntil !== undefined &&
+            event.activeUntil > now
+          );
+        },
       )
       .map((event) => structuredClone(event));
   }

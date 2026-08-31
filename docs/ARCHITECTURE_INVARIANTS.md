@@ -140,11 +140,11 @@ These rules convert failures from the previous implementation into tests and str
 99. A Cardinal cycle uses only strictly earlier logical-time evaluations as prior research evidence, so an exact retry cannot count itself as a new observation.
 100. The bounded active research window has an explicit fingerprint; bounding a hot read is not permission to delete the historical records behind it.
 101. Prior evaluations contribute to current persistence reasoning only when Cardinal policy and sensor versions are compatible.
-102. A non-critical systemic condition normally produces `defer` until it persists across at least three compatible observations; one-tick noise must not automatically trigger intervention.
+102. A non-critical systemic condition normally produces `defer` until it persists across at least three compatible semantic observations; one-opportunity noise must not automatically trigger intervention.
 103. Critical-threshold bypass of the persistence window is explicit, policy-versioned and auditable.
 104. A continuing problem hypothesis keeps a stable hypothesis ID across consecutive compatible supporting observations; a broken support chain starts a new hypothesis.
 105. Every intervention proposal is bound to the exact hypothesis that justified it.
-106. Every intervention proposal contains a falsifiable prediction: target metric, direction, minimum improvement and bounded logical horizon.
+106. Every intervention proposal contains a falsifiable prediction: target metric, direction, minimum improvement and bounded canonical world-minute horizon.
 107. The independent gateway validates the serialized hypothesis/prediction contract at runtime and fails closed for malformed or unbounded predictions.
 108. Intervention outcome timing comes from the proposal's recorded prediction horizon rather than an unrelated hidden timer.
 109. Outcome evidence records the prediction metric, required improvement and actual observed delta.
@@ -166,7 +166,7 @@ These rules convert failures from the previous implementation into tests and str
 122. Cardinal records a machine-readable defer reason whenever it sees a qualifying problem but intentionally postpones action.
 123. `experiment_in_progress` means an earlier same-kind intervention is active or unresolved; it is not interchangeable with lack of evidence.
 124. A recent intervention-density autonomy budget limits repeated non-critical Cardinal action even when every individual proposal would otherwise qualify.
-125. In v0.3.6, three executed interventions inside a 16-tick autonomy window exhaust the non-critical budget until the window naturally washes out.
+125. In v0.3.15, three executed interventions inside the 129,600-world-minute (90-day) autonomy window exhaust the non-critical budget until the window naturally washes out.
 126. Critical conditions may explicitly override the intervention-density budget, but criticality does not silently permit overlap with an unresolved same-kind experiment.
 127. Cardinal's autonomy/dependency assessment is persisted inside the evaluation evidence and participates in stable evaluation identity.
 128. The Auditor reconstructs recent intervention density and in-progress tests independently from the append-only journal rather than trusting Cardinal's derived autonomy assessment.
@@ -274,7 +274,7 @@ These rules convert failures from the previous implementation into tests and str
 
 216. Calendar time, biological age, birth cooldowns and physiology consume one persisted elapsed-world-minute domain.
 217. A speed change is authorized only by the independent external clock gateway; Cardinal receives no clock capability.
-218. External acceleration may change the amount of world time per tick but may not skip world decisions, ecology, life events or evidence.
+218. External acceleration may change world minutes contributed by a worker frame but may not change the fixed semantic quantum or skip world decisions, ecology, life events or evidence.
 219. Strength, endurance, mobility and recovery are derived from age and health and causally affect action cost and effectiveness.
 220. Emotions remain persistent resident-owned consequences and influence choice without becoming Cardinal or UI commands.
 221. Deadly monsters arise only as world-owned populations in remote geography and may injure or kill through bounded encounters.
@@ -290,7 +290,7 @@ These rules convert failures from the previous implementation into tests and str
 228. v0.3 currently simulates only the surface layer. Dungeon and sky layers require later explicit world rules and migration.
 229. Land and reachable shore may be walked; open water is not walkable without an explicit bridge or boat route.
 230. Routes are persistent deterministic world projections with non-linear waypoints and traversal semantics.
-231. A traveller follows route waypoints over multiple ticks and another resident's interaction may not teleport or pull that traveller off the route.
+231. A traveller follows route waypoints over multiple semantic quanta and another resident's interaction may not teleport or pull that traveller off the route.
 232. Founding homes and civic buildings belong to a compact persisted settlement rather than a ring around the entire frontier.
 233. New villages and cities have persistent settlement identity, center, radius and member buildings.
 234. Map pan, button zoom, fit-to-view and pinch zoom change only rendering and never stored world geometry.
@@ -299,5 +299,44 @@ These rules convert failures from the previous implementation into tests and str
 237. Missing legacy detail is reported as missing; UI text may not invent old evidence, targets, before-values or gateway reasons.
 238. Opening a Cardinal record may highlight inferred affected geography, but the inference must be labeled by the record type and may not mutate the world.
 239. Append-only stream length and bounded range/tail reads are performance indexes, not permission to compact evidence.
-240. The live loop may keep bounded hot views and exact aggregate counters; it must not reload and clone complete Cardinal or world history on every tick.
+240. The live loop may keep bounded hot views and exact aggregate counters; it must not reload and clone complete Cardinal or world history on every worker frame.
 241. v0.3.12 migrates deployed v0.3.11 spatially without resetting people, generations, time, frontier, Cardinal evidence or RNG future.
+
+## Audit round 15 additions — canonical Cardinal world time
+
+242. One Ainkrad year is 525,600 world minutes and one semantic quantum is 8,760 world minutes.
+243. Technical ticks are ordering/idempotency coordinates and may not define Cardinal persistence, autonomy, cooldown, effect or outcome durations.
+244. CardinalCore and CardinalAuditor independently reconstruct the same 129,600-world-minute autonomy window.
+245. Intervention cooldown and authorized effect duration are persisted and enforced in canonical world minutes.
+246. Every modern prediction carries `horizonWorldMinutes`; the outcome scheduler is due only when that canonical horizon is reached.
+247. Modern timed research evidence must match the current world epoch, Cardinal policy, sensor and research versions and carry canonical world time.
+248. Tick-only legacy evidence remains historical evidence but cannot participate in current autonomy, persistence or outcome timing.
+249. Equal persisted Ainkrad time at `×1`, `×10` and `×100` must produce identical semantic opportunities and Cardinal decisions.
+250. Production UI displays Ainkrad time/durations, not technical tick numbers presented as elapsed time.
+251. Readable law/intervention reports, death diagnostics and world-health output are projections of committed evidence and never mutation paths.
+
+## Audit round 18 additions — lived civilization and Underworld direction
+
+252. Every release must make a measurable, tested step toward autonomous Underworld behavior; a larger data dump or decorative skin alone is not progress.
+253. Visual evolution proceeds through explicit surface, layer and geometry migrations from 2D toward 3D; rendering may not claim a causal dimension absent from world state.
+254. A stored material or meal exists only after physical production, hunting, transfer, trade or conquest. Time, UI and Cardinal may not fabricate settlement stock.
+255. Renewable ecology may recover naturally, but renewable base and stored stock remain different quantities.
+256. An action that requires a field, source, workshop, sacred place or target executes only after the resident physically reaches a compatible place.
+257. Starting a route persists an interruptible resident intention and never applies the destination action remotely.
+258. A resident may continue or abandon that intention after arrival according to changed needs, fatigue, danger and choice.
+259. Livelihood is a bounded summary of repeated lived practice and vocational fit; Cardinal, UI and settlement quotas may not assign it.
+260. Residents may change livelihood when another repeatedly lived path becomes more important; old practice remains evidence rather than a permanent caste.
+261. Safe productive participation begins at race-appropriate youth capability, while hazardous work, hunting and adult intimacy keep stricter physical gates.
+262. Satiety is persistent resident evidence and food consumption drains reachable personal or local stock; shared stores do not teleport to travellers.
+263. Prosperity does not disable frontier agency. Curiosity, freedom, ambition, crowding, scarcity and long absence from the frontier may independently motivate travel.
+264. Frontier appraisal considers only discovered reachable land. Expedition volunteers choose independently, travel physically and reconsider settlement at camp.
+265. Prior voluntary expedition commitment may influence the camp decision but may not prevent refusal due to stress, exhaustion, injury or danger.
+266. Settlement founding, abandonment, ruin, return and occupation are persistent evidence-bearing transitions, not map decoration.
+267. Territorial monsters react only to residents physically present in their habitat; a destination or unfinished route is not physical presence.
+268. Russian speech and Cyrillic literacy grow through conversations, teaching and writing evidence; migration may not invent a language history.
+269. Observer-visible dialogue must quote persisted utterance/reply evidence and may not generate retrospective NPC speech for presentation.
+270. Cardinal may observe aggregate satiety, mobility, profession diversity and action balance, but gains no resident mind, action, profession or language writer.
+271. Closed-tab catch-up executes every semantic quantum and may batch only commits, observations and rendering; progress/ETA is presentation, not simulated time.
+272. Catch-up targets are absolute and epoch-scoped, making exact retries idempotent and preventing duplicate tabs from double-advancing time.
+273. Player-entry types remain dormant until a later explicit migration and independent gateway activation; Cardinal cannot authenticate, embody or steer the future player.
+274. Original strategy-style visual hierarchy may improve readability, but proprietary assets/code are not copied and graphics never become an NPC controller.

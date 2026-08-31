@@ -20,7 +20,9 @@ describe('Independent intervention gateway', () => {
   it('executes allowed proposals and blocks a different rapid proposal', async () => {
     const world = await makeWorld();
     await world.step(10);
-    const gateway = new IndependentInterventionGateway(world, { minInterval: 5 });
+    const gateway = new IndependentInterventionGateway(world, {
+      minIntervalWorldMinutes: 43_800,
+    });
     const firstProposal = {
       proposalId: 'proposal_1',
       worldId: 'world_1',
@@ -33,7 +35,7 @@ describe('Independent intervention gateway', () => {
         metric: 'resourcePressure' as const,
         direction: 'decrease' as const,
         minimumImprovement: 0.01,
-        horizon: 4,
+        horizonWorldMinutes: 35_040,
         statement: 'resource pressure should decrease',
       },
     };
@@ -43,7 +45,7 @@ describe('Independent intervention gateway', () => {
     const second = await gateway.execute('evaluation_2', secondProposal, world.snapshot(), 10);
 
     expect(first.executed).toBe(true);
-    expect(first.authorizedEffectDuration).toBe(8);
+    expect(first.authorizedEffectDurationWorldMinutes).toBe(70_080);
     expect(second.executed).toBe(false);
     expect(second.authorized).toBe(false);
   });
@@ -64,7 +66,7 @@ describe('Independent intervention gateway', () => {
         metric: 'resourcePressure' as const,
         direction: 'decrease' as const,
         minimumImprovement: 0.01,
-        horizon: 4,
+        horizonWorldMinutes: 35_040,
         statement: 'resource pressure should decrease',
       },
     };
@@ -96,7 +98,7 @@ describe('Independent intervention gateway', () => {
         metric: 'resourcePressure' as const,
         direction: 'decrease' as const,
         minimumImprovement: 0.01,
-        horizon: 4,
+        horizonWorldMinutes: 35_040,
         statement: 'resource pressure should decrease',
       },
     };
@@ -130,7 +132,7 @@ describe('Independent intervention gateway', () => {
         metric: 'wildlifePressure' as const,
         direction: 'decrease' as const,
         minimumImprovement: 0.01,
-        horizon: 4,
+        horizonWorldMinutes: 35_040,
         statement: 'wildlife pressure should decrease',
       },
     };

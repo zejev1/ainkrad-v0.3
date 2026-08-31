@@ -4,8 +4,9 @@ import type { CardinalMetrics, SensorSnapshot } from '../sensors/types';
 import type { CardinalAuditContext } from './CardinalAuditContext';
 import {
   CARDINAL_AUTONOMY_MAX_RECENT_INTERVENTIONS,
-  CARDINAL_AUTONOMY_WINDOW,
 } from './CardinalResearch';
+import { assessAutonomyByWorldTime } from '../v15/CardinalWorldTimeAdapter';
+import { isCanonicalWorldMinutes } from '../v15/WorldTimeContract';
 import type {
   AuditRecord,
   CardinalEvaluation,
@@ -41,8 +42,11 @@ export class CardinalAuditor {
       independentObservationMatched =
         independentObservation.sensorVersion === evaluation.sensorVersion &&
         independentObservation.worldId === evaluation.worldId &&
+        independentObservation.worldEpoch === evaluation.worldEpoch &&
         independentObservation.worldRevision === evaluation.observedWorldRevision &&
         independentObservation.observedAt === evaluation.evaluatedAt &&
+        independentObservation.observedWorldMinutes ===
+          evaluation.evaluatedWorldMinutes &&
         stableJsonStringify(independentObservation.metrics) ===
           stableJsonStringify(evaluation.metrics) &&
         stableJsonStringify(independentObservation.evidenceEventIds) ===
@@ -103,8 +107,10 @@ export class CardinalAuditor {
       if (
         !Number.isFinite(evaluation.proposal.prediction.minimumImprovement) ||
         evaluation.proposal.prediction.minimumImprovement < 0 ||
-        !Number.isInteger(evaluation.proposal.prediction.horizon) ||
-        evaluation.proposal.prediction.horizon < 1
+        !isCanonicalWorldMinutes(
+          evaluation.proposal.prediction.horizonWorldMinutes,
+        ) ||
+        evaluation.proposal.prediction.horizonWorldMinutes < 1
       ) {
         concerns.push('Intervention proposal does not contain a valid falsifiable prediction.');
       }
@@ -157,8 +163,10 @@ export class CardinalAuditor {
       for (const priorIntervention of auditContext.priorInterventions) {
         if (
           priorIntervention.executed &&
-          (!Number.isFinite(priorIntervention.authorizedEffectDuration) ||
-            priorIntervention.authorizedEffectDuration < 1)
+          (!isCanonicalWorldMinutes(
+            priorIntervention.authorizedEffectDurationWorldMinutes,
+          ) ||
+            priorIntervention.authorizedEffectDurationWorldMinutes < 1)
         ) {
           concerns.push(
             `Auditor history intervention ${priorIntervention.interventionId} lacks a valid authorized effect duration.`,
@@ -215,10 +223,19 @@ export class CardinalAuditor {
         concerns.push('Intervention is missing its gateway policy version.');
       }
       if (
-        !Number.isFinite(intervention.authorizedEffectDuration) ||
-        intervention.authorizedEffectDuration < 1
+        !isCanonicalWorldMinutes(
+          intervention.authorizedEffectDurationWorldMinutes,
+        ) ||
+        intervention.authorizedEffectDurationWorldMinutes < 1
       ) {
-        concerns.push('Intervention is missing a valid authorized effect duration.');
+        concerns.push(
+          'Intervention is missing a valid authorized world-minute effect duration.',
+        );
+      }
+      if (!isCanonicalWorldMinutes(intervention.requestedWorldMinutes)) {
+        concerns.push(
+          'Intervention is missing its canonical requested world time.',
+        );
       }
       if (intervention.observedWorldRevision !== evaluation.observedWorldRevision) {
         concerns.push('Gateway intervention was bound to a different observed world revision.');
@@ -244,7 +261,9 @@ export class CardinalAuditor {
         interventionId: intervention?.interventionId,
       }),
       worldId: evaluation.worldId,
+      worldEpoch: evaluation.worldEpoch,
       auditedAt: now,
+      auditedWorldMinutes: evaluation.evaluatedWorldMinutes,
       stage: 'decision',
       evaluationId: evaluation.evaluationId,
       interventionId: intervention?.interventionId,
@@ -291,61 +310,28 @@ export class CardinalAuditor {
     const proposalKind = this.interventionKindForProblem(
       evaluation.detectedProblem!.kind,
     );
-    const resolved = new Set(
-      context.priorOutcomes.map((outcome) => outcome.interventionId),
-    );
-    const executed = context.priorInterventions.filter(
-      (intervention) =>
-        intervention.executed &&
-        intervention.requestedAt < evaluation.evaluatedAt,
-    );
-    const recent = executed.filter(
-      (intervention) =>
-        evaluation.evaluatedAt - intervention.requestedAt <=
-        CARDINAL_AUTONOMY_WINDOW,
-    );
-    const activeOrUnresolved = executed.filter((intervention) => {
-      const effectDuration =
-        Number.isFinite(intervention.authorizedEffectDuration) &&
-        intervention.authorizedEffectDuration >= 1
-          ? intervention.authorizedEffectDuration
-          : Number.POSITIVE_INFINITY;
-      const washout = Math.max(
-        effectDuration,
-        intervention.proposal.prediction.horizon,
-      );
-      return (
-        !resolved.has(intervention.interventionId) ||
-        intervention.requestedAt + washout > evaluation.evaluatedAt
-      );
-    });
-    const sameKind = activeOrUnresolved.filter(
-      (intervention) => intervention.proposal.kind === proposalKind,
-    );
-    const density = Math.max(
-      0,
-      Math.min(1, recent.length / CARDINAL_AUTONOMY_MAX_RECENT_INTERVENTIONS),
+    const assessment = assessAutonomyByWorldTime(
+      proposalKind,
+      {
+        observedAtTick: evaluation.evaluatedAt,
+        observedWorldMinutes: evaluation.evaluatedWorldMinutes,
+      },
+      context.priorInterventions,
+      context.priorOutcomes,
+      CARDINAL_AUTONOMY_MAX_RECENT_INTERVENTIONS,
     );
 
     return {
-      window: CARDINAL_AUTONOMY_WINDOW,
-      recentExecutedInterventionIds: recent.map(
-        (intervention) => intervention.interventionId,
-      ),
-      activeOrUnresolvedInterventionIds: activeOrUnresolved.map(
-        (intervention) => intervention.interventionId,
-      ),
-      activeOrUnresolvedSameKindIds: sameKind.map(
-        (intervention) => intervention.interventionId,
-      ),
-      interventionDensity: density,
-      dependencyRisk: density,
-      budgetStatus:
-        recent.length >= CARDINAL_AUTONOMY_MAX_RECENT_INTERVENTIONS
-          ? 'exhausted'
-          : recent.length === CARDINAL_AUTONOMY_MAX_RECENT_INTERVENTIONS - 1
-            ? 'caution'
-            : 'open',
+      windowWorldMinutes: assessment.windowWorldMinutes,
+      recentExecutedInterventionIds:
+        assessment.recentExecutedInterventionIds,
+      activeOrUnresolvedInterventionIds:
+        assessment.activeOrUnresolvedInterventionIds,
+      activeOrUnresolvedSameKindIds:
+        assessment.activeOrUnresolvedSameKindIds,
+      interventionDensity: assessment.interventionDensity,
+      dependencyRisk: assessment.dependencyRisk,
+      budgetStatus: assessment.budgetStatus,
     };
   }
 
@@ -394,6 +380,7 @@ export class CardinalAuditor {
       outcomeId: createStableId('outcome', {
         interventionId: intervention.interventionId,
         observedAt: now,
+        observedWorldMinutes: afterObservation.observedWorldMinutes,
         afterWorldRevision: afterObservation.worldRevision,
         sensorVersion: afterObservation.sensorVersion,
         prediction,
@@ -401,7 +388,11 @@ export class CardinalAuditor {
       worldId: evaluation.worldId,
       interventionId: intervention.interventionId,
       evaluationId: evaluation.evaluationId,
+      worldEpoch: evaluation.worldEpoch,
+      policyVersion: evaluation.policyVersion,
+      researchVersion: evaluation.researchVersion,
       observedAt: now,
+      observedWorldMinutes: afterObservation.observedWorldMinutes,
       sensorVersion: afterObservation.sensorVersion,
       beforeWorldRevision: evaluation.observedWorldRevision,
       afterWorldRevision: afterObservation.worldRevision,
@@ -452,7 +443,9 @@ export class CardinalAuditor {
         outcomeId: outcome.outcomeId,
       }),
       worldId: evaluation.worldId,
+      worldEpoch: evaluation.worldEpoch,
       auditedAt: now,
+      auditedWorldMinutes: outcome.observedWorldMinutes,
       stage: 'outcome',
       evaluationId: evaluation.evaluationId,
       interventionId: outcome.interventionId,

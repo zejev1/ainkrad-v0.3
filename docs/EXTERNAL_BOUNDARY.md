@@ -29,4 +29,4 @@ Any gateway capable of executing a real-world action must be architecturally ind
 
 The simulation `IndependentInterventionGateway` is a different boundary: it controls changes to the simulated Ainkrad world. It must not be confused with permission to act on the real external world.
 
-`IndependentWorldClockGateway` is another separate boundary. It accepts only known time presets and the bounded `x1`/`x10` multiplier. Cardinal has no reference to this gateway and cannot accelerate, slow or pause the world. Clock control therefore remains an observer/operator decision outside Cardinal's learned world authority.
+`IndependentWorldClockGateway` is another separate boundary. It accepts only known time presets and the bounded `×1`/`×10`/`×100` multiplier. Cardinal has no reference to this gateway and cannot accelerate, slow or pause the world. Clock control therefore remains an observer/operator decision outside Cardinal's learned world authority. The runtime converts every setting into canonical world minutes and crosses the same fixed semantic boundaries at equal Ainkrad time.

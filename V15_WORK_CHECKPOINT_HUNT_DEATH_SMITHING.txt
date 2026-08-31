@@ -1,0 +1,26 @@
+AINKRAD v15 FULL WORK CHECKPOINT
+Date: 2026-08-24 08:52 Asia/Jerusalem
+
+FULL v0.3.14 project base + preserved manual working-tree edits.
+
+Completed in real WorldEngine:
+- v15 persistent state / migration / New World reset
+- hidden automatic recovery cohort removed
+- x1/x10/x100 clock-control type support
+- real-action learning: Genesis + voluntary ordinary teaching + practice
+- voluntary family decision chain + independent child family traits
+- renewable resource base + stored resources
+- gather tied to renewable harvest
+- survival action selection remains probabilistic
+- ordinary founder smith + workshop teaching/practice/crafting/innovation
+- real weapon items/equipment
+- planned hunting uses advisory risk/free choice/weapon preparation
+- territorial monster encounters use voluntary fight/flee
+- weapons reduce but never eliminate damage/lethal risk
+- detailed pre-death telemetry persisted and emitted
+
+Validation at checkpoint:
+- npm run typecheck: PASS
+- Vitest dependency is not locally installed, so no false claim of npm test.
+
+NOT FINAL RELEASE. Next: WorldState v15 invariants + canonical simulation clock integration.

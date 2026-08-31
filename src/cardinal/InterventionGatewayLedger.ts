@@ -13,7 +13,9 @@ export interface GatewayLedgerEntry {
   evaluationId: string;
   proposalFingerprint: string;
   expectedWorldRevision: number;
-  effectDuration: number;
+  effectDurationWorldMinutes?: number;
+  /** Legacy tick-only ledger field, retained as historical evidence only. */
+  effectDuration?: number;
   gatewayPolicyVersion: string;
   phase: GatewayLedgerPhase;
   record: InterventionRecord;
@@ -24,7 +26,7 @@ export interface InterventionGatewayLedger {
   begin(entry: GatewayLedgerEntry): Promise<GatewayLedgerEntry>;
   finalize(entry: GatewayLedgerEntry): Promise<GatewayLedgerEntry>;
   entries(worldId: string): Promise<GatewayLedgerEntry[]>;
-  lastExecutedAt(worldId: string): Promise<number | undefined>;
+  lastExecutedWorldMinutes(worldId: string): Promise<number | undefined>;
 }
 
 function key(worldId: string, proposalId: string): string {
@@ -44,8 +46,15 @@ function assertEntryShape(entry: GatewayLedgerEntry): void {
   if (!Number.isInteger(entry.expectedWorldRevision) || entry.expectedWorldRevision < 0) {
     throw new Error('Gateway ledger expectedWorldRevision must be a non-negative integer.');
   }
-  if (!Number.isFinite(entry.effectDuration) || entry.effectDuration < 1) {
-    throw new Error('Gateway ledger effectDuration must be finite and at least 1.');
+  const hasCanonicalDuration =
+    Number.isFinite(entry.effectDurationWorldMinutes) &&
+    (entry.effectDurationWorldMinutes ?? 0) >= 1;
+  const hasLegacyDuration =
+    Number.isFinite(entry.effectDuration) && (entry.effectDuration ?? 0) >= 1;
+  if (!hasCanonicalDuration && !hasLegacyDuration) {
+    throw new Error(
+      'Gateway ledger duration must contain canonical world minutes or a legacy tick value.',
+    );
   }
   if (
     entry.record.worldId !== entry.worldId ||
@@ -53,7 +62,10 @@ function assertEntryShape(entry: GatewayLedgerEntry): void {
     entry.record.proposal.proposalId !== entry.proposalId ||
     entry.record.observedWorldRevision !== entry.expectedWorldRevision ||
     entry.record.gatewayPolicyVersion !== entry.gatewayPolicyVersion ||
-    entry.record.authorizedEffectDuration !== entry.effectDuration
+    (hasCanonicalDuration
+      ? entry.record.authorizedEffectDurationWorldMinutes !==
+        entry.effectDurationWorldMinutes
+      : entry.record.authorizedEffectDuration !== entry.effectDuration)
   ) {
     throw new Error('Gateway ledger entry does not match its intervention record.');
   }
@@ -106,6 +118,8 @@ function assertTransition(existing: GatewayLedgerEntry, incoming: GatewayLedgerE
     existing.evaluationId !== incoming.evaluationId ||
     existing.proposalFingerprint !== incoming.proposalFingerprint ||
     existing.expectedWorldRevision !== incoming.expectedWorldRevision ||
+    existing.effectDurationWorldMinutes !==
+      incoming.effectDurationWorldMinutes ||
     existing.effectDuration !== incoming.effectDuration ||
     existing.gatewayPolicyVersion !== incoming.gatewayPolicyVersion
   ) {
@@ -147,13 +161,20 @@ export class InMemoryInterventionGatewayLedger implements InterventionGatewayLed
       .map((entry) => structuredClone(entry));
   }
 
-  async lastExecutedAt(worldId: string): Promise<number | undefined> {
+  async lastExecutedWorldMinutes(
+    worldId: string,
+  ): Promise<number | undefined> {
     const executed = (await this.entries(worldId)).filter(
-      (entry) => entry.phase === 'final' && entry.record.executed,
+      (entry) =>
+        entry.phase === 'final' &&
+        entry.record.executed &&
+        Number.isFinite(entry.record.requestedWorldMinutes),
     );
     return executed.length === 0
       ? undefined
-      : Math.max(...executed.map((entry) => entry.record.requestedAt));
+      : Math.max(
+          ...executed.map((entry) => entry.record.requestedWorldMinutes),
+        );
   }
 
   private put(entry: GatewayLedgerEntry): GatewayLedgerEntry {
@@ -255,13 +276,20 @@ export class LogBackedInterventionGatewayLedger implements InterventionGatewayLe
     );
   }
 
-  async lastExecutedAt(worldId: string): Promise<number | undefined> {
+  async lastExecutedWorldMinutes(
+    worldId: string,
+  ): Promise<number | undefined> {
     const executed = (await this.entries(worldId)).filter(
-      (entry) => entry.phase === 'final' && entry.record.executed,
+      (entry) =>
+        entry.phase === 'final' &&
+        entry.record.executed &&
+        Number.isFinite(entry.record.requestedWorldMinutes),
     );
     return executed.length === 0
       ? undefined
-      : Math.max(...executed.map((entry) => entry.record.requestedAt));
+      : Math.max(
+          ...executed.map((entry) => entry.record.requestedWorldMinutes),
+        );
   }
 
   private async appendTransition(entry: GatewayLedgerEntry): Promise<GatewayLedgerEntry> {

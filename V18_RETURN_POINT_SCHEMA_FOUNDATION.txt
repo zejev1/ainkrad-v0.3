@@ -1,0 +1,46 @@
+AINKRAD v0.3.18 DEVELOPMENT RETURN POINT — SCHEMA FOUNDATION
+Date: 2026-08-28 UTC
+Status: first risky block complete; continue implementation from this tree
+
+SOURCE AUTHORITY
+- Git parent: 14ca75712d0e996aec71ae7be47382426533dbb7
+  (`fix(v0.3.17): restore continuous world time and physical ecology`).
+- GitHub and Vercel remain read-only for the assistant. The user alone commits
+  and pushes through SPCK. No Convex dependency or credential is permitted.
+- Preserve the v15/v16/v17 autonomous-world logic and Cardinal experience.
+
+COMPLETED IN THIS CHECKPOINT
+- Added a modular v18 state contract for learned Russian/Cyrillic capability,
+  bounded truthful conversation evidence, settlement lifecycle evidence and
+  voluntary frontier-expedition state.
+- Added a dormant player-entry contract only. Production entry, controls,
+  authentication and Cardinal avatar control are explicitly disabled.
+- Added an atomic v16 -> v18 migration. It preserves canonical time, residents,
+  minds, relations, places, v15/v16 projections and RNG state; it fabricates no
+  historical conversations.
+- Added idempotent same-version v18 additive repair for interrupted/partial
+  saves and strict v18 validation.
+- Kept the older migration ladder explicit: legacy -> v16 repair -> v18.
+
+VERIFIED AT THIS POINT
+- TypeScript: PASS.
+- v18 migration/dormant-entry regression: 2/2 PASS.
+- git diff whitespace audit: PASS.
+
+NEXT WORK FROM THIS POINT
+1. Connect lived Russian conversations and Cyrillic learning to resident
+   choices; expose only genuinely audible conversations at normal speed.
+2. Replace settlement-count scheduling with voluntary site appraisal,
+   expeditions, founding, return, abandonment/ruins and voluntary conquest
+   outcomes.
+3. Add an original readable settlement view: smaller resident scale, distinct
+   streets/buildings, deterministic selection priority and mobile text scale.
+4. Expand Cardinal's read-only observation surface without adding resident or
+   player authority.
+5. Run migration, autonomy, long-run, browser and release audits; pause for the
+   required final 30-second user window before packaging the SPCK ZIP.
+
+DO NOT CLAIM
+- This checkpoint is not a release and not ready for SPCK push.
+- Player entry is not implemented or enabled.
+- Conversations, expeditions and final city UI are not connected yet.

@@ -14,9 +14,22 @@ import type {
   WorldState,
 } from '../world/types';
 import type { CardinalExperienceState } from './types';
+import {
+  CANONICAL_WORLD_QUANTUM_MINUTES,
+  isCanonicalWorldMinutes,
+} from '../v15/WorldTimeContract';
 
 export const WORLD_AUTHORITY_GATEWAY_POLICY_VERSION =
-  'ainkrad-world-authority-gateway-0.3.14';
+  'ainkrad-world-authority-gateway-0.3.15';
+
+export const WORLD_AUTHORITY_COOLDOWN_WORLD_MINUTES =
+  48 * CANONICAL_WORLD_QUANTUM_MINUTES;
+export const WORLD_LIFECYCLE_OBSERVATION_WINDOW_WORLD_MINUTES =
+  48 * CANONICAL_WORLD_QUANTUM_MINUTES;
+export const WORLD_FRONTIER_DORMANCY_WORLD_MINUTES =
+  96 * CANONICAL_WORLD_QUANTUM_MINUTES;
+export const MAX_CATASTROPHE_DURATION_WORLD_MINUTES =
+  96 * CANONICAL_WORLD_QUANTUM_MINUTES;
 
 export type CardinalCatastropheKind =
   | 'wildfire'
@@ -29,6 +42,7 @@ interface WorldAuthorityProposalBase {
   proposalId: string;
   worldId: string;
   proposedAt: number;
+  proposedWorldMinutes: number;
   necessity: number;
   reason: string;
   expectedOutcome: string;
@@ -52,7 +66,7 @@ export interface CardinalCatastropheProposal
   magnitude: number;
   predictedCasualtyRatio: number;
   recoveryPlan: string;
-  duration: number;
+  durationWorldMinutes: number;
   scope: 'systemic';
 }
 
@@ -75,17 +89,21 @@ export interface WorldArchitectureObservation {
   worldId: string;
   worldRevision: number;
   observedAt: number;
+  observedWorldMinutes: number;
   growth: WorldGrowthState;
   livingPopulation: number;
   sapientPopulation: number;
   raceDiversity: number;
   reproductivePairPotential: number;
   lastHumanBirthAt?: number;
+  lastHumanBirthWorldMinutes?: number;
   totalBirths: number;
   totalDeaths: number;
   lastBirthAt?: number;
+  lastBirthWorldMinutes?: number;
   laws: Record<string, WorldLawState>;
   lastCardinalAuthorityAt?: number;
+  lastCardinalAuthorityWorldMinutes?: number;
 }
 
 export function observeWorldArchitecture(
@@ -95,6 +113,7 @@ export function observeWorldArchitecture(
     worldId: world.id,
     worldRevision: world.revision,
     observedAt: world.now,
+    observedWorldMinutes: world.calendar.elapsedWorldMinutes,
     growth: world.growth,
     livingPopulation: Object.values(world.agents).filter(
       (agent) => agent.life.alive && (agent.race ?? 'human') === 'human',
@@ -138,17 +157,32 @@ export function observeWorldArchitecture(
         .filter((value) => Number.isFinite(value));
       return born.length === 0 ? {} : { lastHumanBirthAt: Math.max(...born) };
     })(),
+    ...(world.population.lastBirthWorldMinute === undefined
+      ? {}
+      : {
+          lastHumanBirthWorldMinutes:
+            world.population.lastBirthWorldMinute,
+        }),
     totalBirths: world.population.births,
     totalDeaths: world.population.deaths,
     ...(world.population.lastBirthAt === undefined
       ? {}
       : { lastBirthAt: world.population.lastBirthAt }),
+    ...(world.population.lastBirthWorldMinute === undefined
+      ? {}
+      : { lastBirthWorldMinutes: world.population.lastBirthWorldMinute }),
     laws: world.governance.laws,
     ...(world.governance.lastCardinalAuthorityAt === undefined
       ? {}
       : {
           lastCardinalAuthorityAt:
             world.governance.lastCardinalAuthorityAt,
+        }),
+    ...(world.governance.lastCardinalAuthorityWorldMinutes === undefined
+      ? {}
+      : {
+          lastCardinalAuthorityWorldMinutes:
+            world.governance.lastCardinalAuthorityWorldMinutes,
         }),
   });
 }
@@ -175,7 +209,7 @@ export interface WorldAuthorityTarget {
     maxCasualtyRatio: number,
     recoveryPlan: string,
     now: number,
-    duration: number,
+    durationWorldMinutes: number,
     operationId: string,
     expectedWorldRevision: number,
   ): Promise<WorldMutationResult>;
@@ -215,9 +249,13 @@ export class IndependentWorldAuthorityGateway {
 
   constructor(
     private readonly target: WorldAuthorityTarget,
-    private readonly minimumInterval = 48,
+    private readonly minimumIntervalWorldMinutes =
+      WORLD_AUTHORITY_COOLDOWN_WORLD_MINUTES,
   ) {
-    if (!Number.isFinite(minimumInterval) || minimumInterval < 0) {
+    if (
+      !Number.isFinite(minimumIntervalWorldMinutes) ||
+      minimumIntervalWorldMinutes < 0
+    ) {
       throw new Error('World authority cooldown must be non-negative.');
     }
   }
@@ -254,7 +292,7 @@ export class IndependentWorldAuthorityGateway {
               proposal.predictedCasualtyRatio,
               proposal.recoveryPlan,
               proposal.proposedAt,
-              proposal.duration,
+              proposal.durationWorldMinutes,
               proposal.proposalId,
               expectedWorld.revision,
             );
@@ -299,6 +337,13 @@ export class IndependentWorldAuthorityGateway {
     if (proposal.proposedAt !== expectedWorld.now) {
       return 'Proposal time does not match the observed world.';
     }
+    if (
+      !isCanonicalWorldMinutes(proposal.proposedWorldMinutes) ||
+      proposal.proposedWorldMinutes !==
+        expectedWorld.calendar.elapsedWorldMinutes
+    ) {
+      return 'Proposal canonical world time does not match the observed world.';
+    }
     if (stableJsonStringify(actual) !== stableJsonStringify(expectedWorld)) {
       return 'World changed after the authority proposal was prepared.';
     }
@@ -339,9 +384,12 @@ export class IndependentWorldAuthorityGateway {
         ) < 1);
 
     if (
-      expectedWorld.governance.lastCardinalAuthorityAt !== undefined &&
-      proposal.proposedAt - expectedWorld.governance.lastCardinalAuthorityAt <
-        this.minimumInterval &&
+      isCanonicalWorldMinutes(
+        expectedWorld.governance.lastCardinalAuthorityWorldMinutes,
+      ) &&
+      proposal.proposedWorldMinutes -
+        expectedWorld.governance.lastCardinalAuthorityWorldMinutes <
+        this.minimumIntervalWorldMinutes &&
       !emergencyDemographicAuthority
     ) {
       return 'World authority cooldown preserves time for autonomous adaptation.';
@@ -413,9 +461,10 @@ export class IndependentWorldAuthorityGateway {
       !Number.isFinite(proposal.predictedCasualtyRatio) ||
       proposal.predictedCasualtyRatio < 0 ||
       proposal.predictedCasualtyRatio > 0.18 ||
-      !Number.isInteger(proposal.duration) ||
-      proposal.duration < 1 ||
-      proposal.duration > 96
+      !isCanonicalWorldMinutes(proposal.durationWorldMinutes) ||
+      proposal.durationWorldMinutes < 1 ||
+      proposal.durationWorldMinutes >
+        MAX_CATASTROPHE_DURATION_WORLD_MINUTES
     ) {
       return 'Catastrophe exceeds magnitude, casualty or duration limits.';
     }
@@ -476,7 +525,10 @@ export class CardinalWorldArchitect {
     if (!demographicEmergency && evidenceEventIds.length < 3) return undefined;
     const fertilityLaw = world.laws.fertility_support;
     const birthDormancy =
-      world.observedAt - (world.lastHumanBirthAt ?? world.lastBirthAt ?? 0);
+      world.observedWorldMinutes -
+      (world.lastHumanBirthWorldMinutes ??
+        world.lastBirthWorldMinutes ??
+        world.observedWorldMinutes);
 
     if (
       fertilityLaw &&
@@ -484,7 +536,8 @@ export class CardinalWorldArchitect {
       fertilityLaw.value < (demographicEmergency ? 0.96 : 0.82) &&
       (demographicEmergency ||
         ((living < 100 || world.reproductivePairPotential < 2) &&
-          birthDormancy >= WORLD_LIFECYCLE_OBSERVATION_WINDOW))
+          birthDormancy >=
+            WORLD_LIFECYCLE_OBSERVATION_WINDOW_WORLD_MINUTES))
     ) {
       return this.ruleProposal(
         world,
@@ -512,8 +565,15 @@ export class CardinalWorldArchitect {
     if (!canDesignWorldRules) return undefined;
 
     const frontierLaw = world.laws.frontier_expansion_rate;
-    const frontierDormancy = world.observedAt - world.growth.lastExpansionAt;
-    if (frontierLaw && frontierDormancy >= 96 && frontierLaw.value < 2.1) {
+    const frontierDormancy =
+      world.observedWorldMinutes -
+      (world.growth.lastExpansionWorldMinutes ??
+        world.observedWorldMinutes);
+    if (
+      frontierLaw &&
+      frontierDormancy >= WORLD_FRONTIER_DORMANCY_WORLD_MINUTES &&
+      frontierLaw.value < 2.1
+    ) {
       const value = Math.min(frontierLaw.maximum, frontierLaw.value + 0.12);
       return this.ruleProposal(
         world, frontierLaw.id, frontierLaw.domain, frontierLaw.mechanism, value,
@@ -550,6 +610,7 @@ export class CardinalWorldArchitect {
       }),
       worldId: world.worldId,
       proposedAt: world.observedAt,
+      proposedWorldMinutes: world.observedWorldMinutes,
       necessity,
       reason,
       expectedOutcome,
@@ -564,5 +625,3 @@ export class CardinalWorldArchitect {
     };
   }
 }
-
-const WORLD_LIFECYCLE_OBSERVATION_WINDOW = 48;

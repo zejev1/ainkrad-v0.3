@@ -7,8 +7,10 @@ import type { SensorSnapshot } from '../src/sensors/types';
 const observation: SensorSnapshot = {
   sensorVersion: 'ainkrad-world-sensors-0.3.3',
   worldId: 'world_journal_restart',
+  worldEpoch: 1,
   worldRevision: 4,
   observedAt: 12,
+  observedWorldMinutes: 105_120,
   metrics: {
     populationActivity: 0.2,
     averageStress: 0.3,
@@ -56,7 +58,12 @@ describe('Log-backed Cardinal journal', () => {
     const second = new LogBackedCardinalJournal(log);
 
     const a = new CardinalCore().evaluate('observer', observation);
-    const bObservation = { ...observation, worldRevision: 5, observedAt: 13 };
+    const bObservation = {
+      ...observation,
+      worldRevision: 5,
+      observedAt: 13,
+      observedWorldMinutes: 113_880,
+    };
     const b = new CardinalCore().evaluate('observer', bObservation);
 
     await Promise.all([

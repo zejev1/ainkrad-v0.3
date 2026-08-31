@@ -1,11 +1,15 @@
 import type { EventReader } from '../world/events';
+import type { WorldEvent } from '../world/events';
 import type { WorldState } from '../world/types';
 import type { CardinalMetrics, SensorSnapshot } from './types';
+import { CANONICAL_WORLD_QUANTUM_MINUTES } from '../v15/WorldTimeContract';
 
-export const WORLD_SENSOR_VERSION = 'ainkrad-world-sensors-0.3.14';
+export const WORLD_SENSOR_VERSION = 'ainkrad-world-sensors-0.3.18';
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const SOCIAL_CONTACT_WINDOW = 8;
+const SOCIAL_CONTACT_WINDOW_WORLD_MINUTES =
+  SOCIAL_CONTACT_WINDOW * CANONICAL_WORLD_QUANTUM_MINUTES;
 const SENSOR_EVENT_READ_LIMIT = 256;
 
 function standardDeviation(values: number[]): number {
@@ -17,6 +21,22 @@ function standardDeviation(values: number[]): number {
   const variance =
     values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length;
   return Math.sqrt(variance);
+}
+
+function occurredWithinWorldWindow(
+  event: Readonly<WorldEvent>,
+  currentWorldMinutes: number,
+  windowWorldMinutes: number,
+  legacyCurrentTick: number,
+  legacyTickWindow: number,
+): boolean {
+  if (event.occurredWorldMinutes !== undefined) {
+    return (
+      event.occurredWorldMinutes <= currentWorldMinutes &&
+      currentWorldMinutes - event.occurredWorldMinutes <= windowWorldMinutes
+    );
+  }
+  return event.occurredAt >= legacyCurrentTick - legacyTickWindow;
 }
 
 export class WorldSensors {
@@ -44,12 +64,20 @@ export class WorldSensors {
     );
     const monsters = wildlife.filter((population) => population.isMonster === true);
     const epochFloor = world.epochStartedAt ?? 0;
-    const activeSignals = (await this.events.activeSignals(world.id, now)).filter(
-      (event) => event.occurredAt >= epochFloor,
+    const worldEpoch = world.epoch ?? 1;
+    const observedWorldMinutes = world.calendar.elapsedWorldMinutes;
+    const belongsToCurrentEpoch = (event: Readonly<WorldEvent>) =>
+      event.worldEpoch !== undefined
+        ? event.worldEpoch === worldEpoch
+        : event.occurredAt >= epochFloor;
+    const activeSignals = (
+      await this.events.activeSignals(world.id, now, observedWorldMinutes)
+    ).filter(
+      belongsToCurrentEpoch,
     );
-    const recent = (await this.events.recent(world.id, SENSOR_EVENT_READ_LIMIT, now)).filter(
-      (event) => event.occurredAt >= epochFloor,
-    );
+    const recent = (
+      await this.events.recent(world.id, SENSOR_EVENT_READ_LIMIT, now)
+    ).filter(belongsToCurrentEpoch);
 
     const recentDeaths = recent.filter((event) => event.kind === 'agent.died');
     const recentBirths = recent.filter((event) => event.kind === 'agent.born');
@@ -145,7 +173,13 @@ export class WorldSensors {
       if (
         event.source !== 'agent' ||
         event.kind !== 'relationship.changed' ||
-        event.occurredAt < now - SOCIAL_CONTACT_WINDOW
+        !occurredWithinWorldWindow(
+          event,
+          observedWorldMinutes,
+          SOCIAL_CONTACT_WINDOW_WORLD_MINUTES,
+          now,
+          SOCIAL_CONTACT_WINDOW,
+        )
       ) {
         continue;
       }
@@ -183,7 +217,13 @@ export class WorldSensors {
         : recent.filter(
             (event) =>
               event.kind === 'world.monster.encountered' &&
-              event.occurredAt >= now - SOCIAL_CONTACT_WINDOW,
+              occurredWithinWorldWindow(
+                event,
+                observedWorldMinutes,
+                SOCIAL_CONTACT_WINDOW_WORLD_MINUTES,
+                now,
+                SOCIAL_CONTACT_WINDOW,
+              ),
           ).length / agents.length;
     const frontierMonsterPressure =
       monsters.length === 0
@@ -225,6 +265,78 @@ export class WorldSensors {
         ? 0
         : agents.reduce((sum, agent) => sum + (1 - agent.resources), 0) /
           agents.length;
+
+    const rhythms = agents
+      .map((agent) => world.v18?.lifeRhythmByAgentId[agent.id])
+      .filter((rhythm) => rhythm !== undefined);
+    const averageSatiety =
+      rhythms.length === 0
+        ? 0
+        : rhythms.reduce((sum, rhythm) => sum + rhythm.satiety, 0) /
+          rhythms.length;
+    const outsideHomeSettlementShare =
+      agents.length === 0
+        ? 0
+        : agents.filter((agent) => {
+            const homeSettlementId = world.places[agent.homeId]?.settlementId;
+            const currentSettlementId =
+              world.places[agent.locationId]?.settlementId;
+            const targetSettlementId = agent.movement
+              ? world.places[agent.movement.targetPlaceId]?.settlementId
+              : currentSettlementId;
+            return (
+              !homeSettlementId ||
+              currentSettlementId !== homeSettlementId ||
+              targetSettlementId !== homeSettlementId
+            );
+          }).length /
+          agents.length;
+    const livelihoods = agents
+      .map((agent) => world.v18?.livelihoodByAgentId[agent.id])
+      .filter((livelihood) => livelihood !== undefined);
+    const chosenLivelihoods = livelihoods.filter(
+      (livelihood) => livelihood.primary !== 'undecided',
+    );
+    const professionDiversity = clamp01(
+      new Set(chosenLivelihoods.map((livelihood) => livelihood.primary)).size /
+        Math.max(1, Math.min(8, agents.length)),
+    );
+    const undecidedLivelihoodShare =
+      livelihoods.length === 0
+        ? 1
+        : livelihoods.filter((livelihood) => livelihood.primary === 'undecided')
+            .length / livelihoods.length;
+    const lifetimeActionCounts: Record<string, number> = {};
+    for (const agent of agents) {
+      const evidence = world.v16?.residentEvidenceByAgentId[agent.id];
+      for (const [action, count] of Object.entries(
+        evidence?.actionCounts ?? {},
+      )) {
+        lifetimeActionCounts[action] =
+          (lifetimeActionCounts[action] ?? 0) + count;
+      }
+    }
+    const lifetimeActionTotal = Object.values(lifetimeActionCounts).reduce(
+      (sum, count) => sum + count,
+      0,
+    );
+    const lifetimeShare = (actions: readonly string[]) =>
+      lifetimeActionTotal === 0
+        ? 0
+        : actions.reduce(
+            (sum, action) => sum + (lifetimeActionCounts[action] ?? 0),
+            0,
+          ) / lifetimeActionTotal;
+    const productiveActionShare = lifetimeShare([
+      'gather',
+      'hunt',
+      'work',
+      'help',
+      'explore',
+    ]);
+    const communicationActionShare = lifetimeShare(['socialize', 'bond']);
+    const workActionShare = lifetimeShare(['work']);
+    const prayerActionShare = lifetimeShare(['pray']);
 
     const relationshipDiversity = clamp01(
       standardDeviation(
@@ -284,7 +396,14 @@ export class WorldSensors {
     }
     if (
       recent.length === SENSOR_EVENT_READ_LIMIT &&
-      recent[0]?.occurredAt >= now - SOCIAL_CONTACT_WINDOW
+      recent[0] !== undefined &&
+      occurredWithinWorldWindow(
+        recent[0],
+        observedWorldMinutes,
+        SOCIAL_CONTACT_WINDOW_WORLD_MINUTES,
+        now,
+        SOCIAL_CONTACT_WINDOW,
+      )
     ) {
       limitations.push(
         'Recent event density exceeded the bounded sensor window; social-contact coverage may be incomplete.',
@@ -293,6 +412,11 @@ export class WorldSensors {
     if ((world.growth?.stage ?? 0) > 0 && ordinaryWildlife.length === 0) {
       limitations.push(
         'Discovered natural regions have no wildlife populations to observe.',
+      );
+    }
+    if (rhythms.length < agents.length || livelihoods.length < agents.length) {
+      limitations.push(
+        'Some residents predate v0.3.18 livelihood or satiety evidence; observer aggregates have partial coverage.',
       );
     }
 
@@ -323,13 +447,23 @@ export class WorldSensors {
       wildlifePressure: clamp01(wildlifePressure),
       ecologicalDiversity,
       activeSignalCount: activeSignals.length,
+      averageSatiety: clamp01(averageSatiety),
+      outsideHomeSettlementShare: clamp01(outsideHomeSettlementShare),
+      professionDiversity,
+      undecidedLivelihoodShare: clamp01(undecidedLivelihoodShare),
+      productiveActionShare: clamp01(productiveActionShare),
+      communicationActionShare: clamp01(communicationActionShare),
+      workActionShare: clamp01(workActionShare),
+      prayerActionShare: clamp01(prayerActionShare),
     };
 
     return {
       sensorVersion: WORLD_SENSOR_VERSION,
       worldId: world.id,
+      worldEpoch,
       worldRevision: world.revision,
       observedAt: now,
+      observedWorldMinutes,
       metrics,
       evidenceEventIds: worldEvidence.map((event) => event.eventId),
       limitations,

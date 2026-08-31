@@ -7,8 +7,10 @@ import type { SensorSnapshot } from '../src/sensors/types';
 const observation: SensorSnapshot = {
   sensorVersion: 'ainkrad-world-sensors-0.3.3',
   worldId: 'world_1',
+  worldEpoch: 1,
   worldRevision: 9,
   observedAt: 20,
+  observedWorldMinutes: 175_200,
   metrics: {
     populationActivity: 0.2,
     averageStress: 0.3,

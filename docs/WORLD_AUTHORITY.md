@@ -50,7 +50,7 @@ The gateway requires:
 - magnitude no greater than `0.35`;
 - predicted casualty ratio no greater than `0.18`;
 - at least four possible survivors;
-- duration no greater than 96 ticks;
+- duration no greater than 840,960 canonical world minutes (96 semantic quanta);
 - an explicit recovery plan.
 
 The engine applies exposure by place danger and individual resilience rather than selecting victims. Actual deaths cannot exceed the authorized ceiling. The event retains a destructive phase and a longer recovery phase governed by the catastrophe-recovery law. Survivors remember the event; wildlife, resources, fear, awe and later recovery can produce new history.
@@ -60,4 +60,3 @@ The mechanism is implemented and tested, but v0.3.10 does not fabricate an autom
 ## Constitutional limit
 
 Cardinal may change the conditions under which life unfolds. It may not change who a person is or choose what that person does next.
-

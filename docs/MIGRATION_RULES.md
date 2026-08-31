@@ -114,3 +114,41 @@ Reachable lake, river and sea locations denote shore. Explicit open-water places
 Cardinal evidence remains append-only. Stream length/range access and bounded active views are permitted performance indexes, while deleting old evaluations, outcomes, audits, memories or world events remains prohibited. The interactive console must state when an older record lacks detail rather than fabricating a retrospective explanation.
 
 World speed is not a Cardinal rule and is not part of a world migration. It belongs to the independent external clock gateway. Future increases in acceleration must preserve deterministic substeps and must not skip causal history.
+
+## Audit 15: Cardinal canonical-world-time boundary
+
+Cardinal policy, sensor, research, audit-context and intervention-gateway versions advance for v0.3.15 because the meaning of timed evidence changes. Current autonomy, persistence, cooldown, effect and outcome math uses explicit canonical world minutes. One Ainkrad year is 525,600 world minutes, the fixed semantic quantum is 8,760 world minutes, the migrated four-logical-tick prediction duration is 35,040 world minutes and the autonomy window is 129,600 world minutes.
+
+Older tick-only Cardinal entries remain immutable historical evidence. They may contribute to all-time experience counters, but they are excluded from current timed research and autonomy calculations. A pending tick-only gateway intent is closed without execution because its duration cannot be converted safely. No migration invents canonical timestamps for ambiguous evidence.
+
+The live runtime may receive arbitrary worker partitions and `×1`/`×10`/`×100` acceleration, but it consumes them at fixed semantic boundaries. Technical ticks remain for ordering, retry identity and idempotency; they do not change Cardinal opportunities at equal persisted Ainkrad time.
+
+## Audit 18: additive Underworld foundation and nested repair
+
+World rules `ainkrad-world-rules-0.3.18` migrate the deployed v0.3.16/v0.3.17
+world additively. The migration preserves world/epoch identity, elapsed world
+minutes, residents, lineages, minds, relationships, geography, resources,
+items, RNG future and Cardinal/gateway journals. It adds bounded language,
+conversation, livelihood, life-rhythm, expedition and settlement-lifecycle
+evidence; it never invents past conversations or assigns historical jobs.
+
+A declared v0.3.18 snapshot may still come from an early recovery package whose
+nested v16 economy projection lacks an additive field. The same-version repair
+must repair the compatible v16 and v18 additive chain in one atomic commit
+before strict validation. It is idempotent, consumes no RNG draw and may not
+rewrite existing stocks, counters, people or history.
+
+New livelihood keys are added with zero practice. A resident's profession is
+chosen only later from completed lived evidence and individual fit. Migration
+does not retroactively label a farmer, miner, teacher or priest.
+
+Closed-tab acceleration is not a lossy migration. Every fixed semantic quantum
+still executes in order; only persistence commits, Cardinal observation
+boundaries and rendered frames are batched. The target is an absolute
+epoch-scoped world minute, so reloads and duplicate tabs cannot add the same
+offline interval twice.
+
+The dormant player-entry contract is schema preparation only. Enabling an
+account, avatar, deity or resident entry later requires a separate reviewed
+migration and the independent entry gateway; Cardinal cannot issue credentials
+or control that avatar.

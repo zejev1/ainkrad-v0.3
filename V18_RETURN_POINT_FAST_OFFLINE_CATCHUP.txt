@@ -1,0 +1,30 @@
+AINKRAD v0.3.18 — FAST OFFLINE CATCH-UP RETURN POINT
+Date: 2026-08-29 UTC
+Git parent: 14ca75712d0e996aec71ae7be47382426533dbb7
+
+Completed in this checkpoint:
+- v16 -> v18 additive, idempotent world migration and dormant player-entry boundary.
+- Russian-language knowledge, Cyrillic practice and evidence-backed conversations.
+- Voluntary frontier expedition / settlement lifecycle / occupation foundations.
+- Continuous physical movement remains separate from six-day resident decisions.
+- Closed-browser catch-up executes every canonical resident quantum in bounded
+  five-year persistence batches instead of thousands of IndexedDB commits.
+- Worker sends visible percent, elapsed time, ETA and semantic-step progress.
+- Runtime indexing removes repeated full-population, route and storage scans.
+- 200 Ainkrad years / 12,000 semantic quanta benchmarked in 20.9 seconds in
+  the reference in-memory run; no calendar-only jump was used.
+- Cardinal continues to observe at initial, critical and normal five-year
+  boundaries; births/deaths remain durable evidence.
+
+Checks at checkpoint:
+- TypeScript: PASS.
+- v18 migration/player foundation + live runtime target tests: 7/7 PASS.
+- Full regression and browser verification are still pending.
+
+Still in progress after this checkpoint:
+- Normal-speed overheard-conversation UI.
+- Settlement map readability, reliable NPC picker and mobile text scale.
+- Cardinal v18 read-only observation summary.
+- Full regression, long-run acceptance, production/browser smoke and SPCK ZIP.
+
+This is a recovery point, not a release archive and not a Git commit.

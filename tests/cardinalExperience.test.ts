@@ -12,8 +12,10 @@ function ecosystemObservation(observedAt: number): SensorSnapshot {
   return {
     sensorVersion: 'ainkrad-world-sensors-0.3.10',
     worldId: 'learning-world',
+    worldEpoch: 1,
     worldRevision: observedAt,
     observedAt,
+    observedWorldMinutes: observedAt * 8_760,
     metrics: {
       populationActivity: 0.55,
       averageStress: 0.25,

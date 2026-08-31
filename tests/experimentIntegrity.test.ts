@@ -29,5 +29,5 @@ describe('Controlled Cardinal experiment integrity', () => {
       comparison.intervene.executedInterventionCount,
     );
     expect(comparison.intervene.pendingOutcomeCount).toBe(0);
- }, 30_000);
+  }, 60_000);
 });

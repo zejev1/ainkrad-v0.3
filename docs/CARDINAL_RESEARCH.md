@@ -64,7 +64,7 @@ Cardinal has three decision states:
 - `defer` — a problem is visible, but current evidence does not justify intervention;
 - `propose` — the evidence is sufficient to request a bounded intervention test.
 
-For non-critical conditions, v0.3 normally requires three consecutive compatible observations before proposing. This protects world autonomy from one-tick noise and makes "observe first" operational rather than rhetorical.
+For non-critical conditions, v0.3 normally requires three consecutive compatible semantic observations before proposing. This protects world autonomy from one-opportunity noise and makes "observe first" operational rather than rhetorical.
 
 Critical thresholds may bypass the normal persistence window. The threshold and bypass are policy-versioned and must remain visible to the Auditor.
 
@@ -75,7 +75,7 @@ Every proposal is bound to the hypothesis that justified it and includes a predi
 - target metric;
 - expected direction;
 - minimum improvement;
-- logical observation horizon;
+- canonical `horizonWorldMinutes` observation horizon;
 - human-readable statement.
 
 The independent gateway rejects proposals that lack a valid bounded hypothesis/prediction contract.
@@ -95,7 +95,9 @@ Cardinal must not confuse repeated action with learning. An executed interventio
 
 This is stricter than the gateway cooldown. Cooldown protects the execution boundary from rapid repeated mutation; experimental discipline protects the meaning of the evidence.
 
-Cardinal also derives a recent intervention-density assessment from executed intervention records. In v0.3.6 the non-critical autonomy budget is exhausted after three executed interventions inside 16 logical ticks. The purpose is not to make the world artificially stable. It is to preserve periods in which the world can demonstrate endogenous recovery, adaptation or failure without constant Cardinal assistance.
+Cardinal also derives a recent intervention-density assessment from executed intervention records. In v0.3.15 the non-critical autonomy budget is exhausted after three executed interventions inside `129,600` canonical world minutes (90 Ainkrad days). The purpose is not to make the world artificially stable. It is to preserve periods in which the world can demonstrate endogenous recovery, adaptation or failure without constant Cardinal assistance.
+
+Only current-epoch evidence with the current Cardinal policy, sensor and research versions and explicit canonical world time participates in modern persistence and autonomy math. Tick-only legacy entries remain append-only history and may contribute to all-time experience totals, but cannot be silently reinterpreted as current timed evidence.
 
 A critical threshold may explicitly override the density budget. It does not erase an unresolved same-kind test or make overlapping evidence scientifically clean.
 

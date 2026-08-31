@@ -16,11 +16,19 @@ import type {
   InterventionProposal,
   InterventionRecord,
 } from './types';
+import {
+  DEFAULT_GATEWAY_COOLDOWN_WORLD_MINUTES,
+  DEFAULT_GATEWAY_EFFECT_DURATION_WORLD_MINUTES,
+  MAX_CARDINAL_PREDICTION_HORIZON_WORLD_MINUTES,
+  MAX_GATEWAY_EFFECT_DURATION_WORLD_MINUTES,
+  isCanonicalWorldMinutes,
+} from '../v15/WorldTimeContract';
 
 export const ABSOLUTE_MAX_INTERVENTION_MAGNITUDE = 0.25;
-export const ABSOLUTE_MAX_INTERVENTION_DURATION = 32;
+export const ABSOLUTE_MAX_INTERVENTION_DURATION_WORLD_MINUTES =
+  MAX_GATEWAY_EFFECT_DURATION_WORLD_MINUTES;
 export const INTERVENTION_GATEWAY_POLICY_VERSION =
-  'ainkrad-intervention-gateway-0.3.14';
+  'ainkrad-intervention-gateway-0.3.15';
 
 const ALLOWED_INTERVENTION_KINDS = new Set<string>([
   'resource_relief',
@@ -36,7 +44,7 @@ export interface SimulationInterventionTarget {
     kind: InterventionKind,
     magnitude: number,
     now: number,
-    duration: number,
+    durationWorldMinutes: number,
     operationId: string,
     expectedWorldRevision: number,
   ): Promise<WorldMutationResult>;
@@ -44,10 +52,18 @@ export interface SimulationInterventionTarget {
 
 export interface InterventionGatewayOptions {
   maxMagnitude?: number;
-  minInterval?: number;
-  effectDuration?: number;
+  minIntervalWorldMinutes?: number;
+  effectDurationWorldMinutes?: number;
   ledger?: InterventionGatewayLedger;
   policyVersion?: string;
+}
+
+export interface InterventionEvidenceContext {
+  worldEpoch: number;
+  policyVersion: string;
+  sensorVersion: string;
+  researchVersion: string;
+  evaluatedWorldMinutes: number;
 }
 
 interface AuthorizationDecision {
@@ -65,8 +81,8 @@ interface AuthorizationDecision {
  */
 export class IndependentInterventionGateway {
   private readonly maxMagnitude: number;
-  private readonly minInterval: number;
-  private readonly effectDuration: number;
+  private readonly minIntervalWorldMinutes: number;
+  private readonly effectDurationWorldMinutes: number;
   private readonly ledger: InterventionGatewayLedger;
   readonly policyVersion: string;
 
@@ -75,8 +91,12 @@ export class IndependentInterventionGateway {
     options: InterventionGatewayOptions = {},
   ) {
     const maxMagnitude = options.maxMagnitude ?? ABSOLUTE_MAX_INTERVENTION_MAGNITUDE;
-    const minInterval = options.minInterval ?? 5;
-    const effectDuration = options.effectDuration ?? 8;
+    const minIntervalWorldMinutes =
+      options.minIntervalWorldMinutes ??
+      DEFAULT_GATEWAY_COOLDOWN_WORLD_MINUTES;
+    const effectDurationWorldMinutes =
+      options.effectDurationWorldMinutes ??
+      DEFAULT_GATEWAY_EFFECT_DURATION_WORLD_MINUTES;
     const policyVersion = options.policyVersion ?? INTERVENTION_GATEWAY_POLICY_VERSION;
 
     if (
@@ -88,16 +108,22 @@ export class IndependentInterventionGateway {
         `Gateway maxMagnitude must be > 0 and <= ${ABSOLUTE_MAX_INTERVENTION_MAGNITUDE}.`,
       );
     }
-    if (!Number.isFinite(minInterval) || minInterval < 0) {
-      throw new Error('Gateway minInterval must be finite and non-negative.');
-    }
     if (
-      !Number.isFinite(effectDuration) ||
-      effectDuration < 1 ||
-      effectDuration > ABSOLUTE_MAX_INTERVENTION_DURATION
+      !Number.isFinite(minIntervalWorldMinutes) ||
+      minIntervalWorldMinutes < 0
     ) {
       throw new Error(
-        `Gateway effectDuration must be from 1 to ${ABSOLUTE_MAX_INTERVENTION_DURATION}.`,
+        'Gateway minIntervalWorldMinutes must be finite and non-negative.',
+      );
+    }
+    if (
+      !Number.isFinite(effectDurationWorldMinutes) ||
+      effectDurationWorldMinutes < 1 ||
+      effectDurationWorldMinutes >
+        ABSOLUTE_MAX_INTERVENTION_DURATION_WORLD_MINUTES
+    ) {
+      throw new Error(
+        `Gateway effectDurationWorldMinutes must be from 1 to ${ABSOLUTE_MAX_INTERVENTION_DURATION_WORLD_MINUTES}.`,
       );
     }
     if (!policyVersion.trim()) {
@@ -105,8 +131,8 @@ export class IndependentInterventionGateway {
     }
 
     this.maxMagnitude = maxMagnitude;
-    this.minInterval = minInterval;
-    this.effectDuration = effectDuration;
+    this.minIntervalWorldMinutes = minIntervalWorldMinutes;
+    this.effectDurationWorldMinutes = effectDurationWorldMinutes;
     this.ledger = options.ledger ?? new InMemoryInterventionGatewayLedger();
     this.policyVersion = policyVersion;
   }
@@ -116,6 +142,7 @@ export class IndependentInterventionGateway {
     proposal: Readonly<InterventionProposal>,
     expectedWorld: Readonly<WorldState>,
     now: number,
+    evidenceContext?: Readonly<InterventionEvidenceContext>,
   ): Promise<InterventionRecord> {
     if (!evaluationId.trim()) {
       throw new Error('Gateway evaluationId must not be empty.');
@@ -138,6 +165,22 @@ export class IndependentInterventionGateway {
     }
 
     const authorization = await this.authorize(proposal, expectedWorld, now);
+    const requestedWorldMinutes = expectedWorld.calendar.elapsedWorldMinutes;
+    const context: InterventionEvidenceContext = evidenceContext ?? {
+      worldEpoch: expectedWorld.epoch ?? 1,
+      policyVersion: 'legacy-unversioned',
+      sensorVersion: 'legacy-unversioned',
+      researchVersion: 'legacy-unversioned',
+      evaluatedWorldMinutes: requestedWorldMinutes,
+    };
+    if (
+      context.worldEpoch !== (expectedWorld.epoch ?? 1) ||
+      context.evaluatedWorldMinutes !== requestedWorldMinutes
+    ) {
+      throw new Error(
+        'Gateway evidence context does not match the observed world epoch/time.',
+      );
+    }
     const baseRecord: InterventionRecord = {
       interventionId: createStableId('intervention', {
         worldId: targetWorldId,
@@ -146,10 +189,16 @@ export class IndependentInterventionGateway {
       }),
       evaluationId,
       worldId: targetWorldId,
+      worldEpoch: context.worldEpoch,
+      policyVersion: context.policyVersion,
+      sensorVersion: context.sensorVersion,
+      researchVersion: context.researchVersion,
       requestedAt: now,
+      requestedWorldMinutes,
       observedWorldRevision: expectedWorld.revision,
       gatewayPolicyVersion: this.policyVersion,
-      authorizedEffectDuration: this.effectDuration,
+      authorizedEffectDurationWorldMinutes:
+        this.effectDurationWorldMinutes,
       proposal: structuredClone(proposal),
       authorized: authorization.authorized,
       authorizationReason: authorization.reason,
@@ -163,7 +212,7 @@ export class IndependentInterventionGateway {
       evaluationId,
       proposalFingerprint,
       expectedWorldRevision: expectedWorld.revision,
-      effectDuration: this.effectDuration,
+      effectDurationWorldMinutes: this.effectDurationWorldMinutes,
       gatewayPolicyVersion: this.policyVersion,
       phase: authorization.authorized ? 'pending' : 'final',
       record: structuredClone(baseRecord),
@@ -203,6 +252,24 @@ export class IndependentInterventionGateway {
       return structuredClone(entry.record);
     }
 
+    if (
+      !isCanonicalWorldMinutes(entry.effectDurationWorldMinutes) ||
+      !isCanonicalWorldMinutes(entry.record.requestedWorldMinutes)
+    ) {
+      const final: GatewayLedgerEntry = {
+        ...entry,
+        phase: 'final',
+        record: {
+          ...entry.record,
+          authorizationReason:
+            `${entry.record.authorizationReason} Legacy tick-only pending intent was closed without execution because its duration cannot be safely converted into canonical world time.`,
+          executionStatus: 'stale',
+          executed: false,
+        },
+      };
+      return structuredClone((await this.ledger.finalize(final)).record);
+    }
+
     const proposal = entry.record.proposal;
     if (entry.worldId !== this.target.snapshot().id || proposal.worldId !== entry.worldId) {
       throw new Error(
@@ -219,7 +286,7 @@ export class IndependentInterventionGateway {
         proposal.kind,
         proposal.magnitude,
         entry.record.requestedAt,
-        entry.effectDuration,
+        entry.effectDurationWorldMinutes,
         proposal.proposalId,
         entry.expectedWorldRevision,
       );
@@ -295,9 +362,10 @@ export class IndependentInterventionGateway {
       prediction.direction !== 'decrease' ||
       !Number.isFinite(prediction.minimumImprovement) ||
       prediction.minimumImprovement < 0 ||
-      !Number.isInteger(prediction.horizon) ||
-      prediction.horizon < 1 ||
-      prediction.horizon > 16 ||
+      !isCanonicalWorldMinutes(prediction.horizonWorldMinutes) ||
+      prediction.horizonWorldMinutes < 1 ||
+      prediction.horizonWorldMinutes >
+        MAX_CARDINAL_PREDICTION_HORIZON_WORLD_MINUTES ||
       typeof prediction.statement !== 'string' ||
       !prediction.statement.trim()
     ) {
@@ -344,8 +412,14 @@ export class IndependentInterventionGateway {
       };
     }
 
-    const lastExecution = await this.ledger.lastExecutedAt(proposal.worldId);
-    if (lastExecution !== undefined && now - lastExecution < this.minInterval) {
+    const requestedWorldMinutes = expectedWorld.calendar.elapsedWorldMinutes;
+    const lastExecutionWorldMinutes =
+      await this.ledger.lastExecutedWorldMinutes(proposal.worldId);
+    if (
+      lastExecutionWorldMinutes !== undefined &&
+      requestedWorldMinutes - lastExecutionWorldMinutes <
+        this.minIntervalWorldMinutes
+    ) {
       return {
         authorized: false,
         reason: 'Independent gateway cooldown prevents repeated intervention.',

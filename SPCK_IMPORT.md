@@ -1,15 +1,35 @@
-# Import into SPCK
+# Ainkrad v0.3.18: import and commit in SPCK
 
-Ainkrad v0.3 commit packages are full Git-aware project archives.
+The final release ZIP is a complete SPCK project. Its verified v15-derived
+world code is overlaid as ordinary working-tree changes on the read-only
+verified `main` parent
+`dad1dc0f72bd0883f801b93e3da4cae1587b6270` from:
 
-1. In SPCK choose **Projects → Create → Import from ZIP**.
-2. Select the newest `ainkrad-v0.3-commit-N-git.zip` directly. Do not manually extract it first.
-3. Use External storage.
-4. Open the imported project and verify the root contains `README.md`, `package.json`, `tsconfig.json`, `src`, `tests` and `.git`.
-5. In SPCK Git use `zejev1@users.noreply.github.com`, commit the prepared changes, then push to `origin/main`.
-6. Keep the previous package only until the new commit is confirmed on GitHub.
-7. After remote verification, delete the previous package project and the downloaded ZIP from the phone.
+`https://github.com/zejev1/ainkrad-v0.3.git`
 
-Phone-storage rule: normally keep only the current v0.3 working project plus the old `ainkrad` donor/archive. GitHub is the version history; the phone does not need a chain of old package copies.
+No credential, commit or push is included.
 
-Do **not** connect Ainkrad v0.3 to the old production Convex deployment. v0.3 intentionally has no Convex adapter or blind age-based retention layer.
+1. Download the single `Ainkrad_v0.3.18_SPCK_READY_FINAL_*.zip` file. Do not
+   unpack it manually and do not combine it with another Ainkrad archive.
+2. In SPCK open **Projects → + → Import ZIP**, select the ZIP and create a new
+   project named `Ainkrad`.
+3. Open **Git**. The archive already contains `.git`; do not initialize another
+   repository and do not clone GitHub. SPCK must show uncommitted v0.3.18
+   changes on branch `main`.
+4. If SPCK asks for Git identity, use
+   `zejev1@users.noreply.github.com`.
+5. Use one commit message:
+   `feat(v0.3.18): deepen autonomous livelihoods and Underworld foundations`
+6. Tap **Commit**, then **Push**. Those actions remain yours.
+7. After Vercel succeeds, open the existing world first. Confirm that schema
+   repair preserves its people and Cardinal experience, catch-up finishes,
+   residents visibly travel, the resident picker selects the intended person,
+   text size can be changed and audible Russian conversations appear.
+8. Only then create a fresh world and confirm its Cardinal panel starts with
+   current-epoch counters instead of interventions from the previous world.
+
+The assistant performed no GitHub/Vercel write. `node_modules`, `dist`, CPU
+profiles and generated acceptance artifacts are intentionally excluded.
+
+Do **not** connect Ainkrad v0.3 to Convex. This project intentionally has no
+Convex adapter or credential.

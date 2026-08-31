@@ -1,0 +1,657 @@
+{
+  "release": "v0.3.15",
+  "generatedAtUtc": "2026-08-24T17:16:35.821Z",
+  "runner": "real autonomous WorldEngine; no fixtures or injected cohorts",
+  "contract": {
+    "worldMinutesPerYear": 525600,
+    "semanticQuantumWorldMinutes": 8760,
+    "sampleIntervalWorldMinutes": 131400,
+    "targetYears": [
+      8,
+      10,
+      12,
+      30
+    ]
+  },
+  "seeds": [
+    {
+      "seed": "v15-longrun-04",
+      "worldId": "v0-3-15-release-v15-longrun-04",
+      "targetYears": [
+        {
+          "year": 8,
+          "snapshot": {
+            "worldMinutes": 4204800,
+            "ordinaryLivingPopulation": 18,
+            "genesisActiveCount": 0,
+            "genesisCountedInPopulation": false,
+            "births": 8,
+            "deaths": 0,
+            "renewableResourceBase": 0.7676033164145882,
+            "discoveredRegionCount": 7,
+            "ordinaryWildlifeCount": 64,
+            "ordinaryWildlifeCapacity": 74,
+            "monsterCount": 0,
+            "monsterCapacity": 0,
+            "brokenLineageLinks": 0,
+            "secondGenerationLiving": 8,
+            "secondGenerationLearners": 1,
+            "ordinaryTeachersActive": 10
+          },
+          "livingByGeneration": {
+            "0": 10,
+            "1": 8
+          },
+          "postGenesisFindings": [
+            {
+              "severity": "info",
+              "code": "second_generation_learning_alive",
+              "message": "Second-generation learning continues after Genesis departure through ordinary teaching and/or practice.",
+              "residentIds": [
+                "epoch_1_agent_11"
+              ]
+            }
+          ]
+        },
+        {
+          "year": 10,
+          "snapshot": {
+            "worldMinutes": 5256000,
+            "ordinaryLivingPopulation": 19,
+            "genesisActiveCount": 0,
+            "genesisCountedInPopulation": false,
+            "births": 9,
+            "deaths": 0,
+            "renewableResourceBase": 0.7234462577566142,
+            "discoveredRegionCount": 8,
+            "ordinaryWildlifeCount": 76,
+            "ordinaryWildlifeCapacity": 83,
+            "monsterCount": 1,
+            "monsterCapacity": 4,
+            "brokenLineageLinks": 0,
+            "secondGenerationLiving": 9,
+            "secondGenerationLearners": 2,
+            "ordinaryTeachersActive": 10
+          },
+          "livingByGeneration": {
+            "0": 10,
+            "1": 9
+          },
+          "postGenesisFindings": [
+            {
+              "severity": "info",
+              "code": "second_generation_learning_alive",
+              "message": "Second-generation learning continues after Genesis departure through ordinary teaching and/or practice.",
+              "residentIds": [
+                "epoch_1_agent_11",
+                "epoch_1_agent_12"
+              ]
+            }
+          ]
+        },
+        {
+          "year": 12,
+          "snapshot": {
+            "worldMinutes": 6307200,
+            "ordinaryLivingPopulation": 21,
+            "genesisActiveCount": 0,
+            "genesisCountedInPopulation": false,
+            "births": 11,
+            "deaths": 0,
+            "renewableResourceBase": 0.6352312885626945,
+            "discoveredRegionCount": 10,
+            "ordinaryWildlifeCount": 90,
+            "ordinaryWildlifeCapacity": 91,
+            "monsterCount": 2,
+            "monsterCapacity": 4,
+            "brokenLineageLinks": 0,
+            "secondGenerationLiving": 11,
+            "secondGenerationLearners": 4,
+            "ordinaryTeachersActive": 10
+          },
+          "livingByGeneration": {
+            "0": 10,
+            "1": 11
+          },
+          "postGenesisFindings": [
+            {
+              "severity": "info",
+              "code": "second_generation_learning_alive",
+              "message": "Second-generation learning continues after Genesis departure through ordinary teaching and/or practice.",
+              "residentIds": [
+                "epoch_1_agent_11",
+                "epoch_1_agent_12",
+                "epoch_1_agent_13",
+                "epoch_1_agent_14"
+              ]
+            }
+          ]
+        },
+        {
+          "year": 30,
+          "snapshot": {
+            "worldMinutes": 15768000,
+            "ordinaryLivingPopulation": 31,
+            "genesisActiveCount": 0,
+            "genesisCountedInPopulation": false,
+            "births": 22,
+            "deaths": 5,
+            "renewableResourceBase": 0.46270230827510217,
+            "discoveredRegionCount": 27,
+            "ordinaryWildlifeCount": 207,
+            "ordinaryWildlifeCapacity": 213,
+            "monsterCount": 10,
+            "monsterCapacity": 16,
+            "brokenLineageLinks": 0,
+            "secondGenerationLiving": 21,
+            "secondGenerationLearners": 18,
+            "ordinaryTeachersActive": 21
+          },
+          "livingByGeneration": {
+            "0": 10,
+            "1": 19,
+            "2": 2
+          },
+          "postGenesisFindings": [
+            {
+              "severity": "info",
+              "code": "second_generation_learning_alive",
+              "message": "Second-generation learning continues after Genesis departure through ordinary teaching and/or practice.",
+              "residentIds": [
+                "epoch_1_agent_11",
+                "epoch_1_agent_12",
+                "epoch_1_agent_13",
+                "epoch_1_agent_14",
+                "epoch_1_agent_15",
+                "epoch_1_agent_16",
+                "epoch_1_agent_17",
+                "epoch_1_agent_18",
+                "epoch_1_agent_19",
+                "epoch_1_agent_20",
+                "epoch_1_agent_21",
+                "epoch_1_agent_22",
+                "epoch_1_agent_23",
+                "epoch_1_agent_25",
+                "epoch_1_agent_26",
+                "epoch_1_agent_27",
+                "epoch_1_agent_28",
+                "epoch_1_agent_29"
+              ]
+            }
+          ]
+        }
+      ],
+      "final": {
+        "livingByGeneration": {
+          "0": 10,
+          "1": 19,
+          "2": 2
+        },
+        "livingPopulation": 31,
+        "births": 22,
+        "deaths": 5,
+        "deathCauses": {
+          "monster": 3,
+          "wildlife": 2
+        },
+        "renewableBase": 0.46270230827510217,
+        "storedResources": 0.9126418485918154,
+        "genesisActiveCount": 0,
+        "ordinaryWildlifeCount": 207,
+        "ordinaryWildlifeCapacity": 213,
+        "monsterCount": 10,
+        "monsterCapacity": 16,
+        "discoveredRegionCount": 27,
+        "learning": {
+          "ordinaryLessonEvents": 3134,
+          "generationOneToTwoLessonEvents": 0,
+          "genesisLessonEventsAfterYearThree": 0
+        },
+        "familyAgencyProfiles": 44,
+        "agentRecords": 44
+      },
+      "longRunAlerts": [],
+      "thirdGenerationFindings": [
+        {
+          "severity": "info",
+          "code": "third_generation_not_yet_learning_age",
+          "message": "Third-generation residents exist, but none is old enough for a structured lesson yet.",
+          "residentIds": [
+            "epoch_1_agent_30",
+            "epoch_1_agent_32"
+          ]
+        }
+      ],
+      "acceptance": {
+        "passed": true,
+        "failures": []
+      }
+    },
+    {
+      "seed": "v15-longrun-05",
+      "worldId": "v0-3-15-release-v15-longrun-05",
+      "targetYears": [
+        {
+          "year": 8,
+          "snapshot": {
+            "worldMinutes": 4204800,
+            "ordinaryLivingPopulation": 16,
+            "genesisActiveCount": 0,
+            "genesisCountedInPopulation": false,
+            "births": 6,
+            "deaths": 0,
+            "renewableResourceBase": 0.807896956899294,
+            "discoveredRegionCount": 6,
+            "ordinaryWildlifeCount": 48,
+            "ordinaryWildlifeCapacity": 48,
+            "monsterCount": 0,
+            "monsterCapacity": 0,
+            "brokenLineageLinks": 0,
+            "secondGenerationLiving": 6,
+            "secondGenerationLearners": 1,
+            "ordinaryTeachersActive": 10
+          },
+          "livingByGeneration": {
+            "0": 10,
+            "1": 6
+          },
+          "postGenesisFindings": [
+            {
+              "severity": "info",
+              "code": "second_generation_learning_alive",
+              "message": "Second-generation learning continues after Genesis departure through ordinary teaching and/or practice.",
+              "residentIds": [
+                "epoch_1_agent_11"
+              ]
+            }
+          ]
+        },
+        {
+          "year": 10,
+          "snapshot": {
+            "worldMinutes": 5256000,
+            "ordinaryLivingPopulation": 18,
+            "genesisActiveCount": 0,
+            "genesisCountedInPopulation": false,
+            "births": 8,
+            "deaths": 0,
+            "renewableResourceBase": 0.783572367233121,
+            "discoveredRegionCount": 8,
+            "ordinaryWildlifeCount": 65,
+            "ordinaryWildlifeCapacity": 72,
+            "monsterCount": 0,
+            "monsterCapacity": 0,
+            "brokenLineageLinks": 0,
+            "secondGenerationLiving": 8,
+            "secondGenerationLearners": 2,
+            "ordinaryTeachersActive": 10
+          },
+          "livingByGeneration": {
+            "0": 10,
+            "1": 8
+          },
+          "postGenesisFindings": [
+            {
+              "severity": "info",
+              "code": "second_generation_learning_alive",
+              "message": "Second-generation learning continues after Genesis departure through ordinary teaching and/or practice.",
+              "residentIds": [
+                "epoch_1_agent_11",
+                "epoch_1_agent_12"
+              ]
+            }
+          ]
+        },
+        {
+          "year": 12,
+          "snapshot": {
+            "worldMinutes": 6307200,
+            "ordinaryLivingPopulation": 19,
+            "genesisActiveCount": 0,
+            "genesisCountedInPopulation": false,
+            "births": 9,
+            "deaths": 0,
+            "renewableResourceBase": 0.7480186222973068,
+            "discoveredRegionCount": 10,
+            "ordinaryWildlifeCount": 86,
+            "ordinaryWildlifeCapacity": 97,
+            "monsterCount": 0,
+            "monsterCapacity": 0,
+            "brokenLineageLinks": 0,
+            "secondGenerationLiving": 9,
+            "secondGenerationLearners": 4,
+            "ordinaryTeachersActive": 10
+          },
+          "livingByGeneration": {
+            "0": 10,
+            "1": 9
+          },
+          "postGenesisFindings": [
+            {
+              "severity": "info",
+              "code": "second_generation_learning_alive",
+              "message": "Second-generation learning continues after Genesis departure through ordinary teaching and/or practice.",
+              "residentIds": [
+                "epoch_1_agent_11",
+                "epoch_1_agent_12",
+                "epoch_1_agent_13",
+                "epoch_1_agent_14"
+              ]
+            }
+          ]
+        },
+        {
+          "year": 30,
+          "snapshot": {
+            "worldMinutes": 15768000,
+            "ordinaryLivingPopulation": 27,
+            "genesisActiveCount": 0,
+            "genesisCountedInPopulation": false,
+            "births": 27,
+            "deaths": 1,
+            "renewableResourceBase": 0.21994462838254078,
+            "discoveredRegionCount": 27,
+            "ordinaryWildlifeCount": 225,
+            "ordinaryWildlifeCapacity": 232,
+            "monsterCount": 9,
+            "monsterCapacity": 12,
+            "brokenLineageLinks": 0,
+            "secondGenerationLiving": 17,
+            "secondGenerationLearners": 15,
+            "ordinaryTeachersActive": 19
+          },
+          "livingByGeneration": {
+            "0": 10,
+            "1": 16,
+            "2": 1
+          },
+          "postGenesisFindings": [
+            {
+              "severity": "info",
+              "code": "second_generation_learning_alive",
+              "message": "Second-generation learning continues after Genesis departure through ordinary teaching and/or practice.",
+              "residentIds": [
+                "epoch_1_agent_11",
+                "epoch_1_agent_12",
+                "epoch_1_agent_13",
+                "epoch_1_agent_14",
+                "epoch_1_agent_15",
+                "epoch_1_agent_16",
+                "epoch_1_agent_17",
+                "epoch_1_agent_18",
+                "epoch_1_agent_19",
+                "epoch_1_agent_20",
+                "epoch_1_agent_21",
+                "epoch_1_agent_23",
+                "epoch_1_agent_24",
+                "epoch_1_agent_26",
+                "epoch_1_agent_28"
+              ]
+            }
+          ]
+        }
+      ],
+      "final": {
+        "livingByGeneration": {
+          "0": 10,
+          "1": 16,
+          "2": 1
+        },
+        "livingPopulation": 27,
+        "births": 27,
+        "deaths": 1,
+        "deathCauses": {
+          "monster": 1
+        },
+        "renewableBase": 0.21994462838254078,
+        "storedResources": 0.9274371194681624,
+        "genesisActiveCount": 0,
+        "ordinaryWildlifeCount": 225,
+        "ordinaryWildlifeCapacity": 232,
+        "monsterCount": 9,
+        "monsterCapacity": 12,
+        "discoveredRegionCount": 27,
+        "learning": {
+          "ordinaryLessonEvents": 3041,
+          "generationOneToTwoLessonEvents": 0,
+          "genesisLessonEventsAfterYearThree": 0
+        },
+        "familyAgencyProfiles": 49,
+        "agentRecords": 49
+      },
+      "longRunAlerts": [],
+      "thirdGenerationFindings": [
+        {
+          "severity": "info",
+          "code": "third_generation_not_yet_learning_age",
+          "message": "Third-generation residents exist, but none is old enough for a structured lesson yet.",
+          "residentIds": [
+            "epoch_1_agent_32"
+          ]
+        }
+      ],
+      "acceptance": {
+        "passed": true,
+        "failures": []
+      }
+    },
+    {
+      "seed": "v15-longrun-13",
+      "worldId": "v0-3-15-release-v15-longrun-13",
+      "targetYears": [
+        {
+          "year": 8,
+          "snapshot": {
+            "worldMinutes": 4204800,
+            "ordinaryLivingPopulation": 17,
+            "genesisActiveCount": 0,
+            "genesisCountedInPopulation": false,
+            "births": 7,
+            "deaths": 0,
+            "renewableResourceBase": 0.8019648336640075,
+            "discoveredRegionCount": 6,
+            "ordinaryWildlifeCount": 48,
+            "ordinaryWildlifeCapacity": 51,
+            "monsterCount": 0,
+            "monsterCapacity": 0,
+            "brokenLineageLinks": 0,
+            "secondGenerationLiving": 7,
+            "secondGenerationLearners": 0,
+            "ordinaryTeachersActive": 10
+          },
+          "livingByGeneration": {
+            "0": 10,
+            "1": 7
+          },
+          "postGenesisFindings": []
+        },
+        {
+          "year": 10,
+          "snapshot": {
+            "worldMinutes": 5256000,
+            "ordinaryLivingPopulation": 19,
+            "genesisActiveCount": 0,
+            "genesisCountedInPopulation": false,
+            "births": 9,
+            "deaths": 0,
+            "renewableResourceBase": 0.7351507427259123,
+            "discoveredRegionCount": 8,
+            "ordinaryWildlifeCount": 64,
+            "ordinaryWildlifeCapacity": 72,
+            "monsterCount": 1,
+            "monsterCapacity": 4,
+            "brokenLineageLinks": 0,
+            "secondGenerationLiving": 9,
+            "secondGenerationLearners": 2,
+            "ordinaryTeachersActive": 10
+          },
+          "livingByGeneration": {
+            "0": 10,
+            "1": 9
+          },
+          "postGenesisFindings": [
+            {
+              "severity": "info",
+              "code": "second_generation_learning_alive",
+              "message": "Second-generation learning continues after Genesis departure through ordinary teaching and/or practice.",
+              "residentIds": [
+                "epoch_1_agent_11",
+                "epoch_1_agent_12"
+              ]
+            }
+          ]
+        },
+        {
+          "year": 12,
+          "snapshot": {
+            "worldMinutes": 6307200,
+            "ordinaryLivingPopulation": 20,
+            "genesisActiveCount": 0,
+            "genesisCountedInPopulation": false,
+            "births": 10,
+            "deaths": 0,
+            "renewableResourceBase": 0.6755007502274337,
+            "discoveredRegionCount": 10,
+            "ordinaryWildlifeCount": 78,
+            "ordinaryWildlifeCapacity": 92,
+            "monsterCount": 1,
+            "monsterCapacity": 4,
+            "brokenLineageLinks": 0,
+            "secondGenerationLiving": 10,
+            "secondGenerationLearners": 4,
+            "ordinaryTeachersActive": 10
+          },
+          "livingByGeneration": {
+            "0": 10,
+            "1": 10
+          },
+          "postGenesisFindings": [
+            {
+              "severity": "info",
+              "code": "second_generation_learning_alive",
+              "message": "Second-generation learning continues after Genesis departure through ordinary teaching and/or practice.",
+              "residentIds": [
+                "epoch_1_agent_11",
+                "epoch_1_agent_12",
+                "epoch_1_agent_13",
+                "epoch_1_agent_14"
+              ]
+            }
+          ]
+        },
+        {
+          "year": 30,
+          "snapshot": {
+            "worldMinutes": 15768000,
+            "ordinaryLivingPopulation": 31,
+            "genesisActiveCount": 0,
+            "genesisCountedInPopulation": false,
+            "births": 25,
+            "deaths": 1,
+            "renewableResourceBase": 0.3984403275822322,
+            "discoveredRegionCount": 24,
+            "ordinaryWildlifeCount": 221,
+            "ordinaryWildlifeCapacity": 236,
+            "monsterCount": 6,
+            "monsterCapacity": 12,
+            "brokenLineageLinks": 0,
+            "secondGenerationLiving": 21,
+            "secondGenerationLearners": 17,
+            "ordinaryTeachersActive": 20
+          },
+          "livingByGeneration": {
+            "0": 10,
+            "1": 17,
+            "2": 4
+          },
+          "postGenesisFindings": [
+            {
+              "severity": "info",
+              "code": "second_generation_learning_alive",
+              "message": "Second-generation learning continues after Genesis departure through ordinary teaching and/or practice.",
+              "residentIds": [
+                "epoch_1_agent_11",
+                "epoch_1_agent_12",
+                "epoch_1_agent_13",
+                "epoch_1_agent_14",
+                "epoch_1_agent_15",
+                "epoch_1_agent_16",
+                "epoch_1_agent_17",
+                "epoch_1_agent_18",
+                "epoch_1_agent_19",
+                "epoch_1_agent_20",
+                "epoch_1_agent_21",
+                "epoch_1_agent_23",
+                "epoch_1_agent_24",
+                "epoch_1_agent_25",
+                "epoch_1_agent_26",
+                "epoch_1_agent_27",
+                "epoch_1_agent_29"
+              ]
+            }
+          ]
+        }
+      ],
+      "final": {
+        "livingByGeneration": {
+          "0": 10,
+          "1": 17,
+          "2": 4
+        },
+        "livingPopulation": 31,
+        "births": 25,
+        "deaths": 1,
+        "deathCauses": {
+          "wildlife": 1
+        },
+        "renewableBase": 0.3984403275822322,
+        "storedResources": 0.837565354061142,
+        "genesisActiveCount": 0,
+        "ordinaryWildlifeCount": 221,
+        "ordinaryWildlifeCapacity": 236,
+        "monsterCount": 6,
+        "monsterCapacity": 12,
+        "discoveredRegionCount": 24,
+        "learning": {
+          "ordinaryLessonEvents": 2959,
+          "generationOneToTwoLessonEvents": 2,
+          "genesisLessonEventsAfterYearThree": 0
+        },
+        "familyAgencyProfiles": 39,
+        "agentRecords": 39
+      },
+      "longRunAlerts": [],
+      "thirdGenerationFindings": [
+        {
+          "severity": "info",
+          "code": "three_generation_knowledge_chain_alive",
+          "message": "Knowledge successfully crossed founders -> generation one -> generation two without Genesis dependency.",
+          "residentIds": [
+            "epoch_1_agent_11",
+            "epoch_1_agent_12",
+            "epoch_1_agent_13",
+            "epoch_1_agent_14",
+            "epoch_1_agent_15",
+            "epoch_1_agent_16",
+            "epoch_1_agent_17",
+            "epoch_1_agent_18",
+            "epoch_1_agent_19",
+            "epoch_1_agent_20",
+            "epoch_1_agent_29"
+          ]
+        }
+      ],
+      "acceptance": {
+        "passed": true,
+        "failures": []
+      }
+    }
+  ],
+  "aggregate": {
+    "passed": true,
+    "seedCount": 3,
+    "thirtyYearSeedCount": 3,
+    "failedSeeds": [],
+    "failures": []
+  }
+}

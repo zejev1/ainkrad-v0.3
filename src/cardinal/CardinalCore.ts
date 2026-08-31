@@ -6,11 +6,18 @@ import {
 } from './CardinalExperience';
 import {
   CARDINAL_AUTONOMY_MAX_RECENT_INTERVENTIONS,
-  CARDINAL_AUTONOMY_WINDOW,
   CARDINAL_RESEARCH_VERSION,
   emptyCardinalResearchContext,
   type CardinalResearchContext,
 } from './CardinalResearch';
+import {
+  assessAutonomyByWorldTime,
+  worldTimePredictionStatement,
+} from '../v15/CardinalWorldTimeAdapter';
+import {
+  LEGACY_CARDINAL_PREDICTION_WINDOW_WORLD_MINUTES,
+  MAX_CARDINAL_PREDICTION_HORIZON_WORLD_MINUTES as CANONICAL_MAX_CARDINAL_PREDICTION_HORIZON_WORLD_MINUTES,
+} from '../v15/WorldTimeContract';
 import type {
   CardinalAutonomyAssessment,
   CardinalCapability,
@@ -24,9 +31,11 @@ import type {
   InterventionProposal,
 } from './types';
 
-export const CARDINAL_POLICY_VERSION = 'ainkrad-cardinal-policy-0.3.14';
-export const DEFAULT_CARDINAL_PREDICTION_HORIZON = 4;
-export const MAX_CARDINAL_PREDICTION_HORIZON = 16;
+export const CARDINAL_POLICY_VERSION = 'ainkrad-cardinal-policy-0.3.15';
+export const DEFAULT_CARDINAL_PREDICTION_HORIZON_WORLD_MINUTES =
+  LEGACY_CARDINAL_PREDICTION_WINDOW_WORLD_MINUTES;
+export const MAX_CARDINAL_PREDICTION_HORIZON_WORLD_MINUTES =
+  CANONICAL_MAX_CARDINAL_PREDICTION_HORIZON_WORLD_MINUTES;
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const clampMagnitude = (value: number) =>
@@ -219,7 +228,17 @@ export class CardinalCore {
     let rationale = 'No systemic condition currently justifies intervention.';
     let deferReason: CardinalDeferReason | undefined;
     let autonomyAssessment: CardinalAutonomyAssessment | undefined;
-    const reasoningFactors: string[] = [];
+    const reasoningFactors: string[] = [
+      `observer_average_satiety=${(observation.metrics.averageSatiety ?? 0).toFixed(3)}`,
+      `observer_outside_settlement_share=${(observation.metrics.outsideHomeSettlementShare ?? 0).toFixed(3)}`,
+      `observer_profession_diversity=${(observation.metrics.professionDiversity ?? 0).toFixed(3)}`,
+      `observer_undecided_livelihood_share=${(observation.metrics.undecidedLivelihoodShare ?? 1).toFixed(3)}`,
+      `observer_productive_action_share=${(observation.metrics.productiveActionShare ?? 0).toFixed(3)}`,
+      `observer_communication_action_share=${(observation.metrics.communicationActionShare ?? 0).toFixed(3)}`,
+      `observer_work_action_share=${(observation.metrics.workActionShare ?? 0).toFixed(3)}`,
+      `observer_prayer_action_share=${(observation.metrics.prayerActionShare ?? 0).toFixed(3)}`,
+      'observer_scope=read_only_no_resident_mind_or_action_writes',
+    ];
 
     if (selected) {
       const isCritical = selected.candidate.critical(observation.metrics);
@@ -307,12 +326,14 @@ export class CardinalCore {
 
     const evaluationId = createStableId('evaluation', {
       worldId: observation.worldId,
+      worldEpoch: observation.worldEpoch,
       worldRevision: observation.worldRevision,
       sensorVersion: observation.sensorVersion,
       policyVersion: this.policyVersion,
       researchVersion: research.researchVersion,
       researchContextFingerprint: research.fingerprint,
       observedAt: observation.observedAt,
+      observedWorldMinutes: observation.observedWorldMinutes,
       mode,
       metrics: observation.metrics,
       evidenceEventIds: observation.evidenceEventIds,
@@ -327,7 +348,9 @@ export class CardinalCore {
     const evaluation: CardinalEvaluation = {
       evaluationId,
       worldId: observation.worldId,
+      worldEpoch: observation.worldEpoch,
       evaluatedAt: observation.observedAt,
+      evaluatedWorldMinutes: observation.observedWorldMinutes,
       observedWorldRevision: observation.worldRevision,
       sensorVersion: observation.sensorVersion,
       policyVersion: this.policyVersion,
@@ -368,9 +391,13 @@ export class CardinalCore {
           metric: selected.candidate.predictionMetric,
           direction: 'decrease',
           minimumImprovement: 0.01,
-          horizon: DEFAULT_CARDINAL_PREDICTION_HORIZON,
-          statement:
-            `${selected.candidate.predictionMetric} should decrease by at least 0.01 within ${DEFAULT_CARDINAL_PREDICTION_HORIZON} logical ticks.`,
+          horizonWorldMinutes:
+            DEFAULT_CARDINAL_PREDICTION_HORIZON_WORLD_MINUTES,
+          statement: worldTimePredictionStatement(
+            selected.candidate.predictionMetric,
+            0.01,
+            DEFAULT_CARDINAL_PREDICTION_HORIZON_WORLD_MINUTES,
+          ),
         },
       };
 
@@ -390,7 +417,9 @@ export class CardinalCore {
     const compatibleHistory = research.priorEvaluations.filter(
       (evaluation) =>
         evaluation.policyVersion === this.policyVersion &&
-        evaluation.sensorVersion === observation.sensorVersion,
+        evaluation.sensorVersion === observation.sensorVersion &&
+        evaluation.worldEpoch === observation.worldEpoch &&
+        evaluation.evaluatedWorldMinutes < observation.observedWorldMinutes,
     );
 
     const supporting: CardinalEvaluation[] = [];
@@ -421,6 +450,7 @@ export class CardinalCore {
         worldId: observation.worldId,
         problemKind: definition.problemKind,
         firstObservedAt: observation.observedAt,
+        firstObservedWorldMinutes: observation.observedWorldMinutes,
         firstWorldRevision: observation.worldRevision,
         sensorVersion: observation.sensorVersion,
         policyVersion: this.policyVersion,
@@ -461,61 +491,28 @@ export class CardinalCore {
     observation: SensorSnapshot,
     research: CardinalResearchContext,
   ): CardinalAutonomyAssessment {
-    const resolved = new Set(
-      research.priorOutcomes.map((outcome) => outcome.interventionId),
+    const assessment = assessAutonomyByWorldTime(
+      interventionKind,
+      {
+        observedAtTick: observation.observedAt,
+        observedWorldMinutes: observation.observedWorldMinutes,
+      },
+      research.priorInterventions,
+      research.priorOutcomes,
+      CARDINAL_AUTONOMY_MAX_RECENT_INTERVENTIONS,
     );
-    const executed = research.priorInterventions.filter(
-      (intervention) =>
-        intervention.executed && intervention.requestedAt < observation.observedAt,
-    );
-    const recent = executed.filter(
-      (intervention) =>
-        observation.observedAt - intervention.requestedAt <= CARDINAL_AUTONOMY_WINDOW,
-    );
-    const activeOrUnresolved = executed.filter((intervention) => {
-      if (
-        !Number.isFinite(intervention.authorizedEffectDuration) ||
-        intervention.authorizedEffectDuration < 1
-      ) {
-        throw new Error(
-          `Cardinal research intervention ${intervention.interventionId} is missing a valid authorized effect duration.`,
-        );
-      }
-      const effectOrPredictionHorizon = Math.max(
-        intervention.authorizedEffectDuration,
-        intervention.proposal.prediction.horizon,
-      );
-      const stillInsideWashout =
-        intervention.requestedAt + effectOrPredictionHorizon > observation.observedAt;
-      return !resolved.has(intervention.interventionId) || stillInsideWashout;
-    });
-    const sameKind = activeOrUnresolved.filter(
-      (intervention) => intervention.proposal.kind === interventionKind,
-    );
-    const interventionDensity = clamp01(
-      recent.length / CARDINAL_AUTONOMY_MAX_RECENT_INTERVENTIONS,
-    );
-    const budgetStatus: CardinalAutonomyAssessment['budgetStatus'] =
-      recent.length >= CARDINAL_AUTONOMY_MAX_RECENT_INTERVENTIONS
-        ? 'exhausted'
-        : recent.length === CARDINAL_AUTONOMY_MAX_RECENT_INTERVENTIONS - 1
-          ? 'caution'
-          : 'open';
 
     return {
-      window: CARDINAL_AUTONOMY_WINDOW,
-      recentExecutedInterventionIds: recent.map(
-        (intervention) => intervention.interventionId,
-      ),
-      activeOrUnresolvedInterventionIds: activeOrUnresolved.map(
-        (intervention) => intervention.interventionId,
-      ),
-      activeOrUnresolvedSameKindIds: sameKind.map(
-        (intervention) => intervention.interventionId,
-      ),
-      interventionDensity,
-      dependencyRisk: interventionDensity,
-      budgetStatus,
+      windowWorldMinutes: assessment.windowWorldMinutes,
+      recentExecutedInterventionIds:
+        assessment.recentExecutedInterventionIds,
+      activeOrUnresolvedInterventionIds:
+        assessment.activeOrUnresolvedInterventionIds,
+      activeOrUnresolvedSameKindIds:
+        assessment.activeOrUnresolvedSameKindIds,
+      interventionDensity: assessment.interventionDensity,
+      dependencyRisk: assessment.dependencyRisk,
+      budgetStatus: assessment.budgetStatus,
     };
   }
 

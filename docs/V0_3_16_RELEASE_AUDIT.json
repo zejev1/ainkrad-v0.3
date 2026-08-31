@@ -1,0 +1,1905 @@
+{
+  "release": "v0.3.16",
+  "generatedAtUtc": "2026-08-26T11:20:02Z",
+  "sourceAuthority": {
+    "stableArchive": {
+      "name": "Ainkrad_v15_CHECKPOINT_LONGRUN_STABLE_2026-08-24_1340.zip",
+      "sha256": "1fb790791bf95af77e33d884166829491020293b50624b4b3d72e5cca340bccc"
+    },
+    "latestSuppliedRecoveryArchive": {
+      "name": "Ainkrad_v0.3.16_REPAIR_PRESERVE_FULL_CHECKPOINT_2026-08-26.zip",
+      "sha256": "adc30fc21f1982655b5878fe7686463db7a65b40baa63991179118527a3bb57c"
+    },
+    "readOnlyVerifiedGithubParent": {
+      "head": "f0e7f3a4c524dda5dc6b212ea1acf25548d502f4",
+      "message": "remont sborki"
+    },
+    "githubUsedAsCodeSource": false,
+    "githubWritePerformed": false,
+    "convexConnected": false
+  },
+  "verification": {
+    "typecheck": {
+      "command": "tsc -p tsconfig.json",
+      "passed": true
+    },
+    "regression": {
+      "command": "npm run test",
+      "passed": true,
+      "filesPassed": 34,
+      "filesTotal": 34,
+      "testsPassed": 146,
+      "testsTotal": 146
+    },
+    "sameVersionSaveRepair": {
+      "passed": true,
+      "fixtureFailure": "missing settlementEconomyById.*.harvestEventsByMaterial",
+      "atomic": true,
+      "idempotent": true,
+      "preservedResidents": true,
+      "preservedRelationships": true,
+      "preservedWorldTime": true,
+      "preservedRng": true,
+      "resumedAfterRepair": true
+    },
+    "cardinalEqualTime": {
+      "passed": true,
+      "worldMinutes": 876000,
+      "multipliers": [
+        1,
+        10,
+        100
+      ],
+      "semanticQuantumWorldMinutes": 8760,
+      "equalWorlds": true,
+      "equalEvaluations": true,
+      "equalAudits": true
+    },
+    "productionBuild": {
+      "command": "vite build",
+      "passed": true,
+      "viteVersion": "7.0.4",
+      "dedicatedWorkerEmitted": true
+    },
+    "productionHttpPreview": {
+      "passed": true,
+      "indexBytes": 399,
+      "applicationJsBytes": 83410,
+      "cssBytes": 32364,
+      "workerBytes": 347246
+    },
+    "ui2dContractSmoke": {
+      "passed": true,
+      "tests": 4,
+      "physicalRoutes": true,
+      "finiteSurfacePositions": true,
+      "visibleDisplayMotion": true,
+      "crowdedResidentSpreading": true,
+      "persistedStateUnchangedByProjection": true
+    },
+    "automatedRealBrowserClickSmoke": {
+      "run": false,
+      "reason": "No Chromium, WebKit or Firefox executable was available in the execution environment."
+    }
+  },
+  "longRun": {
+    "runner": "real autonomous WorldEngine; no injected residents or couples",
+    "requestedYearsCovered": [
+      8,
+      10,
+      12,
+      30,
+      60
+    ],
+    "seeds": [
+      {
+        "seed": "v16-demography-01",
+        "samples": [
+          {
+            "year": 8,
+            "livingByRace": {
+              "human": 19,
+              "goblin": 0,
+              "orc": 0,
+              "ogre": 0
+            },
+            "humanGenerations": {
+              "0": 10,
+              "1": 9
+            },
+            "settlements": [
+              {
+                "id": "settlement_ainkrad",
+                "name": "Айнкрад",
+                "kind": "city",
+                "residentCount": 19,
+                "homeCount": 10,
+                "housingCapacity": 30,
+                "byRace": {
+                  "human": 19,
+                  "goblin": 0,
+                  "orc": 0,
+                  "ogre": 0
+                }
+              }
+            ],
+            "births": 9,
+            "deaths": 0
+          },
+          {
+            "year": 10,
+            "livingByRace": {
+              "human": 21,
+              "goblin": 4,
+              "orc": 0,
+              "ogre": 0
+            },
+            "humanGenerations": {
+              "0": 10,
+              "1": 11
+            },
+            "settlements": [
+              {
+                "id": "settlement_ainkrad",
+                "name": "Айнкрад",
+                "kind": "city",
+                "residentCount": 21,
+                "homeCount": 10,
+                "housingCapacity": 30,
+                "byRace": {
+                  "human": 21,
+                  "goblin": 0,
+                  "orc": 0,
+                  "ogre": 0
+                }
+              },
+              {
+                "id": "settlement_goblin_1",
+                "name": "Поселение зелёных равнин",
+                "kind": "village",
+                "residentCount": 4,
+                "homeCount": 4,
+                "housingCapacity": 16,
+                "byRace": {
+                  "human": 0,
+                  "goblin": 4,
+                  "orc": 0,
+                  "ogre": 0
+                }
+              }
+            ],
+            "births": 11,
+            "deaths": 0
+          },
+          {
+            "year": 12,
+            "livingByRace": {
+              "human": 23,
+              "goblin": 4,
+              "orc": 4,
+              "ogre": 0
+            },
+            "humanGenerations": {
+              "0": 10,
+              "1": 13
+            },
+            "settlements": [
+              {
+                "id": "settlement_ainkrad",
+                "name": "Айнкрад",
+                "kind": "city",
+                "residentCount": 23,
+                "homeCount": 10,
+                "housingCapacity": 30,
+                "byRace": {
+                  "human": 23,
+                  "goblin": 0,
+                  "orc": 0,
+                  "ogre": 0
+                }
+              },
+              {
+                "id": "settlement_goblin_1",
+                "name": "Поселение зелёных равнин",
+                "kind": "village",
+                "residentCount": 4,
+                "homeCount": 4,
+                "housingCapacity": 16,
+                "byRace": {
+                  "human": 0,
+                  "goblin": 4,
+                  "orc": 0,
+                  "ogre": 0
+                }
+              },
+              {
+                "id": "settlement_orc_1",
+                "name": "Поселение каменного клана",
+                "kind": "village",
+                "residentCount": 4,
+                "homeCount": 4,
+                "housingCapacity": 16,
+                "byRace": {
+                  "human": 0,
+                  "goblin": 0,
+                  "orc": 4,
+                  "ogre": 0
+                }
+              }
+            ],
+            "births": 13,
+            "deaths": 0
+          },
+          {
+            "year": 30,
+            "livingByRace": {
+              "human": 32,
+              "goblin": 6,
+              "orc": 8,
+              "ogre": 9
+            },
+            "humanGenerations": {
+              "0": 10,
+              "1": 20,
+              "2": 2
+            },
+            "settlements": [
+              {
+                "id": "settlement_ainkrad",
+                "name": "Айнкрад",
+                "kind": "city",
+                "residentCount": 32,
+                "homeCount": 11,
+                "housingCapacity": 34,
+                "byRace": {
+                  "human": 32,
+                  "goblin": 0,
+                  "orc": 0,
+                  "ogre": 0
+                }
+              },
+              {
+                "id": "settlement_goblin_1",
+                "name": "Поселение зелёных равнин",
+                "kind": "village",
+                "residentCount": 6,
+                "homeCount": 4,
+                "housingCapacity": 16,
+                "byRace": {
+                  "human": 0,
+                  "goblin": 6,
+                  "orc": 0,
+                  "ogre": 0
+                }
+              },
+              {
+                "id": "settlement_ogre_1",
+                "name": "Поселение великанов",
+                "kind": "village",
+                "residentCount": 9,
+                "homeCount": 4,
+                "housingCapacity": 16,
+                "byRace": {
+                  "human": 0,
+                  "goblin": 0,
+                  "orc": 0,
+                  "ogre": 9
+                }
+              },
+              {
+                "id": "settlement_orc_1",
+                "name": "Поселение каменного клана",
+                "kind": "village",
+                "residentCount": 8,
+                "homeCount": 4,
+                "housingCapacity": 16,
+                "byRace": {
+                  "human": 0,
+                  "goblin": 0,
+                  "orc": 8,
+                  "ogre": 0
+                }
+              }
+            ],
+            "births": 36,
+            "deaths": 3
+          },
+          {
+            "year": 60,
+            "livingByRace": {
+              "human": 44,
+              "goblin": 7,
+              "orc": 20,
+              "ogre": 17
+            },
+            "humanGenerations": {
+              "0": 1,
+              "1": 18,
+              "2": 16,
+              "3": 9
+            },
+            "settlements": [
+              {
+                "id": "settlement_ainkrad",
+                "name": "Айнкрад",
+                "kind": "city",
+                "residentCount": 39,
+                "homeCount": 14,
+                "housingCapacity": 46,
+                "byRace": {
+                  "human": 39,
+                  "goblin": 0,
+                  "orc": 0,
+                  "ogre": 0
+                }
+              },
+              {
+                "id": "settlement_goblin_1",
+                "name": "Поселение зелёных равнин",
+                "kind": "village",
+                "residentCount": 8,
+                "homeCount": 4,
+                "housingCapacity": 16,
+                "byRace": {
+                  "human": 2,
+                  "goblin": 6,
+                  "orc": 0,
+                  "ogre": 0
+                }
+              },
+              {
+                "id": "settlement_human_5",
+                "name": "Поселение Сольвей",
+                "kind": "village",
+                "residentCount": 1,
+                "homeCount": 4,
+                "housingCapacity": 16,
+                "byRace": {
+                  "human": 1,
+                  "goblin": 0,
+                  "orc": 0,
+                  "ogre": 0
+                }
+              },
+              {
+                "id": "settlement_human_6",
+                "name": "Поселение Звёздная Гавань",
+                "kind": "village",
+                "residentCount": 2,
+                "homeCount": 4,
+                "housingCapacity": 16,
+                "byRace": {
+                  "human": 2,
+                  "goblin": 0,
+                  "orc": 0,
+                  "ogre": 0
+                }
+              },
+              {
+                "id": "settlement_ogre_1",
+                "name": "Город великанов",
+                "kind": "city",
+                "residentCount": 18,
+                "homeCount": 6,
+                "housingCapacity": 24,
+                "byRace": {
+                  "human": 0,
+                  "goblin": 0,
+                  "orc": 1,
+                  "ogre": 17
+                }
+              },
+              {
+                "id": "settlement_orc_1",
+                "name": "Город каменного клана",
+                "kind": "city",
+                "residentCount": 20,
+                "homeCount": 5,
+                "housingCapacity": 20,
+                "byRace": {
+                  "human": 0,
+                  "goblin": 1,
+                  "orc": 19,
+                  "ogre": 0
+                }
+              }
+            ],
+            "births": 89,
+            "deaths": 23
+          }
+        ],
+        "final": {
+          "livingByRace": {
+            "human": 44,
+            "goblin": 7,
+            "orc": 20,
+            "ogre": 17
+          },
+          "humanGenerations": {
+            "0": 1,
+            "1": 18,
+            "2": 16,
+            "3": 9
+          },
+          "settlements": [
+            {
+              "id": "settlement_ainkrad",
+              "name": "Айнкрад",
+              "kind": "city",
+              "residentCount": 39,
+              "homeCount": 14,
+              "housingCapacity": 46,
+              "byRace": {
+                "human": 39,
+                "goblin": 0,
+                "orc": 0,
+                "ogre": 0
+              }
+            },
+            {
+              "id": "settlement_goblin_1",
+              "name": "Поселение зелёных равнин",
+              "kind": "village",
+              "residentCount": 8,
+              "homeCount": 4,
+              "housingCapacity": 16,
+              "byRace": {
+                "human": 2,
+                "goblin": 6,
+                "orc": 0,
+                "ogre": 0
+              }
+            },
+            {
+              "id": "settlement_human_5",
+              "name": "Поселение Сольвей",
+              "kind": "village",
+              "residentCount": 1,
+              "homeCount": 4,
+              "housingCapacity": 16,
+              "byRace": {
+                "human": 1,
+                "goblin": 0,
+                "orc": 0,
+                "ogre": 0
+              }
+            },
+            {
+              "id": "settlement_human_6",
+              "name": "Поселение Звёздная Гавань",
+              "kind": "village",
+              "residentCount": 2,
+              "homeCount": 4,
+              "housingCapacity": 16,
+              "byRace": {
+                "human": 2,
+                "goblin": 0,
+                "orc": 0,
+                "ogre": 0
+              }
+            },
+            {
+              "id": "settlement_ogre_1",
+              "name": "Город великанов",
+              "kind": "city",
+              "residentCount": 18,
+              "homeCount": 6,
+              "housingCapacity": 24,
+              "byRace": {
+                "human": 0,
+                "goblin": 0,
+                "orc": 1,
+                "ogre": 17
+              }
+            },
+            {
+              "id": "settlement_orc_1",
+              "name": "Город каменного клана",
+              "kind": "city",
+              "residentCount": 20,
+              "homeCount": 5,
+              "housingCapacity": 20,
+              "byRace": {
+                "human": 0,
+                "goblin": 1,
+                "orc": 19,
+                "ogre": 0
+              }
+            }
+          ],
+          "settlementFoundingEvents": 2,
+          "voluntaryResettlementEvents": 12,
+          "births": 89,
+          "deaths": 23,
+          "deathCauses": {
+            "deprivation": 6,
+            "illness": 1,
+            "monster": 4,
+            "old_age": 9,
+            "wildlife": 3
+          },
+          "learning": {
+            "ordinaryLessons": 12725,
+            "generationOneToTwoLessons": 1587,
+            "genesisLessonsAfterYearThree": 0
+          },
+          "renewableBase": 0.8735755839443169,
+          "storedResources": 0.9997868013763164,
+          "localResources": {
+            "settlement_ainkrad": {
+              "settlementId": "settlement_ainkrad",
+              "storedResources": 1,
+              "renewableBase": 0.8029740889610026,
+              "fertility": 0.82,
+              "lastRecoveredWorldMinute": 31536000
+            },
+            "settlement_goblin_1": {
+              "settlementId": "settlement_goblin_1",
+              "storedResources": 1,
+              "renewableBase": 0.9797278356487966,
+              "fertility": 0.8256,
+              "lastRecoveredWorldMinute": 31536000
+            },
+            "settlement_orc_1": {
+              "settlementId": "settlement_orc_1",
+              "storedResources": 1,
+              "renewableBase": 0.9443392817969196,
+              "fertility": 0.8256,
+              "lastRecoveredWorldMinute": 31536000
+            },
+            "settlement_ogre_1": {
+              "settlementId": "settlement_ogre_1",
+              "storedResources": 0.9989695399855293,
+              "renewableBase": 0.8880317760703554,
+              "fertility": 0.8256,
+              "lastRecoveredWorldMinute": 31536000
+            },
+            "settlement_human_5": {
+              "settlementId": "settlement_human_5",
+              "storedResources": 1,
+              "renewableBase": 0.9848649046248407,
+              "fertility": 0.8344,
+              "lastRecoveredWorldMinute": 31536000
+            },
+            "settlement_human_6": {
+              "settlementId": "settlement_human_6",
+              "storedResources": 1,
+              "renewableBase": 0.9676902102266892,
+              "fertility": 0.8344,
+              "lastRecoveredWorldMinute": 31536000
+            }
+          },
+          "materialEconomies": [
+            {
+              "settlementId": "settlement_ainkrad",
+              "stocks": {
+                "food": 0,
+                "wood": 0.08269071392027774,
+                "stone": 0.2589972774058855,
+                "metal": 0,
+                "fuel": 0.53004896290142
+              },
+              "storageCapacity": {
+                "food": 19.08,
+                "wood": 19.29,
+                "stone": 17.16,
+                "metal": 2.365,
+                "fuel": 9.5
+              },
+              "farmingTools": 2,
+              "constructionTools": 1,
+              "harvestEvents": 530,
+              "harvestEventsByMaterial": {
+                "food": 252,
+                "wood": 119,
+                "stone": 150,
+                "metal": 0,
+                "fuel": 9
+              },
+              "constructionEvents": 4,
+              "toolsCreated": 3,
+              "withinCapacity": true
+            },
+            {
+              "settlementId": "settlement_goblin_1",
+              "stocks": {
+                "food": 0.2715337721498318,
+                "wood": 0.4618540298669179,
+                "stone": 0.03438323814752978,
+                "metal": 0.014275735814557447,
+                "fuel": 0.16
+              },
+              "storageCapacity": {
+                "food": 6.760000000000001,
+                "wood": 7.33,
+                "stone": 7.32,
+                "metal": 1.28,
+                "fuel": 3.9
+              },
+              "farmingTools": 1,
+              "constructionTools": 1,
+              "harvestEvents": 82,
+              "harvestEventsByMaterial": {
+                "food": 72,
+                "wood": 5,
+                "stone": 4,
+                "metal": 1,
+                "fuel": 0
+              },
+              "constructionEvents": 0,
+              "toolsCreated": 2,
+              "withinCapacity": true
+            },
+            {
+              "settlementId": "settlement_human_5",
+              "stocks": {
+                "food": 0.13603364678973565,
+                "wood": 0.09000000000000002,
+                "stone": 0.059999999999999956,
+                "metal": 0,
+                "fuel": 0.16
+              },
+              "storageCapacity": {
+                "food": 5.220000000000001,
+                "wood": 6.210000000000001,
+                "stone": 6.340000000000001,
+                "metal": 1.0350000000000001,
+                "fuel": 3.2
+              },
+              "farmingTools": 0,
+              "constructionTools": 0,
+              "harvestEvents": 13,
+              "harvestEventsByMaterial": {
+                "food": 13,
+                "wood": 0,
+                "stone": 0,
+                "metal": 0,
+                "fuel": 0
+              },
+              "constructionEvents": 0,
+              "toolsCreated": 0,
+              "withinCapacity": true
+            },
+            {
+              "settlementId": "settlement_human_6",
+              "stocks": {
+                "food": 0,
+                "wood": 0.09000000000000002,
+                "stone": 0.059999999999999956,
+                "metal": 0,
+                "fuel": 0.16
+              },
+              "storageCapacity": {
+                "food": 5.44,
+                "wood": 6.37,
+                "stone": 6.48,
+                "metal": 1.0699999999999998,
+                "fuel": 3.3
+              },
+              "farmingTools": 0,
+              "constructionTools": 0,
+              "harvestEvents": 2,
+              "harvestEventsByMaterial": {
+                "food": 2,
+                "wood": 0,
+                "stone": 0,
+                "metal": 0,
+                "fuel": 0
+              },
+              "constructionEvents": 0,
+              "toolsCreated": 0,
+              "withinCapacity": true
+            },
+            {
+              "settlementId": "settlement_ogre_1",
+              "stocks": {
+                "food": 0,
+                "wood": 0.1761156112127159,
+                "stone": 0.42219579573639027,
+                "metal": 0.0027413489800607455,
+                "fuel": 0.19129489064160224
+              },
+              "storageCapacity": {
+                "food": 10.06,
+                "wood": 10.33,
+                "stone": 9.820000000000002,
+                "metal": 1.63,
+                "fuel": 5.3999999999999995
+              },
+              "farmingTools": 2,
+              "constructionTools": 1,
+              "harvestEvents": 294,
+              "harvestEventsByMaterial": {
+                "food": 105,
+                "wood": 78,
+                "stone": 107,
+                "metal": 3,
+                "fuel": 1
+              },
+              "constructionEvents": 2,
+              "toolsCreated": 3,
+              "withinCapacity": true
+            },
+            {
+              "settlementId": "settlement_orc_1",
+              "stocks": {
+                "food": 0,
+                "wood": 0.2793850776646483,
+                "stone": 0.36360317435757034,
+                "metal": 0.015649218669198682,
+                "fuel": 0.16
+              },
+              "storageCapacity": {
+                "food": 9.950000000000001,
+                "wood": 9.950000000000001,
+                "stone": 9.55,
+                "metal": 1.7000000000000002,
+                "fuel": 5.35
+              },
+              "farmingTools": 1,
+              "constructionTools": 1,
+              "harvestEvents": 235,
+              "harvestEventsByMaterial": {
+                "food": 92,
+                "wood": 51,
+                "stone": 91,
+                "metal": 1,
+                "fuel": 0
+              },
+              "constructionEvents": 1,
+              "toolsCreated": 2,
+              "withinCapacity": true
+            }
+          ],
+          "materialHarvestCounts": {
+            "food": 536,
+            "wood": 253,
+            "stone": 352,
+            "metal": 5,
+            "fuel": 10
+          },
+          "demographicCapacity": {
+            "totalLiving": 88,
+            "physicalPopulationCapacity": 174,
+            "headroom": 86,
+            "discoveredRegions": 45
+          },
+          "deathAftermath": {
+            "remains": 23,
+            "buried": 23,
+            "unburied": 0,
+            "historicalUnknown": 0,
+            "cemeteries": 5,
+            "maximumContaminationRisk": 0
+          },
+          "settlementConflict": {
+            "knownRelations": 7,
+            "activeWars": 0,
+            "conflictRounds": 0,
+            "resourceRaids": 0,
+            "landDisputes": 0,
+            "casualties": 0
+          },
+          "activeGenesisTeachers": 0,
+          "monsters": 18,
+          "raceFamilyOpportunities": {
+            "human": {
+              "race": "human",
+              "opportunityChecks": 381,
+              "eligiblePairChecks": 9372,
+              "voluntaryIntimacyChoices": 947,
+              "voluntaryChildChoices": 663,
+              "birthsSinceTracking": 45,
+              "lastOpportunityWorldMinute": 31536000,
+              "lastBirthWorldMinute": 30905280
+            },
+            "goblin": {
+              "race": "goblin",
+              "opportunityChecks": 161,
+              "eligiblePairChecks": 359,
+              "voluntaryIntimacyChoices": 65,
+              "voluntaryChildChoices": 61,
+              "birthsSinceTracking": 6,
+              "lastOpportunityWorldMinute": 31536000,
+              "lastBirthWorldMinute": 17870400
+            },
+            "orc": {
+              "race": "orc",
+              "opportunityChecks": 223,
+              "eligiblePairChecks": 540,
+              "voluntaryIntimacyChoices": 142,
+              "voluntaryChildChoices": 86,
+              "birthsSinceTracking": 22,
+              "lastOpportunityWorldMinute": 31536000,
+              "lastBirthWorldMinute": 31536000
+            },
+            "ogre": {
+              "race": "ogre",
+              "opportunityChecks": 199,
+              "eligiblePairChecks": 655,
+              "voluntaryIntimacyChoices": 145,
+              "voluntaryChildChoices": 70,
+              "birthsSinceTracking": 16,
+              "lastOpportunityWorldMinute": 31536000,
+              "lastBirthWorldMinute": 30589920
+            }
+          },
+          "initialOrdinaryResidents": 10,
+          "initialGenesisTeachers": 4
+        },
+        "acceptance": {
+          "passed": true,
+          "failures": []
+        }
+      },
+      {
+        "seed": "v16-demography-02",
+        "samples": [
+          {
+            "year": 8,
+            "livingByRace": {
+              "human": 16,
+              "goblin": 0,
+              "orc": 0,
+              "ogre": 0
+            },
+            "humanGenerations": {
+              "0": 10,
+              "1": 6
+            },
+            "settlements": [
+              {
+                "id": "settlement_ainkrad",
+                "name": "Айнкрад",
+                "kind": "village",
+                "residentCount": 16,
+                "homeCount": 10,
+                "housingCapacity": 30,
+                "byRace": {
+                  "human": 16,
+                  "goblin": 0,
+                  "orc": 0,
+                  "ogre": 0
+                }
+              }
+            ],
+            "births": 6,
+            "deaths": 0
+          },
+          {
+            "year": 10,
+            "livingByRace": {
+              "human": 18,
+              "goblin": 4,
+              "orc": 0,
+              "ogre": 0
+            },
+            "humanGenerations": {
+              "0": 10,
+              "1": 8
+            },
+            "settlements": [
+              {
+                "id": "settlement_ainkrad",
+                "name": "Айнкрад",
+                "kind": "city",
+                "residentCount": 18,
+                "homeCount": 10,
+                "housingCapacity": 30,
+                "byRace": {
+                  "human": 18,
+                  "goblin": 0,
+                  "orc": 0,
+                  "ogre": 0
+                }
+              },
+              {
+                "id": "settlement_goblin_1",
+                "name": "Поселение зелёных равнин",
+                "kind": "village",
+                "residentCount": 4,
+                "homeCount": 4,
+                "housingCapacity": 16,
+                "byRace": {
+                  "human": 0,
+                  "goblin": 4,
+                  "orc": 0,
+                  "ogre": 0
+                }
+              }
+            ],
+            "births": 8,
+            "deaths": 0
+          },
+          {
+            "year": 12,
+            "livingByRace": {
+              "human": 20,
+              "goblin": 4,
+              "orc": 4,
+              "ogre": 0
+            },
+            "humanGenerations": {
+              "0": 10,
+              "1": 10
+            },
+            "settlements": [
+              {
+                "id": "settlement_ainkrad",
+                "name": "Айнкрад",
+                "kind": "city",
+                "residentCount": 20,
+                "homeCount": 10,
+                "housingCapacity": 30,
+                "byRace": {
+                  "human": 20,
+                  "goblin": 0,
+                  "orc": 0,
+                  "ogre": 0
+                }
+              },
+              {
+                "id": "settlement_goblin_1",
+                "name": "Поселение зелёных равнин",
+                "kind": "village",
+                "residentCount": 4,
+                "homeCount": 4,
+                "housingCapacity": 16,
+                "byRace": {
+                  "human": 0,
+                  "goblin": 4,
+                  "orc": 0,
+                  "ogre": 0
+                }
+              },
+              {
+                "id": "settlement_orc_1",
+                "name": "Поселение каменного клана",
+                "kind": "village",
+                "residentCount": 4,
+                "homeCount": 4,
+                "housingCapacity": 16,
+                "byRace": {
+                  "human": 0,
+                  "goblin": 0,
+                  "orc": 4,
+                  "ogre": 0
+                }
+              }
+            ],
+            "births": 11,
+            "deaths": 1
+          },
+          {
+            "year": 30,
+            "livingByRace": {
+              "human": 33,
+              "goblin": 11,
+              "orc": 7,
+              "ogre": 8
+            },
+            "humanGenerations": {
+              "0": 9,
+              "1": 19,
+              "2": 5
+            },
+            "settlements": [
+              {
+                "id": "settlement_ainkrad",
+                "name": "Айнкрад",
+                "kind": "city",
+                "residentCount": 33,
+                "homeCount": 11,
+                "housingCapacity": 34,
+                "byRace": {
+                  "human": 33,
+                  "goblin": 0,
+                  "orc": 0,
+                  "ogre": 0
+                }
+              },
+              {
+                "id": "settlement_goblin_1",
+                "name": "Поселение зелёных равнин",
+                "kind": "village",
+                "residentCount": 11,
+                "homeCount": 4,
+                "housingCapacity": 16,
+                "byRace": {
+                  "human": 0,
+                  "goblin": 11,
+                  "orc": 0,
+                  "ogre": 0
+                }
+              },
+              {
+                "id": "settlement_ogre_1",
+                "name": "Поселение великанов",
+                "kind": "village",
+                "residentCount": 8,
+                "homeCount": 4,
+                "housingCapacity": 16,
+                "byRace": {
+                  "human": 0,
+                  "goblin": 0,
+                  "orc": 0,
+                  "ogre": 8
+                }
+              },
+              {
+                "id": "settlement_orc_1",
+                "name": "Поселение каменного клана",
+                "kind": "village",
+                "residentCount": 7,
+                "homeCount": 4,
+                "housingCapacity": 16,
+                "byRace": {
+                  "human": 0,
+                  "goblin": 0,
+                  "orc": 7,
+                  "ogre": 0
+                }
+              }
+            ],
+            "births": 41,
+            "deaths": 4
+          }
+        ],
+        "final": {
+          "livingByRace": {
+            "human": 33,
+            "goblin": 11,
+            "orc": 7,
+            "ogre": 8
+          },
+          "humanGenerations": {
+            "0": 9,
+            "1": 19,
+            "2": 5
+          },
+          "settlements": [
+            {
+              "id": "settlement_ainkrad",
+              "name": "Айнкрад",
+              "kind": "city",
+              "residentCount": 33,
+              "homeCount": 11,
+              "housingCapacity": 34,
+              "byRace": {
+                "human": 33,
+                "goblin": 0,
+                "orc": 0,
+                "ogre": 0
+              }
+            },
+            {
+              "id": "settlement_goblin_1",
+              "name": "Поселение зелёных равнин",
+              "kind": "village",
+              "residentCount": 11,
+              "homeCount": 4,
+              "housingCapacity": 16,
+              "byRace": {
+                "human": 0,
+                "goblin": 11,
+                "orc": 0,
+                "ogre": 0
+              }
+            },
+            {
+              "id": "settlement_ogre_1",
+              "name": "Поселение великанов",
+              "kind": "village",
+              "residentCount": 8,
+              "homeCount": 4,
+              "housingCapacity": 16,
+              "byRace": {
+                "human": 0,
+                "goblin": 0,
+                "orc": 0,
+                "ogre": 8
+              }
+            },
+            {
+              "id": "settlement_orc_1",
+              "name": "Поселение каменного клана",
+              "kind": "village",
+              "residentCount": 7,
+              "homeCount": 4,
+              "housingCapacity": 16,
+              "byRace": {
+                "human": 0,
+                "goblin": 0,
+                "orc": 7,
+                "ogre": 0
+              }
+            }
+          ],
+          "settlementFoundingEvents": 0,
+          "voluntaryResettlementEvents": 0,
+          "births": 41,
+          "deaths": 4,
+          "deathCauses": {
+            "monster": 1,
+            "wildlife": 3
+          },
+          "learning": {
+            "ordinaryLessons": 3500,
+            "generationOneToTwoLessons": 9,
+            "genesisLessonsAfterYearThree": 0
+          },
+          "renewableBase": 0.8570609871723355,
+          "storedResources": 1,
+          "localResources": {
+            "settlement_ainkrad": {
+              "settlementId": "settlement_ainkrad",
+              "storedResources": 1,
+              "renewableBase": 0.7925297135440128,
+              "fertility": 0.82,
+              "lastRecoveredWorldMinute": 15768000
+            },
+            "settlement_goblin_1": {
+              "settlementId": "settlement_goblin_1",
+              "storedResources": 1,
+              "renewableBase": 0.9351856129495503,
+              "fertility": 0.8256,
+              "lastRecoveredWorldMinute": 15768000
+            },
+            "settlement_orc_1": {
+              "settlementId": "settlement_orc_1",
+              "storedResources": 1,
+              "renewableBase": 0.9481768538037243,
+              "fertility": 0.8256,
+              "lastRecoveredWorldMinute": 15768000
+            },
+            "settlement_ogre_1": {
+              "settlementId": "settlement_ogre_1",
+              "storedResources": 1,
+              "renewableBase": 0.9361047471430312,
+              "fertility": 0.8256,
+              "lastRecoveredWorldMinute": 15768000
+            }
+          },
+          "materialEconomies": [
+            {
+              "settlementId": "settlement_ainkrad",
+              "stocks": {
+                "food": 0,
+                "wood": 0.8129463341894578,
+                "stone": 0.7187279493192199,
+                "metal": 0,
+                "fuel": 0.5908391672663375
+              },
+              "storageCapacity": {
+                "food": 16.11,
+                "wood": 16.23,
+                "stone": 14.670000000000002,
+                "metal": 2.155,
+                "fuel": 8.15
+              },
+              "farmingTools": 1,
+              "constructionTools": 0,
+              "harvestEvents": 251,
+              "harvestEventsByMaterial": {
+                "food": 113,
+                "wood": 41,
+                "stone": 88,
+                "metal": 0,
+                "fuel": 9
+              },
+              "constructionEvents": 1,
+              "toolsCreated": 1,
+              "withinCapacity": true
+            },
+            {
+              "settlementId": "settlement_goblin_1",
+              "stocks": {
+                "food": 0,
+                "wood": 0.40195092967332746,
+                "stone": 0.0980084990195802,
+                "metal": 0.013297882470185492,
+                "fuel": 0.16
+              },
+              "storageCapacity": {
+                "food": 7.420000000000001,
+                "wood": 7.8100000000000005,
+                "stone": 7.74,
+                "metal": 1.385,
+                "fuel": 4.2
+              },
+              "farmingTools": 1,
+              "constructionTools": 1,
+              "harvestEvents": 66,
+              "harvestEventsByMaterial": {
+                "food": 56,
+                "wood": 4,
+                "stone": 5,
+                "metal": 1,
+                "fuel": 0
+              },
+              "constructionEvents": 0,
+              "toolsCreated": 2,
+              "withinCapacity": true
+            },
+            {
+              "settlementId": "settlement_ogre_1",
+              "stocks": {
+                "food": 0,
+                "wood": 0.38840869072495854,
+                "stone": 0.29844809015875834,
+                "metal": 0.0026245984955151694,
+                "fuel": 0.19833822173354476
+              },
+              "storageCapacity": {
+                "food": 6.760000000000001,
+                "wood": 7.33,
+                "stone": 7.32,
+                "metal": 1.28,
+                "fuel": 3.9
+              },
+              "farmingTools": 1,
+              "constructionTools": 1,
+              "harvestEvents": 24,
+              "harvestEventsByMaterial": {
+                "food": 15,
+                "wood": 3,
+                "stone": 2,
+                "metal": 3,
+                "fuel": 1
+              },
+              "constructionEvents": 0,
+              "toolsCreated": 2,
+              "withinCapacity": true
+            },
+            {
+              "settlementId": "settlement_orc_1",
+              "stocks": {
+                "food": 0.017940823207456182,
+                "wood": 0.45086137954090644,
+                "stone": 0.05797836467230501,
+                "metal": 0.014981666089348998,
+                "fuel": 0.16
+              },
+              "storageCapacity": {
+                "food": 6.540000000000001,
+                "wood": 7.17,
+                "stone": 7.180000000000001,
+                "metal": 1.245,
+                "fuel": 3.8
+              },
+              "farmingTools": 1,
+              "constructionTools": 1,
+              "harvestEvents": 46,
+              "harvestEventsByMaterial": {
+                "food": 37,
+                "wood": 5,
+                "stone": 3,
+                "metal": 1,
+                "fuel": 0
+              },
+              "constructionEvents": 0,
+              "toolsCreated": 2,
+              "withinCapacity": true
+            }
+          ],
+          "materialHarvestCounts": {
+            "food": 221,
+            "wood": 53,
+            "stone": 98,
+            "metal": 5,
+            "fuel": 10
+          },
+          "demographicCapacity": {
+            "totalLiving": 59,
+            "physicalPopulationCapacity": 106,
+            "headroom": 47,
+            "discoveredRegions": 22
+          },
+          "deathAftermath": {
+            "remains": 4,
+            "buried": 4,
+            "unburied": 0,
+            "historicalUnknown": 0,
+            "cemeteries": 3,
+            "maximumContaminationRisk": 0
+          },
+          "settlementConflict": {
+            "knownRelations": 5,
+            "activeWars": 0,
+            "conflictRounds": 0,
+            "resourceRaids": 0,
+            "landDisputes": 0,
+            "casualties": 0
+          },
+          "activeGenesisTeachers": 0,
+          "monsters": 10,
+          "raceFamilyOpportunities": {
+            "human": {
+              "race": "human",
+              "opportunityChecks": 150,
+              "eligiblePairChecks": 1814,
+              "voluntaryIntimacyChoices": 237,
+              "voluntaryChildChoices": 172,
+              "birthsSinceTracking": 24,
+              "lastOpportunityWorldMinute": 15768000,
+              "lastBirthWorldMinute": 15662880
+            },
+            "goblin": {
+              "race": "goblin",
+              "opportunityChecks": 62,
+              "eligiblePairChecks": 117,
+              "voluntaryIntimacyChoices": 40,
+              "voluntaryChildChoices": 30,
+              "birthsSinceTracking": 8,
+              "lastOpportunityWorldMinute": 15768000,
+              "lastBirthWorldMinute": 15557760
+            },
+            "orc": {
+              "race": "orc",
+              "opportunityChecks": 62,
+              "eligiblePairChecks": 111,
+              "voluntaryIntimacyChoices": 33,
+              "voluntaryChildChoices": 24,
+              "birthsSinceTracking": 5,
+              "lastOpportunityWorldMinute": 15242400,
+              "lastBirthWorldMinute": 15242400
+            },
+            "ogre": {
+              "race": "ogre",
+              "opportunityChecks": 65,
+              "eligiblePairChecks": 188,
+              "voluntaryIntimacyChoices": 58,
+              "voluntaryChildChoices": 24,
+              "birthsSinceTracking": 4,
+              "lastOpportunityWorldMinute": 15768000,
+              "lastBirthWorldMinute": 15662880
+            }
+          },
+          "initialOrdinaryResidents": 10,
+          "initialGenesisTeachers": 4
+        },
+        "acceptance": {
+          "passed": true,
+          "failures": []
+        }
+      },
+      {
+        "seed": "v16-demography-03",
+        "samples": [
+          {
+            "year": 8,
+            "livingByRace": {
+              "human": 18,
+              "goblin": 0,
+              "orc": 0,
+              "ogre": 0
+            },
+            "humanGenerations": {
+              "0": 10,
+              "1": 8
+            },
+            "settlements": [
+              {
+                "id": "settlement_ainkrad",
+                "name": "Айнкрад",
+                "kind": "city",
+                "residentCount": 18,
+                "homeCount": 10,
+                "housingCapacity": 30,
+                "byRace": {
+                  "human": 18,
+                  "goblin": 0,
+                  "orc": 0,
+                  "ogre": 0
+                }
+              }
+            ],
+            "births": 8,
+            "deaths": 0
+          },
+          {
+            "year": 10,
+            "livingByRace": {
+              "human": 20,
+              "goblin": 4,
+              "orc": 0,
+              "ogre": 0
+            },
+            "humanGenerations": {
+              "0": 10,
+              "1": 10
+            },
+            "settlements": [
+              {
+                "id": "settlement_ainkrad",
+                "name": "Айнкрад",
+                "kind": "city",
+                "residentCount": 20,
+                "homeCount": 10,
+                "housingCapacity": 30,
+                "byRace": {
+                  "human": 20,
+                  "goblin": 0,
+                  "orc": 0,
+                  "ogre": 0
+                }
+              },
+              {
+                "id": "settlement_goblin_1",
+                "name": "Поселение зелёных равнин",
+                "kind": "village",
+                "residentCount": 4,
+                "homeCount": 4,
+                "housingCapacity": 16,
+                "byRace": {
+                  "human": 0,
+                  "goblin": 4,
+                  "orc": 0,
+                  "ogre": 0
+                }
+              }
+            ],
+            "births": 10,
+            "deaths": 0
+          },
+          {
+            "year": 12,
+            "livingByRace": {
+              "human": 22,
+              "goblin": 4,
+              "orc": 4,
+              "ogre": 0
+            },
+            "humanGenerations": {
+              "0": 10,
+              "1": 12
+            },
+            "settlements": [
+              {
+                "id": "settlement_ainkrad",
+                "name": "Айнкрад",
+                "kind": "city",
+                "residentCount": 22,
+                "homeCount": 10,
+                "housingCapacity": 30,
+                "byRace": {
+                  "human": 22,
+                  "goblin": 0,
+                  "orc": 0,
+                  "ogre": 0
+                }
+              },
+              {
+                "id": "settlement_goblin_1",
+                "name": "Поселение зелёных равнин",
+                "kind": "village",
+                "residentCount": 4,
+                "homeCount": 4,
+                "housingCapacity": 16,
+                "byRace": {
+                  "human": 0,
+                  "goblin": 4,
+                  "orc": 0,
+                  "ogre": 0
+                }
+              },
+              {
+                "id": "settlement_orc_1",
+                "name": "Поселение каменного клана",
+                "kind": "village",
+                "residentCount": 4,
+                "homeCount": 4,
+                "housingCapacity": 16,
+                "byRace": {
+                  "human": 0,
+                  "goblin": 0,
+                  "orc": 4,
+                  "ogre": 0
+                }
+              }
+            ],
+            "births": 12,
+            "deaths": 0
+          },
+          {
+            "year": 30,
+            "livingByRace": {
+              "human": 35,
+              "goblin": 11,
+              "orc": 6,
+              "ogre": 10
+            },
+            "humanGenerations": {
+              "0": 10,
+              "1": 17,
+              "2": 8
+            },
+            "settlements": [
+              {
+                "id": "settlement_ainkrad",
+                "name": "Айнкрад",
+                "kind": "city",
+                "residentCount": 35,
+                "homeCount": 12,
+                "housingCapacity": 38,
+                "byRace": {
+                  "human": 35,
+                  "goblin": 0,
+                  "orc": 0,
+                  "ogre": 0
+                }
+              },
+              {
+                "id": "settlement_goblin_1",
+                "name": "Поселение зелёных равнин",
+                "kind": "village",
+                "residentCount": 11,
+                "homeCount": 4,
+                "housingCapacity": 16,
+                "byRace": {
+                  "human": 0,
+                  "goblin": 11,
+                  "orc": 0,
+                  "ogre": 0
+                }
+              },
+              {
+                "id": "settlement_ogre_1",
+                "name": "Поселение великанов",
+                "kind": "village",
+                "residentCount": 10,
+                "homeCount": 4,
+                "housingCapacity": 16,
+                "byRace": {
+                  "human": 0,
+                  "goblin": 0,
+                  "orc": 0,
+                  "ogre": 10
+                }
+              },
+              {
+                "id": "settlement_orc_1",
+                "name": "Поселение каменного клана",
+                "kind": "village",
+                "residentCount": 6,
+                "homeCount": 4,
+                "housingCapacity": 16,
+                "byRace": {
+                  "human": 0,
+                  "goblin": 0,
+                  "orc": 6,
+                  "ogre": 0
+                }
+              }
+            ],
+            "births": 41,
+            "deaths": 1
+          }
+        ],
+        "final": {
+          "livingByRace": {
+            "human": 35,
+            "goblin": 11,
+            "orc": 6,
+            "ogre": 10
+          },
+          "humanGenerations": {
+            "0": 10,
+            "1": 17,
+            "2": 8
+          },
+          "settlements": [
+            {
+              "id": "settlement_ainkrad",
+              "name": "Айнкрад",
+              "kind": "city",
+              "residentCount": 35,
+              "homeCount": 12,
+              "housingCapacity": 38,
+              "byRace": {
+                "human": 35,
+                "goblin": 0,
+                "orc": 0,
+                "ogre": 0
+              }
+            },
+            {
+              "id": "settlement_goblin_1",
+              "name": "Поселение зелёных равнин",
+              "kind": "village",
+              "residentCount": 11,
+              "homeCount": 4,
+              "housingCapacity": 16,
+              "byRace": {
+                "human": 0,
+                "goblin": 11,
+                "orc": 0,
+                "ogre": 0
+              }
+            },
+            {
+              "id": "settlement_ogre_1",
+              "name": "Поселение великанов",
+              "kind": "village",
+              "residentCount": 10,
+              "homeCount": 4,
+              "housingCapacity": 16,
+              "byRace": {
+                "human": 0,
+                "goblin": 0,
+                "orc": 0,
+                "ogre": 10
+              }
+            },
+            {
+              "id": "settlement_orc_1",
+              "name": "Поселение каменного клана",
+              "kind": "village",
+              "residentCount": 6,
+              "homeCount": 4,
+              "housingCapacity": 16,
+              "byRace": {
+                "human": 0,
+                "goblin": 0,
+                "orc": 6,
+                "ogre": 0
+              }
+            }
+          ],
+          "settlementFoundingEvents": 0,
+          "voluntaryResettlementEvents": 0,
+          "births": 41,
+          "deaths": 1,
+          "deathCauses": {
+            "monster": 1
+          },
+          "learning": {
+            "ordinaryLessons": 3999,
+            "generationOneToTwoLessons": 60,
+            "genesisLessonsAfterYearThree": 0
+          },
+          "renewableBase": 0.8720420029813022,
+          "storedResources": 0.9998155024317912,
+          "localResources": {
+            "settlement_ainkrad": {
+              "settlementId": "settlement_ainkrad",
+              "storedResources": 1,
+              "renewableBase": 0.812397240379193,
+              "fertility": 0.82,
+              "lastRecoveredWorldMinute": 15768000
+            },
+            "settlement_goblin_1": {
+              "settlementId": "settlement_goblin_1",
+              "storedResources": 1,
+              "renewableBase": 0.9441680969358913,
+              "fertility": 0.8256,
+              "lastRecoveredWorldMinute": 15768000
+            },
+            "settlement_orc_1": {
+              "settlementId": "settlement_orc_1",
+              "storedResources": 0.9980935251285087,
+              "renewableBase": 0.9452458279336123,
+              "fertility": 0.8256,
+              "lastRecoveredWorldMinute": 15768000
+            },
+            "settlement_ogre_1": {
+              "settlementId": "settlement_ogre_1",
+              "storedResources": 1,
+              "renewableBase": 0.9575376737672501,
+              "fertility": 0.8256,
+              "lastRecoveredWorldMinute": 15768000
+            }
+          },
+          "materialEconomies": [
+            {
+              "settlementId": "settlement_ainkrad",
+              "stocks": {
+                "food": 0,
+                "wood": 0.4894062868804442,
+                "stone": 0.5300747686055902,
+                "metal": 0,
+                "fuel": 0.35013102187023726
+              },
+              "storageCapacity": {
+                "food": 17.099999999999998,
+                "wood": 17.25,
+                "stone": 15.500000000000004,
+                "metal": 2.225,
+                "fuel": 8.600000000000001
+              },
+              "farmingTools": 1,
+              "constructionTools": 0,
+              "harvestEvents": 250,
+              "harvestEventsByMaterial": {
+                "food": 82,
+                "wood": 65,
+                "stone": 100,
+                "metal": 0,
+                "fuel": 3
+              },
+              "constructionEvents": 2,
+              "toolsCreated": 1,
+              "withinCapacity": true
+            },
+            {
+              "settlementId": "settlement_goblin_1",
+              "stocks": {
+                "food": 0,
+                "wood": 0.4726319466603893,
+                "stone": 0.3421404984412214,
+                "metal": 0.027253946165756313,
+                "fuel": 0.19822685339975293
+              },
+              "storageCapacity": {
+                "food": 7.420000000000001,
+                "wood": 7.8100000000000005,
+                "stone": 7.74,
+                "metal": 1.385,
+                "fuel": 4.2
+              },
+              "farmingTools": 1,
+              "constructionTools": 1,
+              "harvestEvents": 64,
+              "harvestEventsByMaterial": {
+                "food": 36,
+                "wood": 5,
+                "stone": 20,
+                "metal": 2,
+                "fuel": 1
+              },
+              "constructionEvents": 0,
+              "toolsCreated": 2,
+              "withinCapacity": true
+            },
+            {
+              "settlementId": "settlement_ogre_1",
+              "stocks": {
+                "food": 0,
+                "wood": 0.2362464238240525,
+                "stone": 0.006586142057164873,
+                "metal": 0.03175828662069353,
+                "fuel": 0.2005534225446103
+              },
+              "storageCapacity": {
+                "food": 7.2,
+                "wood": 7.65,
+                "stone": 7.6000000000000005,
+                "metal": 1.35,
+                "fuel": 4.1
+              },
+              "farmingTools": 2,
+              "constructionTools": 1,
+              "harvestEvents": 19,
+              "harvestEventsByMaterial": {
+                "food": 11,
+                "wood": 3,
+                "stone": 2,
+                "metal": 2,
+                "fuel": 1
+              },
+              "constructionEvents": 0,
+              "toolsCreated": 3,
+              "withinCapacity": true
+            },
+            {
+              "settlementId": "settlement_orc_1",
+              "stocks": {
+                "food": 0,
+                "wood": 0.4934644908114906,
+                "stone": 0.28613377978771554,
+                "metal": 0.029158652655754767,
+                "fuel": 0.19350517173523518
+              },
+              "storageCapacity": {
+                "food": 6.32,
+                "wood": 7.01,
+                "stone": 7.04,
+                "metal": 1.21,
+                "fuel": 3.7
+              },
+              "farmingTools": 1,
+              "constructionTools": 1,
+              "harvestEvents": 51,
+              "harvestEventsByMaterial": {
+                "food": 40,
+                "wood": 5,
+                "stone": 3,
+                "metal": 2,
+                "fuel": 1
+              },
+              "constructionEvents": 0,
+              "toolsCreated": 2,
+              "withinCapacity": true
+            }
+          ],
+          "materialHarvestCounts": {
+            "food": 169,
+            "wood": 78,
+            "stone": 125,
+            "metal": 6,
+            "fuel": 6
+          },
+          "demographicCapacity": {
+            "totalLiving": 62,
+            "physicalPopulationCapacity": 110,
+            "headroom": 48,
+            "discoveredRegions": 22
+          },
+          "deathAftermath": {
+            "remains": 1,
+            "buried": 1,
+            "unburied": 0,
+            "historicalUnknown": 0,
+            "cemeteries": 1,
+            "maximumContaminationRisk": 0
+          },
+          "settlementConflict": {
+            "knownRelations": 4,
+            "activeWars": 0,
+            "conflictRounds": 0,
+            "resourceRaids": 0,
+            "landDisputes": 0,
+            "casualties": 0
+          },
+          "activeGenesisTeachers": 0,
+          "monsters": 14,
+          "raceFamilyOpportunities": {
+            "human": {
+              "race": "human",
+              "opportunityChecks": 150,
+              "eligiblePairChecks": 2191,
+              "voluntaryIntimacyChoices": 236,
+              "voluntaryChildChoices": 157,
+              "birthsSinceTracking": 25,
+              "lastOpportunityWorldMinute": 15768000,
+              "lastBirthWorldMinute": 15347520
+            },
+            "goblin": {
+              "race": "goblin",
+              "opportunityChecks": 97,
+              "eligiblePairChecks": 239,
+              "voluntaryIntimacyChoices": 49,
+              "voluntaryChildChoices": 45,
+              "birthsSinceTracking": 7,
+              "lastOpportunityWorldMinute": 15768000,
+              "lastBirthWorldMinute": 14611680
+            },
+            "orc": {
+              "race": "orc",
+              "opportunityChecks": 70,
+              "eligiblePairChecks": 142,
+              "voluntaryIntimacyChoices": 29,
+              "voluntaryChildChoices": 15,
+              "birthsSinceTracking": 3,
+              "lastOpportunityWorldMinute": 15768000,
+              "lastBirthWorldMinute": 10091520
+            },
+            "ogre": {
+              "race": "ogre",
+              "opportunityChecks": 60,
+              "eligiblePairChecks": 144,
+              "voluntaryIntimacyChoices": 38,
+              "voluntaryChildChoices": 21,
+              "birthsSinceTracking": 6,
+              "lastOpportunityWorldMinute": 15768000,
+              "lastBirthWorldMinute": 15557760
+            }
+          },
+          "initialOrdinaryResidents": 10,
+          "initialGenesisTeachers": 4
+        },
+        "acceptance": {
+          "passed": true,
+          "failures": []
+        }
+      }
+    ],
+    "aggregate": {
+      "passed": true,
+      "seedCount": 3,
+      "thirtyYearSeedCount": 3,
+      "sixtyYearSeedCount": 1,
+      "failures": []
+    }
+  }
+}

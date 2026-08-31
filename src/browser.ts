@@ -14,6 +14,12 @@ import type {
   CardinalConsoleSnapshot,
   LiveWorldFrame,
 } from './runtime/LiveWorldRuntime';
+import {
+  makeOfflineWorldClockAnchor,
+  offlineWorldMinuteTarget,
+  parseOfflineWorldClockAnchor,
+  type OfflineWorldClockAnchor,
+} from './runtime/OfflineWorldClock';
 import type { WorldEvent } from './world/events';
 import {
   ageParts,
@@ -36,6 +42,19 @@ import type {
   WorldPlaceKind,
   WorldState,
 } from './world/types';
+import { projectedResidentPosition } from './presentation/ResidentMotionProjection';
+import {
+  inspectPlaceV16,
+  inspectResidentV16,
+  inspectWildlifeV16,
+  type TruthfulInspectorReportV16,
+} from './v16/TruthfulInspectorsV16';
+import { formatAinkradWorldTime } from './v15/CardinalReadableReport';
+import { worldDurationDescription } from './v15/WorldTimeContract';
+import type {
+  V18LivelihoodKind,
+  V18LivelihoodStage,
+} from './v18/types';
 
 const app = document.querySelector<HTMLDivElement>('#app');
 
@@ -71,6 +90,32 @@ const actionIcons: Record<AgentActionKind, string> = {
   reflect: '…',
   bond: '∞',
   pray: '✧',
+};
+
+const livelihoodLabels: Readonly<Record<V18LivelihoodKind, string>> = {
+  undecided: 'дело жизни ещё не выбрано',
+  farmer: 'земледелец',
+  forager: 'собиратель',
+  woodcutter: 'лесоруб',
+  miner: 'рудокоп',
+  fisher: 'рыбак',
+  hunter: 'охотник',
+  artisan: 'ремесленник',
+  smith: 'кузнец',
+  builder: 'строитель',
+  caregiver: 'попечитель',
+  scout: 'разведчик',
+  teacher: 'наставник',
+  scribe: 'писец',
+  guard: 'страж',
+  spiritual_keeper: 'хранитель традиций',
+};
+
+const livelihoodStageLabels: Readonly<Record<V18LivelihoodStage, string>> = {
+  observing: 'наблюдает',
+  apprentice: 'ученик',
+  practitioner: 'опытный',
+  master: 'мастер',
 };
 
 const goalLabels: Record<AgentState['goal']['kind'], string> = {
@@ -208,15 +253,6 @@ const predictionMetricLabels: Record<CardinalPredictionMetric, string> = {
   wildlifePressure: 'давление на экосистему',
 };
 
-const worldLawDomainLabels: Record<WorldState['governance']['laws'][string]['domain'], string> = {
-  geography: 'география и рост карты',
-  ecology: 'экология',
-  climate: 'климат',
-  resources: 'ресурсы',
-  demography: 'рождаемость и поколения',
-  cosmology: 'мистика и верования',
-};
-
 const worldLawMechanismLabels: Record<WorldState['governance']['laws'][string]['mechanism'], string> = {
   frontier_expansion: 'скорость открытия новых земель',
   wildlife_recovery: 'восстановление животных',
@@ -257,7 +293,7 @@ app.innerHTML = `
   <div class="ainkrad-app">
     <header class="world-header">
       <div>
-        <p class="eyebrow">AINKRAD v0.3.14 · физический мир</p>
+        <p class="eyebrow">AINKRAD v0.3.18 · путь к Underworld</p>
         <h1 id="world-title">Мир · уровень 1</h1>
         <p class="world-subtitle">Время регулируется снаружи. Жители сами расширяют карту и проживают поколения.</p>
       </div>
@@ -269,10 +305,10 @@ app.innerHTML = `
     </header>
 
     <div class="status-strip" aria-label="Состояние мира">
-      <span>Тик <strong id="tick-value">0</strong></span>
+      <span>Возраст <strong id="tick-value">0 дней</strong></span>
       <span>Календарь <strong id="time-value">Год 1 · день 1</strong></span>
       <span>Мир <strong id="world-level-value">ур. 1</strong></span>
-      <span>Жителей <strong id="population-value">6</strong></span>
+      <span>Жителей <strong id="population-value">10</strong></span>
       <span>Карта <strong id="growth-value">5 мест</strong></span>
       <span>Cardinal <strong id="cardinal-status-level">ур. 1</strong></span>
       <span>Животные <strong id="wildlife-value">0</strong></span>
@@ -297,7 +333,19 @@ app.innerHTML = `
       </label>
       <button id="speed-multiplier" type="button" aria-label="Переключить ускорение в десять раз">×1</button>
       <button id="reset-world" type="button" aria-label="Создать новый мир с сохранением опыта Cardinal">Новый мир</button>
-      <small>Cardinal не имеет доступа</small>
+      <small id="offline-clock-status">После закрытия мир продолжит время при следующем открытии · Cardinal не имеет доступа</small>
+    </section>
+
+    <section class="catch-up-overlay" id="catch-up-overlay" aria-live="assertive" hidden>
+      <div class="catch-up-overlay__heading">
+        <div>
+          <span>ВОССТАНОВЛЕНИЕ ЖИВОГО МИРА</span>
+          <strong id="catch-up-title">Подготавливаем быстрый догон…</strong>
+        </div>
+        <b id="catch-up-percent">0%</b>
+      </div>
+      <div class="catch-up-track"><span id="catch-up-bar"></span></div>
+      <p id="catch-up-detail">Жители, поколения и события будут рассчитаны; календарь не перепрыгивается.</p>
     </section>
 
     <main class="world-layout">
@@ -309,6 +357,7 @@ app.innerHTML = `
             <button id="map-zoom-out" type="button" aria-label="Уменьшить карту">−</button>
             <button id="map-zoom-fit" type="button" aria-label="Показать всю карту">100%</button>
             <button id="map-zoom-in" type="button" aria-label="Увеличить карту">+</button>
+            <button id="text-scale" type="button" aria-label="Увеличить размер текста">Текст 115%</button>
           </div>
         </div>
         <div class="world-map-viewport" id="world-map-viewport">
@@ -319,6 +368,7 @@ app.innerHTML = `
             <div class="terrain terrain--water growth-terrain growth-terrain--3" aria-hidden="true"></div>
             <div class="terrain terrain--grove-one growth-terrain growth-terrain--2" aria-hidden="true"></div>
             <div class="terrain terrain--grove-two growth-terrain growth-terrain--1" aria-hidden="true"></div>
+            <div id="biomes-layer" class="biomes-layer" aria-hidden="true"></div>
 
             <svg
               class="roads"
@@ -352,6 +402,11 @@ app.innerHTML = `
             <span class="autonomy-mark">САМ РЕШАЕТ</span>
           </div>
 
+          <label class="resident-picker-label" for="resident-picker">
+            <span>Найти конкретного жителя</span>
+            <select id="resident-picker" aria-label="Выбрать жителя"></select>
+          </label>
+
           <div class="resident-title-row">
             <div class="resident-portrait" id="resident-portrait" aria-hidden="true">A</div>
             <div>
@@ -367,6 +422,7 @@ app.innerHTML = `
             <div><dt>Чувства</dt><dd id="resident-emotion">—</dd></div>
             <div><dt>Тело</dt><dd id="resident-physiology">—</dd></div>
             <div><dt>Характер</dt><dd id="resident-traits">—</dd></div>
+            <div><dt>Дело жизни</dt><dd id="resident-profession">—</dd></div>
             <div><dt>Сильный навык</dt><dd id="resident-skill">—</dd></div>
             <div><dt>Выбор</dt><dd id="resident-choice">—</dd></div>
           </dl>
@@ -384,6 +440,10 @@ app.innerHTML = `
             <div class="need-track need-track--resources"><span id="personal-resource-bar"></span></div>
           </div>
           <div class="need-row need-row--compact">
+            <span>Сытость</span><span id="satiety-value">—</span>
+            <div class="need-track need-track--satiety"><span id="satiety-bar"></span></div>
+          </div>
+          <div class="need-row need-row--compact">
             <span>Принадлежность</span><span id="belonging-value">—</span>
             <div class="need-track need-track--belonging"><span id="belonging-bar"></span></div>
           </div>
@@ -393,6 +453,9 @@ app.innerHTML = `
           </div>
 
           <p class="relationship-note" id="relationship-note">Связи ещё формируются.</p>
+          <button class="resident-details-open" id="resident-details-open" type="button">
+            Родословная, навыки и реальная жизнь
+          </button>
         </section>
 
         <section class="event-panel">
@@ -403,6 +466,10 @@ app.innerHTML = `
           <ol class="event-feed" id="event-feed">
             <li>Мир вспоминает свою историю…</li>
           </ol>
+          <div class="conversation-window" aria-live="polite">
+            <strong>Подслушано в мире</strong>
+            <div id="conversation-feed">Пока рядом не слышно разговора.</div>
+          </div>
         </section>
 
         <section class="cardinal-panel">
@@ -449,9 +516,24 @@ app.innerHTML = `
           <button type="button" data-console-tab="interventions">Вмешательства</button>
           <button type="button" data-console-tab="proposals">Предложения</button>
           <button type="button" data-console-tab="evaluations">Оценки</button>
+          <button type="button" data-console-tab="diagnostics">Диагностика</button>
         </nav>
         <p class="cardinal-console__note">Данные загружаются только при открытии: длинная история не копируется в каждый кадр мира.</p>
         <div class="cardinal-console__content" id="cardinal-console-content">Загрузка журнала…</div>
+      </section>
+    </div>
+    <div class="world-inspector" id="world-inspector" hidden>
+      <section class="world-inspector__sheet" role="dialog" aria-modal="true" aria-labelledby="world-inspector-title">
+        <header>
+          <div>
+            <p class="world-inspector__badge" id="world-inspector-badge">ОБЪЕКТ МИРА</p>
+            <h2 id="world-inspector-title">Подробности</h2>
+            <p id="world-inspector-subtitle"></p>
+          </div>
+          <button id="world-inspector-close" type="button" aria-label="Закрыть подробности">×</button>
+        </header>
+        <div class="world-inspector__content" id="world-inspector-content"></div>
+        <p class="world-inspector__evidence" id="world-inspector-evidence"></p>
       </section>
     </div>
   </div>
@@ -471,6 +553,7 @@ const settlementsLayer = requiredElement<HTMLDivElement>('settlements-layer');
 const mapZoomOut = requiredElement<HTMLButtonElement>('map-zoom-out');
 const mapZoomFit = requiredElement<HTMLButtonElement>('map-zoom-fit');
 const mapZoomIn = requiredElement<HTMLButtonElement>('map-zoom-in');
+const textScaleButton = requiredElement<HTMLButtonElement>('text-scale');
 const worldTitle = requiredElement<HTMLElement>('world-title');
 const worldLevelValue = requiredElement<HTMLElement>('world-level-value');
 const cardinalStatusLevel = requiredElement<HTMLElement>('cardinal-status-level');
@@ -478,6 +561,7 @@ const mapScaleValue = requiredElement<HTMLElement>('map-scale-value');
 const mapTimeValue = requiredElement<HTMLElement>('map-time-value');
 const mapHint = requiredElement<HTMLElement>('map-hint');
 const placesLayer = requiredElement<HTMLDivElement>('places-layer');
+const biomesLayer = requiredElement<HTMLDivElement>('biomes-layer');
 const wildlifeLayer = requiredElement<HTMLDivElement>('wildlife-layer');
 const agentsLayer = requiredElement<HTMLDivElement>('agents-layer');
 const tickValue = requiredElement<HTMLElement>('tick-value');
@@ -492,6 +576,12 @@ const worldSpeedSelect = requiredElement<HTMLSelectElement>('world-speed-select'
 const speedMultiplierButton = requiredElement<HTMLButtonElement>('speed-multiplier');
 const resetWorldButton = requiredElement<HTMLButtonElement>('reset-world');
 const clockRateValue = requiredElement<HTMLElement>('clock-rate-value');
+const offlineClockStatus = requiredElement<HTMLElement>('offline-clock-status');
+const catchUpOverlay = requiredElement<HTMLElement>('catch-up-overlay');
+const catchUpTitle = requiredElement<HTMLElement>('catch-up-title');
+const catchUpPercent = requiredElement<HTMLElement>('catch-up-percent');
+const catchUpBar = requiredElement<HTMLElement>('catch-up-bar');
+const catchUpDetail = requiredElement<HTMLElement>('catch-up-detail');
 const evaluationValue = requiredElement<HTMLElement>('evaluation-value');
 const interventionValue = requiredElement<HTMLElement>('intervention-value');
 const proposalValue = requiredElement<HTMLElement>('proposal-value');
@@ -503,6 +593,7 @@ const liveIndicator = requiredElement<HTMLElement>('live-indicator');
 const liveLabel = requiredElement<HTMLElement>('live-label');
 const disturbanceBanner = requiredElement<HTMLElement>('disturbance-banner');
 const residentPortrait = requiredElement<HTMLElement>('resident-portrait');
+const residentPicker = requiredElement<HTMLSelectElement>('resident-picker');
 const residentName = requiredElement<HTMLElement>('resident-name');
 const residentActivity = requiredElement<HTMLElement>('resident-activity');
 const residentPlace = requiredElement<HTMLElement>('resident-place');
@@ -511,16 +602,21 @@ const residentLife = requiredElement<HTMLElement>('resident-life');
 const residentEmotion = requiredElement<HTMLElement>('resident-emotion');
 const residentPhysiology = requiredElement<HTMLElement>('resident-physiology');
 const residentTraits = requiredElement<HTMLElement>('resident-traits');
+const residentProfession = requiredElement<HTMLElement>('resident-profession');
 const residentSkill = requiredElement<HTMLElement>('resident-skill');
 const residentChoice = requiredElement<HTMLElement>('resident-choice');
 const relationshipNote = requiredElement<HTMLElement>('relationship-note');
+const residentDetailsOpen = requiredElement<HTMLButtonElement>('resident-details-open');
 const eventFeed = requiredElement<HTMLOListElement>('event-feed');
+const conversationFeed = requiredElement<HTMLElement>('conversation-feed');
 const energyValue = requiredElement<HTMLElement>('energy-value');
 const energyBar = requiredElement<HTMLElement>('energy-bar');
 const stressValue = requiredElement<HTMLElement>('stress-value');
 const stressBar = requiredElement<HTMLElement>('stress-bar');
 const personalResourceValue = requiredElement<HTMLElement>('personal-resource-value');
 const personalResourceBar = requiredElement<HTMLElement>('personal-resource-bar');
+const satietyValue = requiredElement<HTMLElement>('satiety-value');
+const satietyBar = requiredElement<HTMLElement>('satiety-bar');
 const belongingValue = requiredElement<HTMLElement>('belonging-value');
 const belongingBar = requiredElement<HTMLElement>('belonging-bar');
 const purposeValue = requiredElement<HTMLElement>('purpose-value');
@@ -535,13 +631,22 @@ const cardinalConsoleClose = requiredElement<HTMLButtonElement>(
 const cardinalConsoleContent = requiredElement<HTMLElement>(
   'cardinal-console-content',
 );
+const worldInspector = requiredElement<HTMLElement>('world-inspector');
+const worldInspectorClose = requiredElement<HTMLButtonElement>('world-inspector-close');
+const worldInspectorBadge = requiredElement<HTMLElement>('world-inspector-badge');
+const worldInspectorTitle = requiredElement<HTMLElement>('world-inspector-title');
+const worldInspectorSubtitle = requiredElement<HTMLElement>('world-inspector-subtitle');
+const worldInspectorContent = requiredElement<HTMLElement>('world-inspector-content');
+const worldInspectorEvidence = requiredElement<HTMLElement>('world-inspector-evidence');
 
 const avatarElements = new Map<string, HTMLButtonElement>();
 const placeElements = new Map<string, HTMLElement>();
+const biomeElements = new Map<string, HTMLElement>();
 const wildlifeElements = new Map<string, HTMLElement>();
 const settlementElements = new Map<string, HTMLElement>();
 
 let selectedAgentId: string | undefined;
+let residentPickerSignature = '';
 let lastFrame: LiveWorldFrame | undefined;
 let continuityAnnounced = false;
 let renderedGrowthStage = -1;
@@ -551,17 +656,29 @@ let mapBaseHeight = 650;
 let activeConsoleTab: CardinalConsoleTab = 'laws';
 let cardinalConsoleSnapshot: CardinalConsoleSnapshot | undefined;
 let highlightedPlaceIds = new Set<string>();
+let inspectedEntity:
+  | { kind: 'resident' | 'wildlife' | 'place'; id: string }
+  | undefined;
 
 type CardinalConsoleTab =
   | 'laws'
   | 'interventions'
   | 'proposals'
-  | 'evaluations';
+  | 'evaluations'
+  | 'diagnostics';
 
 const CLOCK_PREFERENCE_KEY = 'ainkrad-v0.3.external-clock';
+const OFFLINE_CLOCK_ANCHOR_KEY = 'ainkrad-v0.3.offline-clock-anchor';
+const TEXT_SCALE_KEY = 'ainkrad-v0.3.text-scale';
+const TEXT_SCALE_STEPS = [1, 1.15, 1.3] as const;
 let preferredSpeedId: WorldSpeedId = DEFAULT_WORLD_SPEED_ID;
 let preferredSpeedMultiplier: WorldSpeedMultiplier =
   DEFAULT_WORLD_SPEED_MULTIPLIER;
+let pendingOfflineClockAnchor: OfflineWorldClockAnchor | undefined;
+let offlineClockAnchorChecked = false;
+let offlineCatchUpTargetWorldMinutes: number | undefined;
+let offlineClockStorageAvailable = true;
+let textScale: (typeof TEXT_SCALE_STEPS)[number] = 1.15;
 
 try {
   const stored = JSON.parse(
@@ -576,6 +693,34 @@ try {
 } catch {
   // A blocked localStorage only means the external speed resets on next visit.
 }
+
+try {
+  pendingOfflineClockAnchor = parseOfflineWorldClockAnchor(
+    localStorage.getItem(OFFLINE_CLOCK_ANCHOR_KEY),
+  );
+} catch {
+  offlineClockStorageAvailable = false;
+}
+
+try {
+  const storedTextScale = Number(localStorage.getItem(TEXT_SCALE_KEY));
+  if (
+    TEXT_SCALE_STEPS.includes(
+      storedTextScale as (typeof TEXT_SCALE_STEPS)[number],
+    )
+  ) {
+    textScale = storedTextScale as (typeof TEXT_SCALE_STEPS)[number];
+  }
+} catch {
+  // Readability still has a useful mobile-first default without storage.
+}
+
+function applyTextScale(): void {
+  document.documentElement.style.fontSize = `${16 * textScale}px`;
+  textScaleButton.textContent = `Текст ${Math.round(textScale * 100)}%`;
+}
+
+applyTextScale();
 
 function clockRateLabel(
   speedId: WorldSpeedId,
@@ -715,11 +860,17 @@ function updateWorldMapScale(world: Readonly<WorldState>): void {
   const maxX = Math.max(...places.map((place) => place.mapX));
   const minY = Math.min(...places.map((place) => place.mapY));
   const maxY = Math.max(...places.map((place) => place.mapY));
-  const spanX = Math.max(100, maxX - minX + 24);
-  const spanY = Math.max(100, maxY - minY + 24);
+  // Persisted map coordinates are compact spatial units. Treating every unit
+  // as a whole kilometre made the founding village appear 100 km wide and
+  // contradicted its physical travel time. One unit is 100 metres on the
+  // readable map; canvas pixels remain independent from that honest scale.
+  const physicalSpanUnitsX = Math.max(12, maxX - minX + 8);
+  const physicalSpanUnitsY = Math.max(12, maxY - minY + 8);
+  const canvasSpanX = Math.max(100, physicalSpanUnitsX + 16);
+  const canvasSpanY = Math.max(100, physicalSpanUnitsY + 16);
   const growthScale = Math.sqrt(Math.max(0, world.growth.stage));
-  const width = Math.round(Math.max(820 + growthScale * 360, spanX * 8.2));
-  const height = Math.round(Math.max(650 + growthScale * 260, spanY * 6.5));
+  const width = Math.round(Math.max(820 + growthScale * 360, canvasSpanX * 8.2));
+  const height = Math.round(Math.max(650 + growthScale * 260, canvasSpanY * 6.5));
   const worldLevel = world.growth.stage + 1;
 
   mapBaseWidth = width;
@@ -728,7 +879,7 @@ function updateWorldMapScale(world: Readonly<WorldState>): void {
   worldTitle.textContent = `Мир · уровень ${worldLevel}`;
   worldLevelValue.textContent = `ур. ${worldLevel}`;
   mapScaleValue.textContent =
-    `Уровень мира ${worldLevel} · ${places.length} локаций · ${Math.round(spanX)}×${Math.round(spanY)} км`;
+    `Уровень мира ${worldLevel} · ${places.length} локаций · территория ~${(physicalSpanUnitsX / 10).toFixed(1)}×${(physicalSpanUnitsY / 10).toFixed(1)} км`;
 
   if (renderedGrowthStage === world.growth.stage) return;
   const previousStage = renderedGrowthStage;
@@ -777,6 +928,7 @@ function pointForPlace(
       river: '≈',
       swamp: '♨',
       ruins: '⌘',
+      cemetery: '✝',
       village: '⌂',
       city: '▦',
       meadow: '❀',
@@ -811,6 +963,72 @@ function displayPlaceName(
   return localizedPlaceName(storedName);
 }
 
+function inspectorReportForEntity(
+  world: Readonly<WorldState>,
+  entity: NonNullable<typeof inspectedEntity>,
+): TruthfulInspectorReportV16 | undefined {
+  if (entity.kind === 'resident') return inspectResidentV16(world, entity.id);
+  if (entity.kind === 'wildlife') return inspectWildlifeV16(world, entity.id);
+  return inspectPlaceV16(world, entity.id);
+}
+
+function renderInspectorReport(report: TruthfulInspectorReportV16): void {
+  worldInspectorBadge.textContent = report.badge;
+  worldInspectorTitle.textContent =
+    report.kind === 'place' ? localizedPlaceName(report.title) : report.title;
+  worldInspectorSubtitle.textContent = report.subtitle;
+  worldInspectorEvidence.textContent = report.evidenceNote;
+  worldInspectorContent.replaceChildren();
+
+  for (const section of report.sections) {
+    const sectionElement = document.createElement('section');
+    sectionElement.className = 'world-inspector__section';
+    const heading = document.createElement('h3');
+    heading.textContent = section.title;
+    const rows = document.createElement('dl');
+    for (const row of section.rows) {
+      const item = document.createElement('div');
+      const term = document.createElement('dt');
+      const description = document.createElement('dd');
+      term.textContent = row.label;
+      description.textContent = row.value;
+      item.append(term, description);
+      rows.append(item);
+    }
+    sectionElement.append(heading, rows);
+    worldInspectorContent.append(sectionElement);
+  }
+}
+
+function openWorldInspector(
+  kind: NonNullable<typeof inspectedEntity>['kind'],
+  id: string,
+): void {
+  if (!lastFrame) return;
+  const entity = { kind, id } as const;
+  const report = inspectorReportForEntity(lastFrame.world, entity);
+  if (!report) return;
+  inspectedEntity = entity;
+  renderInspectorReport(report);
+  worldInspector.hidden = false;
+  worldInspectorClose.focus();
+}
+
+function refreshWorldInspector(world: Readonly<WorldState>): void {
+  if (!inspectedEntity || worldInspector.hidden) return;
+  const report = inspectorReportForEntity(world, inspectedEntity);
+  if (!report) {
+    worldInspector.hidden = true;
+    inspectedEntity = undefined;
+    return;
+  }
+  renderInspectorReport(report);
+}
+
+function closeWorldInspector(): void {
+  worldInspector.hidden = true;
+}
+
 function renderRoads(world: Readonly<WorldState>): void {
   roadsLayer.replaceChildren();
 
@@ -836,6 +1054,34 @@ function renderRoads(world: Readonly<WorldState>): void {
         highlightedPlaceIds.has(route.toPlaceId),
     );
     roadsLayer.append(path);
+  }
+}
+
+function renderBiomes(world: Readonly<WorldState>): void {
+  const liveIds = new Set(Object.keys(world.places));
+  for (const [placeId, element] of biomeElements) {
+    if (liveIds.has(placeId)) continue;
+    element.remove();
+    biomeElements.delete(placeId);
+  }
+  for (const place of Object.values(world.places)) {
+    const point = normalizeWorldCoordinates(world, place.mapX, place.mapY);
+    let element = biomeElements.get(place.id);
+    if (!element) {
+      element = document.createElement('div');
+      biomesLayer.append(element);
+      biomeElements.set(place.id, element);
+    }
+    const scale =
+      place.biome === 'settlement'
+        ? 0.72
+        : place.kind === 'forest' || place.kind === 'mountains'
+          ? 1.18
+          : 1;
+    element.className = `biome-patch biome-patch--${place.biome}`;
+    element.style.left = `${point.x}%`;
+    element.style.top = `${point.y}%`;
+    element.style.setProperty('--biome-scale', String(scale));
   }
 }
 
@@ -878,6 +1124,12 @@ function renderSettlements(world: Readonly<WorldState>): void {
 }
 
 function renderPlaces(world: Readonly<WorldState>): void {
+  const liveIds = new Set(Object.keys(world.places));
+  for (const [placeId, element] of placeElements) {
+    if (liveIds.has(placeId)) continue;
+    element.remove();
+    placeElements.delete(placeId);
+  }
   const agentIds = Object.keys(world.agents);
   for (const [placeId, place] of Object.entries(world.places)) {
     const homeAgentIndex = agentIds.findIndex(
@@ -890,7 +1142,8 @@ function renderPlaces(world: Readonly<WorldState>): void {
     );
     let placeElement = placeElements.get(placeId);
     if (!placeElement) {
-      placeElement = document.createElement('div');
+      placeElement = document.createElement('button');
+      placeElement.setAttribute('type', 'button');
       placeElement.className = `map-place map-place--${place.kind}`;
       placeElement.innerHTML = `
         <span class="place-building" aria-hidden="true">
@@ -899,10 +1152,18 @@ function renderPlaces(world: Readonly<WorldState>): void {
         <span class="place-label"></span>
         <span class="place-count">0</span>
       `;
+      placeElement.addEventListener('click', () => {
+        openWorldInspector('place', placeId);
+      });
       placesLayer.append(placeElement);
       placeElements.set(placeId, placeElement);
     }
     placeElement.className = `map-place map-place--${place.kind} map-place--surface-${place.surface}`;
+    placeElement.classList.toggle(
+      'is-territory-claimed',
+      place.claimedBySettlementId !== undefined,
+    );
+    placeElement.dataset.claimedBy = place.claimedBySettlementId ?? '';
     placeElement.classList.toggle('is-highlighted', highlightedPlaceIds.has(placeId));
     placeElement.style.left = `${point.x}%`;
     placeElement.style.top = `${point.y}%`;
@@ -915,6 +1176,12 @@ function renderPlaces(world: Readonly<WorldState>): void {
 }
 
 function renderWildlife(world: Readonly<WorldState>): void {
+  const liveIds = new Set(Object.keys(world.wildlife));
+  for (const [populationId, element] of wildlifeElements) {
+    if (liveIds.has(populationId)) continue;
+    element.remove();
+    wildlifeElements.delete(populationId);
+  }
   for (const [populationId, population] of Object.entries(world.wildlife)) {
     const habitat = pointForPlace(population.habitatId, 0, world);
     const offsets: Record<WildlifeSpecies, { x: number; y: number }> = {
@@ -931,12 +1198,16 @@ function renderWildlife(world: Readonly<WorldState>): void {
     const offset = offsets[population.species];
     let element = wildlifeElements.get(populationId);
     if (!element) {
-      element = document.createElement('div');
+      element = document.createElement('button');
+      element.setAttribute('type', 'button');
       element.className = `wildlife-population wildlife-population--${population.species}`;
       element.innerHTML = `
         <span class="wildlife-icon" aria-hidden="true">${wildlifeIcons[population.species]}</span>
         <span class="wildlife-count"></span>
       `;
+      element.addEventListener('click', () => {
+        openWorldInspector('wildlife', populationId);
+      });
       wildlifeLayer.append(element);
       wildlifeElements.set(populationId, element);
     }
@@ -988,6 +1259,7 @@ function ensureAvatar(
   avatar.addEventListener('click', () => {
     selectedAgentId = agent.id;
     updateSelection();
+    openWorldInspector('resident', agent.id);
   });
 
   agentsLayer.append(avatar);
@@ -1064,6 +1336,33 @@ function closestRelationship(
     )[0];
 }
 
+function syncResidentPicker(
+  world: Readonly<WorldState>,
+  agents: readonly AgentState[],
+): void {
+  const sorted = [...agents].sort(
+    (left, right) => left.name.localeCompare(right.name, 'ru') || left.id.localeCompare(right.id),
+  );
+  const signature = sorted
+    .map((agent) => {
+      const livelihood = world.v18?.livelihoodByAgentId[agent.id];
+      return `${agent.id}:${agent.name}:${livelihood?.primary ?? 'undecided'}`;
+    })
+    .join('|');
+  if (signature !== residentPickerSignature) {
+    residentPickerSignature = signature;
+    const options = sorted.map((agent) => {
+      const option = document.createElement('option');
+      option.value = agent.id;
+      const livelihood = world.v18?.livelihoodByAgentId[agent.id];
+      option.textContent = `${agent.name} · ${livelihoodLabels[livelihood?.primary ?? 'undecided']}`;
+      return option;
+    });
+    residentPicker.replaceChildren(...options);
+  }
+  if (selectedAgentId) residentPicker.value = selectedAgentId;
+}
+
 function updateSelection(): void {
   if (!lastFrame) return;
 
@@ -1074,6 +1373,7 @@ function updateSelection(): void {
     agents.find((agent) => agent.id === selectedAgentId) ?? agents[0];
   if (!selected) return;
   selectedAgentId = selected.id;
+  residentPicker.value = selected.id;
 
   for (const [agentId, avatar] of avatarElements) {
     const isSelected = agentId === selected.id;
@@ -1101,6 +1401,10 @@ function updateSelection(): void {
   residentEmotion.textContent = emotionalSummary(selected);
   residentPhysiology.textContent = physiologySummary(selected);
   residentTraits.textContent = strongestTraits(selected);
+  const livelihood = lastFrame.world.v18?.livelihoodByAgentId[selected.id];
+  residentProfession.textContent = livelihood
+    ? `${livelihoodLabels[livelihood.primary]} · ${livelihoodStageLabels[livelihood.stage]}`
+    : 'запись создаётся';
   residentSkill.textContent = strongestSkill(selected);
 
   if (selected.lastDecision) {
@@ -1144,6 +1448,12 @@ function updateSelection(): void {
   setNeed(selected.energy, energyValue, energyBar);
   setNeed(selected.stress, stressValue, stressBar);
   setNeed(selected.resources, personalResourceValue, personalResourceBar);
+  setNeed(
+    lastFrame.world.v18?.lifeRhythmByAgentId[selected.id]?.satiety ??
+      selected.resources,
+    satietyValue,
+    satietyBar,
+  );
   setNeed(selected.needs.belonging, belongingValue, belongingBar);
   setNeed(selected.needs.purpose, purposeValue, purposeBar);
 }
@@ -1171,7 +1481,19 @@ function eventText(
     case 'agent.walked':
       return `${name} отправился гулять`;
     case 'agent.gathered':
-      return `${name} добыл ресурсы`;
+      return `${name} добыл ${
+        event.payload.material === 'food'
+          ? 'пищу'
+          : event.payload.material === 'wood'
+            ? 'дерево'
+            : event.payload.material === 'stone'
+              ? 'камень'
+              : event.payload.material === 'metal'
+                ? 'металл'
+                : event.payload.material === 'fuel'
+                  ? 'топливо'
+                  : 'ресурсы'
+      }`;
     case 'agent.hunted': {
       const species = event.payload.species;
       const label =
@@ -1208,6 +1530,10 @@ function eventText(
     case 'agent.died':
       return event.payload.cause === 'monster'
         ? `${name} погиб при встрече с чудовищем`
+        : event.payload.cause === 'war'
+          ? `${name} погиб в столкновении поселений`
+          : event.payload.cause === 'contamination'
+            ? `${name} умер из-за заражения местности`
         : `${name} умер, но его история осталась в мире`;
     case 'agent.life.stage_changed':
       return `${name} перешёл в новый период жизни`;
@@ -1270,7 +1596,37 @@ function eventText(
           : 'чудовище';
       return `${name} встретил в глуши: ${monster}`;
     }
-    case 'world.sapient_race.emerged': {
+    case 'world.monster.hunted_prey': {
+      const monsterSpecies = event.payload.monsterSpecies;
+      const preySpecies = event.payload.preySpecies;
+      const monster =
+        typeof monsterSpecies === 'string' && monsterSpecies in wildlifeLabels
+          ? wildlifeLabels[monsterSpecies as WildlifeSpecies]
+          : 'Чудовище';
+      const prey =
+        typeof preySpecies === 'string' && preySpecies in wildlifeLabels
+          ? wildlifeLabels[preySpecies as WildlifeSpecies].toLowerCase()
+          : 'добычу';
+      return `${monster} добыл пищу: ${prey}`;
+    }
+    case 'world.monster.fed': {
+      const monsterSpecies = event.payload.monsterSpecies;
+      const monster =
+        typeof monsterSpecies === 'string' && monsterSpecies in wildlifeLabels
+          ? wildlifeLabels[monsterSpecies as WildlifeSpecies]
+          : 'Чудовище';
+      return `${monster} убил путника и питался его телом`;
+    }
+    case 'world.monster.hunger': {
+      const monsterSpecies = event.payload.monsterSpecies;
+      const monster =
+        typeof monsterSpecies === 'string' && monsterSpecies in wildlifeLabels
+          ? wildlifeLabels[monsterSpecies as WildlifeSpecies]
+          : 'Чудовища';
+      return `${monster}: популяция сократилась без доступной добычи`;
+    }
+    case 'world.sapient_race.emerged':
+    case 'world.sapient_people.discovered': {
       const race = String(event.payload.race ?? 'unknown');
       const label =
         race === 'goblin'
@@ -1280,12 +1636,45 @@ function eventText(
             : race === 'ogre'
               ? 'огров'
               : race;
-      return `В мире возник самостоятельный разумный народ: ${label}`;
+      return event.kind === 'world.sapient_people.discovered'
+        ? `Жители открыли самостоятельный разумный народ: ${label}`
+        : `В мире возник самостоятельный разумный народ: ${label}`;
     }
     case 'agent.level.changed':
       return `${name} достиг уровня ${String(event.payload.level ?? '?')}`;
     case 'world.settlement.founded':
       return `Жители основали ${String(event.payload.name ?? 'новое поселение')}`;
+    case 'agent.resettled':
+      return `${name} добровольно переселился в другое поселение`;
+    case 'world.building.home_built':
+      return 'Жители построили новый дом из местных материалов';
+    case 'world.item.tool_crafted':
+      return event.payload.toolKind === 'farming'
+        ? 'Мастер изготовил земледельческий инструмент'
+        : 'Мастер изготовил строительный инструмент';
+    case 'world.settlement.contact':
+      return 'Представители двух поселений встретились на дороге';
+    case 'world.territory.claimed': {
+      const placeId = event.payload.placeId;
+      return typeof placeId === 'string'
+        ? `Поселение заявило землю: ${world.places[placeId]?.name ?? placeId}`
+        : 'Поселение заявило право на землю';
+    }
+    case 'world.settlement.war_started':
+      return 'Между поселениями началась война по решению её участников';
+    case 'world.settlement.conflict':
+      return event.payload.conflictKind === 'land'
+        ? 'Поселения столкнулись за спорную землю'
+        : 'Поселения совершили вооружённый набег за ресурсами';
+    case 'world.settlement.peace':
+      return 'Участники прекратили войну';
+    case 'world.cemetery.established':
+      return 'Жители отвели место под кладбище';
+    case 'world.resident.buried': {
+      return name === 'Житель'
+        ? 'Жители похоронили умершего'
+        : `Жители похоронили ${name}`;
+    }
     case 'world.city.emerged':
       return `${String(event.payload.name ?? 'Поселение')} выросло в город`;
     case 'world.migrated':
@@ -1328,6 +1717,11 @@ function eventText(
   }
 }
 
+function compactAinkradWorldTime(worldMinutes: number): string {
+  const calendar = worldCalendarAtMinutes(worldMinutes);
+  return `Г${calendar.year} · Д${calendar.dayOfYear}`;
+}
+
 function renderEventFeed(frame: Readonly<LiveWorldFrame>): void {
   const items = [...frame.recentEvents]
     .reverse()
@@ -1347,10 +1741,45 @@ function renderEventFeed(frame: Readonly<LiveWorldFrame>): void {
 
   for (const item of items) {
     const element = document.createElement('li');
-    element.innerHTML = `<span>${item.event.occurredAt}</span><p></p>`;
+    element.innerHTML = '<span></span><p></p>';
+    const time = element.querySelector('span');
+    if (time) {
+      time.textContent = item.event.occurredWorldMinutes === undefined
+        ? 'старое время'
+        : compactAinkradWorldTime(item.event.occurredWorldMinutes);
+      time.title = item.event.occurredWorldMinutes === undefined
+        ? 'Время старой записи не указано в canonical world minutes.'
+        : formatAinkradWorldTime(item.event.occurredWorldMinutes);
+    }
     const text = element.querySelector('p');
     if (text) text.textContent = item.text;
     eventFeed.append(element);
+  }
+}
+
+function renderAudibleConversations(frame: Readonly<LiveWorldFrame>): void {
+  const conversations = [...(frame.world.v18?.recentConversations ?? [])]
+    .filter((conversation) => conversation.observerAudible)
+    .sort((left, right) => right.worldMinute - left.worldMinute)
+    .slice(0, 3);
+  conversationFeed.replaceChildren();
+  if (conversations.length === 0) {
+    conversationFeed.textContent = 'Пока рядом не слышно разговора.';
+    return;
+  }
+  for (const conversation of conversations) {
+    const item = document.createElement('article');
+    const speaker = frame.world.agents[conversation.speakerId]?.name ?? 'Житель';
+    const listener = frame.world.agents[conversation.listenerId]?.name ?? 'собеседник';
+    const place = frame.world.places[conversation.placeId]?.name ?? conversation.placeId;
+    const heading = document.createElement('span');
+    heading.textContent = `${speaker} → ${listener} · ${localizedPlaceName(place)}`;
+    const quote = document.createElement('p');
+    quote.textContent = `«${conversation.utterance}»`;
+    const reply = document.createElement('p');
+    reply.textContent = `${listener}: «${conversation.reply}»`;
+    item.append(heading, quote, reply);
+    conversationFeed.append(item);
   }
 }
 
@@ -1371,26 +1800,129 @@ function announceDisturbance(frame: Readonly<LiveWorldFrame>): void {
 }
 
 function updateWorldTime(frame: Readonly<LiveWorldFrame>): void {
-  const persistedCalendar = (
-    frame.world as WorldState & {
-      calendar?: { elapsedWorldMinutes: number };
-    }
-  ).calendar;
-  const elapsedWorldMinutes =
-    persistedCalendar?.elapsedWorldMinutes ??
-    (frame.tick / 96) * WORLD_MINUTES_PER_YEAR;
+  const elapsedWorldMinutes = frame.world.calendar.elapsedWorldMinutes;
   const calendar = worldCalendarAtMinutes(elapsedWorldMinutes);
   worldMap.dataset.phase = calendar.phase;
   const clock = `${String(calendar.hour).padStart(2, '0')}:${String(calendar.minute).padStart(2, '0')}`;
   timeValue.textContent = `год ${calendar.year} · день ${calendar.dayOfYear} · ${clock}`;
   timeValue.title = `Прошло ${calendar.totalDays} дней мира`;
+  const elapsedYears = elapsedWorldMinutes / WORLD_MINUTES_PER_YEAR;
+  tickValue.textContent = elapsedYears >= 1
+    ? `${elapsedYears.toFixed(1)} г.`
+    : `${Math.floor(elapsedWorldMinutes / 1_440)} дн.`;
   mapTimeValue.textContent = `${phaseLabels[calendar.phase]} · ${seasonLabels[calendar.season]}`;
+}
+
+function persistOfflineClockAnchor(
+  frame: Readonly<LiveWorldFrame>,
+  wallClockMs = Date.now(),
+  speedId = frame.clock.speedId,
+  multiplier = frame.clock.multiplier,
+): void {
+  if (!offlineClockStorageAvailable) return;
+  const worldMinutes = Math.max(
+    frame.world.calendar.elapsedWorldMinutes,
+    offlineCatchUpTargetWorldMinutes ?? 0,
+  );
+  try {
+    localStorage.setItem(
+      OFFLINE_CLOCK_ANCHOR_KEY,
+      JSON.stringify(
+        makeOfflineWorldClockAnchor({
+          worldEpoch: frame.world.epoch ?? 1,
+          worldMinutes,
+          wallClockMs,
+          speedId,
+          multiplier,
+        }),
+      ),
+    );
+  } catch {
+    offlineClockStorageAvailable = false;
+  }
+}
+
+function requestOfflineCatchUp(
+  frame: Readonly<LiveWorldFrame>,
+  anchor: Readonly<OfflineWorldClockAnchor> | undefined,
+  nowWallClockMs = Date.now(),
+): void {
+  if (!anchor) return;
+  const currentWorldMinutes = frame.world.calendar.elapsedWorldMinutes;
+  const target = offlineWorldMinuteTarget({
+    anchor,
+    currentWorldEpoch: frame.world.epoch ?? 1,
+    currentWorldMinutes,
+    nowWallClockMs,
+  });
+  if (target === undefined || target <= currentWorldMinutes + 1e-7) return;
+
+  const previousTarget = offlineCatchUpTargetWorldMinutes ?? currentWorldMinutes;
+  offlineCatchUpTargetWorldMinutes = Math.max(previousTarget, target);
+  if (offlineCatchUpTargetWorldMinutes <= previousTarget + 1e-7) return;
+  catchUpOverlay.hidden = false;
+  catchUpTitle.textContent = `Догоняем ${worldDurationDescription(
+    offlineCatchUpTargetWorldMinutes - currentWorldMinutes,
+  )}`;
+  catchUpPercent.textContent = '0%';
+  catchUpBar.style.width = '0%';
+  catchUpDetail.textContent =
+    'Запущен быстрый пакетный расчёт. Карта временно не перерисовывается, но мир продолжает жить.';
+  liveWorldWorker.postMessage({
+    type: 'catch_up_world_time',
+    worldEpoch: frame.world.epoch ?? 1,
+    targetWorldMinutes: offlineCatchUpTargetWorldMinutes,
+  });
+}
+
+function resumeOfflineClockFromStoredAnchor(
+  frame: Readonly<LiveWorldFrame>,
+): void {
+  if (!offlineClockStorageAvailable) return;
+  try {
+    requestOfflineCatchUp(
+      frame,
+      parseOfflineWorldClockAnchor(
+        localStorage.getItem(OFFLINE_CLOCK_ANCHOR_KEY),
+      ),
+    );
+  } catch {
+    offlineClockStorageAvailable = false;
+  }
+}
+
+function updateOfflineClockContinuity(frame: Readonly<LiveWorldFrame>): void {
+  const currentWorldMinutes = frame.world.calendar.elapsedWorldMinutes;
+  if (!offlineClockAnchorChecked) {
+    offlineClockAnchorChecked = true;
+    requestOfflineCatchUp(frame, pendingOfflineClockAnchor);
+    pendingOfflineClockAnchor = undefined;
+  }
+
+  const remaining = Math.max(
+    0,
+    (offlineCatchUpTargetWorldMinutes ?? currentWorldMinutes) -
+      currentWorldMinutes,
+  );
+  if (remaining > 1e-7) {
+    offlineClockStatus.textContent =
+      `Мир догоняет ${worldDurationDescription(remaining)} после закрытой вкладки · Cardinal не управляет временем`;
+    offlineClockStatus.classList.add('is-catching-up');
+  } else {
+    offlineCatchUpTargetWorldMinutes = undefined;
+    offlineClockStatus.textContent = offlineClockStorageAvailable
+      ? 'После закрытия мир продолжит время при следующем открытии · Cardinal не имеет доступа'
+      : 'Браузер запретил сохранение фонового времени · Cardinal не имеет доступа';
+    offlineClockStatus.classList.remove('is-catching-up');
+  }
+  persistOfflineClockAnchor(frame);
 }
 
 function updateWorld(frame: Readonly<LiveWorldFrame>): void {
   lastFrame = structuredClone(frame);
   updateWorldMapScale(frame.world);
   worldMap.dataset.growth = String(Math.min(3, frame.world.growth.stage));
+  renderBiomes(frame.world);
   renderSettlements(frame.world);
   renderPlaces(frame.world);
   renderRoads(frame.world);
@@ -1399,6 +1931,7 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
   const agents = Object.values(frame.world.agents).filter(
     (agent) => agent.life.alive,
   );
+  syncResidentPicker(frame.world, agents);
   const livingAgentIds = new Set(agents.map((agent) => agent.id));
   for (const [agentId, avatar] of avatarElements) {
     if (livingAgentIds.has(agentId)) continue;
@@ -1423,11 +1956,11 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
 
   agents.forEach((agent, index) => {
     const avatar = ensureAvatar(agent, index);
-    const persistedPosition = (
-      agent as AgentState & {
-        position?: { x: number; y: number; layerId: 'surface' };
-      }
-    ).position;
+    const persistedPosition = projectedResidentPosition(
+      agent,
+      frame.world,
+      frame.tick,
+    );
     const base = persistedPosition
       ? normalizeWorldCoordinates(
           frame.world,
@@ -1447,6 +1980,10 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
     avatar.style.left = `${x}%`;
     avatar.style.top = `${y}%`;
     avatar.classList.toggle('is-moving', isMoving);
+    avatar.classList.toggle(
+      'is-ambient',
+      !isMoving && agent.lastAction !== 'rest',
+    );
     avatar.classList.toggle('is-resting', agent.lastAction === 'rest');
     avatar.classList.toggle('is-relaxing', agent.lastAction === 'relax');
     avatar.classList.toggle('is-walking', agent.lastAction === 'walk');
@@ -1491,9 +2028,6 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
     );
   });
 
-  tickValue.textContent = String(
-    Math.max(0, frame.tick - (frame.world.epochStartedAt ?? 0)),
-  );
   const humanPopulation = agents.filter(
     (agent) => (agent.race ?? 'human') === 'human',
   ).length;
@@ -1546,10 +2080,11 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
     preferredSpeedMultiplier = frame.clock.multiplier;
     showClockControl(frame.clock.speedId, frame.clock.multiplier);
   }
+  updateOfflineClockContinuity(frame);
 
   if (frame.continuity.durable) {
     saveValue.textContent = frame.continuity.resumed
-      ? `Продолжен с ${frame.continuity.resumedFromTick}`
+      ? `Продолжен: ${formatAinkradWorldTime(frame.continuity.resumedFromWorldMinutes)}`
       : 'Сохраняется';
     saveValue.classList.add('is-saved');
   } else {
@@ -1593,10 +2128,25 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
   const lastCardinalEvent = cardinalActivity.lastCardinalEvent;
   if (lastCardinalEvent) {
     cardinalLastAction.textContent =
-      `Последнее действие · тик ${lastCardinalEvent.occurredAt}: ${eventText(
+      `Последнее действие · ${
+        lastCardinalEvent.occurredWorldMinutes === undefined
+          ? 'время старой записи не указано'
+          : formatAinkradWorldTime(lastCardinalEvent.occurredWorldMinutes)
+      }: ${eventText(
         lastCardinalEvent,
         frame.world,
       ) ?? lastCardinalEvent.kind}`;
+    cardinalLastAction.classList.add('has-action');
+  } else if (
+    cardinalActivity.authorizationDecisionCount > 0 ||
+    cardinalActivity.authorizedWorldChangeCount > 0
+  ) {
+    cardinalLastAction.textContent =
+      `Последнее действие: подробная запись уже вне короткой ленты. ` +
+      `В этой эпохе gateway принял решений: ${cardinalActivity.authorizationDecisionCount}; ` +
+      `выполнено вмешательств: ${frame.executedInterventionCount}; ` +
+      `отклонено: ${cardinalActivity.deniedInterventionCount}; ` +
+      `изменено правил мира: ${cardinalActivity.authorizedWorldChangeCount}.`;
     cardinalLastAction.classList.add('has-action');
   } else {
     cardinalLastAction.textContent =
@@ -1605,14 +2155,22 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
   }
 
   renderEventFeed(frame);
+  renderAudibleConversations(frame);
   announceDisturbance(frame);
   updateSelection();
+  refreshWorldInspector(frame.world);
 }
 
 function metricPercent(value: number | undefined): string {
   return typeof value === 'number' && Number.isFinite(value)
     ? `${Math.round(value * 100)}%`
     : 'не записано прежней версией';
+}
+
+function canonicalDurationLabel(worldMinutes: number | undefined): string {
+  return typeof worldMinutes === 'number' && Number.isFinite(worldMinutes)
+    ? worldDurationDescription(worldMinutes)
+    : 'Длительность старой записи в canonical world minutes не указана';
 }
 
 function russianGatewayReason(reason: string | undefined): string {
@@ -1811,14 +2369,18 @@ function renderCardinalConsole(): void {
   if (activeConsoleTab === 'laws') {
     for (const law of snapshot.laws) {
       const places = targetPlacesForLaw(law.domain, world);
+      const report = snapshot.readableLawReports?.find(
+        (item) => item.rawTechnical.id === law.id,
+      );
       cardinalConsoleContent.append(
         consoleRecord(
-          worldLawMechanismLabels[law.mechanism],
-          law.createdBy === 'cardinal' ? 'ПОПРАВКА CARDINAL' : 'БАЗОВЫЙ ЗАКОН',
+          report?.title ?? worldLawMechanismLabels[law.mechanism],
+          report?.status ??
+            (law.createdBy === 'cardinal' ? 'ПОПРАВКА CARDINAL' : 'БАЗОВЫЙ ЗАКОН'),
           [
-            ['Область', worldLawDomainLabels[law.domain]],
-            ['Что регулирует', worldLawMechanismLabels[law.mechanism]],
-            ['Текущее значение', `${law.value.toFixed(2)}; допустимо от ${law.minimum.toFixed(2)} до ${law.maximum.toFixed(2)}`],
+            ...(report?.rows.map(
+              (row): [string, string] => [row.label, row.value],
+            ) ?? []),
             ['Зачем существует', lawExplanation(law.mechanism)],
             ['Где действует', locationSummary(places)],
             ['Срок', 'Постоянно, пока независимый gateway не разрешит новую ограниченную поправку.'],
@@ -1841,18 +2403,26 @@ function renderCardinalConsole(): void {
         (audit) => audit.interventionId === intervention.interventionId || audit.evaluationId === intervention.evaluationId,
       );
       const places = targetPlacesForIntervention(intervention.proposal.kind, world);
+      const report = snapshot.readableInterventionReports?.find(
+        (item) =>
+          item.rawTechnical.interventionId === intervention.interventionId,
+      );
       cardinalConsoleContent.append(
         consoleRecord(
-          `${interventionLabels[intervention.proposal.kind]} · тик ${intervention.requestedAt}`,
-          intervention.executed ? 'ВЫПОЛНЕНО GATEWAY' : 'ОТКЛОНЕНО GATEWAY',
+          `${report?.title ?? interventionLabels[intervention.proposal.kind]} · ${formatAinkradWorldTime(intervention.requestedWorldMinutes)}`,
+          report?.status ??
+            (intervention.executed ? 'ВЫПОЛНЕНО GATEWAY' : 'ОТКЛОНЕНО GATEWAY'),
           [
+            ...(report?.rows.map(
+              (row): [string, string] => [row.label, row.value],
+            ) ?? []),
             ['Проблема', evaluation?.detectedProblem ? cardinalProblemLabels[evaluation.detectedProblem.kind] : 'связанный диагноз не записан или не попал в ограниченный срез'],
             ['Почему Cardinal предложил', evaluation?.detectedProblem ? `${cardinalProblemLabels[evaluation.detectedProblem.kind]}; серьёзность ${metricPercent(evaluation.detectedProblem.severity)}, уверенность ${metricPercent(evaluation.detectedProblem.confidence)}` : interventionLabels[intervention.proposal.kind]],
             ['Что именно разрешалось', `${interventionLabels[intervention.proposal.kind]}, сила ${metricPercent(intervention.proposal.magnitude)}`],
             ['Куда', locationSummary(places)],
-            ['Срок', `${intervention.authorizedEffectDuration} тиков; после срока эффект прекращается автоматически, запись остаётся навсегда.`],
+            ['Длительность эффекта', `${canonicalDurationLabel(intervention.authorizedEffectDurationWorldMinutes)}; после срока эффект прекращается автоматически, запись остаётся навсегда.`],
             ['Решение gateway', russianGatewayReason(intervention.authorizationReason)],
-            ['Ожидание', `Должно снизиться: ${predictionMetricLabels[intervention.proposal.prediction.metric]}; минимум на ${metricPercent(intervention.proposal.prediction.minimumImprovement)} за ${intervention.proposal.prediction.horizon} тиков.`],
+            ['Ожидание', `Должно снизиться: ${predictionMetricLabels[intervention.proposal.prediction.metric]}; минимум на ${metricPercent(intervention.proposal.prediction.minimumImprovement)} за ${canonicalDurationLabel(intervention.proposal.prediction.horizonWorldMinutes)}.`],
             ['Фактический результат', outcomeSummary(outcomesByIntervention.get(intervention.interventionId))],
             ['Auditor', auditSummary(audits)],
           ],
@@ -1870,14 +2440,14 @@ function renderCardinalConsole(): void {
       const places = targetPlacesForIntervention(proposal.kind, world);
       cardinalConsoleContent.append(
         consoleRecord(
-          `${interventionLabels[proposal.kind]} · тик ${evaluation.evaluatedAt}`,
+          `${interventionLabels[proposal.kind]} · ${formatAinkradWorldTime(evaluation.evaluatedWorldMinutes)}`,
           intervention ? (intervention.executed ? 'РАЗРЕШЕНО' : 'ОТКЛОНЕНО') : 'ОЖИДАЕТ GATEWAY',
           [
             ['Диагноз', evaluation.detectedProblem ? cardinalProblemLabels[evaluation.detectedProblem.kind] : 'нет сохранённого диагноза'],
             ['Доказательства', `${evaluation.evidenceEventIds.length} событий; ресурсное давление ${metricPercent(evaluation.metrics.resourcePressure)}, изоляция ${metricPercent(evaluation.metrics.socialIsolation)}, опасность ${metricPercent(evaluation.metrics.safetyPressure)}, экосистема ${metricPercent(evaluation.metrics.wildlifePressure)}.`],
             ['Предложение', `${interventionLabels[proposal.kind]}, сила ${metricPercent(proposal.magnitude)}.`],
             ['Куда', locationSummary(places)],
-            ['Проверяемый прогноз', `${predictionMetricLabels[proposal.prediction.metric]} должно снизиться минимум на ${metricPercent(proposal.prediction.minimumImprovement)} за ${proposal.prediction.horizon} тиков.`],
+            ['Проверяемый прогноз', `${predictionMetricLabels[proposal.prediction.metric]} должно снизиться минимум на ${metricPercent(proposal.prediction.minimumImprovement)} за ${canonicalDurationLabel(proposal.prediction.horizonWorldMinutes)}.`],
             ['Ограничение', 'Это только предложение. Cardinal не может выполнить его без независимого gateway.'],
             ['Итог gateway', intervention ? russianGatewayReason(intervention.authorizationReason) : 'Решение gateway не записано в доступном срезе.'],
           ],
@@ -1885,7 +2455,7 @@ function renderCardinalConsole(): void {
         ),
       );
     }
-  } else {
+  } else if (activeConsoleTab === 'evaluations') {
     const evaluations = [...snapshot.evaluations]
       .filter((evaluation, index, all) => evaluation.decision !== 'no_action' || index >= all.length - 24)
       .reverse();
@@ -1899,7 +2469,7 @@ function renderCardinalConsole(): void {
             : 'наблюдал; системный порог не достигнут';
       cardinalConsoleContent.append(
         consoleRecord(
-          `Оценка мира · тик ${evaluation.evaluatedAt}`,
+          `Оценка мира · ${formatAinkradWorldTime(evaluation.evaluatedWorldMinutes)}`,
           evaluation.decision === 'propose' ? 'ПРЕДЛОЖЕНИЕ' : evaluation.decision === 'defer' ? 'ОТЛОЖЕНО' : 'БЕЗ ДЕЙСТВИЯ',
           [
             ['Что увидел', evaluation.detectedProblem ? cardinalProblemLabels[evaluation.detectedProblem.kind] : 'ни одна системная проблема не прошла порог'],
@@ -1913,6 +2483,92 @@ function renderCardinalConsole(): void {
           places,
         ),
       );
+    }
+  } else {
+    const healthStatusLabels: Record<string, string> = {
+      healthy: 'СТАБИЛЬНО',
+      watch: 'НАБЛЮДЕНИЕ',
+      danger: 'ОПАСНОСТЬ',
+      critical: 'КРИТИЧНО',
+    };
+    const health = snapshot.worldHealth;
+    if (!health) {
+      cardinalConsoleContent.textContent =
+        'Старая вкладка мира не передала world health report. Закройте её и откройте Ainkrad заново.';
+      return;
+    }
+    cardinalConsoleContent.append(
+      consoleRecord(
+        health.title,
+        `${health.score}/100 · ${healthStatusLabels[health.status] ?? health.status}`,
+        [
+          ['Сводка', health.summary],
+          ['Возраст мира', `${health.worldAgeYears.toFixed(2)} года Ainkrad`],
+          ['Критические коды', health.criticalCodes.join(', ') || 'нет'],
+          ['Предупреждения', health.warningCodes.join(', ') || 'нет'],
+          ['Сформировано', formatAinkradWorldTime(snapshot.generatedWorldMinutes)],
+        ],
+        [],
+      ),
+    );
+    for (const section of health.sections) {
+      cardinalConsoleContent.append(
+        consoleRecord(
+          section.title,
+          healthStatusLabels[section.status] ?? section.status,
+          [
+            ['Состояние', section.summary],
+            ['Проверяемые данные', section.evidence.join('; ') || 'нет дополнительных записей'],
+          ],
+          [],
+        ),
+      );
+    }
+
+    const deathCauseLabels: Record<string, string> = {
+      old_age: 'СТАРОСТЬ',
+      illness: 'ЗДОРОВЬЕ',
+      deprivation: 'ИСТОЩЕНИЕ',
+      catastrophe: 'КАТАСТРОФА',
+      wildlife: 'ДИКАЯ ФАУНА',
+      monster: 'МОНСТР',
+      war: 'ВОЙНА',
+    };
+    const deathDiagnostics = snapshot.deathDiagnostics ?? [];
+    if (deathDiagnostics.length === 0) {
+      cardinalConsoleContent.append(
+        consoleRecord(
+          'Диагностика смертей',
+          '0 ЗАПИСЕЙ',
+          [
+            ['Состояние', 'В текущей эпохе ещё нет зафиксированных смертей.'],
+            ['Контракт', 'При каждой смерти сохраняются причина, физическое состояние, ресурсы, стресс, место и механизм гибели.'],
+          ],
+          [],
+        ),
+      );
+    } else {
+      for (const death of [...deathDiagnostics].reverse()) {
+        const resident = world.agents[death.agentId];
+        const place = world.places[death.locationId];
+        cardinalConsoleContent.append(
+          consoleRecord(
+            `${resident?.name ?? death.agentId} · ${formatAinkradWorldTime(death.worldMinutes)}`,
+            deathCauseLabels[death.cause] ?? death.cause,
+            [
+              ['Причина', death.summary],
+              ['Основной механизм', death.primaryMechanism ?? 'не записан'],
+              ['Возраст и поколение', `${death.ageYears.toFixed(1)} лет · поколение ${death.generation}`],
+              ['Уровень', String(death.level)],
+              ['Место', localizedPlaceName(place?.name ?? death.locationId)],
+              ['Перед смертью', `здоровье ${metricPercent(death.healthBeforeDeath)}, энергия ${metricPercent(death.energyBeforeDeath)}, личные ресурсы ${metricPercent(death.resourcesBeforeDeath)}, стресс ${metricPercent(death.stressBeforeDeath)}`],
+              ['Угроза', death.species ? `${death.species}; урон ${metricPercent(death.damage)}, вероятность летального исхода ${metricPercent(death.lethalChance)}` : 'прямая внешняя угроза не записана'],
+              ['Диагностические факторы', death.diagnosticFactors?.join('; ') ?? 'нет дополнительных факторов'],
+            ],
+            place ? [place.id] : [],
+          ),
+        );
+      }
     }
   }
 
@@ -1945,18 +2601,31 @@ function closeCardinalConsole(): void {
 type LiveWorldWorkerMessage =
   | {
       type: 'frame';
-      protocolVersion: 'ainkrad-live-frame-0.3.13';
+      protocolVersion: string;
       frame: LiveWorldFrame;
     }
   | {
       type: 'cardinal_console';
-      protocolVersion: 'ainkrad-live-frame-0.3.13';
+      protocolVersion: string;
       requestId: string;
       snapshot: CardinalConsoleSnapshot;
     }
   | {
+      type: 'catch_up_progress';
+      protocolVersion: string;
+      worldEpoch: number;
+      fromWorldMinutes: number;
+      currentWorldMinutes: number;
+      targetWorldMinutes: number;
+      percent: number;
+      elapsedRealMs: number;
+      estimatedRemainingMs: number | null;
+      semanticQuantaProcessed: number;
+      completed: boolean;
+    }
+  | {
       type: 'fatal';
-      protocolVersion: 'ainkrad-live-frame-0.3.13';
+      protocolVersion: string;
       message: string;
     };
 
@@ -2037,8 +2706,30 @@ cardinalConsoleClose.addEventListener('click', closeCardinalConsole);
 cardinalConsole.addEventListener('click', (event) => {
   if (event.target === cardinalConsole) closeCardinalConsole();
 });
+residentDetailsOpen.addEventListener('click', () => {
+  if (selectedAgentId) openWorldInspector('resident', selectedAgentId);
+});
+residentPicker.addEventListener('change', () => {
+  selectedAgentId = residentPicker.value || undefined;
+  updateSelection();
+});
+textScaleButton.addEventListener('click', () => {
+  const currentIndex = TEXT_SCALE_STEPS.indexOf(textScale);
+  textScale = TEXT_SCALE_STEPS[(currentIndex + 1) % TEXT_SCALE_STEPS.length];
+  applyTextScale();
+  try {
+    localStorage.setItem(TEXT_SCALE_KEY, String(textScale));
+  } catch {
+    // Scaling remains active for this session when storage is blocked.
+  }
+});
+worldInspectorClose.addEventListener('click', closeWorldInspector);
+worldInspector.addEventListener('click', (event) => {
+  if (event.target === worldInspector) closeWorldInspector();
+});
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && !cardinalConsole.hidden) closeCardinalConsole();
+  if (event.key === 'Escape' && !worldInspector.hidden) closeWorldInspector();
 });
 worldMapViewport.addEventListener(
   'wheel',
@@ -2073,6 +2764,14 @@ function publishClockControl(): void {
     speedId: preferredSpeedId,
     multiplier: preferredSpeedMultiplier,
   });
+  if (lastFrame) {
+    persistOfflineClockAnchor(
+      lastFrame,
+      Date.now(),
+      preferredSpeedId,
+      preferredSpeedMultiplier,
+    );
+  }
 }
 
 worldSpeedSelect.addEventListener('change', () => {
@@ -2091,7 +2790,29 @@ resetWorldButton.addEventListener('click', () => {
     'Создать новый мир? Текущая эпоха завершится, но накопленный опыт Cardinal сохранится.',
   );
   if (!accepted) return;
+  pendingOfflineClockAnchor = undefined;
+  offlineCatchUpTargetWorldMinutes = undefined;
   liveWorldWorker.postMessage({ type: 'reset_world' });
+});
+
+window.addEventListener('pagehide', () => {
+  if (lastFrame) persistOfflineClockAnchor(lastFrame);
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (!lastFrame) return;
+  if (document.visibilityState === 'hidden') {
+    persistOfflineClockAnchor(lastFrame);
+    return;
+  }
+  resumeOfflineClockFromStoredAnchor(lastFrame);
+  updateOfflineClockContinuity(lastFrame);
+});
+
+window.addEventListener('pageshow', () => {
+  if (!lastFrame) return;
+  resumeOfflineClockFromStoredAnchor(lastFrame);
+  updateOfflineClockContinuity(lastFrame);
 });
 
 publishClockControl();
@@ -2106,6 +2827,41 @@ liveWorldWorker.addEventListener(
     if (event.data.type === 'cardinal_console') {
       cardinalConsoleSnapshot = event.data.snapshot;
       renderCardinalConsole();
+      return;
+    }
+    if (event.data.type === 'catch_up_progress') {
+      const percent = Math.max(0, Math.min(100, Math.round(event.data.percent * 100)));
+      catchUpOverlay.hidden = false;
+      catchUpPercent.textContent = `${percent}%`;
+      catchUpBar.style.width = `${percent}%`;
+      const processed = Math.max(
+        0,
+        event.data.currentWorldMinutes - event.data.fromWorldMinutes,
+      );
+      const remaining = Math.max(
+        0,
+        event.data.targetWorldMinutes - event.data.currentWorldMinutes,
+      );
+      const eta = event.data.estimatedRemainingMs === null
+        ? 'оцениваем оставшееся время'
+        : event.data.estimatedRemainingMs < 1_000
+          ? 'меньше секунды'
+          : `ещё примерно ${Math.max(1, Math.ceil(event.data.estimatedRemainingMs / 1_000))} сек.`;
+      catchUpTitle.textContent = event.data.completed
+        ? 'Мир догнан — показываем результат'
+        : `Просчитано ${worldDurationDescription(processed)}`;
+      catchUpDetail.textContent = event.data.completed
+        ? `Готово за ${(event.data.elapsedRealMs / 1_000).toFixed(1)} сек. Все смысловые шаги мира обработаны.`
+        : `Осталось ${worldDurationDescription(remaining)} · ${eta} · обработано шагов: ${event.data.semanticQuantaProcessed}`;
+      offlineClockStatus.textContent = event.data.completed
+        ? 'Догон завершён · Cardinal не управлял временем'
+        : `Быстрый догон: ${percent}% · ${eta}`;
+      offlineClockStatus.classList.toggle('is-catching-up', !event.data.completed);
+      if (event.data.completed) {
+        window.setTimeout(() => {
+          catchUpOverlay.hidden = true;
+        }, 850);
+      }
       return;
     }
 

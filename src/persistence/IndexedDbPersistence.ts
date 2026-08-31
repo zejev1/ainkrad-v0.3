@@ -472,7 +472,7 @@ export class IndexedDbWorldStore implements WorldStore {
         memories.add(toStoredMemory(memory));
       }
 
-      const nextState = structuredClone(batch.nextState);
+      const nextState = batch.nextState;
       const operation: CommittedWorldOperation = {
         operationId: batch.operationId,
         worldId: batch.worldId,
@@ -496,7 +496,7 @@ export class IndexedDbWorldStore implements WorldStore {
       return {
         committed: true,
         duplicate: false,
-        state: structuredClone(nextState),
+        state: nextState,
         operation: structuredClone(operation),
       };
     } catch (error) {
@@ -590,9 +590,21 @@ export class IndexedDbWorldStore implements WorldStore {
     return stored.reverse().map(fromStoredEvent);
   }
 
-  async activeSignals(worldId: string, now: number): Promise<WorldEvent[]> {
+  async activeSignals(
+    worldId: string,
+    now: number,
+    worldMinutes?: number,
+  ): Promise<WorldEvent[]> {
     if (!Number.isFinite(now)) {
       throw new Error('WorldStore activeSignals time must be finite.');
+    }
+    if (
+      worldMinutes !== undefined &&
+      (!Number.isFinite(worldMinutes) || worldMinutes < 0)
+    ) {
+      throw new Error(
+        'WorldStore activeSignals worldMinutes must be finite and non-negative.',
+      );
     }
 
     const database = await this.database;
@@ -612,7 +624,19 @@ export class IndexedDbWorldStore implements WorldStore {
     )) as StoredWorldEvent[];
     await completion;
     return stored
-      .filter((event) => event.occurredAt <= now)
+      .filter((event) => {
+        if (
+          worldMinutes !== undefined &&
+          event.occurredWorldMinutes !== undefined &&
+          event.activeUntilWorldMinutes !== undefined
+        ) {
+          return (
+            event.occurredWorldMinutes <= worldMinutes &&
+            event.activeUntilWorldMinutes > worldMinutes
+          );
+        }
+        return event.occurredAt <= now;
+      })
       .map(fromStoredEvent);
   }
 

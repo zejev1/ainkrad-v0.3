@@ -4,8 +4,9 @@ import {
   CARDINAL_AUDIT_CONTEXT_VERSION,
 } from '../cardinal/CardinalAuditContext';
 import {
+  CARDINAL_POLICY_VERSION,
   CardinalCore,
-  MAX_CARDINAL_PREDICTION_HORIZON,
+  MAX_CARDINAL_PREDICTION_HORIZON_WORLD_MINUTES,
 } from '../cardinal/CardinalCore';
 import { CARDINAL_RESEARCH_VERSION } from '../cardinal/CardinalResearch';
 import { reconcileGatewayJournal } from '../cardinal/CardinalRecovery';
@@ -28,7 +29,9 @@ import type { CardinalMetrics } from '../sensors/types';
 import { WORLD_SENSOR_VERSION, WorldSensors } from '../sensors/WorldSensors';
 import { InMemoryWorldStore } from '../world/InMemoryWorldStore';
 import { WORLD_RULES_VERSION, WorldEngine } from '../world/WorldEngine';
+import { DEFAULT_WORLD_MINUTES_PER_TICK } from '../world/WorldClock';
 import type { WorldDisturbanceKind } from '../world/types';
+import { isCanonicalWorldMinutes } from '../v15/WorldTimeContract';
 
 export interface ScheduledDisturbance {
   tick: number;
@@ -170,20 +173,49 @@ export async function runExperiment(
     Array<{ evaluation: CardinalEvaluation; intervention: InterventionRecord }>
   > => {
     const worldId = world.snapshot().id;
+    const worldEpoch = world.snapshot().epoch ?? 1;
     const [evaluations, interventions, outcomes] = await Promise.all([
       journal.evaluations(worldId),
       journal.interventions(worldId),
       journal.outcomes(worldId),
     ]);
     const evaluationById = new Map(
-      evaluations.map((evaluation) => [evaluation.evaluationId, evaluation]),
+      evaluations
+        .filter(
+          (evaluation) =>
+            evaluation.worldEpoch === worldEpoch &&
+            evaluation.policyVersion === CARDINAL_POLICY_VERSION &&
+            evaluation.sensorVersion === WORLD_SENSOR_VERSION &&
+            evaluation.researchVersion === CARDINAL_RESEARCH_VERSION &&
+            isCanonicalWorldMinutes(evaluation.evaluatedWorldMinutes),
+        )
+        .map((evaluation) => [evaluation.evaluationId, evaluation]),
     );
-    const resolved = new Set(outcomes.map((outcome) => outcome.interventionId));
+    const resolved = new Set(
+      outcomes
+        .filter(
+          (outcome) =>
+            outcome.worldEpoch === worldEpoch &&
+            outcome.policyVersion === CARDINAL_POLICY_VERSION &&
+            outcome.sensorVersion === WORLD_SENSOR_VERSION &&
+            outcome.researchVersion === CARDINAL_RESEARCH_VERSION &&
+            isCanonicalWorldMinutes(outcome.observedWorldMinutes),
+        )
+        .map((outcome) => outcome.interventionId),
+    );
 
     return interventions
       .filter(
         (intervention) =>
           intervention.executed &&
+          intervention.worldEpoch === worldEpoch &&
+          intervention.policyVersion === CARDINAL_POLICY_VERSION &&
+          intervention.sensorVersion === WORLD_SENSOR_VERSION &&
+          intervention.researchVersion === CARDINAL_RESEARCH_VERSION &&
+          isCanonicalWorldMinutes(intervention.requestedWorldMinutes) &&
+          isCanonicalWorldMinutes(
+            intervention.proposal?.prediction?.horizonWorldMinutes,
+          ) &&
           !resolved.has(intervention.interventionId),
       )
       .map((intervention) => {
@@ -201,9 +233,9 @@ export async function runExperiment(
     const unresolved = await unresolvedExecutedInterventions();
     for (const pending of unresolved) {
       if (
-        pending.intervention.requestedAt +
-          pending.intervention.proposal.prediction.horizon >
-        tick
+        pending.intervention.requestedWorldMinutes +
+          pending.intervention.proposal.prediction.horizonWorldMinutes >
+        world.snapshot().calendar.elapsedWorldMinutes
       ) {
         continue;
       }
@@ -250,6 +282,9 @@ export async function runExperiment(
             journal,
             world.snapshot().id,
             tick,
+            world.snapshot().calendar.elapsedWorldMinutes,
+            world.snapshot().epoch ?? 1,
+            CARDINAL_POLICY_VERSION,
             WORLD_SENSOR_VERSION,
           );
     const evaluation = await cardinal.cycle(mode, world.snapshot(), tick);
@@ -262,6 +297,13 @@ export async function runExperiment(
           evaluation.proposal,
           world.snapshot(),
           tick,
+          {
+            worldEpoch: evaluation.worldEpoch,
+            policyVersion: evaluation.policyVersion,
+            sensorVersion: evaluation.sensorVersion,
+            researchVersion: evaluation.researchVersion,
+            evaluatedWorldMinutes: evaluation.evaluatedWorldMinutes,
+          },
         );
         await reconcileGatewayJournal(world.snapshot().id, gateway, journal);
       }
@@ -312,7 +354,12 @@ export async function runExperiment(
 
   for (
     let followTick = ticks + 1;
-    followTick <= ticks + MAX_CARDINAL_PREDICTION_HORIZON;
+    followTick <=
+    ticks +
+      Math.ceil(
+        MAX_CARDINAL_PREDICTION_HORIZON_WORLD_MINUTES /
+          DEFAULT_WORLD_MINUTES_PER_TICK,
+      );
     followTick += 1
   ) {
     if ((await unresolvedExecutedInterventions()).length === 0) {

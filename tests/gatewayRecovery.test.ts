@@ -39,8 +39,8 @@ class FailFinalizeOnceLedger implements InterventionGatewayLedger {
     return this.inner.entries(worldId);
   }
 
-  lastExecutedAt(worldId: string) {
-    return this.inner.lastExecutedAt(worldId);
+  lastExecutedWorldMinutes(worldId: string) {
+    return this.inner.lastExecutedWorldMinutes(worldId);
   }
 }
 
@@ -57,7 +57,7 @@ function proposal(id: string) {
       metric: 'resourcePressure' as const,
       direction: 'decrease' as const,
       minimumImprovement: 0.01,
-      horizon: 4,
+      horizonWorldMinutes: 35_040,
       statement: 'resource pressure should decrease',
     },
   };
@@ -82,7 +82,7 @@ describe('Gateway restart recovery', () => {
     const firstLedger = new LogBackedInterventionGatewayLedger(log);
     const firstGateway = new IndependentInterventionGateway(world, {
       ledger: firstLedger,
-      minInterval: 5,
+      minIntervalWorldMinutes: 43_800,
     });
 
     const first = await firstGateway.execute(
@@ -95,7 +95,7 @@ describe('Gateway restart recovery', () => {
 
     const restartedGateway = new IndependentInterventionGateway(world, {
       ledger: new LogBackedInterventionGatewayLedger(log),
-      minInterval: 5,
+      minIntervalWorldMinutes: 43_800,
     });
     const second = await restartedGateway.execute(
       'evaluation_2',

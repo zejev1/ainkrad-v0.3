@@ -6,14 +6,17 @@ import {
 } from '../src/cardinal/CardinalResearch';
 import { LogBackedCardinalJournal } from '../src/cardinal/LogBackedCardinalJournal';
 import { InMemoryAppendOnlyLog } from '../src/persistence/AppendOnlyLog';
+import type { CardinalEvaluation } from '../src/cardinal/types';
 import type { SensorSnapshot } from '../src/sensors/types';
 
 function observation(observedAt: number): SensorSnapshot {
   return {
     sensorVersion: 'ainkrad-world-sensors-0.3.3',
     worldId: 'world_research',
+    worldEpoch: 1,
     worldRevision: observedAt,
     observedAt,
+    observedWorldMinutes: observedAt * 8_760,
     metrics: {
       populationActivity: 0.5,
       averageStress: 0.3,
@@ -42,6 +45,8 @@ describe('Cardinal research memory', () => {
       journal,
       'world_research',
       9,
+      9 * 8_760,
+      1,
       core.policyVersion,
       observation(9).sensorVersion,
     );
@@ -52,6 +57,8 @@ describe('Cardinal research memory', () => {
       journal,
       'world_research',
       10,
+      10 * 8_760,
+      1,
       core.policyVersion,
       observation(10).sensorVersion,
     );
@@ -66,6 +73,8 @@ describe('Cardinal research memory', () => {
       restartedJournal,
       'world_research',
       10,
+      10 * 8_760,
+      1,
       core.policyVersion,
       observation(10).sensorVersion,
     );
@@ -79,6 +88,8 @@ describe('Cardinal research memory', () => {
       restartedJournal,
       'world_research',
       10,
+      10 * 8_760,
+      1,
       core.policyVersion,
       observation(10).sensorVersion,
     );
@@ -96,10 +107,15 @@ function researchIntervention(
     interventionId: `research_intervention_${index}`,
     evaluationId: `research_evaluation_${index}`,
     worldId: 'world_research',
+    worldEpoch: 1,
+    policyVersion: 'ainkrad-cardinal-policy-0.3.15',
+    sensorVersion: 'ainkrad-world-sensors-0.3.3',
+    researchVersion: 'ainkrad-cardinal-research-0.3.15',
     requestedAt: index + 1,
+    requestedWorldMinutes: (index + 1) * 8_760,
     observedWorldRevision: index + 1,
     gatewayPolicyVersion: 'gateway-research-test',
-    authorizedEffectDuration: 8,
+    authorizedEffectDurationWorldMinutes: 70_080,
     proposal: {
       proposalId: `research_proposal_${index}`,
       worldId: 'world_research',
@@ -112,7 +128,7 @@ function researchIntervention(
         metric: 'resourcePressure',
         direction: 'decrease',
         minimumImprovement: 0.01,
-        horizon: 4,
+        horizonWorldMinutes: 35_040,
         statement: 'resourcePressure should decrease.',
       },
     },
@@ -129,7 +145,7 @@ describe('Cardinal research mandatory unresolved evidence', () => {
     const log = new InMemoryAppendOnlyLog();
     const journal = new LogBackedCardinalJournal(log);
 
-    for (let index = 0; index < 14; index += 1) {
+    for (let index = 0; index < 80; index += 1) {
       await journal.appendIntervention(researchIntervention(index, index === 0));
     }
 
@@ -137,6 +153,8 @@ describe('Cardinal research mandatory unresolved evidence', () => {
       journal,
       'world_research',
       100,
+      876_000,
+      1,
       new CardinalCore().policyVersion,
       'ainkrad-world-sensors-0.3.3',
     );
@@ -151,5 +169,49 @@ describe('Cardinal research mandatory unresolved evidence', () => {
         (item) => item.interventionId === 'research_intervention_1',
       ),
     ).toBe(false);
+  });
+
+  it('keeps tick-only legacy evidence out of the current autonomy context', async () => {
+    const journal = new LogBackedCardinalJournal(new InMemoryAppendOnlyLog());
+    const core = new CardinalCore();
+    const legacyEvaluation = core.evaluate(
+      'observer',
+      observation(8),
+      emptyCardinalResearchContext(),
+    ) as CardinalEvaluation & { evaluatedWorldMinutes?: number };
+    delete legacyEvaluation.evaluatedWorldMinutes;
+    await journal.appendEvaluation(legacyEvaluation as CardinalEvaluation);
+
+    const legacyIntervention = researchIntervention(0, true) as
+      import('../src/cardinal/types').InterventionRecord & {
+        requestedWorldMinutes?: number;
+        authorizedEffectDurationWorldMinutes?: number;
+      };
+    delete legacyIntervention.requestedWorldMinutes;
+    delete legacyIntervention.authorizedEffectDurationWorldMinutes;
+    legacyIntervention.authorizedEffectDuration = 8;
+    delete (
+      legacyIntervention.proposal.prediction as {
+        horizonWorldMinutes?: number;
+      }
+    ).horizonWorldMinutes;
+    legacyIntervention.proposal.prediction.horizon = 4;
+    await journal.appendIntervention(
+      legacyIntervention as import('../src/cardinal/types').InterventionRecord,
+    );
+
+    const context = await buildCardinalResearchContext(
+      journal,
+      'world_research',
+      10,
+      87_600,
+      1,
+      core.policyVersion,
+      observation(10).sensorVersion,
+    );
+
+    expect(context.experience.observationCycles).toBe(1);
+    expect(context.priorEvaluations).toHaveLength(0);
+    expect(context.priorInterventions).toHaveLength(0);
   });
 });

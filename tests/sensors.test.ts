@@ -28,9 +28,12 @@ const testMind = (agentId: string) => ({
 function emptyWorld(): WorldState {
   return {
     id: 'world_1',
+    epoch: 1,
+    epochStartedAt: 0,
     now: 1,
     revision: 0,
     rulesVersion: 'ainkrad-world-rules-0.3.10',
+    calendar: { elapsedWorldMinutes: 8_760 },
     environment: {
       resourcePool: 1,
       resourceRegenerationRate: 0.01,
@@ -206,6 +209,7 @@ describe('Recent social-contact sensing', () => {
     const events = new InMemoryEventStore();
     const world = emptyWorld();
     world.now = 20;
+    world.calendar.elapsedWorldMinutes = 20 * 8_760;
     world.agents = {
       a: {
         id: 'a',

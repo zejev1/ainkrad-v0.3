@@ -10,10 +10,14 @@ import type {
   InterventionOutcomeRecord,
   InterventionRecord,
 } from './types';
+import {
+  CARDINAL_AUTONOMY_WINDOW_WORLD_MINUTES,
+  CARDINAL_RESEARCH_LOOKBACK_WORLD_MINUTES,
+  isCanonicalWorldMinutes,
+} from '../v15/WorldTimeContract';
 
-export const CARDINAL_RESEARCH_VERSION = 'ainkrad-cardinal-research-0.3.14';
-export const CARDINAL_RESEARCH_WINDOW = 12;
-export const CARDINAL_AUTONOMY_WINDOW = 16;
+export const CARDINAL_RESEARCH_VERSION = 'ainkrad-cardinal-research-0.3.15';
+export const CARDINAL_RESEARCH_MAX_RECORDS = 64;
 export const CARDINAL_AUTONOMY_MAX_RECENT_INTERVENTIONS = 3;
 
 export interface CardinalResearchContext {
@@ -29,14 +33,23 @@ export async function buildCardinalResearchContext(
   journal: CardinalJournal,
   worldId: string,
   currentObservedAt: number,
+  currentWorldMinutes: number,
+  worldEpoch: number,
   policyVersion: string,
   sensorVersion: string,
-  contextFloor = Number.NEGATIVE_INFINITY,
 ): Promise<CardinalResearchContext> {
+  if (!isCanonicalWorldMinutes(currentWorldMinutes)) {
+    throw new Error(
+      'Cardinal research currentWorldMinutes must be finite and non-negative.',
+    );
+  }
+  if (!Number.isInteger(worldEpoch) || worldEpoch < 1) {
+    throw new Error('Cardinal research worldEpoch must be an integer >= 1.');
+  }
   const [evaluations, interventions, outcomes, summary] = await Promise.all([
-    journal.recentEvaluations(worldId, 64, currentObservedAt),
-    journal.recentInterventions(worldId, 256, currentObservedAt),
-    journal.recentOutcomes(worldId, 256, currentObservedAt),
+    journal.recentEvaluations(worldId, 512, currentObservedAt),
+    journal.recentInterventions(worldId, 512, currentObservedAt),
+    journal.recentOutcomes(worldId, 512, currentObservedAt),
     journal.summary(worldId, currentObservedAt),
   ]);
   const experience = deriveCardinalExperienceFromCounters({
@@ -46,30 +59,56 @@ export async function buildCardinalResearchContext(
     successfulPredictions: summary.successfulPredictionCount,
   });
 
-  // Strictly earlier logical time is intentional. If the same Cardinal cycle is
-  // retried after its evaluation was already journaled, the retry must rebuild
-  // exactly the same research context rather than treating itself as new history.
+  // Logical time remains only a retry/order guard. Every semantic eligibility
+  // check below is current epoch + policy + sensor + canonical world minutes.
   const priorEvaluations = evaluations
     .filter(
       (evaluation) =>
         evaluation.evaluatedAt < currentObservedAt &&
-        evaluation.evaluatedAt >= contextFloor &&
+        evaluation.worldEpoch === worldEpoch &&
         evaluation.policyVersion === policyVersion &&
-        evaluation.sensorVersion === sensorVersion,
+        evaluation.sensorVersion === sensorVersion &&
+        evaluation.researchVersion === CARDINAL_RESEARCH_VERSION &&
+        isCanonicalWorldMinutes(evaluation.evaluatedWorldMinutes) &&
+        evaluation.evaluatedWorldMinutes < currentWorldMinutes &&
+        currentWorldMinutes - evaluation.evaluatedWorldMinutes <=
+          CARDINAL_RESEARCH_LOOKBACK_WORLD_MINUTES,
     )
-    .slice(-CARDINAL_RESEARCH_WINDOW);
+    .sort(
+      (a, b) =>
+        a.evaluatedWorldMinutes - b.evaluatedWorldMinutes ||
+        a.evaluatedAt - b.evaluatedAt ||
+        a.evaluationId.localeCompare(b.evaluationId),
+    )
+    .slice(-CARDINAL_RESEARCH_MAX_RECORDS);
 
   const eligibleInterventions = interventions.filter(
     (intervention) =>
       intervention.requestedAt < currentObservedAt &&
-      intervention.requestedAt >= contextFloor,
+      intervention.worldEpoch === worldEpoch &&
+      intervention.policyVersion === policyVersion &&
+      intervention.sensorVersion === sensorVersion &&
+      intervention.researchVersion === CARDINAL_RESEARCH_VERSION &&
+      isCanonicalWorldMinutes(intervention.requestedWorldMinutes) &&
+      isCanonicalWorldMinutes(
+        intervention.authorizedEffectDurationWorldMinutes,
+      ) &&
+      isCanonicalWorldMinutes(
+        intervention.proposal?.prediction?.horizonWorldMinutes,
+      ) &&
+      intervention.requestedWorldMinutes < currentWorldMinutes,
   );
   const allPriorOutcomeIds = new Set(
     outcomes
       .filter(
         (outcome) =>
           outcome.observedAt < currentObservedAt &&
-          outcome.observedAt >= contextFloor,
+          outcome.worldEpoch === worldEpoch &&
+          outcome.policyVersion === policyVersion &&
+          outcome.sensorVersion === sensorVersion &&
+          outcome.researchVersion === CARDINAL_RESEARCH_VERSION &&
+          isCanonicalWorldMinutes(outcome.observedWorldMinutes) &&
+          outcome.observedWorldMinutes < currentWorldMinutes,
       )
       .map((outcome) => outcome.interventionId),
   );
@@ -77,9 +116,25 @@ export async function buildCardinalResearchContext(
     (intervention) =>
       intervention.executed && !allPriorOutcomeIds.has(intervention.interventionId),
   );
-  const tailInterventions = eligibleInterventions.slice(-CARDINAL_RESEARCH_WINDOW);
+  const recentTimedInterventions = eligibleInterventions.filter(
+    (intervention) =>
+      currentWorldMinutes - intervention.requestedWorldMinutes <=
+      CARDINAL_AUTONOMY_WINDOW_WORLD_MINUTES,
+  );
+  const tailInterventions = eligibleInterventions
+    .sort(
+      (a, b) =>
+        a.requestedWorldMinutes - b.requestedWorldMinutes ||
+        a.requestedAt - b.requestedAt ||
+        a.interventionId.localeCompare(b.interventionId),
+    )
+    .slice(-CARDINAL_RESEARCH_MAX_RECORDS);
   const requiredInterventionIds = new Set(
-    [...unresolvedExecuted, ...tailInterventions].map(
+    [
+      ...unresolvedExecuted,
+      ...recentTimedInterventions,
+      ...tailInterventions,
+    ].map(
       (intervention) => intervention.interventionId,
     ),
   );
@@ -91,16 +146,29 @@ export async function buildCardinalResearchContext(
     .filter(
       (outcome) =>
         outcome.observedAt < currentObservedAt &&
-        outcome.observedAt >= contextFloor &&
-        outcome.sensorVersion === sensorVersion,
+        outcome.worldEpoch === worldEpoch &&
+        outcome.policyVersion === policyVersion &&
+        outcome.sensorVersion === sensorVersion &&
+        outcome.researchVersion === CARDINAL_RESEARCH_VERSION &&
+        isCanonicalWorldMinutes(outcome.observedWorldMinutes) &&
+        outcome.observedWorldMinutes < currentWorldMinutes &&
+        requiredInterventionIds.has(outcome.interventionId),
     )
-    .slice(-CARDINAL_RESEARCH_WINDOW);
+    .sort(
+      (a, b) =>
+        a.observedWorldMinutes - b.observedWorldMinutes ||
+        a.observedAt - b.observedAt ||
+        a.outcomeId.localeCompare(b.outcomeId),
+    )
+    .slice(-CARDINAL_RESEARCH_MAX_RECORDS);
 
   const fingerprint = createStableId('research-context', {
     researchVersion: CARDINAL_RESEARCH_VERSION,
     policyVersion,
     sensorVersion,
-    contextFloor,
+    worldEpoch,
+    currentObservedAt,
+    currentWorldMinutes,
     evaluations: priorEvaluations,
     interventions: priorInterventions,
     outcomes: priorOutcomes,

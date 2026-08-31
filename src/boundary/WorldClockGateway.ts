@@ -42,7 +42,7 @@ export class IndependentWorldClockGateway {
       throw new Error('Unknown external world-speed preset.');
     }
     if (!isWorldSpeedMultiplier(multiplier)) {
-      throw new Error('World-speed multiplier must be 1 or 10.');
+      throw new Error('World-speed multiplier must be 1, 10 or 100.');
     }
     return {
       speedId,

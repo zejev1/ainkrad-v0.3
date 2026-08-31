@@ -1,3 +1,5 @@
+import type { WorldV18State } from '../v18/types';
+
 export type AgentGoalKind =
   | 'recover'
   | 'secure_resources'
@@ -47,7 +49,8 @@ export type AgentDeathCause =
   | 'deprivation'
   | 'catastrophe'
   | 'wildlife'
-  | 'monster';
+  | 'monster'
+  | 'war';
 
 export interface AgentPhysiologyState {
   strength: number;
@@ -254,6 +257,7 @@ export type WorldPlaceKind =
   | 'river'
   | 'swamp'
   | 'ruins'
+  | 'cemetery'
   | 'village'
   | 'city';
 
@@ -285,6 +289,8 @@ export interface WorldPlace {
   danger: number;
   surface: WorldSurfaceKind;
   settlementId?: string;
+  /** A wilderness claim can change through settlement decisions or war. */
+  claimedBySettlementId?: string;
   discoveredAt?: number;
 }
 
@@ -331,6 +337,8 @@ export interface WildlifePopulation {
   threat: number;
   isMonster: boolean;
   lastChangedAt: number;
+  /** Last semantic world tick on which this population consumed real prey. */
+  lastFedAt?: number;
 }
 
 export interface WorldCalendarState {
@@ -342,6 +350,8 @@ export interface WorldGrowthState {
   stage: number;
   explorationProgress: number;
   lastExpansionAt: number;
+  /** Canonical semantic time; technical timestamp above is ordering-only. */
+  lastExpansionWorldMinutes?: number;
   discoveredRegionIds: string[];
   frontierSequence: number;
 }
@@ -402,6 +412,9 @@ export interface WorldLawState {
   revision: number;
   createdAt: number;
   updatedAt: number;
+  /** Canonical Ainkrad time; technical timestamps above are ordering only. */
+  createdWorldMinutes?: number;
+  updatedWorldMinutes?: number;
   createdBy: 'system' | 'cardinal';
   rationale: string;
 }
@@ -418,6 +431,8 @@ export interface WorldGovernanceState {
   ];
   laws: Record<string, WorldLawState>;
   lastCardinalAuthorityAt?: number;
+  /** Canonical semantic time for authority cooldowns. */
+  lastCardinalAuthorityWorldMinutes?: number;
 }
 
 export interface WorldEnvironment {
@@ -434,6 +449,318 @@ export interface WorldEnvironment {
   // Baseline support for habitats and wildlife recovery. Cardinal may only
   // request a temporary bounded modifier through the independent gateway.
   habitatSupport: number;
+}
+
+
+export type V15GenesisDomain =
+  | 'agriculture'
+  | 'construction'
+  | 'household'
+  | 'survival';
+
+export interface V15KnowledgeState {
+  agriculture: number;
+  construction: number;
+  household: number;
+  survival: number;
+  aptitude: Record<V15GenesisDomain, number>;
+  verifiedLearningSessions: number;
+  verifiedPracticeSessions: number;
+  lastLearningWorldMinute?: number;
+}
+
+export interface V15FamilyAgencyState {
+  physicalIntimacyInclination: number;
+  childDesire: number;
+  autonomy: number;
+}
+
+export interface V15GenesisTeacherState {
+  id: string;
+  epochId: string;
+  domain: V15GenesisDomain;
+  createdWorldMinutes: number;
+  activeUntilWorldMinutes: number;
+  ordinaryResident: false;
+  countedInPopulation: false;
+  teachingHistoryIds: string[];
+}
+
+export type V15WeaponKind =
+  | 'stone_knife'
+  | 'stone_spear'
+  | 'crude_metal_knife'
+  | 'crude_metal_spear'
+  | 'forged_spear';
+
+export interface V15WorldItemState {
+  id: string;
+  kind: 'weapon' | 'artifact';
+  weaponKind?: V15WeaponKind;
+  name: string;
+  createdByAgentId?: string;
+  createdWorldMinute: number;
+  ownerAgentId?: string;
+  locationId?: string;
+  quality: number;
+  effectiveness: number;
+  reliability: number;
+  description: string;
+}
+
+export interface V15SmithingKnowledgeState {
+  stoneToolmaking: number;
+  primitiveSmithing: number;
+  weaponcraft: number;
+  heatWorking: number;
+  materialKnowledge: number;
+}
+
+export interface V15SmithingProfileState {
+  knowledge: V15SmithingKnowledgeState;
+  verifiedWorkshopSessions: number;
+  failedCraftAttempts: number;
+  successfulCraftAttempts: number;
+  observedWeaponProblems: number;
+  lastWorkshopWorldMinute?: number;
+}
+
+export interface V15EquipmentState {
+  weaponItemId?: string;
+}
+
+export interface V15RenewableResourceState {
+  storedResources: number;
+  renewableBase: number;
+  fertility: number;
+  lastRecoveredWorldMinute: number;
+}
+
+export interface V15SimulationClockState {
+  /** Fixed semantic decision quantum; technical worker speed must not change it. */
+  quantumWorldMinutes: number;
+  pendingWorldMinutes: number;
+  simulatedWorldMinutes: number;
+  quantumIndex: number;
+}
+
+export interface V15DeathTelemetryState {
+  deathId: string;
+  agentId: string;
+  cause: AgentDeathCause;
+  worldMinutes: number;
+  technicalTick: number;
+  ageYears: number;
+  lifespanYears: number;
+  generation: number;
+  level: number;
+  healthBeforeDeath: number;
+  energyBeforeDeath: number;
+  resourcesBeforeDeath: number;
+  stressBeforeDeath: number;
+  locationId: string;
+  placeDanger: number;
+  lastAction?: AgentActionKind;
+  species?: string;
+  monster?: boolean;
+  damage?: number;
+  lethalChance?: number;
+  encounterReason?: 'self_defense' | 'territorial_defense' | 'dungeon';
+  primaryMechanism?: string;
+  diagnosticFactors?: string[];
+  summary: string;
+}
+
+export interface V15SmithingInnovationState {
+  ideaId: string;
+  inventorAgentId: string;
+  createdWorldMinute: number;
+  parentWeaponKind: V15WeaponKind;
+  effectivenessDelta: number;
+  reliabilityDelta: number;
+  description: string;
+}
+
+export interface WorldV15State {
+  version: 'v15';
+  genesisTeachers: V15GenesisTeacherState[];
+  knowledgeByAgentId: Record<string, V15KnowledgeState>;
+  familyAgencyByAgentId: Record<string, V15FamilyAgencyState>;
+  smithingByAgentId: Record<string, V15SmithingProfileState>;
+  smithingInnovations: Record<string, V15SmithingInnovationState>;
+  equipmentByAgentId: Record<string, V15EquipmentState>;
+  items: Record<string, V15WorldItemState>;
+  founderSmithAgentId?: string;
+  renewableResources: V15RenewableResourceState;
+  simulationClock: V15SimulationClockState;
+  deathTelemetry: V15DeathTelemetryState[];
+  learningSequence: number;
+  itemSequence: number;
+  futureDungeons: {
+    enabled: false;
+    earliestWorldYear: 200;
+    nominalWorldYear: 250;
+    latestWorldYear: 300;
+    usesExistingResidentLevelScale: true;
+  };
+}
+
+/**
+ * v0.3.16 stores bounded evidence summaries rather than invented biographies.
+ * Technical timestamps may deduplicate one decision, while every duration and
+ * historical coordinate exposed to society logic is canonical world time.
+ */
+export interface V16ResidentEvidenceState {
+  agentId: string;
+  firstObservedWorldMinute: number;
+  lastObservedWorldMinute: number;
+  lastRecordedDecisionAt?: number;
+  recordedDecisionCount: number;
+  actionCounts: Partial<Record<AgentActionKind, number>>;
+  placeVisitCounts: Record<string, number>;
+  contactCounts: Record<string, number>;
+  constructiveContactCounts: Record<string, number>;
+  tenseContactCounts: Record<string, number>;
+  helpGivenCounts: Record<string, number>;
+  helpReceivedCounts: Record<string, number>;
+  burialCareCount: number;
+  conflictParticipationCount: number;
+}
+
+export interface V16RaceFamilyOpportunityState {
+  race: AgentRace;
+  lastOpportunityWorldMinute?: number;
+  lastBirthWorldMinute?: number;
+  opportunityChecks: number;
+  eligiblePairChecks: number;
+  voluntaryIntimacyChoices: number;
+  voluntaryChildChoices: number;
+  birthsSinceTracking: number;
+}
+
+export interface V16LocalFamilyOpportunityState {
+  id: string;
+  settlementId: string;
+  race: AgentRace;
+  createdWorldMinute: number;
+  lastOpportunityWorldMinute?: number;
+  lastBirthWorldMinute?: number;
+  opportunityChecks: number;
+  eligiblePairChecks: number;
+  voluntaryIntimacyChoices: number;
+  voluntaryChildChoices: number;
+  birthsSinceTracking: number;
+}
+
+export type V16SettlementPracticeKind =
+  | 'gathering'
+  | 'hunting'
+  | 'craft'
+  | 'care'
+  | 'teaching'
+  | 'exploration'
+  | 'social'
+  | 'ritual';
+
+export interface V16SettlementEvidenceState {
+  settlementId: string;
+  evidenceCount: number;
+  lastEvidenceWorldMinute: number;
+  practiceCounts: Record<V16SettlementPracticeKind, number>;
+}
+
+/**
+ * Normalized availability and renewable capacity physically belonging to one
+ * settlement. Values are local indices, not copies of a world-wide warehouse.
+ */
+export interface V16SettlementResourceState {
+  settlementId: string;
+  storedResources: number;
+  renewableBase: number;
+  fertility: number;
+  lastRecoveredWorldMinute: number;
+}
+
+export type V16MaterialKind = 'food' | 'wood' | 'stone' | 'metal' | 'fuel';
+
+export interface V16SettlementEconomyState {
+  settlementId: string;
+  stocks: Record<V16MaterialKind, number>;
+  storageCapacity: Record<V16MaterialKind, number>;
+  farmingTools: number;
+  constructionTools: number;
+  harvestEvents: number;
+  harvestEventsByMaterial: Record<V16MaterialKind, number>;
+  constructionEvents: number;
+  toolsCreated: number;
+  lastHarvestWorldMinute?: number;
+  lastConstructionWorldMinute?: number;
+}
+
+export interface V16SettlementRelationEvidenceState {
+  id: string;
+  settlementA: string;
+  settlementB: string;
+  contactEvents: number;
+  familiarity: number;
+  trust: number;
+  fear: number;
+  grievance: number;
+  obligation: number;
+  cooperation: number;
+  hostility: number;
+  activeWar: boolean;
+  conflictRounds: number;
+  resourceRaids: number;
+  landDisputes: number;
+  casualties: number;
+  warStartedWorldMinute?: number;
+  lastConflictWorldMinute?: number;
+  contestedPlaceId?: string;
+  lastEvidenceWorldMinute: number;
+}
+
+export type V16RemainsStatus =
+  | 'unburied'
+  | 'buried'
+  | 'historical_unknown';
+
+export interface V16RemainsState {
+  id: string;
+  agentId: string;
+  race: AgentRace;
+  deathWorldMinute: number;
+  deathPlaceId: string;
+  currentPlaceId: string;
+  homeSettlementId?: string;
+  status: V16RemainsStatus;
+  contaminationRisk: number;
+  burialPlaceId?: string;
+  buriedWorldMinute?: number;
+  buriedByAgentIds: string[];
+}
+
+export interface V16BurialSiteState {
+  settlementId: string;
+  placeId: string;
+  establishedWorldMinute: number;
+  burialCount: number;
+  interredAgentIds: string[];
+}
+
+export interface WorldV16State {
+  version: 'v16';
+  migratedFromRulesVersion: string;
+  createdWorldMinute: number;
+  residentEvidenceByAgentId: Record<string, V16ResidentEvidenceState>;
+  raceFamilyOpportunityByRace: Record<AgentRace, V16RaceFamilyOpportunityState>;
+  localFamilyOpportunityByKey: Record<string, V16LocalFamilyOpportunityState>;
+  settlementEvidenceById: Record<string, V16SettlementEvidenceState>;
+  settlementResourcesById: Record<string, V16SettlementResourceState>;
+  settlementEconomyById: Record<string, V16SettlementEconomyState>;
+  remainsById: Record<string, V16RemainsState>;
+  burialSitesBySettlementId: Record<string, V16BurialSiteState>;
+  settlementRelations: Record<string, V16SettlementRelationEvidenceState>;
 }
 
 export interface WorldDeterminismState {
@@ -465,6 +792,15 @@ export interface WorldState {
   wildlife: Record<string, WildlifePopulation>;
   agents: Record<string, AgentState>;
   relationships: Record<string, RelationshipState>;
+
+  /** v15 persistent extension. Optional only while loading legacy v0.3.14 state. */
+  v15?: WorldV15State;
+
+  /** v0.3.16 additive society evidence. Optional only during legacy loading. */
+  v16?: WorldV16State;
+
+  /** v0.3.18 language, conversation and settlement-mobility evidence. */
+  v18?: WorldV18State;
 }
 
 export type WorldDisturbanceKind =

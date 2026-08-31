@@ -1,0 +1,18 @@
+AINKRAD v15 RETURN POINT — BEFORE FAMILY AGENCY FIX
+Local time: 2026-08-24 10:26 Asia/Jerusalem
+
+THIS IS THE PREFERRED RETURN POINT if the next family/demography calibration goes wrong.
+
+State at this point:
+- Full v0.3.14 project tree restored, including preserved manual/uncommitted changes.
+- v15 state/reset/gateway/canonical-clock integration in progress.
+- Hidden automatic 10-person recovery cohort removed.
+- 10 ordinary founders are now a property of New World.
+- 4 Genesis teachers remain separate from population and inactive after year 3.
+- Hunting agency / primitive smithing / weapons integrated sufficiently for release tests.
+- Old runtime suite reached 115/115 PASS after compatibility fixes.
+- Long-run diagnostics exposed remaining family problem: old canFormFamily prefilter blocks all voluntary family decisions in some seeds via stress/resources thresholds.
+- IMPORTANT CONSTITUTION: next edits must NOT add compulsory births, demographic quotas, child schedules, Cardinal/Genesis reproductive commands, or make sex equivalent to child intent.
+- Intended next change: separate physical/legal eligibility from contextual decision pressures; stress/resources influence desire/probability, not the right to have relationships/intimacy.
+
+If recovery is needed, restore this ZIP and continue from this note.

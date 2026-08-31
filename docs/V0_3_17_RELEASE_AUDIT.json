@@ -1,0 +1,149 @@
+{
+  "release": "v0.3.17",
+  "generatedAtUtc": "2026-08-28T15:17:05Z",
+  "sourceAuthority": {
+    "readOnlyVerifiedGithubParent": "d5e2af9277589463caa6f2dc003462f796432998",
+    "githubWritePerformed": false,
+    "convexConnected": false,
+    "cardinalExternalGatewayIndependent": true
+  },
+  "verification": {
+    "typecheck": { "passed": true, "command": "tsc -p tsconfig.json" },
+    "regression": {
+      "passed": true,
+      "command": "npm run test",
+      "filesPassed": 35,
+      "filesTotal": 35,
+      "testsPassed": 152,
+      "testsTotal": 152
+    },
+    "productionBuild": {
+      "passed": true,
+      "command": "vite build",
+      "viteVersion": "7.0.4",
+      "dedicatedWorkerEmitted": true
+    },
+    "cardinalEqualTime": {
+      "passed": true,
+      "multipliers": [1, 10, 100],
+      "currentEpochCountersOnly": true
+    },
+    "offlineWorldClock": {
+      "passed": true,
+      "epochScoped": true,
+      "absoluteTarget": true,
+      "boundedCatchUp": true,
+      "duplicateTabsCannotDoubleAdd": true
+    },
+    "realBrowserSmoke": {
+      "passedBeforeFoodChainOnlyPatch": true,
+      "residentMotionObserved": "12/14 residents in 1.6 seconds",
+      "inspectorsClicked": ["workshop", "resident", "Cardinal evidence"],
+      "offlineResumeObserved": "year 6 day 213 22:00 -> year 6 day 236 20:07",
+      "finalUiContractAndBuildRerun": true
+    },
+    "monsterFoodChain": {
+      "passed": true,
+      "physicallyReachablePreyOnly": true,
+      "persistedPreyDecrement": true,
+      "viableReserve": true,
+      "recoveryRequiresFood": true,
+      "starvation": true,
+      "extinctPopulationCannotRecoverFromOldMeal": true,
+      "residentRemainsPersist": true
+    }
+  },
+  "longRun": {
+    "runner": "real autonomous WorldEngine; no injected residents or couples",
+    "freshYearsCovered": [8, 10, 12, 30],
+    "fresh60YearRepeat": {
+      "passed": false,
+      "completed": false,
+      "reason": "Work execution environment expired after the year-30 sample; this run is not labelled PASS"
+    },
+    "priorV16Foundation60YearBaselinePassed": true,
+    "seeds": [
+      {
+        "seed": "v16-demography-01",
+        "passed": true,
+        "livingByRace": { "human": 35, "goblin": 13, "orc": 14, "ogre": 10 },
+        "humanGenerations": { "0": 10, "1": 21, "2": 4 },
+        "births": 52,
+        "deaths": 2,
+        "monsters": 7,
+        "monsterEcology": {
+          "wildlifeFeedingEvents": 84,
+          "residentFeedingEvents": 1,
+          "hungerEvents": 0,
+          "wildlifePreyConsumed": 131,
+          "starvationLosses": 0,
+          "residentKillsKeptRemains": true
+        },
+        "remains": 2,
+        "buried": 2,
+        "constructionEvents": 4,
+        "toolsCreated": 12,
+        "generationOneToTwoLessons": 20,
+        "genesisLessonsAfterYearThree": 0,
+        "totalLiving": 72,
+        "physicalPopulationCapacity": 118
+      },
+      {
+        "seed": "v16-demography-02",
+        "passed": true,
+        "livingByRace": { "human": 38, "goblin": 9, "orc": 10, "ogre": 9 },
+        "humanGenerations": { "0": 10, "1": 21, "2": 7 },
+        "births": 47,
+        "deaths": 3,
+        "monsters": 2,
+        "monsterEcology": {
+          "wildlifeFeedingEvents": 48,
+          "residentFeedingEvents": 2,
+          "hungerEvents": 3,
+          "wildlifePreyConsumed": 48,
+          "starvationLosses": 3,
+          "residentKillsKeptRemains": true
+        },
+        "remains": 3,
+        "buried": 3,
+        "constructionEvents": 3,
+        "toolsCreated": 11,
+        "generationOneToTwoLessons": 57,
+        "genesisLessonsAfterYearThree": 0,
+        "totalLiving": 66,
+        "physicalPopulationCapacity": 114
+      },
+      {
+        "seed": "v16-demography-03",
+        "passed": true,
+        "livingByRace": { "human": 36, "goblin": 10, "orc": 11, "ogre": 5 },
+        "humanGenerations": { "0": 10, "1": 20, "2": 6 },
+        "births": 42,
+        "deaths": 2,
+        "monsters": 7,
+        "monsterEcology": {
+          "wildlifeFeedingEvents": 78,
+          "residentFeedingEvents": 2,
+          "hungerEvents": 2,
+          "wildlifePreyConsumed": 113,
+          "starvationLosses": 2,
+          "residentKillsKeptRemains": true
+        },
+        "remains": 2,
+        "buried": 2,
+        "constructionEvents": 3,
+        "toolsCreated": 13,
+        "generationOneToTwoLessons": 34,
+        "genesisLessonsAfterYearThree": 0,
+        "totalLiving": 62,
+        "physicalPopulationCapacity": 114
+      }
+    ]
+  },
+  "releaseDecision": {
+    "passed": true,
+    "limitations": [
+      "The fresh v0.3.17 60-year repeat was interrupted by the Work environment and is explicitly not marked PASS."
+    ]
+  }
+}

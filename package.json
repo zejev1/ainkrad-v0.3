@@ -1,14 +1,17 @@
 {
   "name": "ainkrad-v0-3",
-  "version": "0.3.14",
+  "version": "0.3.18",
   "private": true,
   "description": "Experimental autonomous world for developing and testing Cardinal.",
   "type": "module",
   "scripts": {
+    "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run",
+    "test": "vitest run --minWorkers=1 --maxWorkers=1 --testTimeout=60000",
     "check": "npm run typecheck && npm run test",
+    "audit:v16-demography": "tsx src/v16/runDemographicAcceptanceV16.ts",
+    "audit:v18-offline": "tsx src/v18/runOfflineCatchUpBenchmarkV18.ts",
     "demo": "tsx src/demo.ts"
   },
   "engines": {

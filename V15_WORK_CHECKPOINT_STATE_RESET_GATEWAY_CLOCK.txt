@@ -1,0 +1,14 @@
+AINKRAD v15 WORK CHECKPOINT
+Date: 2026-08-24
+
+Completed in the FULL v0.3.14 project tree:
+- v15 persistent state is created for brand-new worlds.
+- v0.3.14/legacy migration deterministically creates v15 state without consuming RNG.
+- New World reset creates a fresh v15 layer.
+- explicit external resident entry initializes v15 per-agent state.
+- hidden automatic 10-person recovery cohort removed from LiveWorldRuntime.
+- external WorldEntryGateway remains available only for explicit outside entry.
+- world-speed multiplier accepts 1 / 10 / 100.
+- full-project TypeScript typecheck passes.
+
+Not final release.

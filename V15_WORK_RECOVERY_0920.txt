@@ -1,0 +1,6 @@
+AINKRAD v15 WORK CHECKPOINT
+Date: 2026-08-24 09:20 Asia/Jerusalem
+
+Recovered writable copy of full v0.3.14 project with in-progress v15 integration.
+GitHub not modified.
+This is not final release.

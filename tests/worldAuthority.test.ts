@@ -8,6 +8,7 @@ import {
 import type { CardinalExperienceState } from '../src/cardinal/types';
 import { InMemoryWorldStore } from '../src/world/InMemoryWorldStore';
 import { WorldEngine } from '../src/world/WorldEngine';
+import { CANONICAL_WORLD_QUANTUM_MINUTES } from '../src/v15/WorldTimeContract';
 
 const experiencedCardinal: CardinalExperienceState = {
   level: 6,
@@ -39,6 +40,7 @@ function lawProposal(
     proposalId: `proposal:${lawId}`,
     worldId,
     proposedAt,
+    proposedWorldMinutes: 0,
     necessity: 0.8,
     reason: 'Long-lived frontier evidence supports a bounded environmental rule.',
     expectedOutcome: 'World conditions change without selecting a resident action.',
@@ -54,6 +56,63 @@ function lawProposal(
 }
 
 describe('Independent world authority', () => {
+  it('enforces authority cooldown in canonical world minutes', async () => {
+    const store = new InMemoryWorldStore();
+    const world = await WorldEngine.create({
+      worldId: 'authority-world-time',
+      seed: 'authority-world-time-seed',
+      store,
+      startTime: 0,
+    });
+    const gateway = new IndependentWorldAuthorityGateway(world);
+    const initial = world.snapshot();
+    const first = await gateway.execute(
+      lawProposal(initial.id, initial.now, 'authority_world_time_first'),
+      initial,
+      experiencedCardinal,
+    );
+    expect(first.authorized).toBe(true);
+
+    await world.advanceCanonicalTimeTo(
+      47 * CANONICAL_WORLD_QUANTUM_MINUTES,
+    );
+    const beforeCooldown = world.snapshot();
+    const denied = await gateway.execute(
+      {
+        ...lawProposal(
+          beforeCooldown.id,
+          beforeCooldown.now,
+          'authority_world_time_too_soon',
+        ),
+        proposedWorldMinutes:
+          beforeCooldown.calendar.elapsedWorldMinutes,
+      },
+      beforeCooldown,
+      experiencedCardinal,
+    );
+    expect(denied.authorized).toBe(false);
+    expect(denied.reason).toContain('cooldown');
+
+    await world.advanceCanonicalTimeTo(
+      48 * CANONICAL_WORLD_QUANTUM_MINUTES,
+    );
+    const afterCooldown = world.snapshot();
+    const allowed = await gateway.execute(
+      {
+        ...lawProposal(
+          afterCooldown.id,
+          afterCooldown.now,
+          'authority_world_time_ready',
+        ),
+        proposedWorldMinutes:
+          afterCooldown.calendar.elapsedWorldMinutes,
+      },
+      afterCooldown,
+      experiencedCardinal,
+    );
+    expect(allowed.authorized).toBe(true);
+  });
+
   it('permits bounded world laws while permanently protecting resident minds', async () => {
     const store = new InMemoryWorldStore();
     const world = await WorldEngine.create({
@@ -120,6 +179,7 @@ describe('Independent world authority', () => {
         proposalId: 'catastrophe:small-world',
         worldId: expected.id,
         proposedAt: expected.now,
+        proposedWorldMinutes: expected.calendar.elapsedWorldMinutes,
         necessity: 0.99,
         reason: 'Hypothetical systemic reset pressure.',
         expectedOutcome: 'A bounded ecological transition.',
@@ -132,7 +192,7 @@ describe('Independent world authority', () => {
         magnitude: 0.25,
         predictedCasualtyRatio: 0.1,
         recoveryPlan: 'Restore habitat and resources after the bounded event.',
-        duration: 24,
+        durationWorldMinutes: 24 * CANONICAL_WORLD_QUANTUM_MINUTES,
         scope: 'systemic',
       },
       expected,
@@ -160,6 +220,7 @@ describe('Independent world authority', () => {
         proposalId: 'catastrophe:large-world',
         worldId: expected.id,
         proposedAt: expected.now,
+        proposedWorldMinutes: expected.calendar.elapsedWorldMinutes,
         necessity: 0.99,
         reason: 'Twelve independent systemic signals indicate irreversible collapse.',
         expectedOutcome: 'A bounded transition followed by habitat recovery.',
@@ -172,7 +233,7 @@ describe('Independent world authority', () => {
         magnitude: 0.3,
         predictedCasualtyRatio: 0.15,
         recoveryPlan: 'Open a recovery phase governed by catastrophe-recovery law.',
-        duration: 24,
+        durationWorldMinutes: 24 * CANONICAL_WORLD_QUANTUM_MINUTES,
         scope: 'systemic',
       },
       expected,
@@ -194,6 +255,9 @@ describe('Independent world authority', () => {
     expect(event?.payload.recoveryPlan).toBeTruthy();
     expect(event?.payload.recoveryMagnitude).toBeGreaterThan(0);
     expect(event?.activeUntil).toBe(72);
+    expect(event?.activeUntilWorldMinutes).toBe(
+      72 * CANONICAL_WORLD_QUANTUM_MINUTES,
+    );
   });
 
   it('exposes only aggregate architecture to the Cardinal world designer', async () => {
@@ -211,7 +275,7 @@ describe('Independent world authority', () => {
     expect(observation.agents).toBeUndefined();
     expect(observation.minds).toBeUndefined();
     expect(observation.relationships).toBeUndefined();
-    expect(observation.livingPopulation).toBe(6);
+    expect(observation.livingPopulation).toBe(10);
   });
 });
 
