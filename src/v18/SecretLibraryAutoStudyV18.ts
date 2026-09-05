@@ -1,16 +1,11 @@
 /**
  * Ainkrad v18 — automatic Secret Library study.
  *
- * Этот модуль заставляет выбранных посетителей реально
- * пользоваться библиотекой:
- *
- * выбран NPC
- * -> выбирает тему на основе своей личности/целей
- * -> ищет настоящие человеческие тексты
- * -> читает
- * -> усваивает то, что смог понять
- *
- * Никакого прямого интернет-доступа NPC не получает.
+ * Этот модуль:
+ * - заставляет выбранных NPC реально пользоваться библиотекой;
+ * - выбирает тему на основе характера и текущей цели;
+ * - читает настоящие человеческие источники;
+ * - отправляет живую телеметрию в здание Тайной библиотеки на карте.
  */
 
 import type {
@@ -24,44 +19,117 @@ import {
   type SecretLibraryNpcCycleResultV18,
 } from './SecretLibraryAgentV18';
 
+import {
+  inspectSecretLibraryPlaceV18,
+} from './SecretLibraryPlaceV18';
+
+const SECRET_LIBRARY_CHANNEL_V18 =
+  'ainkrad-secret-library-v18';
+
+/**
+ * Отправляем текущее состояние библиотеки
+ * визуальному модулю карты.
+ *
+ * Работает между worker и браузерным UI
+ * через BroadcastChannel.
+ */
+function publishSecretLibraryTelemetryV18(
+  secretLibrary:
+    Readonly<SecretLibraryAgentStateV18>,
+
+  world:
+    Readonly<WorldState>,
+): void {
+  if (
+    typeof BroadcastChannel ===
+    'undefined'
+  ) {
+    return;
+  }
+
+  try {
+    const inspector =
+      inspectSecretLibraryPlaceV18(
+        world,
+        secretLibrary,
+      );
+
+    const channel =
+      new BroadcastChannel(
+        SECRET_LIBRARY_CHANNEL_V18,
+      );
+
+    channel.postMessage(
+      inspector,
+    );
+
+    channel.close();
+  } catch {
+    /**
+     * Ошибка панели никогда не должна
+     * ломать сам мир.
+     */
+  }
+}
+
 function chooseStudyQuestionV18(
-  agent: Readonly<AgentState>,
+  agent:
+    Readonly<AgentState>,
 ): string {
   /**
-   * Сначала смотрим на текущую цель NPC.
+   * Сначала смотрим на настоящую
+   * текущую цель NPC.
    */
   switch (agent.goal.kind) {
     case 'secure_resources':
-      return 'agriculture food storage irrigation farming';
+      return (
+        'agriculture farming crop rotation ' +
+        'irrigation grain storage'
+      );
 
     case 'contribute':
-      return 'construction engineering masonry tools';
+      return (
+        'construction architecture engineering ' +
+        'masonry tools'
+      );
 
     case 'explore':
-      return 'geography navigation maps astronomy travel';
+      return (
+        'geography navigation maps astronomy travel'
+      );
 
     case 'seek_truth':
-      return 'mathematics astronomy philosophy natural science';
+      return (
+        'mathematics astronomy natural philosophy science'
+      );
 
     case 'build_family':
-      return 'medicine childbirth hygiene food health';
+      return (
+        'medicine hygiene childbirth health nutrition'
+      );
 
     case 'connect':
-      return 'trade law governance negotiation accounting';
+      return (
+        'trade accounting law governance negotiation'
+      );
 
     case 'recover':
-      return 'medicine wounds hygiene healing';
+      return (
+        'medicine wounds hygiene healing'
+      );
 
     case 'reflect':
-      return 'philosophy ethics governance mathematics';
+      return (
+        'philosophy ethics governance mathematics'
+      );
 
     default:
       break;
   }
 
   /**
-   * Если цель не дала хорошей темы —
-   * используем характер и навыки.
+   * Запасной выбор на основе личности
+   * и реальных навыков NPC.
    */
   const candidates: Array<{
     score: number;
@@ -71,6 +139,7 @@ function chooseStudyQuestionV18(
       score:
         agent.personality.curiosity +
         agent.mind.values.knowledge,
+
       question:
         'mathematics astronomy natural philosophy science',
     },
@@ -79,6 +148,7 @@ function chooseStudyQuestionV18(
       score:
         agent.skills.craft +
         agent.personality.diligence,
+
       question:
         'engineering construction metallurgy tools architecture',
     },
@@ -87,6 +157,7 @@ function chooseStudyQuestionV18(
       score:
         agent.skills.gathering +
         agent.mind.values.care,
+
       question:
         'agriculture crops soil irrigation food storage',
     },
@@ -95,6 +166,7 @@ function chooseStudyQuestionV18(
       score:
         agent.skills.exploration +
         agent.personality.riskTolerance,
+
       question:
         'navigation geography maps astronomy travel',
     },
@@ -103,6 +175,7 @@ function chooseStudyQuestionV18(
       score:
         agent.skills.social +
         agent.personality.sociability,
+
       question:
         'trade economics accounting law governance',
     },
@@ -111,13 +184,17 @@ function chooseStudyQuestionV18(
       score:
         agent.mind.values.care +
         agent.personality.generosity,
+
       question:
         'medicine hygiene wounds childbirth health',
     },
 
     {
       score:
-        agent.progression?.combatMastery ?? 0,
+        agent.progression
+          ?.combatMastery ??
+        0,
+
       question:
         'military logistics fortification tactics organization',
     },
@@ -130,18 +207,16 @@ function chooseStudyQuestionV18(
 
   return (
     candidates[0]?.question ??
-    'general knowledge mathematics agriculture medicine engineering'
+    'mathematics agriculture medicine engineering'
   );
 }
 
 function calculateStudyMinutesV18(
-  agent: Readonly<AgentState>,
+  agent:
+    Readonly<AgentState>,
 ): number {
-  /**
-   * Одна учебная сессия:
-   * примерно 2–8 игровых часов.
-   */
-  const baseMinutes = 120;
+  const baseMinutes =
+    120;
 
   const diligenceBonus =
     agent.personality.diligence *
@@ -159,8 +234,10 @@ function calculateStudyMinutesV18(
 
   return Math.max(
     60,
+
     Math.min(
       480,
+
       Math.floor(
         baseMinutes +
         diligenceBonus +
@@ -172,8 +249,8 @@ function calculateStudyMinutesV18(
 }
 
 /**
- * Запускаем одну учебную сессию
- * для всех текущих посетителей библиотеки.
+ * Запускает автоматическое обучение
+ * текущих посетителей.
  */
 export async function runAutomaticSecretLibraryStudyV18(
   secretLibrary:
@@ -184,6 +261,20 @@ export async function runAutomaticSecretLibraryStudyV18(
 ): Promise<
   SecretLibraryNpcCycleResultV18[]
 > {
+  /**
+   * Сначала отправляем состояние всегда —
+   * даже когда библиотека закрыта.
+   *
+   * Поэтому на карте будет видно:
+   * "Закрыта",
+   * "Выбор посетителей"
+   * или "Открыта".
+   */
+  publishSecretLibraryTelemetryV18(
+    secretLibrary,
+    world,
+  );
+
   if (
     secretLibrary.library.status !==
     'open'
@@ -203,9 +294,6 @@ export async function runAutomaticSecretLibraryStudyV18(
     const visitor of
     secretLibrary.library.visitors
   ) {
-    /**
-     * Закончил — больше не читаем.
-     */
     if (
       visitor.status ===
       'finished'
@@ -235,10 +323,6 @@ export async function runAutomaticSecretLibraryStudyV18(
         agent,
       );
 
-    /**
-     * Пока английский Wikisource —
-     * там выбор исторических текстов больше.
-     */
     const result =
       await runSecretLibraryNpcCycleV18(
         secretLibrary,
@@ -250,22 +334,43 @@ export async function runAutomaticSecretLibraryStudyV18(
         {
           question,
 
-          language: 'en',
+          language:
+            'en',
 
           studyMinutes,
 
-          /**
-           * После сессии NPC выходит.
-           * Потом в течение месяца он может войти снова.
-           */
-          leaveAfterStudy: true,
+          leaveAfterStudy:
+            true,
         },
       );
 
     results.push(
       result,
     );
+
+    /**
+     * После каждого NPC обновляем панель,
+     * чтобы на экране сразу появились:
+     *
+     * книга,
+     * тема,
+     * время,
+     * понимание,
+     * усвоенный текст.
+     */
+    publishSecretLibraryTelemetryV18(
+      secretLibrary,
+      world,
+    );
   }
+
+  /**
+   * Финальный снимок после всей пятёрки.
+   */
+  publishSecretLibraryTelemetryV18(
+    secretLibrary,
+    world,
+  );
 
   return results;
 }
