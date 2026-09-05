@@ -224,7 +224,7 @@ function candidateScore(
     agent.mind.memoryCoherence *
       0.15 +
     agent.skills.craft *
-      0.10 +
+      0.10 
   );
 }
 
