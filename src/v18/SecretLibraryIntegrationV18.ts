@@ -225,8 +225,6 @@ function candidateScore(
       0.15 +
     agent.skills.craft *
       0.10 +
-    Math.random() *
-      0.25
   );
 }
 
