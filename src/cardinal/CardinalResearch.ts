@@ -16,9 +16,14 @@ import {
   isCanonicalWorldMinutes,
 } from '../v15/WorldTimeContract';
 
-export const CARDINAL_RESEARCH_VERSION = 'ainkrad-cardinal-research-0.3.15';
-export const CARDINAL_RESEARCH_MAX_RECORDS = 64;
-export const CARDINAL_AUTONOMY_MAX_RECENT_INTERVENTIONS = 3;
+export const CARDINAL_RESEARCH_VERSION =
+  'ainkrad-cardinal-research-0.3.15';
+
+export const CARDINAL_RESEARCH_MAX_RECORDS =
+  64;
+
+export const CARDINAL_AUTONOMY_MAX_RECENT_INTERVENTIONS =
+  3;
 
 export interface CardinalResearchContext {
   researchVersion: string;
@@ -38,24 +43,42 @@ export async function buildCardinalResearchContext(
   policyVersion: string,
   sensorVersion: string,
 ): Promise<CardinalResearchContext> {
-  if (!isCanonicalWorldMinutes(currentWorldMinutes)) {
+  if (
+    !isCanonicalWorldMinutes(
+      currentWorldMinutes,
+    )
+  ) {
     throw new Error(
       'Cardinal research currentWorldMinutes must be finite and non-negative.',
     );
   }
 
-  if (!Number.isInteger(worldEpoch) || worldEpoch < 1) {
+  if (
+    !Number.isInteger(
+      worldEpoch,
+    ) ||
+    worldEpoch < 1
+  ) {
     throw new Error(
       'Cardinal research worldEpoch must be an integer >= 1.',
     );
   }
 
   const [
+    allEvaluations,
+    allOutcomes,
     evaluations,
     interventions,
     outcomes,
-    lifetimeSummary,
   ] = await Promise.all([
+    journal.evaluations(
+      worldId,
+    ),
+
+    journal.outcomes(
+      worldId,
+    ),
+
     journal.recentEvaluations(
       worldId,
       512,
@@ -73,46 +96,71 @@ export async function buildCardinalResearchContext(
       512,
       currentObservedAt,
     ),
-
-    /**
-     * ВАЖНО:
-     * опыт Cardinal — пожизненный для данного worldId.
-     *
-     * Нельзя ограничивать его currentObservedAt,
-     * потому что после "Новый мир" технический tick
-     * снова начинается с малого значения.
-     *
-     * Старые записи тогда выглядят как "будущее"
-     * и опыт искусственно обнуляется.
-     */
-    journal.summary(
-      worldId,
-    ),
   ]);
 
   /**
-   * Глобальный накопленный опыт Cardinal.
+   * Вечный опыт Cardinal:
    *
-   * Он переживает новые эпохи мира.
+   * - все записи прошлых эпох считаются всегда;
+   * - записи текущей эпохи считаются только если
+   *   они произошли ДО текущей попытки.
+   *
+   * Поэтому новый мир не стирает опыт,
+   * а exact retry не добавляет лишний XP.
    */
+  const lifetimeEvaluations =
+    allEvaluations.filter(
+      (evaluation) =>
+        evaluation.worldEpoch <
+          worldEpoch ||
+        (
+          evaluation.worldEpoch ===
+            worldEpoch &&
+          evaluation.evaluatedAt <
+            currentObservedAt
+        ),
+    );
+
+  const lifetimeOutcomes =
+    allOutcomes.filter(
+      (outcome) =>
+        outcome.worldEpoch <
+          worldEpoch ||
+        (
+          outcome.worldEpoch ===
+            worldEpoch &&
+          outcome.observedAt <
+            currentObservedAt
+        ),
+    );
+
   const experience =
     deriveCardinalExperienceFromCounters({
       observationCycles:
-        lifetimeSummary.evaluationCount,
+        lifetimeEvaluations.length,
 
       ecologyObservationCycles:
-        lifetimeSummary.ecologyEvaluationCount,
+        lifetimeEvaluations.filter(
+          (evaluation) =>
+            evaluation.metrics
+              .exploredWorldRatio >
+            0,
+        ).length,
 
       evaluatedOutcomes:
-        lifetimeSummary.outcomeCount,
+        lifetimeOutcomes.length,
 
       successfulPredictions:
-        lifetimeSummary.successfulPredictionCount,
+        lifetimeOutcomes.filter(
+          (outcome) =>
+            outcome
+              .expectedDirectionObserved,
+        ).length,
     });
 
   /**
-   * А вот оперативная память решений остаётся
-   * строго привязана к текущей эпохе.
+   * Оперативная память остаётся
+   * только в текущей эпохе.
    */
   const priorEvaluations =
     evaluations
@@ -129,12 +177,15 @@ export async function buildCardinalResearchContext(
           evaluation.researchVersion ===
             CARDINAL_RESEARCH_VERSION &&
           isCanonicalWorldMinutes(
-            evaluation.evaluatedWorldMinutes,
+            evaluation
+              .evaluatedWorldMinutes,
           ) &&
-          evaluation.evaluatedWorldMinutes <
+          evaluation
+            .evaluatedWorldMinutes <
             currentWorldMinutes &&
           currentWorldMinutes -
-            evaluation.evaluatedWorldMinutes <=
+            evaluation
+              .evaluatedWorldMinutes <=
             CARDINAL_RESEARCH_LOOKBACK_WORLD_MINUTES,
       )
       .sort(
@@ -165,7 +216,8 @@ export async function buildCardinalResearchContext(
         intervention.researchVersion ===
           CARDINAL_RESEARCH_VERSION &&
         isCanonicalWorldMinutes(
-          intervention.requestedWorldMinutes,
+          intervention
+            .requestedWorldMinutes,
         ) &&
         isCanonicalWorldMinutes(
           intervention
@@ -177,7 +229,8 @@ export async function buildCardinalResearchContext(
             ?.prediction
             ?.horizonWorldMinutes,
         ) &&
-        intervention.requestedWorldMinutes <
+        intervention
+          .requestedWorldMinutes <
           currentWorldMinutes,
     );
 
@@ -197,9 +250,11 @@ export async function buildCardinalResearchContext(
             outcome.researchVersion ===
               CARDINAL_RESEARCH_VERSION &&
             isCanonicalWorldMinutes(
-              outcome.observedWorldMinutes,
+              outcome
+                .observedWorldMinutes,
             ) &&
-            outcome.observedWorldMinutes <
+            outcome
+              .observedWorldMinutes <
               currentWorldMinutes,
         )
         .map(
@@ -213,7 +268,8 @@ export async function buildCardinalResearchContext(
       (intervention) =>
         intervention.executed &&
         !allPriorOutcomeIds.has(
-          intervention.interventionId,
+          intervention
+            .interventionId,
         ),
     );
 
@@ -221,12 +277,13 @@ export async function buildCardinalResearchContext(
     eligibleInterventions.filter(
       (intervention) =>
         currentWorldMinutes -
-          intervention.requestedWorldMinutes <=
+          intervention
+            .requestedWorldMinutes <=
         CARDINAL_AUTONOMY_WINDOW_WORLD_MINUTES,
     );
 
   const tailInterventions =
-    eligibleInterventions
+    [...eligibleInterventions]
       .sort(
         (a, b) =>
           a.requestedWorldMinutes -
@@ -249,7 +306,8 @@ export async function buildCardinalResearchContext(
         ...tailInterventions,
       ].map(
         (intervention) =>
-          intervention.interventionId,
+          intervention
+            .interventionId,
       ),
     );
 
@@ -257,7 +315,8 @@ export async function buildCardinalResearchContext(
     eligibleInterventions.filter(
       (intervention) =>
         requiredInterventionIds.has(
-          intervention.interventionId,
+          intervention
+            .interventionId,
         ),
     );
 
@@ -276,9 +335,11 @@ export async function buildCardinalResearchContext(
           outcome.researchVersion ===
             CARDINAL_RESEARCH_VERSION &&
           isCanonicalWorldMinutes(
-            outcome.observedWorldMinutes,
+            outcome
+              .observedWorldMinutes,
           ) &&
-          outcome.observedWorldMinutes <
+          outcome
+            .observedWorldMinutes <
             currentWorldMinutes &&
           requiredInterventionIds.has(
             outcome.interventionId,
@@ -306,13 +367,9 @@ export async function buildCardinalResearchContext(
           CARDINAL_RESEARCH_VERSION,
 
         policyVersion,
-
         sensorVersion,
-
         worldEpoch,
-
         currentObservedAt,
-
         currentWorldMinutes,
 
         evaluations:
@@ -381,8 +438,7 @@ export function emptyCardinalResearchContext():
           researchVersion:
             CARDINAL_RESEARCH_VERSION,
 
-          empty:
-            true,
+          empty: true,
 
           experience,
         },
