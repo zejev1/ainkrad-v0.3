@@ -1,0 +1,362 @@
+/**
+ * Ainkrad v18 — mount Secret Library into real WorldState.
+ *
+ * Добавляет Тайную библиотеку как настоящий WorldPlace:
+ * - она попадает в world.places;
+ * - карта Ainkrad сама её рисует;
+ * - она учитывается масштабом карты;
+ * - имеет физические координаты;
+ * - соединена дорогой с остальным миром;
+ * - сохраняется через обычный WorldStore.
+ */
+
+import type {
+  WorldState,
+  WorldPlace,
+} from '../world/types';
+
+import type {
+  WorldStore,
+} from '../world/persistence';
+
+import {
+  rebuildWorldRoutes,
+} from '../world/WorldNavigation';
+
+import {
+  SECRET_LIBRARY_PLACE_ID_V18,
+  SECRET_LIBRARY_PLACE_NAME_V18,
+} from './SecretLibraryPlaceV18';
+
+export interface SecretLibraryWorldMountResultV18 {
+  mounted: boolean;
+  alreadyExists: boolean;
+
+  placeId: string;
+
+  revisionBefore: number;
+  revisionAfter: number;
+}
+
+/**
+ * Выбираем нижнюю левую позицию относительно
+ * существующей территории.
+ */
+function calculatePhysicalPositionV18(
+  world: Readonly<WorldState>,
+): {
+  mapX: number;
+  mapY: number;
+} {
+  const places =
+    Object.values(
+      world.places,
+    ).filter(
+      (place) =>
+        place.id !==
+        SECRET_LIBRARY_PLACE_ID_V18,
+    );
+
+  if (places.length === 0) {
+    return {
+      mapX: -12,
+      mapY: 12,
+    };
+  }
+
+  const minX =
+    Math.min(
+      ...places.map(
+        (place) =>
+          place.mapX,
+      ),
+    );
+
+  const maxY =
+    Math.max(
+      ...places.map(
+        (place) =>
+          place.mapY,
+      ),
+    );
+
+  /**
+   * Чуть левее и ниже основной территории.
+   *
+   * Не слишком далеко:
+   * NPC должны реально иметь возможность
+   * дойти туда пешком.
+   */
+  return {
+    mapX:
+      minX - 5,
+
+    mapY:
+      maxY + 5,
+  };
+}
+
+/**
+ * Выбираем ближайшую нормальную точку,
+ * через которую библиотека подключается
+ * к дорожной сети.
+ */
+function chooseConnectionPlaceV18(
+  world: Readonly<WorldState>,
+): string | undefined {
+  /**
+   * Окраина логичнее всего.
+   */
+  if (
+    world.places.outskirts
+  ) {
+    return 'outskirts';
+  }
+
+  /**
+   * Если её нет — общая площадь.
+   */
+  if (
+    world.places.commons
+  ) {
+    return 'commons';
+  }
+
+  const firstLandPlace =
+    Object.values(
+      world.places,
+    ).find(
+      (place) =>
+        place.surface ===
+          'land' &&
+        place.id !==
+          SECRET_LIBRARY_PLACE_ID_V18,
+    );
+
+  return firstLandPlace?.id;
+}
+
+function createPhysicalLibraryPlaceV18(
+  world:
+    Readonly<WorldState>,
+
+  connectionPlaceId:
+    string | undefined,
+): WorldPlace {
+  const position =
+    calculatePhysicalPositionV18(
+      world,
+    );
+
+  return {
+    id:
+      SECRET_LIBRARY_PLACE_ID_V18,
+
+    name:
+      SECRET_LIBRARY_PLACE_NAME_V18,
+
+    /**
+     * Пока используем существующий kind,
+     * чтобы не менять глобальный union WorldPlaceKind.
+     *
+     * UI отличает библиотеку по уникальному ID.
+     */
+    kind:
+      'ruins',
+
+    capacity:
+      6,
+
+    biome:
+      'ancient_ruins',
+
+    mapX:
+      position.mapX,
+
+    mapY:
+      position.mapY,
+
+    connectedPlaceIds:
+      connectionPlaceId
+        ? [
+            connectionPlaceId,
+          ]
+        : [],
+
+    fertility:
+      0,
+
+    danger:
+      0,
+
+    surface:
+      'land',
+  };
+}
+
+/**
+ * Монтирует библиотеку в настоящий мир.
+ *
+ * Функция идемпотентна:
+ * если библиотека уже существует,
+ * второй раз она не создаётся.
+ */
+export async function mountSecretLibraryIntoWorldV18(
+  store:
+    WorldStore,
+
+  world:
+    Readonly<WorldState>,
+): Promise<
+  SecretLibraryWorldMountResultV18
+> {
+  const existing =
+    world.places[
+      SECRET_LIBRARY_PLACE_ID_V18
+    ];
+
+  if (existing) {
+    return {
+      mounted:
+        false,
+
+      alreadyExists:
+        true,
+
+      placeId:
+        SECRET_LIBRARY_PLACE_ID_V18,
+
+      revisionBefore:
+        world.revision,
+
+      revisionAfter:
+        world.revision,
+    };
+  }
+
+  const connectionPlaceId =
+    chooseConnectionPlaceV18(
+      world,
+    );
+
+  const nextState =
+    structuredClone(
+      world,
+    );
+
+  const libraryPlace =
+    createPhysicalLibraryPlaceV18(
+      world,
+      connectionPlaceId,
+    );
+
+  nextState.places[
+    SECRET_LIBRARY_PLACE_ID_V18
+  ] =
+    libraryPlace;
+
+  /**
+   * Соединение должно быть двусторонним.
+   */
+  if (
+    connectionPlaceId &&
+    nextState.places[
+      connectionPlaceId
+    ]
+  ) {
+    const connectedPlace =
+      nextState.places[
+        connectionPlaceId
+      ];
+
+    if (
+      !connectedPlace
+        .connectedPlaceIds
+        .includes(
+          SECRET_LIBRARY_PLACE_ID_V18,
+        )
+    ) {
+      connectedPlace
+        .connectedPlaceIds
+        .push(
+          SECRET_LIBRARY_PLACE_ID_V18,
+        );
+    }
+  }
+
+  /**
+   * Перестраиваем реальные маршруты мира.
+   *
+   * После этого библиотека не просто точка:
+   * до неё существует маршрут.
+   */
+  nextState.routes =
+    rebuildWorldRoutes(
+      nextState.places,
+    );
+
+  nextState.revision =
+    world.revision + 1;
+
+  const epoch =
+    world.epoch ?? 1;
+
+  const operationId =
+    [
+      'secret-library',
+      'mount',
+      world.id,
+      `epoch-${epoch}`,
+    ].join(':');
+
+  const operationFingerprint =
+    [
+      SECRET_LIBRARY_PLACE_ID_V18,
+      libraryPlace.mapX,
+      libraryPlace.mapY,
+      connectionPlaceId ??
+        'none',
+      epoch,
+    ].join('|');
+
+  const result =
+    await store.commit({
+      operationId,
+
+      operationFingerprint,
+
+      worldId:
+        world.id,
+
+      expectedRevision:
+        world.revision,
+
+      nextState,
+
+      /**
+       * Сейчас не создаём отдельный исторический event:
+       * библиотека является исходной особенностью мира,
+       * а не действием Cardinal/NPC.
+       */
+      events: [],
+
+      memories: [],
+    });
+
+  return {
+    mounted:
+      result.committed,
+
+    alreadyExists:
+      result.duplicate,
+
+    placeId:
+      SECRET_LIBRARY_PLACE_ID_V18,
+
+    revisionBefore:
+      world.revision,
+
+    revisionAfter:
+      result.state.revision,
+  };
+}
