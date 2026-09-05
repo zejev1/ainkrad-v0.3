@@ -86,6 +86,10 @@ import type {
   SecretLibraryCandidateV18,
 } from '../v18/SecretLibrarySelectionV18';
 
+import {
+  runAutomaticSecretLibraryStudyV18,
+} from '../v18/SecretLibraryAutoStudyV18';
+
 const WORLD_TIME_EPSILON = 1e-7;
 
 const DEFAULT_LIVE_FOUNDER_NAMES = [
@@ -1255,12 +1259,6 @@ export class LiveWorldRuntime {
         .elapsedWorldMinutes +
       CARDINAL_SIGNAL_BURST_WORLD_MINUTES;
 
-    /**
-     * Новый мир = новая Тайная библиотека.
-     *
-     * Старые посетители и старые знания NPC
-     * не переходят между эпохами.
-     */
     this.secretLibrary =
       createSecretLibraryAgentV18(
         0,
@@ -1596,12 +1594,6 @@ export class LiveWorldRuntime {
     });
   }
 
-  /**
-   * Тайная библиотека получает только снимок мира.
-   *
-   * Она не изменяет Cardinal и не вмешивается
-   * в остальные законы мира.
-   */
   private updateSecretLibraryV18(
     world:
       Readonly<WorldState>,
@@ -1610,9 +1602,6 @@ export class LiveWorldRuntime {
       world.calendar
         .elapsedWorldMinutes;
 
-    /**
-     * Первый год мира = 1.
-     */
     const worldYear =
       Math.floor(
         elapsedWorldMinutes /
@@ -1642,11 +1631,6 @@ export class LiveWorldRuntime {
             ageYears:
               agent.life.ageYears,
 
-            /**
-             * Пока отдельного IQ в AgentState нет.
-             * Используем стремление к знанию
-             * как наиболее близкое существующее поле.
-             */
             intelligence:
               Math.max(
                 0,
@@ -1669,14 +1653,6 @@ export class LiveWorldRuntime {
                 ),
               ),
 
-            /**
-             * Отдельная грамотность уже развивается
-             * в v18, но Тайная библиотека не должна
-             * зависеть от изменения WorldV18State.
-             *
-             * Поэтому используем комбинацию
-             * знания и ремесленной практики.
-             */
             literacy:
               Math.max(
                 0,
@@ -1715,10 +1691,6 @@ export class LiveWorldRuntime {
           }),
         );
 
-    /**
-     * Если начался новый год —
-     * библиотека сама выберет до пяти человек.
-     */
     beginSecretLibraryYearV18(
       this.secretLibrary,
 
@@ -1735,9 +1707,6 @@ export class LiveWorldRuntime {
       candidates,
     );
 
-    /**
-     * Проверка окончания месячного окна.
-     */
     tickSecretLibraryAgentV18(
       this.secretLibrary,
       elapsedWorldMinutes,
@@ -1941,11 +1910,12 @@ export class LiveWorldRuntime {
       const afterQuantum =
         this.world.snapshot();
 
-      /**
-       * Тайная библиотека получает свежий мир
-       * после каждого реального смыслового шага.
-       */
       this.updateSecretLibraryV18(
+        afterQuantum,
+      );
+
+      await runAutomaticSecretLibraryStudyV18(
+        this.secretLibrary,
         afterQuantum,
       );
 
@@ -2134,9 +2104,6 @@ export class LiveWorldRuntime {
     });
   }
 
-  /**
-   * Fast closed-tab restoration.
-   */
   async catchUpBatchTo(
     requestedTargetWorldMinutes:
       number,
@@ -2276,10 +2243,6 @@ export class LiveWorldRuntime {
     const after =
       this.world.runtimeStateView();
 
-    /**
-     * Даже при ускоренном догоне библиотека
-     * видит прошедшие игровые годы.
-     */
     this.updateSecretLibraryV18(
       after,
     );
