@@ -25,8 +25,8 @@ import type {
 } from '../world/WorldClock';
 
 import {
-  mountSecretLibraryIntoWorldV18,
-} from '../v18/SecretLibraryWorldMountV18';
+  runSecretLibraryRuntimeBridgeV18,
+} from '../v18/SecretLibraryRuntimeBridgeV18';
 
 const WORLD_LOCK_NAME =
   'ainkrad-v0-3-live-world-writer';
@@ -71,8 +71,6 @@ const COMPATIBLE_FRAME_PROTOCOLS =
     FRAME_PROTOCOL_VERSION,
   ]);
 
-// Test disturbances never run automatically
-// in the persistent live world.
 const disturbances:
   readonly LiveWorldDisturbance[] =
   [];
@@ -366,7 +364,7 @@ self.addEventListener(
             message,
           );
       } catch {
-        // Malformed wall-clock requests never enter canonical world time.
+        // Invalid wall-clock request.
       }
 
       return;
@@ -387,16 +385,12 @@ self.addEventListener(
         message,
       );
 
-      // If this tab is a read-only mirror,
-      // the tab holding the world-writer
-      // lock still receives the external console command.
       clockChannel
         .postMessage(
           message,
         );
     } catch {
-      // Invalid clock commands never enter
-      // the autonomous world.
+      // Invalid clock command.
     }
   },
 );
@@ -518,8 +512,7 @@ offlineClockChannel
           event.data,
         );
       } catch {
-        // Cross-tab messages receive
-        // the same strict validation.
+        // Invalid cross-tab request.
       }
     },
   );
@@ -546,8 +539,7 @@ clockChannel
           event.data,
         );
       } catch {
-        // The independent gateway rejects
-        // malformed cross-tab messages.
+        // Invalid cross-tab command.
       }
     },
   );
@@ -599,13 +591,11 @@ const sleep = (
   );
 
 /**
- * Гарантирует, что Тайная библиотека
- * существует как настоящий WorldPlace.
- *
- * После commit runtime перезагружает
- * сохранённую проекцию мира.
+ * Запускает полный цикл Тайной библиотеки:
+ * физическое место, выбор посетителей,
+ * движение, чтение и сохранение знаний.
  */
-async function ensureSecretLibraryMountedV18(
+async function synchronizeSecretLibraryV18(
   runtime:
     LiveWorldRuntime,
 
@@ -614,18 +604,10 @@ async function ensureSecretLibraryMountedV18(
       typeof createIndexedDbPersistence
     >['worldStore'],
 ): Promise<void> {
-  const world =
-    runtime.worldSnapshot();
-
-  const result =
-    await mountSecretLibraryIntoWorldV18(
-      worldStore,
-      world,
-    );
-
-  if (result.mounted) {
-    await runtime.synchronize();
-  }
+  await runSecretLibraryRuntimeBridgeV18(
+    runtime,
+    worldStore,
+  );
 }
 
 async function runForever():
@@ -681,10 +663,10 @@ async function runForever():
       });
 
   /**
-   * ВАЖНО:
-   * монтируем библиотеку и в уже существующий мир.
+   * Старый мир тоже получает библиотеку,
+   * если её там ещё нет.
    */
-  await ensureSecretLibraryMountedV18(
+  await synchronizeSecretLibraryV18(
     runtime,
     persistence.worldStore,
   );
@@ -723,10 +705,10 @@ async function runForever():
           .resetWorld();
 
         /**
-         * Новый мир получает новую
-         * физическую Тайную библиотеку.
+         * Новый мир сразу получает
+         * настоящий цикл библиотеки.
          */
-        await ensureSecretLibraryMountedV18(
+        await synchronizeSecretLibraryV18(
           runtime,
           persistence.worldStore,
         );
@@ -940,6 +922,15 @@ async function runForever():
         }
       }
 
+      /**
+       * Перед обычным тиком библиотека
+       * обновляет назначения NPC и состояние.
+       */
+      await synchronizeSecretLibraryV18(
+        runtime,
+        persistence.worldStore,
+      );
+
       const frame =
         await runtime.tick(
           completedCatchUpThisLoop
@@ -1023,8 +1014,7 @@ async function runForever():
             );
           }
         } catch {
-          // Storage diagnostics must never stop
-          // the autonomous world.
+          // Diagnostics never stop the world.
         }
       }
     } catch (error) {
