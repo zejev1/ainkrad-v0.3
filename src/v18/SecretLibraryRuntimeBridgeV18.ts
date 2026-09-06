@@ -11,19 +11,17 @@ import {
   type SecretLibraryIntegrationResultV18,
 } from './SecretLibraryIntegrationV18';
 
-/**
- * Тайная библиотека не должна пересчитываться
- * на каждом тике мира.
- *
- * Полный интеграционный проход — тяжёлая операция:
- * он читает WorldState, клонирует состояние и
- * проверяет маршруты/посетителей.
- */
 const SECRET_LIBRARY_CHECK_EVERY_CALLS =
   20;
 
 let bridgeCallCounter =
   0;
+
+let lastWorldEpoch:
+  number | undefined;
+
+let initialized =
+  false;
 
 let lastResult:
   SecretLibraryIntegrationResultV18 =
@@ -37,14 +35,7 @@ let lastResult:
     learnedCount: 0,
   };
 
-/**
- * Принудительный запуск:
- * используется там, где библиотеку нужно
- * синхронизировать немедленно:
- * - старт runtime;
- * - новый мир.
- */
-export async function forceSecretLibraryRuntimeBridgeV18(
+async function executeLibraryCycleV18(
   runtime:
     LiveWorldRuntime,
 
@@ -53,30 +44,41 @@ export async function forceSecretLibraryRuntimeBridgeV18(
 ): Promise<
   SecretLibraryIntegrationResultV18
 > {
-  bridgeCallCounter =
-    0;
+  const snapshot =
+    runtime.worldSnapshot();
 
   const result =
     await runSecretLibraryIntegrationV18(
       store,
-      runtime.worldSnapshot(),
+      snapshot,
     );
 
   if (result.changed) {
     await runtime.synchronize();
   }
 
+  lastWorldEpoch =
+    snapshot.epoch ?? 1;
+
+  initialized =
+    true;
+
   lastResult =
     result;
+
+  bridgeCallCounter =
+    0;
 
   return result;
 }
 
 /**
- * Обычный дешёвый вызов из основного цикла.
+ * Основной вызов.
  *
- * Реальная интеграция запускается только
- * раз в 20 обращений, а не каждый тик.
+ * Полный цикл выполняется:
+ * - сразу при первом запуске;
+ * - сразу после смены worldEpoch / Новый мир;
+ * - затем только раз в 20 обращений.
  */
 export async function runSecretLibraryRuntimeBridgeV18(
   runtime:
@@ -87,6 +89,23 @@ export async function runSecretLibraryRuntimeBridgeV18(
 ): Promise<
   SecretLibraryIntegrationResultV18
 > {
+  const snapshot =
+    runtime.worldSnapshot();
+
+  const currentEpoch =
+    snapshot.epoch ?? 1;
+
+  if (
+    !initialized ||
+    lastWorldEpoch !==
+      currentEpoch
+  ) {
+    return executeLibraryCycleV18(
+      runtime,
+      store,
+    );
+  }
+
   bridgeCallCounter +=
     1;
 
@@ -97,21 +116,27 @@ export async function runSecretLibraryRuntimeBridgeV18(
     return lastResult;
   }
 
-  bridgeCallCounter =
-    0;
+  return executeLibraryCycleV18(
+    runtime,
+    store,
+  );
+}
 
-  const result =
-    await runSecretLibraryIntegrationV18(
-      store,
-      runtime.worldSnapshot(),
-    );
+/**
+ * Оставляем отдельный force API
+ * на случай будущих ручных вызовов.
+ */
+export async function forceSecretLibraryRuntimeBridgeV18(
+  runtime:
+    LiveWorldRuntime,
 
-  if (result.changed) {
-    await runtime.synchronize();
-  }
-
-  lastResult =
-    result;
-
-  return result;
+  store:
+    WorldStore,
+): Promise<
+  SecretLibraryIntegrationResultV18
+> {
+  return executeLibraryCycleV18(
+    runtime,
+    store,
+  );
 }
