@@ -98,11 +98,12 @@ const CANDIDATES: readonly CandidateDefinition[] = [
       metrics.resourcePressure > 0.88 && metrics.recoveryCapacity < 0.3,
     trendMetric: 'resourcePressure',
     predictionMetric: 'resourcePressure',
-    reason: 'Resource pressure is high while recovery capacity is weak.',
+    reason:
+      'Food, housing, known territory or renewable land is under pressure while recovery capacity is weak.',
     expectedOutcome:
       'Restore enough resource slack for agents to recover through their own decisions.',
     claim:
-      'The world is experiencing persistent resource fragility that its current recovery mechanisms are not resolving quickly enough.',
+      'Population needs are persistently outrunning food, housing, known territory or renewable land, and endogenous recovery is not resolving the imbalance quickly enough.',
     falsifier:
       'The hypothesis weakens if resource pressure falls or recovery capacity rises without Cardinal assistance.',
   },
@@ -275,6 +276,19 @@ export class CardinalCore {
         `reproductive_pairs=${observation.metrics.reproductivePairPotential ?? 'legacy_unknown'}`,
         `reproductive_continuity=${(observation.metrics.reproductiveContinuity ?? 1).toFixed(3)}`,
       );
+      if (observation.metrics.housingPressure !== undefined) {
+        reasoningFactors.push(
+          `housing_capacity=${observation.metrics.sapientHousingCapacity ?? 'unknown'}`,
+          `unhoused_residents=${observation.metrics.unhousedResidentCount ?? 'unknown'}`,
+          `housing_pressure=${observation.metrics.housingPressure.toFixed(3)}`,
+          `food_pressure=${(observation.metrics.foodPressure ?? 0).toFixed(3)}`,
+          `food_reserve_per_resident=${(observation.metrics.foodReservePerResident ?? 0).toFixed(3)}`,
+          `land_depletion_pressure=${(observation.metrics.landDepletionPressure ?? 0).toFixed(3)}`,
+          `territory_pressure=${(observation.metrics.territoryPressure ?? 0).toFixed(3)}`,
+          `known_unclaimed_habitable_places=${observation.metrics.unclaimedHabitablePlaceCount ?? 'unknown'}`,
+          `deprivation_death_share=${(observation.metrics.deprivationDeathShare ?? 0).toFixed(3)}`,
+        );
+      }
 
       const capabilityReady =
         !selected.candidate.requiredCapability ||

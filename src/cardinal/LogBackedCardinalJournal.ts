@@ -34,8 +34,28 @@ interface JournalStreamCache {
   byId: Map<string, JournalEntry>;
   order: string[];
   aggregate: JournalStreamAggregate;
+  aggregateByWorldEpoch: Map<number, JournalStreamAggregate>;
+  orderByWorldEpoch: Map<number, string[]>;
   lastLogicalTime?: number;
   monotonicTime: boolean;
+}
+
+function evidenceWorldEpoch(value: EvidenceValue): number {
+  return Number.isInteger(value.worldEpoch) && value.worldEpoch >= 1
+    ? value.worldEpoch
+    : 1;
+}
+
+function addAggregate(
+  target: JournalStreamAggregate,
+  source: Readonly<JournalStreamAggregate>,
+): void {
+  target.count += source.count;
+  target.proposals += source.proposals;
+  target.ecologyEvaluations += source.ecologyEvaluations;
+  target.executedInterventions += source.executedInterventions;
+  target.deniedInterventions += source.deniedInterventions;
+  target.successfulPredictions += source.successfulPredictions;
 }
 
 interface JournalStreamAggregate {
@@ -311,6 +331,63 @@ export class LogBackedCardinalJournal implements CardinalJournal {
     };
   }
 
+  async experienceSummary(
+    worldId: string,
+    currentWorldEpoch: number,
+    beforeCurrentEpochExclusive: number,
+  ): Promise<CardinalJournalSummary> {
+    if (!Number.isInteger(currentWorldEpoch) || currentWorldEpoch < 1) {
+      throw new Error('Cardinal experience world epoch must be an integer >= 1.');
+    }
+    if (
+      !Number.isFinite(beforeCurrentEpochExclusive) ||
+      beforeCurrentEpochExclusive < 0
+    ) {
+      throw new Error('Cardinal experience time must be finite and non-negative.');
+    }
+    const [evaluations, interventions, outcomes, audits] = await Promise.all([
+      this.cache(streamId(worldId, 'evaluation'), 'evaluation', worldId),
+      this.cache(streamId(worldId, 'intervention'), 'intervention', worldId),
+      this.cache(streamId(worldId, 'outcome'), 'outcome', worldId),
+      this.cache(streamId(worldId, 'audit'), 'audit', worldId),
+    ]);
+    const evaluationStats = this.aggregateForExperience(
+      evaluations,
+      'evaluation',
+      currentWorldEpoch,
+      beforeCurrentEpochExclusive,
+    );
+    const interventionStats = this.aggregateForExperience(
+      interventions,
+      'intervention',
+      currentWorldEpoch,
+      beforeCurrentEpochExclusive,
+    );
+    const outcomeStats = this.aggregateForExperience(
+      outcomes,
+      'outcome',
+      currentWorldEpoch,
+      beforeCurrentEpochExclusive,
+    );
+    const auditStats = this.aggregateForExperience(
+      audits,
+      'audit',
+      currentWorldEpoch,
+      beforeCurrentEpochExclusive,
+    );
+    return {
+      evaluationCount: evaluationStats.count,
+      proposalCount: evaluationStats.proposals,
+      ecologyEvaluationCount: evaluationStats.ecologyEvaluations,
+      interventionCount: interventionStats.count,
+      executedInterventionCount: interventionStats.executedInterventions,
+      deniedInterventionCount: interventionStats.deniedInterventions,
+      outcomeCount: outcomeStats.count,
+      successfulPredictionCount: outcomeStats.successfulPredictions,
+      auditCount: auditStats.count,
+    };
+  }
+
   private async append(kind: EvidenceKind, value: EvidenceValue): Promise<void> {
     const id = entryId(kind, value);
     const worldId = value.worldId;
@@ -347,6 +424,14 @@ export class LogBackedCardinalJournal implements CardinalJournal {
         cache.rawLength += 1;
         cache.byId.set(id, incoming);
         cache.order.push(id);
+        const worldEpoch = evidenceWorldEpoch(incoming.value);
+        const epochAggregate =
+          cache.aggregateByWorldEpoch.get(worldEpoch) ?? emptyAggregate();
+        adjustAggregate(epochAggregate, kind, incoming.value, 1);
+        cache.aggregateByWorldEpoch.set(worldEpoch, epochAggregate);
+        const epochOrder = cache.orderByWorldEpoch.get(worldEpoch) ?? [];
+        epochOrder.push(id);
+        cache.orderByWorldEpoch.set(worldEpoch, epochOrder);
         const logicalTime = evidenceTime(kind, incoming.value);
         cache.monotonicTime =
           cache.monotonicTime &&
@@ -431,6 +516,28 @@ export class LogBackedCardinalJournal implements CardinalJournal {
     return result;
   }
 
+  private aggregateForExperience(
+    cache: JournalStreamCache,
+    kind: EvidenceKind,
+    currentWorldEpoch: number,
+    beforeCurrentEpochExclusive: number,
+  ): JournalStreamAggregate {
+    const result = emptyAggregate();
+    for (const [worldEpoch, aggregate] of cache.aggregateByWorldEpoch) {
+      if (worldEpoch < currentWorldEpoch) addAggregate(result, aggregate);
+    }
+    const currentAggregate = cache.aggregateByWorldEpoch.get(currentWorldEpoch);
+    if (!currentAggregate) return result;
+    addAggregate(result, currentAggregate);
+    const currentOrder = cache.orderByWorldEpoch.get(currentWorldEpoch) ?? [];
+    for (let index = currentOrder.length - 1; index >= 0; index -= 1) {
+      const value = cache.byId.get(currentOrder[index])!.value;
+      if (evidenceTime(kind, value) < beforeCurrentEpochExclusive) break;
+      adjustAggregate(result, kind, value, -1);
+    }
+    return result;
+  }
+
   private cache(
     stream: string,
     kind: EvidenceKind,
@@ -466,6 +573,8 @@ export class LogBackedCardinalJournal implements CardinalJournal {
     const byId = new Map<string, JournalEntry>();
     const order: string[] = [];
     const aggregate = emptyAggregate();
+    const aggregateByWorldEpoch = new Map<number, JournalStreamAggregate>();
+    const orderByWorldEpoch = new Map<number, string[]>();
     let lastLogicalTime: number | undefined;
     let monotonicTime = true;
     for (const raw of rawEntries) {
@@ -482,6 +591,14 @@ export class LogBackedCardinalJournal implements CardinalJournal {
       }
       byId.set(entry.id, entry);
       order.push(entry.id);
+      const worldEpoch = evidenceWorldEpoch(entry.value);
+      const epochAggregate =
+        aggregateByWorldEpoch.get(worldEpoch) ?? emptyAggregate();
+      adjustAggregate(epochAggregate, kind, entry.value, 1);
+      aggregateByWorldEpoch.set(worldEpoch, epochAggregate);
+      const epochOrder = orderByWorldEpoch.get(worldEpoch) ?? [];
+      epochOrder.push(entry.id);
+      orderByWorldEpoch.set(worldEpoch, epochOrder);
       const logicalTime = evidenceTime(kind, entry.value);
       monotonicTime =
         monotonicTime &&
@@ -494,6 +611,8 @@ export class LogBackedCardinalJournal implements CardinalJournal {
       byId,
       order,
       aggregate,
+      aggregateByWorldEpoch,
+      orderByWorldEpoch,
       lastLogicalTime,
       monotonicTime,
     };

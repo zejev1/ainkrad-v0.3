@@ -30,6 +30,9 @@ export interface AgricultureCalibration {
   unskilledBaseDamage: number;
   skilledDamageReduction: number;
   baseRecoveryPerYear: number;
+  unskilledFertilityDamage: number;
+  skilledFertilityDamageReduction: number;
+  fertilityRecoveryPerYear: number;
 }
 
 export const DEFAULT_AGRICULTURE_CALIBRATION: AgricultureCalibration = {
@@ -37,6 +40,11 @@ export const DEFAULT_AGRICULTURE_CALIBRATION: AgricultureCalibration = {
   unskilledBaseDamage: 0.0065,
   skilledDamageReduction: 0.82,
   baseRecoveryPerYear: 0.18,
+  // Topsoil changes over decades. Renewable biomass may fluctuate quickly,
+  // but one ordinary harvest must not destroy a settlement within a decade.
+  unskilledFertilityDamage: 0.00006,
+  skilledFertilityDamageReduction: 0.76,
+  fertilityRecoveryPerYear: 0.018,
 };
 
 const WORLD_MINUTES_PER_YEAR = 365 * 24 * 60;
@@ -45,6 +53,7 @@ const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 export interface HarvestResult {
   harvested: number;
   renewableBaseDamage: number;
+  fertilityDamage: number;
   next: RenewableResourceState;
 }
 
@@ -80,14 +89,25 @@ export function harvestRenewably(
       damageMultiplier *
       (1.08 - fertility * 0.3),
   );
+  const fertilityDamage = Math.min(
+    fertility,
+    calibration.unskilledFertilityDamage *
+      effort *
+      Math.max(
+        0.1,
+        1 - knowledge * calibration.skilledFertilityDamageReduction,
+      ) *
+      (1 + Math.max(0, 0.45 - base) * 0.7),
+  );
 
   return {
     harvested,
     renewableBaseDamage,
+    fertilityDamage,
     next: {
       storedResources: Math.max(0, state.storedResources) + harvested,
       renewableBase: clamp01(base - renewableBaseDamage),
-      fertility,
+      fertility: clamp01(fertility - fertilityDamage),
     },
   };
 }
@@ -116,11 +136,20 @@ export function recoverRenewableBase(
     fertility *
     stewardship *
     (1 - base);
+  // Soil is slower than annual biomass. Repeated cultivation can therefore
+  // exhaust a crowded city's land, while fallow years and skilled stewardship
+  // restore it over years rather than in the next simulation quantum.
+  const fertilityRecovery =
+    calibration.fertilityRecoveryPerYear *
+    years *
+    (0.55 + knowledge * 0.65) *
+    (0.35 + base * 0.65) *
+    (1 - fertility);
 
   return {
     storedResources: Math.max(0, state.storedResources),
     renewableBase: clamp01(base + recovery),
-    fertility,
+    fertility: clamp01(fertility + fertilityRecovery),
   };
 }
 

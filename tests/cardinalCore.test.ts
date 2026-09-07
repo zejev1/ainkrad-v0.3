@@ -51,6 +51,32 @@ function research(priorEvaluations: CardinalEvaluation[]): CardinalResearchConte
 }
 
 describe('Cardinal Core', () => {
+  it('records concrete overpopulation consequences in its own reasoning', () => {
+    const evaluation = new CardinalCore().evaluate(
+      'observer',
+      observation({
+        resourcePressure: 0.94,
+        recoveryCapacity: 0.2,
+        sapientPopulation: 120,
+        sapientHousingCapacity: 70,
+        unhousedResidentCount: 50,
+        foodReservePerResident: 0.01,
+        unclaimedHabitablePlaceCount: 0,
+        housingPressure: 0.42,
+        foodPressure: 0.91,
+        landDepletionPressure: 0.88,
+        territoryPressure: 0.76,
+        deprivationDeathShare: 0.3,
+      }),
+    );
+
+    expect(evaluation.detectedProblem?.kind).toBe('resource_fragility');
+    expect(evaluation.reasoningFactors).toContain('unhoused_residents=50');
+    expect(evaluation.reasoningFactors).toContain('food_pressure=0.910');
+    expect(evaluation.reasoningFactors).toContain('territory_pressure=0.760');
+    expect(evaluation.hypotheticalOnly).toBe(true);
+  });
+
   it('chooses the strongest qualifying condition instead of a fixed category priority', () => {
     const evaluation = new CardinalCore().evaluate(
       'intervene',

@@ -214,11 +214,11 @@ export function decideIntimacyVoluntarily(
   const probability = Math.max(
     0.02,
     Math.min(
-      0.82,
-      0.045 +
-        signals.mutualIntimacyInterest * 0.34 +
-        signals.mutualAttachment * 0.18 +
-        mutualAutonomy * 0.05,
+      0.9,
+      0.08 +
+        signals.mutualIntimacyInterest * 0.42 +
+        signals.mutualAttachment * 0.22 +
+        mutualAutonomy * 0.08,
     ),
   );
   const chosen = random01 < probability;
@@ -296,10 +296,10 @@ export function decideChildVoluntarily(
   const probability = Math.max(
     0.015,
     Math.min(
-      0.52,
-      0.025 +
-        signals.mutualChildIntent * 0.24 +
-        signals.familyReadiness * 0.16,
+      0.68,
+      0.04 +
+        signals.mutualChildIntent * 0.3 +
+        signals.familyReadiness * 0.22,
     ),
   );
   const chosen = random01 < probability;

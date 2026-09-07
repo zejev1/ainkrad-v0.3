@@ -10,6 +10,12 @@ import type {
   V18LivelihoodKind,
   V18LivelihoodStage,
 } from '../v18/types';
+import { HUMAN_KNOWLEDGE_V18 } from '../v18/HumanKnowledgeV18';
+import { REAL_HUMAN_BOOKS_V18 } from '../v18/SecretLibraryBooksV18';
+import {
+  SECRET_LIBRARY_MAX_VISITORS_PER_YEAR_V18,
+  SECRET_LIBRARY_PLACE_ID_V18,
+} from '../v18/SecretLibraryV18';
 
 export interface TruthfulInspectorRowV16 {
   label: string;
@@ -73,6 +79,9 @@ const livelihoodLabels: Readonly<Record<V18LivelihoodKind, string>> = {
   builder: 'строитель',
   caregiver: 'попечитель',
   scout: 'разведчик',
+  cartographer: 'картограф',
+  adventurer: 'искатель приключений',
+  warrior: 'воин',
   teacher: 'наставник',
   scribe: 'писец',
   guard: 'страж',
@@ -103,6 +112,7 @@ const biomeLabels: Readonly<Record<WorldPlace['biome'], string>> = {
   plains: 'равнины',
   forest: 'лес',
   coast: 'побережье',
+  ocean: 'океан',
   mountains: 'горы',
   lake: 'озеро',
   river: 'речные земли',
@@ -157,6 +167,8 @@ export function inspectResidentV16(
   const livelihood = world.v18?.livelihoodByAgentId[agent.id];
   const rhythm = world.v18?.lifeRhythmByAgentId[agent.id];
   const language = world.v18?.languageByAgentId[agent.id];
+  const libraryKnowledge =
+    world.v18?.secretLibrary.knowledgeByAgentId[agent.id] ?? [];
   const smithing = world.v15?.smithingByAgentId[agent.id];
   const createdItems = Object.values(world.v15?.items ?? {}).filter(
     (item) => item.createdByAgentId === agent.id,
@@ -316,6 +328,17 @@ export function inspectResidentV16(
               ? `понимание ${percent(language.spokenComprehension)} · речь ${percent(language.spokenExpression)} · словарь ${percent(language.vocabulary)} · кириллица ${percent(language.cyrillicLiteracy)}`
               : 'обучение ещё не зафиксировано',
           },
+          {
+            label: 'Тайная библиотека',
+            value: libraryKnowledge.length > 0
+              ? libraryKnowledge
+                  .slice(-4)
+                  .map((record) =>
+                    `${record.title} (${percent(record.understanding)})`,
+                  )
+                  .join(' · ')
+              : 'освоенных записей нет',
+          },
         ],
       },
       ...(agent.life.alive
@@ -429,6 +452,10 @@ export function inspectPlaceV16(
 ): TruthfulInspectorReportV16 | undefined {
   const place = world.places[placeId];
   if (!place) return undefined;
+  const secretLibrary =
+    place.id === SECRET_LIBRARY_PLACE_ID_V18
+      ? world.v18?.secretLibrary
+      : undefined;
   const residents = Object.values(world.agents).filter(
     (agent) => agent.life.alive && agent.locationId === place.id,
   );
@@ -480,10 +507,16 @@ export function inspectPlaceV16(
   return {
     kind: 'place',
     title: place.name,
-    subtitle: settlement
+    subtitle: secretLibrary
+      ? 'независимое место рядом с Айнкрадом'
+      : settlement
       ? `${settlement.kind === 'city' ? 'город' : 'поселение'} ${settlement.name}`
       : biomeLabels[place.biome],
-    badge: place.surface === 'water' ? 'ВОДНАЯ МЕСТНОСТЬ' : 'МЕСТНОСТЬ',
+    badge: secretLibrary
+      ? 'ТАЙНАЯ БИБЛИОТЕКА'
+      : place.surface === 'water'
+        ? 'ВОДНАЯ МЕСТНОСТЬ'
+        : 'МЕСТНОСТЬ',
     sections: [
       {
         title: 'Физическая местность',
@@ -502,6 +535,54 @@ export function inspectPlaceV16(
           },
         ],
       },
+      ...(secretLibrary
+        ? [
+            {
+              title: 'Доступ и реальные знания',
+              rows: [
+                {
+                  label: 'Состояние',
+                  value:
+                    secretLibrary.status === 'open'
+                      ? 'открыта для выбранных посетителей'
+                      : secretLibrary.status === 'waiting'
+                        ? 'ожидает первого годового отбора'
+                        : 'годовое окно закрыто',
+                },
+                {
+                  label: 'Год и лимит',
+                  value: `${secretLibrary.currentAccessYear || '—'} · ${secretLibrary.visitors.length}/${SECRET_LIBRARY_MAX_VISITORS_PER_YEAR_V18}`,
+                },
+                {
+                  label: 'Посетители',
+                  value: secretLibrary.visitors.length > 0
+                    ? secretLibrary.visitors
+                        .map((visitor) =>
+                          `${agentName(world, visitor.agentId)} — ${visitor.status}`,
+                        )
+                        .join(' · ')
+                    : 'нет',
+                },
+                {
+                  label: 'Каталог',
+                  value: `${HUMAN_KNOWLEDGE_V18.length} блоков знаний · ${REAL_HUMAN_BOOKS_V18.length} реальных трудов`,
+                },
+                {
+                  label: 'Усвоено жителями',
+                  value: String(secretLibrary.totalKnowledgeRecords),
+                },
+                {
+                  label: 'Внешний источник',
+                  value: 'Wikisource через отдельный шлюз; прямого интернета у NPC и Cardinal нет',
+                },
+                {
+                  label: 'Якорь',
+                  value: `${world.places[secretLibrary.anchorPlaceId]?.name ?? secretLibrary.anchorPlaceId} · (${secretLibrary.anchorMapX.toFixed(1)}, ${secretLibrary.anchorMapY.toFixed(1)})`,
+                },
+              ],
+            },
+          ]
+        : []),
       ...(localResources
         ? [
             {
@@ -615,7 +696,8 @@ export function inspectPlaceV16(
         ],
       },
     ],
-    evidenceNote:
-      'Описание построено из географии, текущей заселённости и накопленных действий.',
+    evidenceNote: secretLibrary
+      ? 'Координаты сохранены один раз относительно Айнкрада. Карта не перемещает библиотеку; в мире хранятся только краткие усвоенные сведения, а не целые книги.'
+      : 'Описание построено из географии, текущей заселённости и накопленных действий.',
   };
 }

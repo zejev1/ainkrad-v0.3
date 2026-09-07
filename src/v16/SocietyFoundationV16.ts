@@ -31,7 +31,8 @@ export const SAPIENT_RACES_V16 = [
  * carrying capacity. Normal family opportunities are bounded by homes that
  * residents actually built plus a small temporary household reserve.
  */
-export const TECHNICAL_POPULATION_SAFETY_CEILING_V16 = 1_024;
+/** Retained only for old report imports; births are never capped by it. */
+export const TECHNICAL_POPULATION_SAFETY_CEILING_V16 = Number.MAX_SAFE_INTEGER;
 export const FAMILY_HOUSING_TRANSITION_RESERVE_V16 = 6;
 
 export interface SapientRaceLifeProfileV16 {
@@ -195,16 +196,27 @@ export function settlementFamilyCapacityV16(
     .map((placeId) => state.places[placeId])
     .filter((place) => place?.kind === 'home')
     .reduce((sum, place) => sum + place.capacity, 0);
+  const livingResidents = Object.values(state.agents).filter(
+    (agent) =>
+      agent.life.alive &&
+      state.places[agent.homeId]?.settlementId === settlementId,
+  ).length;
   return Math.max(
     0,
-    Math.floor(housingCapacity + FAMILY_HOUSING_TRANSITION_RESERVE_V16),
+    Math.floor(
+      housingCapacity +
+        Math.max(
+          FAMILY_HOUSING_TRANSITION_RESERVE_V16,
+          Math.ceil(livingResidents * 0.25),
+        ),
+    ),
   );
 }
 
 /**
- * Demographic room follows the physical world instead of a fixed population
- * quota. Building homes and founding settlements expands it; worker ticks do
- * not. The high technical ceiling remains an emergency guard only.
+ * This is observable housing capacity, not reproductive permission. Cardinal
+ * can compare it with population to reason about crowding and territory, but
+ * the world engine never uses it as a hidden birth ceiling.
  */
 export function worldPopulationCapacityV16(
   state: Readonly<WorldState>,
@@ -214,10 +226,7 @@ export function worldPopulationCapacityV16(
       sum + settlementFamilyCapacityV16(state, settlementId),
     0,
   );
-  return Math.min(
-    TECHNICAL_POPULATION_SAFETY_CEILING_V16,
-    Math.max(24, physicalCapacity),
-  );
+  return Math.max(24, physicalCapacity);
 }
 
 function emptyResidentEvidence(

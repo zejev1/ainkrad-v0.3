@@ -86,7 +86,7 @@ export function auditPostGenesisSecondGenerationV15(
       severity: 'critical',
       code: 'genesis_still_active',
       message:
-        'Genesis Teachers remain active after the three-year bootstrap window.',
+        'Genesis Teachers remain active after the ten-year bootstrap window.',
       residentIds: [],
     });
   }

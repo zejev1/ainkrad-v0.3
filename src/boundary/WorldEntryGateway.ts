@@ -5,7 +5,12 @@ import {
   StaleWorldObservationError,
   WorldRevisionConflictError,
 } from '../world/persistence';
-import type { WorldEntryRole, WorldState } from '../world/types';
+import type {
+  DivineCallingRole,
+  DivineGiftKind,
+  WorldEntryRole,
+  WorldState,
+} from '../world/types';
 
 export const WORLD_ENTRY_GATEWAY_POLICY_VERSION =
   'ainkrad-world-entry-gateway-0.3.10';
@@ -35,11 +40,24 @@ export interface DivineOmenRequest {
   requestedAt: number;
 }
 
+export interface PrivateDivineAudienceRequest {
+  requestId: string;
+  worldId: string;
+  agentId: string;
+  deityId: string;
+  deityName: string;
+  religionName?: string;
+  message: string;
+  gift: DivineGiftKind;
+  calling: DivineCallingRole;
+  requestedAt: number;
+}
+
 export interface WorldEntryRecord {
   entryRecordId: string;
   requestId: string;
   worldId: string;
-  role: WorldEntryRole | 'omen';
+  role: WorldEntryRole | 'omen' | 'audience';
   gatewayPolicyVersion: string;
   authorized: boolean;
   reason: string;
@@ -69,6 +87,19 @@ export interface WorldEntryTarget {
     deityId: string,
     omen: DivineOmenKind,
     magnitude: number,
+    now: number,
+    operationId: string,
+    expectedWorldRevision: number,
+  ): Promise<WorldMutationResult>;
+  applyAuthorizedPrivateDivineAudience(
+    worldId: string,
+    agentId: string,
+    deityId: string,
+    deityName: string,
+    religionName: string | undefined,
+    message: string,
+    gift: DivineGiftKind,
+    calling: DivineCallingRole,
     now: number,
     operationId: string,
     expectedWorldRevision: number,
@@ -195,6 +226,75 @@ export class IndependentWorldEntryGateway {
         'omen',
         true,
         'Omen may be perceived and interpreted; it cannot write beliefs directly.',
+      ),
+      committedWorldRevision: result.committedRevision,
+    };
+  }
+
+  async audience(
+    request: Readonly<PrivateDivineAudienceRequest>,
+    expectedWorld: Readonly<WorldState>,
+  ): Promise<WorldEntryRecord> {
+    const base = {
+      requestId: request.requestId,
+      worldId: request.worldId,
+      externalIdentityId: request.deityId,
+      displayName: request.deityName,
+      role: 'deity' as const,
+      requestedAt: request.requestedAt,
+    };
+    const staleReason = this.validateWorld(base, expectedWorld);
+    if (staleReason) return this.record(base, 'audience', false, staleReason);
+    const agent = expectedWorld.agents[request.agentId];
+    if (!agent?.life.alive) {
+      return this.record(base, 'audience', false, 'Selected resident is not alive.');
+    }
+    if (agent.privateDivineCalling) {
+      return this.record(base, 'audience', false, 'This resident already received a private audience.');
+    }
+    if (
+      !/^[a-zA-Z0-9][a-zA-Z0-9_-]{2,63}$/.test(request.deityId) ||
+      !request.deityName.trim() ||
+      request.deityName.length > 64 ||
+      !request.message.trim() ||
+      request.message.length > 480 ||
+      (request.religionName !== undefined &&
+        (!request.religionName.trim() || request.religionName.length > 64)) ||
+      !['might', 'genius_inventor', 'crowd_charisma', 'demon_king_hero'].includes(request.gift) ||
+      !['hero', 'messenger', 'priest'].includes(request.calling)
+    ) {
+      return this.record(base, 'audience', false, 'Private audience request is outside the gateway envelope.');
+    }
+    let result: WorldMutationResult;
+    try {
+      result = await this.target.applyAuthorizedPrivateDivineAudience(
+        request.worldId,
+        request.agentId,
+        request.deityId,
+        request.deityName,
+        request.religionName,
+        request.message,
+        request.gift,
+        request.calling,
+        request.requestedAt,
+        request.requestId,
+        expectedWorld.revision,
+      );
+    } catch (error) {
+      if (
+        error instanceof StaleWorldObservationError ||
+        error instanceof WorldRevisionConflictError
+      ) {
+        return this.record(base, 'audience', false, 'World changed before the private audience could commit.');
+      }
+      throw error;
+    }
+    return {
+      ...this.record(
+        base,
+        'audience',
+        true,
+        'The gift was granted privately. Cardinal and bystanders received no direct event.',
       ),
       committedWorldRevision: result.committedRevision,
     };

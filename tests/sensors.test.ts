@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { WorldSensors } from '../src/sensors/WorldSensors';
+import {
+  WorldSensors,
+  derivePopulationPressureEvidenceV18,
+} from '../src/sensors/WorldSensors';
 import { InMemoryEventStore } from '../src/world/InMemoryEventStore';
 import type { WorldState } from '../src/world/types';
 
@@ -23,6 +26,40 @@ const testMind = (agentId: string) => ({
   emotions: { joy: 0.5, fear: 0.1, grief: 0, awe: 0.1, hope: 0.6 },
   values: { care: 0.5, freedom: 0.5, knowledge: 0.5, tradition: 0.5, ambition: 0.5 },
   beliefs: { worldTrust: 0.6, divinePresence: 0.1, fate: 0.1, afterlife: 0.1 },
+});
+
+const testAgent = (agentId: string): WorldState['agents'][string] => ({
+  id: agentId,
+  name: agentId,
+  origin: 'native',
+  race: 'human',
+  sex: agentId.endsWith('0') ? 'male' : 'female',
+  energy: 0.8,
+  stress: 0.1,
+  resources: 0.05,
+  socialDrive: 0.5,
+  personality: {
+    sociability: 0.5,
+    diligence: 0.5,
+    curiosity: 0.5,
+    generosity: 0.5,
+    resilience: 0.5,
+    riskTolerance: 0.5,
+  },
+  life: testLife(),
+  mind: testMind(agentId),
+  needs: { belonging: 0.5, purpose: 0.5 },
+  skills: {
+    gathering: 0.3,
+    hunting: 0.3,
+    craft: 0.3,
+    social: 0.3,
+    exploration: 0.3,
+  },
+  goal: { kind: 'connect', strength: 0.5, since: 1 },
+  homeId: 'ainkrad_home',
+  locationId: 'commons',
+  lastMeaningfulEventAt: 1,
 });
 
 function emptyWorld(): WorldState {
@@ -87,6 +124,93 @@ function emptyWorld(): WorldState {
 }
 
 describe('World sensors', () => {
+  it('exposes food, housing, land and territory pressure without capping population', async () => {
+    const events = new InMemoryEventStore();
+    const world = emptyWorld();
+    world.places.commons.settlementId = 'ainkrad';
+    world.places.commons.surface = 'land';
+    world.places.ainkrad_home = {
+      id: 'ainkrad_home',
+      name: 'Small home',
+      kind: 'home',
+      capacity: 2,
+      biome: 'settlement',
+      mapX: 51,
+      mapY: 50,
+      connectedPlaceIds: ['commons'],
+      fertility: 0.2,
+      danger: 0.02,
+      surface: 'land',
+      settlementId: 'ainkrad',
+    };
+    world.settlements = {
+      ainkrad: {
+        id: 'ainkrad',
+        name: 'Ainkrad',
+        kind: 'village',
+        centerPlaceId: 'commons',
+        centerX: 50,
+        centerY: 50,
+        radius: 6,
+        memberPlaceIds: ['commons', 'ainkrad_home'],
+        foundedAt: 0,
+      },
+    };
+    world.agents = Object.fromEntries(
+      Array.from({ length: 12 }, (_, index) => {
+        const agent = testAgent(`resident_${index}`);
+        return [agent.id, agent];
+      }),
+    );
+    world.v16 = {
+      version: 'v16',
+      migratedFromRulesVersion: 'test',
+      createdWorldMinute: 0,
+      residentEvidenceByAgentId: {},
+      raceFamilyOpportunityByRace: {} as NonNullable<WorldState['v16']>['raceFamilyOpportunityByRace'],
+      localFamilyOpportunityByKey: {},
+      settlementEvidenceById: {},
+      settlementResourcesById: {
+        ainkrad: {
+          settlementId: 'ainkrad',
+          storedResources: 0,
+          renewableBase: 0.04,
+          fertility: 0.08,
+          lastRecoveredWorldMinute: 0,
+        },
+      },
+      settlementEconomyById: {
+        ainkrad: {
+          settlementId: 'ainkrad',
+          stocks: { food: 0, wood: 0, stone: 0, metal: 0, fuel: 0 },
+          storageCapacity: { food: 4, wood: 4, stone: 4, metal: 4, fuel: 4 },
+          farmingTools: 0,
+          constructionTools: 0,
+          harvestEvents: 0,
+          harvestEventsByMaterial: { food: 0, wood: 0, stone: 0, metal: 0, fuel: 0 },
+          constructionEvents: 0,
+          toolsCreated: 0,
+        },
+      },
+      remainsById: {},
+      burialSitesBySettlementId: {},
+      settlementRelations: {},
+    };
+
+    const beforePopulation = Object.keys(world.agents).length;
+    const physical = derivePopulationPressureEvidenceV18(world);
+    const observation = await new WorldSensors(events).observe(world, world.now);
+
+    expect(physical?.sapientHousingCapacity).toBe(2);
+    expect(physical?.unhousedResidentCount).toBe(10);
+    expect(physical?.housingPressure).toBeCloseTo(10 / 12);
+    expect(physical?.foodPressure).toBe(1);
+    expect(physical?.landDepletionPressure).toBeGreaterThan(0.9);
+    expect(physical?.territoryPressure).toBeGreaterThan(0.6);
+    expect(observation.metrics.resourcePressure).toBeGreaterThan(0.9);
+    expect(Object.keys(world.agents)).toHaveLength(beforePopulation);
+  });
+
   it('uses world evidence without treating Cardinal output as independent evidence', async () => {
     const events = new InMemoryEventStore();
 

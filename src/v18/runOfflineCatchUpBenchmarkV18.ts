@@ -89,6 +89,8 @@ const outsideHomeSettlement = livingResidents.filter((agent) => {
 }).length;
 const professionCounts: Record<string, number> = {};
 const professionStageCounts: Record<string, number> = {};
+const strongestPracticeCounts: Record<string, number> = {};
+const totalPracticeByKind: Record<string, number> = {};
 let cumulativeOutsideActions = 0;
 let cumulativeProductiveActions = 0;
 let totalSatiety = 0;
@@ -98,6 +100,16 @@ for (const agent of livingResidents) {
   const rhythm = snapshot.v18?.lifeRhythmByAgentId[agent.id];
   const profession = livelihood?.primary ?? 'missing';
   professionCounts[profession] = (professionCounts[profession] ?? 0) + 1;
+  if (livelihood) {
+    for (const [kind, practice] of Object.entries(livelihood.practiceByKind)) {
+      totalPracticeByKind[kind] = (totalPracticeByKind[kind] ?? 0) + practice;
+    }
+    const strongest = Object.entries(livelihood.practiceByKind).sort(
+      (left, right) => right[1] - left[1] || left[0].localeCompare(right[0]),
+    )[0]?.[0] ?? 'none';
+    strongestPracticeCounts[strongest] =
+      (strongestPracticeCounts[strongest] ?? 0) + 1;
+  }
   const stage = livelihood?.stage ?? 'missing';
   professionStageCounts[stage] = (professionStageCounts[stage] ?? 0) + 1;
   if (rhythm) {
@@ -121,6 +133,7 @@ const settlementStocks = Object.fromEntries(
     ]),
 );
 const raceCounts: Record<string, number> = {};
+const raceBirthCounts: Record<string, number> = {};
 const generationCounts: Record<string, number> = {};
 const sexCounts: Record<string, number> = {};
 const reproductiveAdultCounts: Record<string, number> = {};
@@ -140,10 +153,17 @@ for (const agent of livingResidents) {
     reproductiveAdultCounts[key] = (reproductiveAdultCounts[key] ?? 0) + 1;
   }
 }
+for (const agent of Object.values(snapshot.agents)) {
+  if (agent.life.generation < 1) continue;
+  const race = agent.race ?? 'human';
+  raceBirthCounts[race] = (raceBirthCounts[race] ?? 0) + 1;
+}
 const deathCauseCounts: Record<string, number> = {};
 const deathRaceCounts: Record<string, number> = {};
 const deathEncounterReasonCounts: Record<string, number> = {};
 const deathMechanismCounts: Record<string, number> = {};
+const deprivationLocationCounts: Record<string, number> = {};
+const deprivationContexts: Array<Record<string, unknown>> = [];
 for (const death of snapshot.v15?.deathTelemetry ?? []) {
   deathCauseCounts[death.cause] = (deathCauseCounts[death.cause] ?? 0) + 1;
   const race = snapshot.agents[death.agentId]?.race ?? 'unknown';
@@ -154,6 +174,28 @@ for (const death of snapshot.v15?.deathTelemetry ?? []) {
   const mechanism = death.primaryMechanism ?? 'unknown';
   deathMechanismCounts[mechanism] =
     (deathMechanismCounts[mechanism] ?? 0) + 1;
+  if (death.cause === 'deprivation') {
+    deprivationLocationCounts[death.locationId] =
+      (deprivationLocationCounts[death.locationId] ?? 0) + 1;
+    if (deprivationContexts.length < 20) {
+      const deceased = snapshot.agents[death.agentId];
+      deprivationContexts.push({
+        agentId: death.agentId,
+        race: deceased?.race ?? 'human',
+        ageYears: Number(death.ageYears.toFixed(2)),
+        lastAction: death.lastAction,
+        homeId: deceased?.homeId,
+        homeSettlementId: deceased
+          ? snapshot.places[deceased.homeId]?.settlementId
+          : undefined,
+        locationId: death.locationId,
+        locationSettlementId: snapshot.places[death.locationId]?.settlementId,
+        resources: Number(death.resourcesBeforeDeath.toFixed(3)),
+        energy: Number(death.energyBeforeDeath.toFixed(3)),
+        health: Number(death.healthBeforeDeath.toFixed(3)),
+      });
+    }
+  }
 }
 const expeditionStageCounts: Record<string, number> = {};
 for (const expedition of Object.values(snapshot.v18?.expeditionsById ?? {})) {
@@ -243,8 +285,17 @@ console.log(
         ? 0
         : Number((totalMeals / livingResidents.length).toFixed(2)),
     professionCounts,
+    strongestPracticeCounts,
+    totalPracticeByKind: Object.fromEntries(
+      Object.entries(totalPracticeByKind).map(([kind, practice]) => [
+        kind,
+        Number(practice.toFixed(2)),
+      ]),
+    ),
     professionStageCounts,
     raceCounts,
+    raceBirthCounts,
+    raceFamilyOpportunities: snapshot.v16?.raceFamilyOpportunityByRace,
     generationCounts,
     sexCounts,
     reproductiveAdultCounts,
@@ -252,6 +303,8 @@ console.log(
     deathRaceCounts,
     deathEncounterReasonCounts,
     deathMechanismCounts,
+    deprivationLocationCounts,
+    deprivationContexts,
     expeditionStageCounts,
     expeditionEventCounts,
     expeditionReturnReasons,

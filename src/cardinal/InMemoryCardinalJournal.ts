@@ -204,4 +204,52 @@ export class InMemoryCardinalJournal implements CardinalJournal {
       auditCount: audits.length,
     };
   }
+
+  async experienceSummary(
+    worldId: string,
+    currentWorldEpoch: number,
+    beforeCurrentEpochExclusive: number,
+  ): Promise<CardinalJournalSummary> {
+    const eligible = <T extends { worldEpoch: number }>(
+      values: T[],
+      logicalTime: (value: T) => number,
+    ) =>
+      values.filter(
+        (value) =>
+          value.worldEpoch < currentWorldEpoch ||
+          (value.worldEpoch === currentWorldEpoch &&
+            logicalTime(value) < beforeCurrentEpochExclusive),
+      );
+    const evaluations = eligible(
+      await this.evaluations(worldId),
+      (value) => value.evaluatedAt,
+    );
+    const interventions = eligible(
+      await this.interventions(worldId),
+      (value) => value.requestedAt,
+    );
+    const outcomes = eligible(
+      await this.outcomes(worldId),
+      (value) => value.observedAt,
+    );
+    const audits = eligible(
+      await this.audits(worldId),
+      (value) => value.auditedAt,
+    );
+    return {
+      evaluationCount: evaluations.length,
+      proposalCount: evaluations.filter((value) => value.proposal).length,
+      ecologyEvaluationCount: evaluations.filter(
+        (value) => value.metrics.exploredWorldRatio > 0,
+      ).length,
+      interventionCount: interventions.length,
+      executedInterventionCount: interventions.filter((value) => value.executed).length,
+      deniedInterventionCount: interventions.filter((value) => !value.executed).length,
+      outcomeCount: outcomes.length,
+      successfulPredictionCount: outcomes.filter(
+        (value) => value.expectedDirectionObserved,
+      ).length,
+      auditCount: audits.length,
+    };
+  }
 }

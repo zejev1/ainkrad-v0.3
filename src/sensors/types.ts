@@ -27,6 +27,17 @@ export interface CardinalMetrics {
   activeSignalCount: number;
   /** v18 observer-only social/economic evidence; never an agent command. */
   averageSatiety?: number;
+  /** Physical carrying-pressure evidence. These values observe consequences;
+   * they never cap births or command residents to move. */
+  sapientHousingCapacity?: number;
+  unhousedResidentCount?: number;
+  foodReservePerResident?: number;
+  unclaimedHabitablePlaceCount?: number;
+  housingPressure?: number;
+  foodPressure?: number;
+  landDepletionPressure?: number;
+  territoryPressure?: number;
+  deprivationDeathShare?: number;
   outsideHomeSettlementShare?: number;
   professionDiversity?: number;
   undecidedLivelihoodShare?: number;

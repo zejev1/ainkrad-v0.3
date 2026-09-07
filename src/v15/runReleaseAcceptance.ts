@@ -8,7 +8,10 @@ import {
   type GenerationResidentAuditV15,
   type GenerationWorldAuditV15,
 } from './GenerationalKnowledgeAuditV15';
-import { isGenesisTeacherActive } from './GenesisBootstrap';
+import {
+  GENESIS_ACTIVE_WORLD_MINUTES,
+  isGenesisTeacherActive,
+} from './GenesisBootstrap';
 import { evaluateTeachingEligibilityV15 } from './LifeStageLearningV15';
 import {
   auditV15LongRun,
@@ -24,7 +27,7 @@ const RELEASE_SEEDS = [
   'v15-longrun-05',
   'v15-longrun-13',
 ] as const;
-const TARGET_YEARS = new Set([8, 10, 12, 30]);
+const TARGET_YEARS = new Set([12, 15, 20, 30]);
 const QUARTERS_PER_YEAR = 4;
 const FINAL_YEAR = 30;
 const TEACHER_KNOWLEDGE_FLOOR = 0.22;
@@ -282,7 +285,7 @@ function learningEvidence(
     if (
       source === 'genesis' &&
       worldMinutes !== undefined &&
-      worldMinutes >= 3 * WORLD_MINUTES_PER_YEAR
+      worldMinutes >= GENESIS_ACTIVE_WORLD_MINUTES
     ) {
       genesisLessonEventsAfterYearThree += 1;
     }
@@ -382,10 +385,10 @@ async function runSeed(seed: string): Promise<ReleaseSeedEvidence> {
     failures.push('population extinction at a target year');
   }
   if (targetYears.some((entry) => entry.snapshot.genesisActiveCount !== 0)) {
-    failures.push('Genesis active after year 3');
+    failures.push('Genesis active after year 10');
   }
   if (learning.genesisLessonEventsAfterYearThree !== 0) {
-    failures.push('Genesis lesson recorded after year 3');
+    failures.push('Genesis lesson recorded after year 10');
   }
   if ((countLivingByGeneration(state)['2'] ?? 0) <= 0) {
     failures.push('no living generation-2 resident at year 30');

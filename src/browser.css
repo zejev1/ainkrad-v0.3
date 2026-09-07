@@ -473,12 +473,21 @@ button {
 }
 
 .biome-patch--coast,
+.biome-patch--ocean,
 .biome-patch--lake,
 .biome-patch--river {
   border-color: rgba(172, 240, 241, 0.16);
   background:
     repeating-linear-gradient(-8deg, transparent 0 13px, rgba(202, 252, 248, 0.12) 14px 16px),
     linear-gradient(145deg, rgba(56, 150, 157, 0.56), rgba(28, 93, 119, 0.44));
+}
+
+.biome-patch--ocean.biome-patch--area {
+  opacity: 0.84;
+  border: 0;
+  background:
+    repeating-linear-gradient(-7deg, transparent 0 18px, rgba(176, 240, 245, 0.1) 19px 21px),
+    linear-gradient(145deg, rgba(27, 108, 132, 0.76), rgba(8, 54, 83, 0.88));
 }
 
 .biome-patch--river {
@@ -874,6 +883,26 @@ button {
 
 .map-place--commons .place-building::before {
   display: none;
+}
+
+.map-place--library .place-building {
+  width: 64px;
+  height: 54px;
+  border-color: rgba(185, 150, 255, 0.58);
+  background:
+    linear-gradient(90deg, transparent 46%, rgba(232, 215, 255, 0.2) 47% 53%, transparent 54%),
+    linear-gradient(145deg, #5e4b7d, #24243d);
+  box-shadow: 0 0 0 6px rgba(151, 105, 230, 0.09), 0 12px 24px rgba(0, 0, 0, 0.36);
+}
+
+.map-place--library .place-building::before {
+  border-color: rgba(211, 186, 255, 0.52);
+  background: repeating-linear-gradient(90deg, #78619b 0 7px, #493d68 7px 14px);
+}
+
+.map-place--library .place-symbol {
+  color: #ead9ff;
+  font-size: 1.25rem;
 }
 
 .map-place--resource_field .place-building {
@@ -1527,6 +1556,31 @@ button {
   background: rgba(55, 153, 106, 0.2);
 }
 
+.private-audience-open {
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px 11px;
+  border: 1px solid rgba(217, 174, 255, 0.32);
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(116, 66, 160, 0.23), rgba(60, 36, 95, 0.13));
+  color: #ecd8ff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.66rem;
+  font-weight: 850;
+}
+
+.private-audience-open:hover,
+.private-audience-open:focus-visible {
+  border-color: rgba(229, 195, 255, 0.62);
+  background: rgba(116, 66, 160, 0.3);
+}
+
+.private-audience-open:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 .event-panel {
   padding: 15px 16px;
 }
@@ -1660,6 +1714,163 @@ body.has-modal {
 
 .world-inspector[hidden] {
   display: none;
+}
+
+.divine-audience[hidden] {
+  display: none;
+}
+
+.divine-audience {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  align-items: center;
+  justify-items: center;
+  padding: 16px;
+  background:
+    radial-gradient(circle at 50% 20%, rgba(143, 78, 194, 0.2), transparent 34rem),
+    rgba(0, 5, 12, 0.86);
+  backdrop-filter: blur(11px);
+}
+
+.divine-audience__sheet {
+  width: min(620px, 100%);
+  max-height: min(92vh, 900px);
+  overflow: auto;
+  padding: 20px;
+  border: 1px solid rgba(221, 185, 255, 0.34);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 100% 0, rgba(139, 78, 190, 0.18), transparent 42%),
+    linear-gradient(150deg, #101724, #0a121b 68%);
+  box-shadow: 0 24px 90px rgba(0, 0, 0, 0.64), inset 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.divine-audience__sheet > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid rgba(220, 183, 255, 0.13);
+}
+
+.divine-audience__badge {
+  margin: 0;
+  color: #d8aaff;
+  font-size: 0.58rem;
+  font-weight: 900;
+  letter-spacing: 0.13em;
+}
+
+.divine-audience__sheet h2 {
+  margin: 5px 0 3px;
+  color: #f8efff;
+  font-size: 1.58rem;
+}
+
+#divine-audience-subtitle {
+  margin: 0;
+  color: #a89bb6;
+  font-size: 0.72rem;
+  line-height: 1.42;
+}
+
+#divine-audience-close {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(218, 185, 245, 0.24);
+  border-radius: 50%;
+  background: rgba(126, 87, 157, 0.1);
+  color: #f8edff;
+  cursor: pointer;
+  font-size: 1.5rem;
+}
+
+#divine-audience-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+#divine-audience-form label {
+  display: grid;
+  gap: 6px;
+  color: #b9a9c7;
+  font-size: 0.7rem;
+  font-weight: 750;
+}
+
+#divine-audience-form input,
+#divine-audience-form select,
+#divine-audience-form textarea {
+  width: 100%;
+  padding: 10px 11px;
+  border: 1px solid rgba(213, 180, 241, 0.22);
+  border-radius: 11px;
+  outline: none;
+  background: rgba(21, 24, 38, 0.94);
+  color: #f8f1ff;
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+#divine-audience-form textarea {
+  min-height: 96px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+#divine-audience-form input:focus-visible,
+#divine-audience-form select:focus-visible,
+#divine-audience-form textarea:focus-visible {
+  border-color: #d6a3ff;
+  box-shadow: 0 0 0 3px rgba(193, 122, 246, 0.13);
+}
+
+.divine-audience__gift-note,
+.divine-audience__choice-note,
+.divine-audience__status {
+  margin: 0;
+  padding: 10px 11px;
+  border-radius: 10px;
+  background: rgba(133, 83, 171, 0.08);
+  color: #bdafc7;
+  font-size: 0.68rem;
+  line-height: 1.45;
+}
+
+.divine-audience__choice-note {
+  border-left: 3px solid rgba(126, 229, 180, 0.55);
+  color: #bde1ce;
+}
+
+.divine-audience__status:empty {
+  display: none;
+}
+
+.divine-audience__status {
+  border: 1px solid rgba(222, 187, 255, 0.19);
+  color: #e6d2f7;
+}
+
+.divine-audience__grant {
+  min-height: 43px;
+  border: 1px solid rgba(227, 195, 255, 0.4);
+  border-radius: 12px;
+  background: linear-gradient(135deg, #75449b, #493066);
+  color: #fff8ff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.divine-audience__grant:disabled {
+  opacity: 0.58;
+  cursor: default;
 }
 
 .world-inspector {

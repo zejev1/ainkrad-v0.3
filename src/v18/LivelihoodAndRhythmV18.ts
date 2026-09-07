@@ -26,9 +26,12 @@ export const LIVELIHOOD_KINDS_V18: readonly Exclude<
   'builder',
   'caregiver',
   'scout',
+  'cartographer',
+  'adventurer',
   'teacher',
   'scribe',
   'guard',
+  'warrior',
   'spiritual_keeper',
 ] as const;
 
@@ -49,6 +52,9 @@ export function initialLivelihoodV18(agentId: string): V18LivelihoodState {
     totalPractice: 0,
     mentorIds: [],
     changeCount: 0,
+    mappedPlaceIds: [],
+    longJourneyCount: 0,
+    defensePracticeCount: 0,
   };
 }
 
@@ -153,12 +159,31 @@ function vocationalFit(
       return clamp01(agent.personality.generosity * 0.55 + agent.mind.values.care * 0.45);
     case 'scout':
       return clamp01(agent.personality.curiosity * 0.5 + agent.mind.values.freedom * 0.5);
+    case 'cartographer':
+      return clamp01(
+        agent.personality.curiosity * 0.38 +
+          agent.mind.values.knowledge * 0.38 +
+          agent.personality.diligence * 0.24,
+      );
+    case 'adventurer':
+      return clamp01(
+        agent.personality.curiosity * 0.34 +
+          agent.personality.riskTolerance * 0.38 +
+          agent.mind.values.freedom * 0.28,
+      );
     case 'teacher':
       return clamp01(agent.personality.generosity * 0.35 + agent.personality.sociability * 0.3 + agent.mind.values.knowledge * 0.35);
     case 'scribe':
       return clamp01(agent.mind.values.knowledge * 0.62 + agent.personality.diligence * 0.38);
     case 'guard':
       return clamp01(agent.mind.values.care * 0.45 + agent.personality.riskTolerance * 0.3 + agent.life.physiology.strength * 0.25);
+    case 'warrior':
+      return clamp01(
+        agent.personality.riskTolerance * 0.34 +
+          agent.life.physiology.strength * 0.28 +
+          agent.life.physiology.endurance * 0.2 +
+          agent.mind.values.care * 0.18,
+      );
     case 'spiritual_keeper':
       return clamp01(agent.mind.values.tradition * 0.58 + agent.mind.emotions.awe * 0.42);
   }
@@ -169,17 +194,29 @@ function firstCommitmentPractice(
 ): number {
   switch (kind) {
     case 'guard':
-      return 3;
+      return 2;
+    case 'warrior':
+      return 2.5;
     case 'hunter':
     case 'caregiver':
-    case 'teacher':
     case 'scribe':
     case 'fisher':
       return 5;
+    case 'teacher':
+      // Occasional help with a lesson is ordinary social life. A livelihood
+      // emerges only after a long, repeated record of successful teaching.
+      return 24;
     case 'spiritual_keeper':
       return 7;
     case 'scout':
-      return 9;
+    case 'cartographer':
+    case 'adventurer':
+      return 6;
+    case 'artisan':
+    case 'builder':
+      return 16;
+    case 'smith':
+      return 12;
     default:
       return 12;
   }
@@ -188,6 +225,7 @@ function firstCommitmentPractice(
 function minimumVocationalFit(
   kind: Exclude<V18LivelihoodKind, 'undecided'>,
 ): number {
+  if (kind === 'teacher') return 0.62;
   return [
     'farmer',
     'forager',
@@ -197,6 +235,9 @@ function minimumVocationalFit(
     'smith',
     'builder',
     'scout',
+    'cartographer',
+    'adventurer',
+    'warrior',
   ].includes(kind)
     ? 0.58
     : 0.53;
@@ -227,7 +268,18 @@ export function recordLivelihoodPracticeV18(
     input.professionHint ?? inferredPractice(input.action, place);
   if (!kind) return livelihood;
 
-  const amount = Math.max(0.1, Math.min(2, input.amount ?? 1));
+  const rawAmount = Math.max(0.1, Math.min(2, input.amount ?? 1));
+  // Childhood chores are exposure, not a profession chosen before the child
+  // can even travel beyond the settlement. Without this distinction,
+  // supervised gathering crossed its commitment threshold years before
+  // exploration became physically available and locked almost every new
+  // generation into the same livelihood.
+  const amount =
+    agent.life.stage === 'child'
+      ? rawAmount * 0.16
+      : agent.life.stage === 'adolescent'
+        ? rawAmount * 0.72
+        : rawAmount;
   // This is lived vocational momentum rather than an irreversible lifetime
   // high score. Old experience remains in totalPractice, while recent years
   // can genuinely change a resident's livelihood.
@@ -236,7 +288,9 @@ export function recordLivelihoodPracticeV18(
       candidate === kind ? 0.9995 : 0.9975;
   }
   livelihood.practiceByKind[kind] = Math.min(
-    140,
+    agent.life.stage === 'child'
+      ? Math.max(1, firstCommitmentPractice(kind) * 0.72)
+      : 140,
     livelihood.practiceByKind[kind] + amount,
   );
   livelihood.totalPractice += amount;
@@ -252,12 +306,20 @@ export function recordLivelihoodPracticeV18(
     livelihood.mentorIds = livelihood.mentorIds.slice(-12);
   }
 
-  const ranked = LIVELIHOOD_KINDS_V18.map((candidate) => ({
-    kind: candidate,
-    practice: livelihood.practiceByKind[candidate],
-  })).sort(
+  const ranked = LIVELIHOOD_KINDS_V18.map((candidate) => {
+    const practice = livelihood.practiceByKind[candidate];
+    return {
+      kind: candidate,
+      practice,
+      readiness:
+        (practice / firstCommitmentPractice(candidate)) *
+        (0.55 + vocationalFit(agent, candidate) * 0.45),
+    };
+  }).sort(
     (left, right) =>
-      right.practice - left.practice || left.kind.localeCompare(right.kind),
+      right.readiness - left.readiness ||
+      right.practice - left.practice ||
+      left.kind.localeCompare(right.kind),
   );
   const strongest = ranked[0];
   const currentPractice =
@@ -273,15 +335,20 @@ export function recordLivelihoodPracticeV18(
       agent.mind.values.ambition * 0.05,
   );
   const canChooseFirst =
+    agent.life.stage !== 'child' &&
     livelihood.primary === 'undecided' &&
+    livelihood.totalPractice >=
+      (kind === 'guard' || kind === 'warrior' ? 10 : 18) &&
+    strongest.kind === kind &&
     practicedKindEvidence >= firstCommitmentPractice(kind) &&
     fit >= minimumVocationalFit(kind) &&
     clamp01(input.choiceRoll) < commitmentChance;
   const alternativeClearlyLived =
     livelihood.primary !== 'undecided' &&
     kind !== livelihood.primary &&
-    practicedKindEvidence >= Math.max(8, firstCommitmentPractice(kind)) &&
-    practicedKindEvidence >= currentPractice * 0.6 + 2;
+    practicedKindEvidence >= Math.max(5, firstCommitmentPractice(kind) * 0.8) &&
+    ranked.find((candidate) => candidate.kind === kind)!.readiness >=
+      (currentPractice / firstCommitmentPractice(livelihood.primary)) * 0.82;
   const changeChance = clamp01(
     0.08 +
       agent.mind.values.freedom * 0.18 +
@@ -318,9 +385,12 @@ export function livelihoodActionAffinityV18(
     (['artisan', 'smith', 'builder'].includes(livelihood.primary) && action === 'work') ||
     (livelihood.primary === 'caregiver' && action === 'help') ||
     (livelihood.primary === 'scout' && ['explore', 'walk'].includes(action)) ||
+    (livelihood.primary === 'cartographer' && ['explore', 'reflect'].includes(action)) ||
+    (livelihood.primary === 'adventurer' && ['explore', 'walk', 'hunt'].includes(action)) ||
     (livelihood.primary === 'teacher' && action === 'socialize') ||
     (livelihood.primary === 'scribe' && action === 'reflect') ||
-    (livelihood.primary === 'guard' && ['hunt', 'explore'].includes(action)) ||
+    (livelihood.primary === 'guard' && ['walk', 'hunt', 'explore'].includes(action)) ||
+    (livelihood.primary === 'warrior' && ['walk', 'hunt', 'work'].includes(action)) ||
     (livelihood.primary === 'spiritual_keeper' && action === 'pray');
   if (!matches) return 0;
   const base = livelihood.stage === 'master'
@@ -330,7 +400,17 @@ export function livelihoodActionAffinityV18(
       : livelihood.stage === 'apprentice'
         ? 0.05
         : 0.02;
-  return livelihood.primary === 'scout' ? base * 0.55 : base;
+  if (['scout', 'cartographer', 'adventurer'].includes(livelihood.primary)) {
+    return base * 1.2;
+  }
+  if (
+    ['farmer', 'forager', 'woodcutter', 'miner'].includes(
+      livelihood.primary,
+    )
+  ) {
+    return base * 0.72;
+  }
+  return base;
 }
 
 export function recordLifeRhythmActionV18(

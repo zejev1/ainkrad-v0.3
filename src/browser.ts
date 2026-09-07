@@ -37,6 +37,8 @@ import {
 import type {
   AgentActionKind,
   AgentState,
+  DivineCallingRole,
+  DivineGiftKind,
   RelationshipState,
   WildlifeSpecies,
   WorldPlaceKind,
@@ -105,6 +107,9 @@ const livelihoodLabels: Readonly<Record<V18LivelihoodKind, string>> = {
   builder: 'строитель',
   caregiver: 'попечитель',
   scout: 'разведчик',
+  cartographer: 'картограф',
+  adventurer: 'искатель приключений',
+  warrior: 'воин',
   teacher: 'наставник',
   scribe: 'писец',
   guard: 'страж',
@@ -456,6 +461,9 @@ app.innerHTML = `
           <button class="resident-details-open" id="resident-details-open" type="button">
             Родословная, навыки и реальная жизнь
           </button>
+          <button class="private-audience-open" id="private-audience-open" type="button">
+            Закрытая аудиенция божества
+          </button>
         </section>
 
         <section class="event-panel">
@@ -536,6 +544,48 @@ app.innerHTML = `
         <p class="world-inspector__evidence" id="world-inspector-evidence"></p>
       </section>
     </div>
+    <div class="divine-audience" id="divine-audience" hidden>
+      <section class="divine-audience__sheet" role="dialog" aria-modal="true" aria-labelledby="divine-audience-title">
+        <header>
+          <div>
+            <p class="divine-audience__badge">ВНЕ ВЕДЕНИЯ CARDINAL</p>
+            <h2 id="divine-audience-title">Закрытая аудиенция</h2>
+            <p id="divine-audience-subtitle">Мир и возраст выбранного жителя остановлены.</p>
+          </div>
+          <button id="divine-audience-close" type="button" aria-label="Закрыть аудиенцию">×</button>
+        </header>
+        <form id="divine-audience-form">
+          <label>Как вас услышит житель
+            <input id="divine-deity-name" maxlength="64" required value="Создатель" />
+          </label>
+          <label>Имя религии <small>(необязательно)</small>
+            <input id="divine-religion-name" maxlength="64" placeholder="Например: Путь Создателя" />
+          </label>
+          <label>Ваши слова этому жителю
+            <textarea id="divine-message" maxlength="480" required rows="4" placeholder="Скажите, зачем вы избрали именно его…"></textarea>
+          </label>
+          <label>Один дар
+            <select id="divine-gift">
+              <option value="might">Сила</option>
+              <option value="genius_inventor">Ум и дар изобретателя</option>
+              <option value="crowd_charisma">Очарование и внушение толпе</option>
+              <option value="demon_king_hero">Герой, способный победить короля демонов</option>
+            </select>
+          </label>
+          <p class="divine-audience__gift-note" id="divine-gift-note"></p>
+          <label>Предложить призвание
+            <select id="divine-calling">
+              <option value="hero">Герой</option>
+              <option value="messenger">Посланник</option>
+              <option value="priest">Священник</option>
+            </select>
+          </label>
+          <p class="divine-audience__choice-note">Дар будет дан сразу. Призвание житель принимает или отвергает сам.</p>
+          <p class="divine-audience__status" id="divine-audience-status" aria-live="polite"></p>
+          <button class="divine-audience__grant" id="divine-audience-grant" type="submit">Обратиться и даровать</button>
+        </form>
+      </section>
+    </div>
   </div>
 `;
 
@@ -607,6 +657,7 @@ const residentSkill = requiredElement<HTMLElement>('resident-skill');
 const residentChoice = requiredElement<HTMLElement>('resident-choice');
 const relationshipNote = requiredElement<HTMLElement>('relationship-note');
 const residentDetailsOpen = requiredElement<HTMLButtonElement>('resident-details-open');
+const privateAudienceOpen = requiredElement<HTMLButtonElement>('private-audience-open');
 const eventFeed = requiredElement<HTMLOListElement>('event-feed');
 const conversationFeed = requiredElement<HTMLElement>('conversation-feed');
 const energyValue = requiredElement<HTMLElement>('energy-value');
@@ -638,6 +689,18 @@ const worldInspectorTitle = requiredElement<HTMLElement>('world-inspector-title'
 const worldInspectorSubtitle = requiredElement<HTMLElement>('world-inspector-subtitle');
 const worldInspectorContent = requiredElement<HTMLElement>('world-inspector-content');
 const worldInspectorEvidence = requiredElement<HTMLElement>('world-inspector-evidence');
+const divineAudience = requiredElement<HTMLElement>('divine-audience');
+const divineAudienceClose = requiredElement<HTMLButtonElement>('divine-audience-close');
+const divineAudienceForm = requiredElement<HTMLFormElement>('divine-audience-form');
+const divineAudienceSubtitle = requiredElement<HTMLElement>('divine-audience-subtitle');
+const divineDeityName = requiredElement<HTMLInputElement>('divine-deity-name');
+const divineReligionName = requiredElement<HTMLInputElement>('divine-religion-name');
+const divineMessage = requiredElement<HTMLTextAreaElement>('divine-message');
+const divineGift = requiredElement<HTMLSelectElement>('divine-gift');
+const divineGiftNote = requiredElement<HTMLElement>('divine-gift-note');
+const divineCalling = requiredElement<HTMLSelectElement>('divine-calling');
+const divineAudienceStatus = requiredElement<HTMLElement>('divine-audience-status');
+const divineAudienceGrant = requiredElement<HTMLButtonElement>('divine-audience-grant');
 
 const avatarElements = new Map<string, HTMLButtonElement>();
 const placeElements = new Map<string, HTMLElement>();
@@ -656,6 +719,8 @@ let mapBaseHeight = 650;
 let activeConsoleTab: CardinalConsoleTab = 'laws';
 let cardinalConsoleSnapshot: CardinalConsoleSnapshot | undefined;
 let highlightedPlaceIds = new Set<string>();
+let divineAudienceRequestId: string | undefined;
+let divineAudienceRequestPending = false;
 let inspectedEntity:
   | { kind: 'resident' | 'wildlife' | 'place'; id: string }
   | undefined;
@@ -821,7 +886,8 @@ function normalizeWorldCoordinates(
   };
 }
 
-const clampMapZoom = (value: number) => Math.max(0.42, Math.min(2.6, value));
+// The player may inspect the whole planetary frontier or a single resident.
+const clampMapZoom = (value: number) => Math.max(0.03, Math.min(12, value));
 
 function applyMapZoom(): void {
   worldMap.style.width = `${mapBaseWidth}px`;
@@ -879,7 +945,7 @@ function updateWorldMapScale(world: Readonly<WorldState>): void {
   worldTitle.textContent = `Мир · уровень ${worldLevel}`;
   worldLevelValue.textContent = `ур. ${worldLevel}`;
   mapScaleValue.textContent =
-    `Уровень мира ${worldLevel} · ${places.length} локаций · территория ~${(physicalSpanUnitsX / 10).toFixed(1)}×${(physicalSpanUnitsY / 10).toFixed(1)} км`;
+    `Уровень мира ${worldLevel} · ${places.length} локаций · открыто ~${(physicalSpanUnitsX / 10).toFixed(1)}×${(physicalSpanUnitsY / 10).toFixed(1)} км · планета радиусом 6371 км`;
 
   if (renderedGrowthStage === world.growth.stage) return;
   const previousStage = renderedGrowthStage;
@@ -919,6 +985,7 @@ function pointForPlace(
     const symbolByKind: Partial<Record<WorldPlaceKind, string>> = {
       home: '⌂',
       commons: '◆',
+      library: '📖',
       resource_field: '✦',
       workshop: '⚒',
       quiet_space: '♣',
@@ -934,6 +1001,7 @@ function pointForPlace(
       meadow: '❀',
       forest: '♠',
       shore: '≈',
+      ocean: '≋',
     };
     const normalized = normalizeWorldCoordinates(
       world,
@@ -1029,6 +1097,66 @@ function closeWorldInspector(): void {
   worldInspector.hidden = true;
 }
 
+const divineGiftDescriptions: Readonly<Record<DivineGiftKind, string>> = {
+  might: 'Почти предельная сила и выносливость, а также высокая боевая подготовка.',
+  genius_inventor: 'Предельная способность учиться, изобретать и воплощать новые конструкции.',
+  crowd_charisma: 'Предельное обаяние и сила убеждения; слушатели всё равно сохраняют свободу выбора.',
+  demon_king_hero: 'Уровень 100, сила, ум, проворность, мастерство воина, максимальная выносливость и лёгкие дальние походы.',
+};
+
+function selectedDivineGift(): DivineGiftKind {
+  return ['might', 'genius_inventor', 'crowd_charisma', 'demon_king_hero'].includes(
+    divineGift.value,
+  )
+    ? divineGift.value as DivineGiftKind
+    : 'might';
+}
+
+function selectedDivineCalling(): DivineCallingRole {
+  return ['hero', 'messenger', 'priest'].includes(divineCalling.value)
+    ? divineCalling.value as DivineCallingRole
+    : 'hero';
+}
+
+function updateDivineGiftNote(): void {
+  divineGiftNote.textContent = divineGiftDescriptions[selectedDivineGift()];
+}
+
+function openPrivateDivineAudience(): void {
+  if (!lastFrame || !selectedAgentId || offlineCatchUpTargetWorldMinutes !== undefined) return;
+  const agent = lastFrame.world.agents[selectedAgentId];
+  if (!agent?.life.alive || agent.privateDivineCalling) return;
+  divineAudienceRequestId = undefined;
+  divineAudienceRequestPending = false;
+  divineAudienceGrant.disabled = false;
+  divineAudienceStatus.textContent = '';
+  divineMessage.value = '';
+  divineAudienceSubtitle.textContent =
+    `Время мира и старение ${agent.name} остановлены до закрытия этой аудиенции.`;
+  updateDivineGiftNote();
+  persistOfflineClockAnchor(lastFrame, Date.now());
+  liveWorldWorker.postMessage({
+    type: 'set_divine_audience_pause',
+    paused: true,
+  });
+  divineAudience.hidden = false;
+  document.body.classList.add('has-modal');
+  divineMessage.focus();
+}
+
+function closePrivateDivineAudience(): void {
+  if (divineAudienceRequestPending) return;
+  divineAudience.hidden = true;
+  document.body.classList.remove('has-modal');
+  offlineCatchUpTargetWorldMinutes = undefined;
+  pendingOfflineClockAnchor = undefined;
+  if (lastFrame) persistOfflineClockAnchor(lastFrame, Date.now());
+  liveWorldWorker.postMessage({
+    type: 'set_divine_audience_pause',
+    paused: false,
+  });
+}
+
 function renderRoads(world: Readonly<WorldState>): void {
   roadsLayer.replaceChildren();
 
@@ -1079,9 +1207,31 @@ function renderBiomes(world: Readonly<WorldState>): void {
           ? 1.18
           : 1;
     element.className = `biome-patch biome-patch--${place.biome}`;
-    element.style.left = `${point.x}%`;
-    element.style.top = `${point.y}%`;
-    element.style.setProperty('--biome-scale', String(scale));
+    if (place.boundaryPolygon && place.boundaryPolygon.length >= 3) {
+      const polygon = place.boundaryPolygon.map((boundaryPoint) =>
+        normalizeWorldCoordinates(world, boundaryPoint.x, boundaryPoint.y),
+      );
+      element.classList.add('biome-patch--area');
+      element.style.left = '0';
+      element.style.top = '0';
+      element.style.width = '100%';
+      element.style.height = '100%';
+      element.style.transform = 'none';
+      element.style.borderRadius = '0';
+      element.style.clipPath = `polygon(${polygon
+        .map((boundaryPoint) => `${boundaryPoint.x}% ${boundaryPoint.y}%`)
+        .join(', ')})`;
+    } else {
+      element.classList.remove('biome-patch--area');
+      element.style.left = `${point.x}%`;
+      element.style.top = `${point.y}%`;
+      element.style.width = '';
+      element.style.height = '';
+      element.style.transform = '';
+      element.style.borderRadius = '';
+      element.style.clipPath = '';
+      element.style.setProperty('--biome-scale', String(scale));
+    }
   }
 }
 
@@ -1406,6 +1556,14 @@ function updateSelection(): void {
     ? `${livelihoodLabels[livelihood.primary]} · ${livelihoodStageLabels[livelihood.stage]}`
     : 'запись создаётся';
   residentSkill.textContent = strongestSkill(selected);
+  const priorAudience = selected.privateDivineCalling;
+  privateAudienceOpen.disabled =
+    priorAudience !== undefined || offlineCatchUpTargetWorldMinutes !== undefined;
+  privateAudienceOpen.textContent = priorAudience
+    ? `Дар уже получен · ${priorAudience.deityName}`
+    : offlineCatchUpTargetWorldMinutes !== undefined
+      ? 'Аудиенция доступна после догона мира'
+      : 'Закрытая аудиенция божества';
 
   if (selected.lastDecision) {
     const openness = Math.round(selected.lastDecision.openness * 100);
@@ -1932,9 +2090,30 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
     (agent) => agent.life.alive,
   );
   syncResidentPicker(frame.world, agents);
-  const livingAgentIds = new Set(agents.map((agent) => agent.id));
+  // Thousands of residents remain fully simulated and selectable, but a
+  // mobile browser cannot animate thousands of DOM nodes every frame. Keep a
+  // stable representative map sample and always include the selected person.
+  const maximumRenderedResidents = 320;
+  const renderedAgents =
+    agents.length <= maximumRenderedResidents
+      ? agents
+      : agents.filter(
+          (_agent, index) =>
+            index % Math.ceil(agents.length / maximumRenderedResidents) === 0,
+        ).slice(0, maximumRenderedResidents);
+  if (
+    selectedAgentId &&
+    !renderedAgents.some((agent) => agent.id === selectedAgentId)
+  ) {
+    const selectedAgent = agents.find((agent) => agent.id === selectedAgentId);
+    if (selectedAgent) {
+      if (renderedAgents.length >= maximumRenderedResidents) renderedAgents.pop();
+      renderedAgents.push(selectedAgent);
+    }
+  }
+  const renderedAgentIds = new Set(renderedAgents.map((agent) => agent.id));
   for (const [agentId, avatar] of avatarElements) {
-    if (livingAgentIds.has(agentId)) continue;
+    if (renderedAgentIds.has(agentId)) continue;
     avatar.remove();
     avatarElements.delete(agentId);
   }
@@ -1954,7 +2133,7 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
     element.classList.toggle('is-active', count > 0);
   }
 
-  agents.forEach((agent, index) => {
+  renderedAgents.forEach((agent, index) => {
     const avatar = ensureAvatar(agent, index);
     const persistedPosition = projectedResidentPosition(
       agent,
@@ -2165,6 +2344,23 @@ function metricPercent(value: number | undefined): string {
   return typeof value === 'number' && Number.isFinite(value)
     ? `${Math.round(value * 100)}%`
     : 'не записано прежней версией';
+}
+
+function populationPressureSummary(
+  metrics: Readonly<CardinalEvaluation['metrics']>,
+): string {
+  if (metrics.housingPressure === undefined) {
+    return 'детализация населения отсутствует в старой записи';
+  }
+  return [
+    `жильё ${metrics.sapientPopulation ?? metrics.livingPopulation ?? 0}/${metrics.sapientHousingCapacity ?? 0}`,
+    `без мест ${metrics.unhousedResidentCount ?? 0}`,
+    `давление жилья ${metricPercent(metrics.housingPressure)}`,
+    `голод/запасы ${metricPercent(metrics.foodPressure)}`,
+    `истощение земли ${metricPercent(metrics.landDepletionPressure)}`,
+    `нехватка известной территории ${metricPercent(metrics.territoryPressure)}`,
+    `смерти от истощения ${metricPercent(metrics.deprivationDeathShare)}`,
+  ].join(', ');
 }
 
 function canonicalDurationLabel(worldMinutes: number | undefined): string {
@@ -2444,7 +2640,7 @@ function renderCardinalConsole(): void {
           intervention ? (intervention.executed ? 'РАЗРЕШЕНО' : 'ОТКЛОНЕНО') : 'ОЖИДАЕТ GATEWAY',
           [
             ['Диагноз', evaluation.detectedProblem ? cardinalProblemLabels[evaluation.detectedProblem.kind] : 'нет сохранённого диагноза'],
-            ['Доказательства', `${evaluation.evidenceEventIds.length} событий; ресурсное давление ${metricPercent(evaluation.metrics.resourcePressure)}, изоляция ${metricPercent(evaluation.metrics.socialIsolation)}, опасность ${metricPercent(evaluation.metrics.safetyPressure)}, экосистема ${metricPercent(evaluation.metrics.wildlifePressure)}.`],
+            ['Доказательства', `${evaluation.evidenceEventIds.length} событий; ресурсное давление ${metricPercent(evaluation.metrics.resourcePressure)}, ${populationPressureSummary(evaluation.metrics)}, изоляция ${metricPercent(evaluation.metrics.socialIsolation)}, опасность ${metricPercent(evaluation.metrics.safetyPressure)}, экосистема ${metricPercent(evaluation.metrics.wildlifePressure)}.`],
             ['Предложение', `${interventionLabels[proposal.kind]}, сила ${metricPercent(proposal.magnitude)}.`],
             ['Куда', locationSummary(places)],
             ['Проверяемый прогноз', `${predictionMetricLabels[proposal.prediction.metric]} должно снизиться минимум на ${metricPercent(proposal.prediction.minimumImprovement)} за ${canonicalDurationLabel(proposal.prediction.horizonWorldMinutes)}.`],
@@ -2473,7 +2669,7 @@ function renderCardinalConsole(): void {
           evaluation.decision === 'propose' ? 'ПРЕДЛОЖЕНИЕ' : evaluation.decision === 'defer' ? 'ОТЛОЖЕНО' : 'БЕЗ ДЕЙСТВИЯ',
           [
             ['Что увидел', evaluation.detectedProblem ? cardinalProblemLabels[evaluation.detectedProblem.kind] : 'ни одна системная проблема не прошла порог'],
-            ['Показатели', `ресурсы ${metricPercent(evaluation.metrics.resourcePressure)}, изоляция ${metricPercent(evaluation.metrics.socialIsolation)}, стресс ${metricPercent(evaluation.metrics.averageStress)}, опасность ${metricPercent(evaluation.metrics.safetyPressure)}, экосистема ${metricPercent(evaluation.metrics.wildlifePressure)}`],
+            ['Показатели', `ресурсы ${metricPercent(evaluation.metrics.resourcePressure)}, ${populationPressureSummary(evaluation.metrics)}, изоляция ${metricPercent(evaluation.metrics.socialIsolation)}, стресс ${metricPercent(evaluation.metrics.averageStress)}, опасность ${metricPercent(evaluation.metrics.safetyPressure)}, экосистема ${metricPercent(evaluation.metrics.wildlifePressure)}`],
             ['Доказательства', `${evaluation.evidenceEventIds.length} событий мира; неопределённостей: ${evaluation.uncertaintyNotes.length}.`],
             ['Решение', decision],
             ['Почему не заменяет людей', 'Оценка касается только среды и агрегированных последствий. Личные действия, цели, чувства и отношения не являются целью записи.'],
@@ -2627,6 +2823,15 @@ type LiveWorldWorkerMessage =
       type: 'fatal';
       protocolVersion: string;
       message: string;
+    }
+  | {
+      type: 'divine_audience_result';
+      protocolVersion: string;
+      requestId: string;
+      agentId: string;
+      authorized: boolean;
+      acceptedCalling?: boolean;
+      reason: string;
     };
 
 async function requestPersistentAinkradStorage(): Promise<void> {
@@ -2709,6 +2914,38 @@ cardinalConsole.addEventListener('click', (event) => {
 residentDetailsOpen.addEventListener('click', () => {
   if (selectedAgentId) openWorldInspector('resident', selectedAgentId);
 });
+privateAudienceOpen.addEventListener('click', openPrivateDivineAudience);
+divineGift.addEventListener('change', updateDivineGiftNote);
+divineAudienceClose.addEventListener('click', closePrivateDivineAudience);
+divineAudience.addEventListener('click', (event) => {
+  if (event.target === divineAudience) closePrivateDivineAudience();
+});
+divineAudienceForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  if (
+    divineAudienceRequestPending ||
+    !lastFrame ||
+    !selectedAgentId ||
+    !divineDeityName.value.trim() ||
+    !divineMessage.value.trim()
+  ) return;
+  divineAudienceRequestPending = true;
+  divineAudienceGrant.disabled = true;
+  divineAudienceStatus.textContent = 'Дар передаётся выбранному жителю…';
+  divineAudienceRequestId =
+    `audience:${lastFrame.world.epoch ?? 1}:${selectedAgentId}:${Date.now()}`;
+  liveWorldWorker.postMessage({
+    type: 'grant_private_divine_audience',
+    requestId: divineAudienceRequestId,
+    agentId: selectedAgentId,
+    deityId: 'player_deity',
+    deityName: divineDeityName.value.trim(),
+    religionName: divineReligionName.value.trim() || undefined,
+    message: divineMessage.value.trim(),
+    gift: selectedDivineGift(),
+    calling: selectedDivineCalling(),
+  });
+});
 residentPicker.addEventListener('change', () => {
   selectedAgentId = residentPicker.value || undefined;
   updateSelection();
@@ -2730,6 +2967,7 @@ worldInspector.addEventListener('click', (event) => {
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && !cardinalConsole.hidden) closeCardinalConsole();
   if (event.key === 'Escape' && !worldInspector.hidden) closeWorldInspector();
+  if (event.key === 'Escape' && !divineAudience.hidden) closePrivateDivineAudience();
 });
 worldMapViewport.addEventListener(
   'wheel',
@@ -2862,6 +3100,17 @@ liveWorldWorker.addEventListener(
           catchUpOverlay.hidden = true;
         }, 850);
       }
+      return;
+    }
+    if (event.data.type === 'divine_audience_result') {
+      if (event.data.requestId !== divineAudienceRequestId) return;
+      divineAudienceRequestPending = false;
+      divineAudienceGrant.disabled = event.data.authorized;
+      divineAudienceStatus.textContent = event.data.authorized
+        ? event.data.acceptedCalling
+          ? 'Дар получен. Житель по собственной воле принял предложенное призвание.'
+          : 'Дар получен. Житель сохранил его, но пока отказался от предложенного призвания.'
+        : `Аудиенция не завершена: ${event.data.reason}`;
       return;
     }
 

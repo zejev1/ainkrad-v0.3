@@ -52,4 +52,15 @@ export interface CardinalJournal {
     worldId: string,
     beforeExclusive?: number,
   ): Promise<CardinalJournalSummary>;
+
+  /**
+   * Lifetime counters include every completed earlier world epoch and only
+   * records strictly before the current attempt inside the active epoch.
+   * Implementations must keep this bounded; Cardinal calls it every cycle.
+   */
+  experienceSummary(
+    worldId: string,
+    currentWorldEpoch: number,
+    beforeCurrentEpochExclusive: number,
+  ): Promise<CardinalJournalSummary>;
 }

@@ -412,6 +412,36 @@ export class IndependentInterventionGateway {
       };
     }
 
+    if (proposal.kind === 'resource_relief') {
+      const livingHumans = Object.values(expectedWorld.agents).filter(
+        (agent) => agent.life.alive && (agent.race ?? 'human') === 'human',
+      );
+      const byHomeSettlement = new Map<string, number>();
+      for (const agent of livingHumans) {
+        const settlementId = expectedWorld.places[agent.homeId]?.settlementId;
+        if (!settlementId) continue;
+        byHomeSettlement.set(
+          settlementId,
+          (byHomeSettlement.get(settlementId) ?? 0) + 1,
+        );
+      }
+      const largestStationaryPopulation = Math.max(
+        0,
+        ...byHomeSettlement.values(),
+      );
+      const stationaryShare =
+        livingHumans.length === 0
+          ? 0
+          : largestStationaryPopulation / livingHumans.length;
+      if (livingHumans.length > 10 && stationaryShare >= 0.78) {
+        return {
+          authorized: false,
+          reason:
+            'Resource relief is denied while more than ten humans remain concentrated in one settlement. Depleted land must recover through fallow years, stewardship, trade or voluntary expansion.',
+        };
+      }
+    }
+
     const requestedWorldMinutes = expectedWorld.calendar.elapsedWorldMinutes;
     const lastExecutionWorldMinutes =
       await this.ledger.lastExecutedWorldMinutes(proposal.worldId);

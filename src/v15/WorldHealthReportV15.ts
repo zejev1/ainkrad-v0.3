@@ -29,6 +29,15 @@ export interface WorldHealthInputV15 {
   resources: {
     renewableBase: number;
     storedResourcePressure?: number;
+    sapientPopulation?: number;
+    housingCapacity?: number;
+    unhousedResidents?: number;
+    foodReservePerResident?: number;
+    unclaimedHabitablePlaces?: number;
+    housingPressure?: number;
+    foodPressure?: number;
+    landDepletionPressure?: number;
+    territoryPressure?: number;
   };
 
   genesis: {
@@ -194,18 +203,61 @@ export function buildWorldHealthReportV15(
     resourceStatus = 'watch';
     warningCodes.push('renewable_base_declining');
   }
+  if ((input.resources.foodPressure ?? 0) >= 0.85) {
+    resourceStatus = worst(resourceStatus, 'critical');
+    criticalCodes.push('population_food_crisis');
+  } else if ((input.resources.foodPressure ?? 0) >= 0.55) {
+    resourceStatus = worst(resourceStatus, 'danger');
+    warningCodes.push('population_food_shortage');
+  } else if ((input.resources.foodPressure ?? 0) >= 0.3) {
+    resourceStatus = worst(resourceStatus, 'watch');
+    warningCodes.push('food_reserve_declining');
+  }
+  if ((input.resources.housingPressure ?? 0) >= 0.65) {
+    resourceStatus = worst(resourceStatus, 'danger');
+    warningCodes.push('housing_shortage_severe');
+  } else if ((input.resources.housingPressure ?? 0) >= 0.25) {
+    resourceStatus = worst(resourceStatus, 'watch');
+    warningCodes.push('housing_shortage');
+  }
+  if ((input.resources.territoryPressure ?? 0) >= 0.65) {
+    resourceStatus = worst(resourceStatus, 'danger');
+    warningCodes.push('known_territory_shortage');
+  } else if ((input.resources.territoryPressure ?? 0) >= 0.3) {
+    resourceStatus = worst(resourceStatus, 'watch');
+    warningCodes.push('known_territory_pressure');
+  }
+  if ((input.resources.landDepletionPressure ?? 0) >= 0.82) {
+    resourceStatus = worst(resourceStatus, 'critical');
+    criticalCodes.push('settlement_land_exhausted');
+  } else if ((input.resources.landDepletionPressure ?? 0) >= 0.55) {
+    resourceStatus = worst(resourceStatus, 'danger');
+    warningCodes.push('settlement_land_depleted');
+  }
 
   sections.push({
     id: 'resources',
     status: resourceStatus,
     title: 'Ресурсы и хозяйство',
     summary:
-      `Возобновляемая база: ${(input.resources.renewableBase * 100).toFixed(1)}%.`,
+      `Возобновляемая база: ${(input.resources.renewableBase * 100).toFixed(1)}%. ` +
+      (input.resources.sapientPopulation === undefined
+        ? ''
+        : `Разумных жителей/мест жилья: ${input.resources.sapientPopulation}/${input.resources.housingCapacity ?? 'неизвестно'}; без жилья: ${input.resources.unhousedResidents ?? 'неизвестно'}; давление пищи ${(100 * (input.resources.foodPressure ?? 0)).toFixed(1)}%; земли ${(100 * (input.resources.landDepletionPressure ?? 0)).toFixed(1)}%; территории ${(100 * (input.resources.territoryPressure ?? 0)).toFixed(1)}%.`),
     evidence: [
       `renewableBase=${input.resources.renewableBase.toFixed(3)}`,
       `storedResourcePressure=${
         input.resources.storedResourcePressure ?? 'unknown'
       }`,
+      `sapientPopulation=${input.resources.sapientPopulation ?? 'unknown'}`,
+      `housingCapacity=${input.resources.housingCapacity ?? 'unknown'}`,
+      `unhousedResidents=${input.resources.unhousedResidents ?? 'unknown'}`,
+      `foodReservePerResident=${input.resources.foodReservePerResident ?? 'unknown'}`,
+      `foodPressure=${input.resources.foodPressure ?? 'unknown'}`,
+      `housingPressure=${input.resources.housingPressure ?? 'unknown'}`,
+      `landDepletionPressure=${input.resources.landDepletionPressure ?? 'unknown'}`,
+      `territoryPressure=${input.resources.territoryPressure ?? 'unknown'}`,
+      `unclaimedHabitablePlaces=${input.resources.unclaimedHabitablePlaces ?? 'unknown'}`,
     ],
   });
 

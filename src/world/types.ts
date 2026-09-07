@@ -136,6 +136,33 @@ export interface AgentSkills {
   exploration: number;
 }
 
+export type DivineGiftKind =
+  | 'might'
+  | 'genius_inventor'
+  | 'crowd_charisma'
+  | 'demon_king_hero';
+
+export type DivineCallingRole = 'hero' | 'messenger' | 'priest';
+
+/**
+ * A private audience belongs to the resident's own continuity. It is not a
+ * Cardinal intervention and creates no public world event. Other residents
+ * can only learn of it if this person later chooses to speak about it.
+ */
+export interface AgentDivineCallingState {
+  audienceId: string;
+  deityId: string;
+  deityName: string;
+  religionName?: string;
+  message: string;
+  gift: DivineGiftKind;
+  calling: DivineCallingRole;
+  acceptedCalling: boolean;
+  grantedWorldMinute: number;
+  sharedCount: number;
+  lastSharedWorldMinute?: number;
+}
+
 export interface AgentGoalState {
   kind: AgentGoalKind;
   strength: number;
@@ -210,6 +237,7 @@ export interface AgentState {
   lastAction?: AgentActionKind;
   lastDecision?: AgentDecisionState;
   plan?: AgentPlanState;
+  privateDivineCalling?: AgentDivineCallingState;
 }
 
 export interface RelationshipState {
@@ -235,7 +263,8 @@ export interface MemoryRecord {
     | 'world_event'
     | 'birth'
     | 'death'
-    | 'omen';
+    | 'omen'
+    | 'divine_audience';
   summary: string;
   importance: number;
   valence: number;
@@ -245,6 +274,7 @@ export interface MemoryRecord {
 export type WorldPlaceKind =
   | 'home'
   | 'commons'
+  | 'library'
   | 'resource_field'
   | 'workshop'
   | 'quiet_space'
@@ -252,6 +282,7 @@ export type WorldPlaceKind =
   | 'meadow'
   | 'forest'
   | 'shore'
+  | 'ocean'
   | 'mountains'
   | 'lake'
   | 'river'
@@ -266,6 +297,7 @@ export type WorldBiome =
   | 'plains'
   | 'forest'
   | 'coast'
+  | 'ocean'
   | 'mountains'
   | 'lake'
   | 'river'
@@ -288,6 +320,11 @@ export interface WorldPlace {
   fertility: number;
   danger: number;
   surface: WorldSurfaceKind;
+  /**
+   * A large geographical feature is an area, not a decorative point. Water
+   * polygons block implicit walking routes and render as continuous terrain.
+   */
+  boundaryPolygon?: WorldPoint2D[];
   settlementId?: string;
   /** A wilderness claim can change through settlement decisions or war. */
   claimedBySettlementId?: string;

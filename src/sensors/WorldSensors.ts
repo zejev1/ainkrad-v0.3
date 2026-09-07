@@ -12,6 +12,17 @@ const SOCIAL_CONTACT_WINDOW_WORLD_MINUTES =
   SOCIAL_CONTACT_WINDOW * CANONICAL_WORLD_QUANTUM_MINUTES;
 const SENSOR_EVENT_READ_LIMIT = 256;
 
+export interface PopulationPressureEvidenceV18 {
+  sapientHousingCapacity: number;
+  unhousedResidentCount: number;
+  foodReservePerResident: number;
+  unclaimedHabitablePlaceCount: number;
+  housingPressure: number;
+  foodPressure: number;
+  landDepletionPressure: number;
+  territoryPressure: number;
+}
+
 function standardDeviation(values: number[]): number {
   if (values.length < 2) {
     return 0;
@@ -37,6 +48,110 @@ function occurredWithinWorldWindow(
     );
   }
   return event.occurredAt >= legacyCurrentTick - legacyTickWindow;
+}
+
+/**
+ * Measures the physical consequences of population growth without turning any
+ * measurement into reproductive permission. A crowded world is allowed to
+ * keep growing; Cardinal receives the resulting housing, food, soil and known
+ * territory pressures as independent observer evidence.
+ */
+export function derivePopulationPressureEvidenceV18(
+  world: Readonly<WorldState>,
+): PopulationPressureEvidenceV18 | undefined {
+  if (!world.v16) return undefined;
+
+  const living = Object.values(world.agents).filter(
+    (agent) => agent.life?.alive !== false,
+  );
+  const residentsBySettlement = new Map<string, number>();
+  let residentsWithoutSettlement = 0;
+  for (const agent of living) {
+    const settlementId = world.places[agent.homeId]?.settlementId;
+    if (!settlementId || !world.settlements[settlementId]) {
+      residentsWithoutSettlement += 1;
+      continue;
+    }
+    residentsBySettlement.set(
+      settlementId,
+      (residentsBySettlement.get(settlementId) ?? 0) + 1,
+    );
+  }
+
+  let sapientHousingCapacity = 0;
+  let unhousedResidentCount = residentsWithoutSettlement;
+  let foodReserve = 0;
+  let foodTarget = 0;
+  let weightedLandSecurity = 0;
+  let landWeight = 0;
+
+  for (const settlement of Object.values(world.settlements)) {
+    const residentCount = residentsBySettlement.get(settlement.id) ?? 0;
+    const housingCapacity = settlement.memberPlaceIds
+      .map((placeId) => world.places[placeId])
+      .filter((place) => place?.kind === 'home')
+      .reduce((sum, place) => sum + place.capacity, 0);
+    sapientHousingCapacity += housingCapacity;
+    unhousedResidentCount += Math.max(0, residentCount - housingCapacity);
+
+    if (residentCount === 0) continue;
+    const economy = world.v16.settlementEconomyById[settlement.id];
+    const resources = world.v16.settlementResourcesById[settlement.id];
+    const settlementFoodTarget = Math.max(1, residentCount * 0.18);
+    const settlementFood = economy
+      ? Math.max(0, economy.stocks.food)
+      : settlementFoodTarget * clamp01(resources?.storedResources ?? 0);
+    foodReserve += Math.min(settlementFoodTarget, settlementFood);
+    foodTarget += settlementFoodTarget;
+    const landSecurity = clamp01(
+      (resources?.renewableBase ?? 0) * 0.58 +
+        (resources?.fertility ?? 0) * 0.42,
+    );
+    weightedLandSecurity += landSecurity * residentCount;
+    landWeight += residentCount;
+  }
+
+  const unclaimedHabitablePlaceCount = Object.values(world.places).filter(
+    (place) =>
+      place.surface !== 'water' &&
+      !place.settlementId &&
+      !place.claimedBySettlementId &&
+      place.kind !== 'home' &&
+      place.kind !== 'cemetery' &&
+      place.kind !== 'library' &&
+      place.fertility >= 0.22 &&
+      place.danger < 0.82,
+  ).length;
+  const housingPressure =
+    living.length === 0
+      ? 0
+      : clamp01(unhousedResidentCount / living.length);
+  const foodPressure =
+    foodTarget === 0 ? 0 : clamp01(1 - foodReserve / foodTarget);
+  const landDepletionPressure =
+    landWeight === 0
+      ? clamp01(1 - (world.v15?.renewableResources.renewableBase ?? 1))
+      : clamp01(1 - weightedLandSecurity / landWeight);
+  const inhabitedSettlementCount = Math.max(1, residentsBySettlement.size);
+  const knownTerritoryRelief = clamp01(
+    unclaimedHabitablePlaceCount / (inhabitedSettlementCount * 3),
+  );
+  const territoryPressure = clamp01(
+    Math.max(housingPressure, landDepletionPressure * 0.72) *
+      (1 - knownTerritoryRelief * 0.82),
+  );
+
+  return {
+    sapientHousingCapacity,
+    unhousedResidentCount,
+    foodReservePerResident:
+      living.length === 0 ? 0 : foodReserve / living.length,
+    unclaimedHabitablePlaceCount,
+    housingPressure,
+    foodPressure,
+    landDepletionPressure,
+    territoryPressure,
+  };
 }
 
 export class WorldSensors {
@@ -260,11 +375,27 @@ export class WorldSensors {
         recentMonsterEncounterPressure * 0.36,
     );
 
-    const resourcePressure =
+    const personalResourcePressure =
       agents.length === 0
         ? 0
         : agents.reduce((sum, agent) => sum + (1 - agent.resources), 0) /
           agents.length;
+    const populationPressure = derivePopulationPressureEvidenceV18(world);
+    const deprivationDeaths = recentDeaths.filter(
+      (event) => event.payload.cause === 'deprivation',
+    ).length;
+    const deprivationDeathShare =
+      recentDeaths.length === 0 ? 0 : deprivationDeaths / recentDeaths.length;
+    const resourcePressure = clamp01(
+      Math.max(
+        personalResourcePressure,
+        (populationPressure?.foodPressure ?? 0) * 0.96,
+        (populationPressure?.landDepletionPressure ?? 0) * 0.82,
+        (populationPressure?.housingPressure ?? 0) * 0.84,
+        populationPressure?.territoryPressure ?? 0,
+        deprivationDeathShare,
+      ),
+    );
 
     const rhythms = agents
       .map((agent) => world.v18?.lifeRhythmByAgentId[agent.id])
@@ -448,6 +579,8 @@ export class WorldSensors {
       ecologicalDiversity,
       activeSignalCount: activeSignals.length,
       averageSatiety: clamp01(averageSatiety),
+      ...(populationPressure ?? {}),
+      deprivationDeathShare: clamp01(deprivationDeathShare),
       outsideHomeSettlementShare: clamp01(outsideHomeSettlementShare),
       professionDiversity,
       undecidedLivelihoodShare: clamp01(undecidedLivelihoodShare),

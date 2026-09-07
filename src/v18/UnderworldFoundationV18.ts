@@ -3,6 +3,7 @@ import type {
   V18LifeRhythmState,
   V18LanguageKnowledgeState,
   V18LivelihoodState,
+  V18PlanetaryGeographyState,
   V18SettlementLifecycleState,
   WorldV18State,
 } from './types';
@@ -11,6 +12,11 @@ import {
   initialLivelihoodV18,
   LIVELIHOOD_KINDS_V18,
 } from './LivelihoodAndRhythmV18';
+import {
+  assertSecretLibraryStateV18,
+  createSecretLibraryStateV18,
+  repairSecretLibraryStateV18,
+} from './SecretLibraryV18';
 
 export const WORLD_RULES_VERSION_V18 = 'ainkrad-world-rules-0.3.18';
 export const WORLD_V18_SCHEMA_VERSION = 'v18' as const;
@@ -18,6 +24,18 @@ export const MAX_RECENT_CONVERSATIONS_V18 = 96;
 export const MAX_TEACHERS_PER_LANGUAGE_V18 = 12;
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
+
+export const EARTH_SIZED_PLANET_V18: V18PlanetaryGeographyState = {
+  shape: 'sphere',
+  radiusKm: 6_371,
+  circumferenceKm: 40_075,
+  coordinateUnitMetres: 100,
+  minMapX: -200_375,
+  maxMapX: 200_375,
+  minMapY: -100_075,
+  maxMapY: 100_075,
+  surfaceOnlyUntilTechnology: true,
+};
 
 /**
  * Existing Ainkrad people have already communicated for years. Migration
@@ -85,12 +103,14 @@ export function deriveSettlementLifecycleV18(
   state: Readonly<WorldState>,
   settlementId: string,
   prior?: Readonly<V18SettlementLifecycleState>,
+  residentCountOverride?: number,
 ): V18SettlementLifecycleState {
   const settlement = state.settlements[settlementId];
   if (!settlement) {
     throw new Error(`Cannot derive lifecycle for missing settlement ${settlementId}.`);
   }
-  const residentCount = settlementResidentCount(state, settlementId);
+  const residentCount = residentCountOverride ??
+    settlementResidentCount(state, settlementId);
   const economy = state.v16?.settlementEconomyById[settlementId];
   const resources = state.v16?.settlementResourcesById[settlementId];
   const memberPlaces = settlement.memberPlaceIds
@@ -195,6 +215,10 @@ export function createWorldV18State(
     livelihoodByAgentId,
     lifeRhythmByAgentId,
     nextExpeditionSequence: 1,
+    planetaryGeography: { ...EARTH_SIZED_PLANET_V18 },
+    secretLibrary: createSecretLibraryStateV18(
+      state.calendar.elapsedWorldMinutes,
+    ),
   };
 }
 
@@ -221,6 +245,15 @@ export function repairWorldV18AdditiveSchema(
   v18.livelihoodByAgentId ??= {};
   v18.lifeRhythmByAgentId ??= {};
   v18.nextExpeditionSequence ??= 1;
+  v18.planetaryGeography ??= { ...EARTH_SIZED_PLANET_V18 };
+  const persistedSecretLibrary = (
+    v18 as WorldV18State & { secretLibrary?: unknown }
+  ).secretLibrary;
+  v18.secretLibrary = repairSecretLibraryStateV18(
+    persistedSecretLibrary,
+    state.calendar.elapsedWorldMinutes,
+    state.agents,
+  );
 
   for (const agent of Object.values(state.agents)) {
     const language = ensureRussianKnowledgeV18(state, agent);
@@ -249,6 +282,12 @@ export function repairWorldV18AdditiveSchema(
       .filter((id) => id !== agent.id && state.agents[id] !== undefined)
       .slice(-12);
     livelihood.changeCount ??= 0;
+    livelihood.mappedPlaceIds ??= [];
+    livelihood.mappedPlaceIds = [...new Set(livelihood.mappedPlaceIds)]
+      .filter((placeId) => state.places[placeId] !== undefined)
+      .slice(-128);
+    livelihood.longJourneyCount ??= 0;
+    livelihood.defensePracticeCount ??= 0;
 
     const rhythm = (v18.lifeRhythmByAgentId[agent.id] ??=
       initialLifeRhythmV18(agent));
@@ -301,8 +340,46 @@ export function assertWorldV18State(state: Readonly<WorldState>): void {
   if (!v18.migratedFromRulesVersion.trim()) {
     throw new Error('World v18 migratedFromRulesVersion must not be empty.');
   }
+  assertSecretLibraryStateV18(state);
   if (!Number.isInteger(v18.nextExpeditionSequence) || v18.nextExpeditionSequence < 1) {
     throw new Error('World v18 nextExpeditionSequence must be an integer >= 1.');
+  }
+  const planet = v18.planetaryGeography;
+  if (
+    !planet ||
+    planet.shape !== 'sphere' ||
+    planet.radiusKm !== 6_371 ||
+    planet.circumferenceKm !== 40_075 ||
+    planet.coordinateUnitMetres !== 100 ||
+    planet.surfaceOnlyUntilTechnology !== true ||
+    !Number.isFinite(planet.minMapX) ||
+    !Number.isFinite(planet.maxMapX) ||
+    !Number.isFinite(planet.minMapY) ||
+    !Number.isFinite(planet.maxMapY) ||
+    planet.minMapX >= planet.maxMapX ||
+    planet.minMapY >= planet.maxMapY
+  ) {
+    throw new Error('World v18 Earth-sized planetary geography is invalid.');
+  }
+  for (const place of Object.values(state.places)) {
+    if (
+      place.mapX < planet.minMapX ||
+      place.mapX > planet.maxMapX ||
+      place.mapY < planet.minMapY ||
+      place.mapY > planet.maxMapY
+    ) {
+      throw new Error(`World place ${place.id} lies outside the finite planet.`);
+    }
+    for (const point of place.boundaryPolygon ?? []) {
+      if (
+        point.x < planet.minMapX ||
+        point.x > planet.maxMapX ||
+        point.y < planet.minMapY ||
+        point.y > planet.maxMapY
+      ) {
+        throw new Error(`World place ${place.id} boundary lies outside the finite planet.`);
+      }
+    }
   }
   if (v18.recentConversations.length > MAX_RECENT_CONVERSATIONS_V18) {
     throw new Error('World v18 conversation window exceeds its bounded limit.');
@@ -360,6 +437,17 @@ export function assertWorldV18State(state: Readonly<WorldState>): void {
       if (!Number.isFinite(practice) || practice < 0) {
         throw new Error(`World v18 livelihood ${agentId}.${kind} is invalid.`);
       }
+    }
+    if (
+      !Array.isArray(livelihood.mappedPlaceIds) ||
+      livelihood.mappedPlaceIds.length > 128 ||
+      livelihood.mappedPlaceIds.some((placeId) => !state.places[placeId]) ||
+      !Number.isInteger(livelihood.longJourneyCount) ||
+      livelihood.longJourneyCount < 0 ||
+      !Number.isInteger(livelihood.defensePracticeCount) ||
+      livelihood.defensePracticeCount < 0
+    ) {
+      throw new Error(`World v18 livelihood journey evidence for ${agentId} is invalid.`);
     }
     const rhythm = v18.lifeRhythmByAgentId[agentId];
     if (!rhythm || rhythm.agentId !== agentId) {

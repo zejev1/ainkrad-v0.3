@@ -1,3 +1,5 @@
+import { GENESIS_ACTIVE_WORLD_MINUTES } from './GenesisBootstrap';
+
 export interface V15LongRunSnapshot {
   worldMinutes: number;
   ordinaryLivingPopulation: number;
@@ -28,7 +30,7 @@ export interface V15LongRunAlert {
 
 const WORLD_MINUTES_PER_DAY = 24 * 60;
 const WORLD_MINUTES_PER_YEAR = 365 * WORLD_MINUTES_PER_DAY;
-const GENESIS_END_WORLD_MINUTES = 3 * WORLD_MINUTES_PER_YEAR;
+const GENESIS_END_WORLD_MINUTES = GENESIS_ACTIVE_WORLD_MINUTES;
 
 export function auditV15LongRun(
   samples: readonly V15LongRunSnapshot[],
@@ -61,9 +63,9 @@ export function auditV15LongRun(
     ) {
       alerts.push({
         severity: 'critical',
-        code: 'genesis_active_after_year_3',
+        code: 'genesis_active_after_year_10',
         worldMinutes: sample.worldMinutes,
-        message: 'Genesis Teachers remain active after their three-year bootstrap period.',
+        message: 'Genesis Teachers remain active after their ten-year bootstrap period.',
       });
     }
 

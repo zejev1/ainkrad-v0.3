@@ -1,3 +1,5 @@
+import type { SecretLibraryStateV18 } from './SecretLibraryV18';
+
 export type V18ConversationTopic =
   | 'daily_life'
   | 'family'
@@ -118,9 +120,12 @@ export type V18LivelihoodKind =
   | 'builder'
   | 'caregiver'
   | 'scout'
+  | 'cartographer'
+  | 'adventurer'
   | 'teacher'
   | 'scribe'
   | 'guard'
+  | 'warrior'
   | 'spiritual_keeper';
 
 export type V18LivelihoodStage =
@@ -145,6 +150,21 @@ export interface V18LivelihoodState {
   lastWorkplaceId?: string;
   mentorIds: string[];
   changeCount: number;
+  mappedPlaceIds: string[];
+  longJourneyCount: number;
+  defensePracticeCount: number;
+}
+
+export interface V18PlanetaryGeographyState {
+  shape: 'sphere';
+  radiusKm: 6_371;
+  circumferenceKm: 40_075;
+  coordinateUnitMetres: 100;
+  minMapX: number;
+  maxMapX: number;
+  minMapY: number;
+  maxMapY: number;
+  surfaceOnlyUntilTechnology: true;
 }
 
 /**
@@ -179,4 +199,6 @@ export interface WorldV18State {
   livelihoodByAgentId: Record<string, V18LivelihoodState>;
   lifeRhythmByAgentId: Record<string, V18LifeRhythmState>;
   nextExpeditionSequence: number;
+  planetaryGeography: V18PlanetaryGeographyState;
+  secretLibrary: SecretLibraryStateV18;
 }

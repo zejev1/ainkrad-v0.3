@@ -3,7 +3,10 @@ import type { WorldEvent } from '../world/events';
 import { WorldEngine } from '../world/WorldEngine';
 import type { AgentRace, WorldState } from '../world/types';
 import { WORLD_MINUTES_PER_YEAR } from '../world/WorldClock';
-import { isGenesisTeacherActive } from '../v15/GenesisBootstrap';
+import {
+  GENESIS_ACTIVE_WORLD_MINUTES,
+  isGenesisTeacherActive,
+} from '../v15/GenesisBootstrap';
 import {
   SAPIENT_RACES_V16,
   worldPopulationCapacityV16,
@@ -14,7 +17,7 @@ const DEFAULT_SEEDS = [
   'v16-demography-02',
   'v16-demography-03',
 ] as const;
-const TARGET_YEARS = [8, 10, 12, 30, 60] as const;
+const TARGET_YEARS = [12, 15, 20, 30, 60] as const;
 
 declare const process: { argv: string[] };
 
@@ -133,7 +136,7 @@ function learningEvidence(
     if (
       source === 'genesis' &&
       worldMinutes !== undefined &&
-      worldMinutes >= 3 * WORLD_MINUTES_PER_YEAR
+      worldMinutes >= GENESIS_ACTIVE_WORLD_MINUTES
     ) {
       genesisLessonsAfterYearThree += 1;
     }
@@ -273,7 +276,7 @@ async function runSeed(seed: string) {
     failures.push('no real material tool or construction project completed');
   }
   if (learning.genesisLessonsAfterYearThree > 0) {
-    failures.push('Genesis lesson recorded after year 3');
+    failures.push('Genesis lesson recorded after year 10');
   }
   if (state.population.deaths > 0) {
     if (remains.length === 0) failures.push('deaths exist without physical remains');
@@ -297,7 +300,7 @@ async function runSeed(seed: string) {
       isGenesisTeacherActive(teacher, state.calendar.elapsedWorldMinutes),
     )
   ) {
-    failures.push('Genesis remained active after year 3');
+    failures.push('Genesis remained active after year 10');
   }
   if (
     SAPIENT_RACES_V16.some(

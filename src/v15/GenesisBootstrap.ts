@@ -16,7 +16,7 @@ export interface GenesisTeacher {
 }
 
 export const WORLD_MINUTES_PER_YEAR = 365 * 24 * 60;
-export const GENESIS_ACTIVE_YEARS = 3;
+export const GENESIS_ACTIVE_YEARS = 10;
 export const GENESIS_ACTIVE_WORLD_MINUTES =
   GENESIS_ACTIVE_YEARS * WORLD_MINUTES_PER_YEAR;
 
