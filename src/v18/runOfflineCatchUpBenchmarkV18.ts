@@ -158,6 +158,22 @@ for (const agent of Object.values(snapshot.agents)) {
   const race = agent.race ?? 'human';
   raceBirthCounts[race] = (raceBirthCounts[race] ?? 0) + 1;
 }
+const nativeChildren = Object.values(snapshot.agents).filter(
+  (agent) => agent.origin === 'native' && agent.life.generation > 0,
+);
+const technicalNumberedChildNames = nativeChildren.filter((agent) =>
+  /\s\d+$/.test(agent.name),
+);
+const distinctChildNames = new Set(
+  nativeChildren.map((agent) => agent.name.toLocaleLowerCase('ru-RU')),
+);
+const recentConversations = snapshot.v18?.recentConversations ?? [];
+const uniqueRecentUtterances = new Set(
+  recentConversations.map((conversation) => conversation.utterance),
+);
+const libraryKnowledge = Object.values(
+  snapshot.v18?.secretLibrary.knowledgeByAgentId ?? {},
+).flat();
 const deathCauseCounts: Record<string, number> = {};
 const deathRaceCounts: Record<string, number> = {};
 const deathEncounterReasonCounts: Record<string, number> = {};
@@ -295,6 +311,11 @@ console.log(
     professionStageCounts,
     raceCounts,
     raceBirthCounts,
+    culturalNaming: {
+      nativeChildren: nativeChildren.length,
+      technicalNumberedNames: technicalNumberedChildNames.length,
+      distinctNames: distinctChildNames.size,
+    },
     raceFamilyOpportunities: snapshot.v16?.raceFamilyOpportunityByRace,
     generationCounts,
     sexCounts,
@@ -311,9 +332,31 @@ console.log(
     expeditionPreparedGroups,
     settlementStatusCounts,
     observerAudibleConversations:
-      snapshot.v18?.recentConversations.filter(
+      recentConversations.filter(
         (conversation) => conversation.observerAudible,
-      ).length ?? 0,
+      ).length,
+    conversationAgency: {
+      recentWindow: recentConversations.length,
+      distinctUtterances: uniqueRecentUtterances.size,
+      knowledgeGrounded: recentConversations.filter(
+        (conversation) => conversation.evidence.knowledgeId !== undefined,
+      ).length,
+      knowledgeTransferred: recentConversations.filter(
+        (conversation) => conversation.evidence.knowledgeShared === true,
+      ).length,
+    },
+    appliedLibraryKnowledge: {
+      records: libraryKnowledge.length,
+      practicedRecords: libraryKnowledge.filter(
+        (record) => record.practiceCount > 0,
+      ).length,
+      sharedRecords: libraryKnowledge.filter(
+        (record) => record.sharedCount > 0,
+      ).length,
+      oralRecords: libraryKnowledge.filter(
+        (record) => record.learnedFromAgentId !== undefined,
+      ).length,
+    },
     recentTenYearEventCounts,
     settlementStocks,
     actionShares: Object.fromEntries(

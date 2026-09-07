@@ -3,7 +3,7 @@
 The final release ZIP is a complete SPCK project. Its verified v15-derived
 world code is overlaid as ordinary working-tree changes on the read-only
 verified `main` parent
-`dad1dc0f72bd0883f801b93e3da4cae1587b6270` from:
+`eed7de361bec4e07bb39882937b6c1c76a0d22fa` from:
 
 `https://github.com/zejev1/ainkrad-v0.3.git`
 
@@ -15,12 +15,16 @@ No credential, commit or push is included.
    project named `Ainkrad`.
 3. Open **Git**. The archive already contains `.git`; do not initialize another
    repository and do not clone GitHub. SPCK must show uncommitted v0.3.18
-   changes on branch `main`.
+   changes on branch `main`. Project files must be directly at the project
+   root; if SPCK shows a second project folder inside it, the wrong ZIP was
+   selected.
 4. If SPCK asks for Git identity, use
    `zejev1@users.noreply.github.com`.
 5. Use one commit message:
-   `feat(v0.3.18): deepen autonomous livelihoods and Underworld foundations`
+   `fix(v0.3.18): restore world continuity and resident agency`
 6. Tap **Commit**, then **Push**. Those actions remain yours.
+   This archive is already based on the current GitHub `main`; never enable a
+   force push for this package.
 7. After Vercel succeeds, open the existing world first. Confirm that schema
    repair preserves its people and Cardinal experience, catch-up finishes,
    residents visibly travel, the resident picker selects the intended person,

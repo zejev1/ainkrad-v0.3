@@ -117,6 +117,7 @@ describe('Fluctlight-inspired persistent personhood', () => {
     expect(child?.mind.identityId).not.toBe(
       state.agents.agent_1.mind.identityId,
     );
+    expect(child?.name).not.toMatch(/\d/);
     expect(
       (await store.history('birth-world')).some(
         (event) => event.kind === 'agent.born',

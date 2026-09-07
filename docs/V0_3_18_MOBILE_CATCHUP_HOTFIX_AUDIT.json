@@ -1,5 +1,5 @@
 {
-  "release": "v0.3.18-mobile-catchup-hotfix",
+  "release": "v0.3.18-mobile-catchup-and-cultural-agency-hotfix",
   "generatedAtUtc": "2026-09-07",
   "sourceAuthority": {
     "repository": "https://github.com/zejev1/ainkrad-v0.3.git",
@@ -29,16 +29,41 @@
     "savedWorldSurvivesCatchUpFailure": true,
     "fatalErrorsAreTabLocal": true
   },
+  "culturalAgencyEvidence": {
+    "auditYears": 100,
+    "elapsedSeconds": 95.429,
+    "livingResidents": 461,
+    "births": 496,
+    "raceCounts": {
+      "human": 60,
+      "goblin": 101,
+      "orc": 157,
+      "ogre": 143
+    },
+    "nativeChildren": 496,
+    "technicalNumberedNames": 0,
+    "distinctChildNames": 496,
+    "recentConversationWindow": 96,
+    "distinctRecentUtterances": 95,
+    "knowledgeGroundedConversations": 28,
+    "knowledgeTransfers": 18,
+    "libraryKnowledgeRecords": 6022,
+    "practicedKnowledgeRecords": 5799,
+    "sharedKnowledgeRecords": 1637,
+    "oralKnowledgeRecords": 5478,
+    "newSettlementsFounded": 4,
+    "residentsOutsideHomeSettlement": 41
+  },
   "verification": {
     "typecheckPassed": true,
-    "targetedTestFilesPassed": 2,
-    "targetedTestsPassed": 8,
-    "fullTestFilesPassed": 39,
-    "fullTestsPassed": 166,
-    "fullTestsDurationSeconds": 205.26,
+    "targetedTestFilesPassed": 3,
+    "targetedTestsPassed": 12,
+    "fullTestFilesPassed": 40,
+    "fullTestsPassed": 171,
+    "fullTestsDurationSeconds": 126.6,
     "productionBuildPassed": true,
-    "workerBundleKilobytes": 481.66,
-    "applicationBundleKilobytes": 135.44,
+    "workerBundleKilobytes": 506.92,
+    "applicationBundleKilobytes": 135.52,
     "cssBundleKilobytes": 40.68,
     "liveProductionVerificationRequiredAfterUserPush": true
   }

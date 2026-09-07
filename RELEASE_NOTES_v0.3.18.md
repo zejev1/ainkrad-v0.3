@@ -87,3 +87,24 @@ performed by the assistant.
 - The hotfix is prepared as uncommitted changes on GitHub parent
   `2a96ac62764db4df848543f16ed3d1d999dc650a`. The assistant performed no
   commit, push or Vercel write.
+
+## 2026-09-07 cultural agency completion
+
+- New children receive a parent- and culture-derived name with no visible
+  sequence number. Existing saves repair only the exact old aliases such as
+  `Ari 11`; user-authored names and stable person IDs are preserved.
+- Conversation wording now combines the speaker's current work, place,
+  family, resources, danger, relationship, personality and learned material.
+  The bounded recent window rejects repeated rendered lines when another
+  truthful wording is available.
+- Secret Library records now influence matching voluntary action scores,
+  strengthen only through matching lived practice and can move between two
+  co-located residents through an actual conversation. Oral transfer grants
+  partial understanding, never instant mastery.
+- A 100-year OFF-mode audit reached 461 living residents across all four
+  races. Its 496 native children had 496 distinct names and zero technical
+  numbered names. The final 96-conversation window contained 95 distinct
+  utterances; 28 cited learned knowledge and 18 transferred it.
+- The knowledge store remains bounded to 64 compact records per resident. No
+  simulation tick downloads a book, calls a language model, or gives Cardinal
+  a resident mind/action writer.

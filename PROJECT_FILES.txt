@@ -1,3 +1,5 @@
+- .github/workflows/ci.yml
+- .gitignore
 - AGENTS.md
 - README.md
 - RELEASE_NOTES_v0.3.15.md
@@ -5,6 +7,7 @@
 - RELEASE_NOTES_v0.3.17.md
 - RELEASE_NOTES_v0.3.18.md
 - RETURN_POINT.txt
+- SHA256SUMS_RETURN_POINT.txt
 - SHA256SUMS_V15_WORK.txt
 - SPCK_IMPORT.md
 - TEST_RESULTS_v0.3.15.md
@@ -31,6 +34,7 @@
 - docs/V0_3_15_RELEASE_AUDIT.json
 - docs/V0_3_16_RELEASE_AUDIT.json
 - docs/V0_3_17_RELEASE_AUDIT.json
+- docs/V0_3_18_MOBILE_CATCHUP_HOTFIX_AUDIT.json
 - docs/V0_3_18_RELEASE_AUDIT.json
 - docs/WORLD_AUTHORITY.md
 - docs/WORLD_AUTONOMY.md
@@ -120,9 +124,15 @@
 - src/v16/SocietyFoundationV16.ts
 - src/v16/TruthfulInspectorsV16.ts
 - src/v16/runDemographicAcceptanceV16.ts
+- src/v18/CulturalNamingV18.ts
+- src/v18/HumanKnowledgeFoundationV18.ts
+- src/v18/HumanKnowledgeV18.ts
 - src/v18/LanguageAndConversationV18.ts
 - src/v18/LivelihoodAndRhythmV18.ts
 - src/v18/PlayerEntryFoundationV18.ts
+- src/v18/SecretLibraryBooksV18.ts
+- src/v18/SecretLibraryGatewayV18.ts
+- src/v18/SecretLibraryV18.ts
 - src/v18/SettlementMobilityV18.ts
 - src/v18/UnderworldFoundationV18.ts
 - src/v18/runOfflineCatchUpBenchmarkV18.ts
@@ -166,8 +176,10 @@
 - tests/v0_3_14_habitatIntegrity.test.ts
 - tests/v0_3_14_worldLogic.test.ts
 - tests/v0_3_16_societyFoundation.test.ts
+- tests/v0_3_18_culturalAgency.test.ts
 - tests/v0_3_18_livelihoodAndPlace.test.ts
 - tests/v0_3_18_offlineCatchUp.test.ts
+- tests/v0_3_18_secretLibrary.test.ts
 - tests/v0_3_18_underworldFoundation.test.ts
 - tests/v15FamilyAgency.test.ts
 - tests/worldAuthority.test.ts

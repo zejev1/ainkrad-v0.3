@@ -41,6 +41,9 @@ export interface V18ConversationEvidence {
   relationshipSentiment: number;
   settlementId?: string;
   referencedPlaceId?: string;
+  knowledgeId?: string;
+  knowledgeTitle?: string;
+  knowledgeShared?: boolean;
 }
 
 /**

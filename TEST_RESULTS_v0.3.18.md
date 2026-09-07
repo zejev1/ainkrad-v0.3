@@ -88,3 +88,25 @@ Machine-readable evidence is summarized in
 - Git base: `main` at
   `2a96ac62764db4df848543f16ed3d1d999dc650a`; no commit or push was performed
   by the assistant.
+
+## 2026-09-07 cultural agency verification
+
+- Targeted naming/conversation/library/personhood regression: PASS — 3 files,
+  12/12 tests. This includes 600 consecutive counter-free cultural names,
+  selective old-save alias repair, phrase diversity, oral knowledge transfer
+  and practice-gated understanding.
+- Full sequential regression after all catch-up and cultural changes: PASS —
+  40/40 files and 171/171 tests in 126.60 seconds.
+- TypeScript and production build: PASS — worker 506.92 kB, application
+  JavaScript 135.52 kB and CSS 40.68 kB.
+- 100-year browser-seed audit: PASS — 461 living residents, 496 births, all
+  four races alive, eight inhabited settlements and four completed frontier
+  foundations. Runtime: 95.429 seconds.
+- Naming evidence: PASS — 496/496 native children had distinct names; zero
+  names ended with a technical numeric suffix.
+- Conversation evidence: PASS — 95 distinct utterances in the bounded final
+  window of 96; 28 were grounded in a learned record and 18 transferred a
+  partial understanding.
+- Applied-knowledge evidence: PASS — 6,022 compact records, 5,799 exercised in
+  matching lived work and 5,478 learned orally. Storage remains capped at 64
+  records per resident.

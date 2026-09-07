@@ -334,7 +334,7 @@ export function inspectResidentV16(
               ? libraryKnowledge
                   .slice(-4)
                   .map((record) =>
-                    `${record.title} (${percent(record.understanding)})`,
+                    `${record.title} (${percent(record.understanding)} · практик ${record.practiceCount} · передано ${record.sharedCount})`,
                   )
                   .join(' · ')
               : 'освоенных записей нет',

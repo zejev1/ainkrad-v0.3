@@ -97,9 +97,12 @@ import {
   practiceCyrillicWritingV18,
   recordRussianConversationV18,
 } from '../v18/LanguageAndConversationV18';
+import { chooseCulturalChildNameV18 } from '../v18/CulturalNamingV18';
 import {
+  practiceSecretLibraryKnowledgeV18,
   repairSecretLibraryPlacementV18,
   rankedSecretLibraryCandidatesV18,
+  secretLibraryActionAffinityV18,
   secretLibraryStudyMaterialV18,
   SECRET_LIBRARY_MAX_KNOWLEDGE_PER_AGENT_V18,
   SECRET_LIBRARY_MAX_VISITORS_PER_YEAR_V18,
@@ -3749,7 +3752,7 @@ async function migrateV16WorldToV18(
 }
 
 const V18_ADDITIVE_SCHEMA_REPAIR_OPERATION_ID =
-  'migration:v18-additive-schema-repair-2026-09-07-secret-library';
+  'migration:v18-additive-schema-repair-2026-09-07-cultural-agency';
 
 async function repairCompatibleV18World(
   store: WorldStore,
@@ -3760,7 +3763,7 @@ async function repairCompatibleV18World(
     from: WORLD_RULES_VERSION,
     to: WORLD_RULES_VERSION,
     mode: 'same_version_additive_schema_repair',
-    schemaRevision: '2026-09-07-secret-library',
+    schemaRevision: '2026-09-07-cultural-agency',
   });
   let current = persisted;
 
@@ -3786,7 +3789,7 @@ async function repairCompatibleV18World(
 
     next.revision = current.revision + 1;
     const migrationEvent: WorldEvent = {
-      eventId: `migration:${next.id}:v18-additive-schema-repair-2026-09-07-secret-library`,
+      eventId: `migration:${next.id}:v18-additive-schema-repair-2026-09-07-cultural-agency`,
       worldId: next.id,
       kind: 'world.migrated',
       source: 'system',
@@ -4870,6 +4873,8 @@ export class WorldEngine {
         understanding,
         summary: material.knowledge.knowledge.slice(0, 2).join(' '),
         concepts: material.knowledge.concepts.slice(0, 12),
+        practiceCount: 0,
+        sharedCount: 0,
       });
       library.totalKnowledgeRecords += 1;
     }
@@ -7043,6 +7048,7 @@ export class WorldEngine {
       this.agentsAtLocation(agent.locationId),
       now,
     );
+    practiceSecretLibraryKnowledgeV18(this.state, agent.id, livedAction);
     this.advanceMind(agent);
   }
 
@@ -7318,6 +7324,8 @@ export class WorldEngine {
         : 0;
     const vocationBoost = (action: AgentActionKind) =>
       livelihoodActionAffinityV18(this.state, agent.id, action);
+    const learnedKnowledgeBoost = (action: AgentActionKind) =>
+      secretLibraryActionAffinityV18(this.state, agent.id, action);
     const divineCallingBoost = (action: AgentActionKind): number => {
       const calling = agent.privateDivineCalling;
       if (!calling?.acceptedCalling) return 0;
@@ -7364,6 +7372,7 @@ export class WorldEngine {
           agent.personality.resilience * 0.08 +
           body.mobility * 0.18 +
           divineCallingBoost('walk') +
+          learnedKnowledgeBoost('walk') +
           emotions.joy * 0.09 -
           emotions.fear * 0.12 +
           (1 - agent.stress) * 0.08 +
@@ -7386,6 +7395,7 @@ export class WorldEngine {
           agent.skills.gathering * 0.2 +
           body.strength * 0.13 +
           vocationBoost('gather') +
+          learnedKnowledgeBoost('gather') +
           goalBoost('secure_resources') -
           soilExhaustion * Math.max(0.1, 0.65 - materialPressure * 0.55),
       },
@@ -7405,6 +7415,7 @@ export class WorldEngine {
             huntTarget.threat * 0.36 +
             vocationBoost('hunt') +
             divineCallingBoost('hunt') +
+            learnedKnowledgeBoost('hunt') +
             goalBoost('secure_resources')
           : -1,
       },
@@ -7421,6 +7432,7 @@ export class WorldEngine {
           agent.skills.craft * 0.16 +
           body.endurance * 0.1 +
           vocationBoost('work') +
+          learnedKnowledgeBoost('work') +
           goalBoost('contribute') +
           soilExhaustion * 0.12,
       },
@@ -7436,6 +7448,7 @@ export class WorldEngine {
             environment.socialOpportunity * 0.08 +
             vocationBoost('socialize') +
             divineCallingBoost('socialize') +
+            learnedKnowledgeBoost('socialize') +
             goalBoost('connect')),
       },
       {
@@ -7445,6 +7458,7 @@ export class WorldEngine {
             (1 - agent.needs.purpose) * 0.24 +
             Math.max(0, agent.resources - 0.45) * 0.35 +
             divineCallingBoost('help') +
+            learnedKnowledgeBoost('help') +
             goalBoost('contribute')
           : -1,
       },
@@ -7464,6 +7478,7 @@ export class WorldEngine {
           (1 - agent.needs.purpose) * 0.14 +
           vocationBoost('explore') +
           divineCallingBoost('explore') +
+          learnedKnowledgeBoost('explore') +
           goalBoost('explore') * 0.65 -
           Math.max(0, 0.35 - agent.resources) * 0.8 +
           soilExhaustion * 0.58,
@@ -7479,6 +7494,7 @@ export class WorldEngine {
           emotions.grief * 0.24 +
           emotions.fear * 0.12 +
           divineCallingBoost('reflect') +
+          learnedKnowledgeBoost('reflect') +
           goalBoost('reflect'),
       },
       {
@@ -7488,6 +7504,7 @@ export class WorldEngine {
             (1 - agent.needs.belonging) * 0.34 +
             agent.mind.emotions.hope * 0.18 +
             emotions.joy * 0.12 +
+            learnedKnowledgeBoost('bond') +
             goalBoost('build_family')
           : -1,
       },
@@ -7501,6 +7518,7 @@ export class WorldEngine {
           agent.mind.values.tradition * 0.08 +
           vocationBoost('pray') +
           divineCallingBoost('pray') +
+          learnedKnowledgeBoost('pray') +
           goalBoost('seek_truth'),
       },
     ];
@@ -12063,15 +12081,6 @@ export class WorldEngine {
     this.state.population.nextAgentSequence += 1;
     const childId = `epoch_${this.state.epoch ?? 1}_agent_${sequence}`;
     const race = a.race ?? 'human';
-    const childNamesByRace: Readonly<Record<AgentRace, readonly string[]>> = {
-      human: ['Ari', 'Lio', 'Sena', 'Tali', 'Neri', 'Eden', 'Sora', 'Ayla', 'Lev', 'Yuna'],
-      goblin: ['Rik', 'Nim', 'Vek', 'Miri', 'Tuk', 'Sena'],
-      orc: ['Gar', 'Dora', 'Lir', 'Kora', 'Bran', 'Ona'],
-      ogre: ['Bram', 'Mara', 'Tor', 'Sia', 'Grom', 'Vala'],
-    };
-    const childNames = childNamesByRace[race];
-    const name = `${childNames[(sequence - 1) % childNames.length]} ${sequence}`;
-
     const parentView = (parent: AgentState) => ({
       id: parent.id,
       sex: parent.sex === 'female' ? ('female' as const) : ('male' as const),
@@ -12091,6 +12100,20 @@ export class WorldEngine {
       parentView(b),
       this.rng,
     );
+    const nameChoice = chooseCulturalChildNameV18({
+      worldId: this.state.id,
+      race,
+      sex: blueprint.sex,
+      sequence,
+      parentA: a,
+      parentB: b,
+      existingNames: new Set(
+        Object.values(this.state.agents).map((agent) =>
+          agent.name.toLocaleLowerCase('ru-RU'),
+        ),
+      ),
+    });
+    const name = nameChoice.name;
     const lifespanYears =
       blueprint.lifespanYears * SAPIENT_RACE_LIFE_PROFILES_V16[race].lifespanScale;
     const needs = { belonging: 0.88, purpose: 0.72 };
@@ -12202,6 +12225,9 @@ export class WorldEngine {
         parentIds: [a.id, b.id],
         generation: child.life.generation,
         worldMinutes: this.state.calendar.elapsedWorldMinutes,
+        namingStyle: nameChoice.style,
+        chosenByParentIds: nameChoice.parentIds,
+        technicalSequenceKeptOnlyInAgentId: true,
       },
     });
     for (const parent of [a, b]) {
@@ -13487,6 +13513,9 @@ export class WorldEngine {
           speakerStressBand: conversation.evidence.speakerStressBand,
           relationshipSentiment:
             conversation.evidence.relationshipSentiment,
+          knowledgeId: conversation.evidence.knowledgeId ?? null,
+          knowledgeTitle: conversation.evidence.knowledgeTitle ?? null,
+          knowledgeShared: conversation.evidence.knowledgeShared ?? false,
         },
       });
     }
