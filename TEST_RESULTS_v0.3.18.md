@@ -71,3 +71,20 @@ real mobile click check after the user commits and pushes through SPCK.
 
 Machine-readable evidence is summarized in
 `docs/V0_3_18_RELEASE_AUDIT.json`.
+
+## 2026-09-07 mobile catch-up hotfix verification
+
+- TypeScript: PASS — `tsc -p tsconfig.json`.
+- Targeted catch-up/UI regression: PASS — 2 files, 8 tests.
+- Full sequential regression: PASS — 39/39 files and 166/166 tests in
+  205.26 seconds.
+- Production build: PASS — Vite 7.0.4 emitted a 481.66 kB dedicated worker,
+  135.44 kB application JavaScript and 40.68 kB CSS.
+- Exact reported scenario: PASS — browser seed at day 300 resumed for another
+  2.1 years, reached its target and retained 12 living residents.
+- Before the hotfix that restoration formed one 1,568,171-byte transaction
+  containing 2,715 events and 417 memories. After the hotfix it formed six
+  transactions; the largest was 479,715 bytes with 547 events and 88 memories.
+- Git base: `main` at
+  `2a96ac62764db4df848543f16ed3d1d999dc650a`; no commit or push was performed
+  by the assistant.

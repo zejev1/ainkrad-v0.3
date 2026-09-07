@@ -1,5 +1,6 @@
 import {
   LiveWorldRuntime,
+  OFFLINE_CATCH_UP_MAX_BATCH_QUANTA,
   type CardinalConsoleSnapshot,
   type LiveWorldDisturbance,
   type LiveWorldFrame,
@@ -71,6 +72,13 @@ type LiveWorldWorkerMessage =
       estimatedRemainingMs: number | null;
       semanticQuantaProcessed: number;
       completed: boolean;
+    }
+  | {
+      type: 'catch_up_recovery';
+      protocolVersion: typeof FRAME_PROTOCOL_VERSION;
+      message: string;
+      batchQuanta: number;
+      abandoned: boolean;
     }
   | {
       type: 'fatal';
@@ -148,6 +156,8 @@ let pendingClockControl: LiveWorldClockMessage | undefined;
 let pendingWorldReset = false;
 let pendingOfflineCatchUp: OfflineClockCatchUpMessage | undefined;
 let divineAudiencePaused = false;
+let catchUpBatchQuanta = OFFLINE_CATCH_UP_MAX_BATCH_QUANTA;
+let catchUpFailureCount = 0;
 let catchUpTracker:
   | {
       worldEpoch: number;
@@ -183,8 +193,36 @@ function applyOfflineCatchUp(message: OfflineClockCatchUpMessage): void {
     pendingOfflineCatchUp.worldEpoch !== message.worldEpoch ||
     message.targetWorldMinutes > pendingOfflineCatchUp.targetWorldMinutes
   ) {
+    if (
+      !pendingOfflineCatchUp ||
+      pendingOfflineCatchUp.worldEpoch !== message.worldEpoch
+    ) {
+      catchUpBatchQuanta = OFFLINE_CATCH_UP_MAX_BATCH_QUANTA;
+      catchUpFailureCount = 0;
+    }
     pendingOfflineCatchUp = message;
   }
+}
+
+function readableError(error: unknown): string {
+  return error instanceof Error && error.message.trim()
+    ? error.message
+    : 'Unknown offline catch-up error.';
+}
+
+function publishCatchUpRecovery(
+  message: string,
+  abandoned: boolean,
+): void {
+  const recovery = {
+    type: 'catch_up_recovery',
+    protocolVersion: FRAME_PROTOCOL_VERSION,
+    message,
+    batchQuanta: catchUpBatchQuanta,
+    abandoned,
+  } as const;
+  workerScope.postMessage(recovery);
+  frameChannel.postMessage(recovery);
 }
 
 function applyDivineAudiencePause(message: DivineAudiencePauseCommand): void {
@@ -430,6 +468,8 @@ async function runForever(): Promise<void> {
         pendingWorldReset = false;
         pendingOfflineCatchUp = undefined;
         catchUpTracker = undefined;
+        catchUpBatchQuanta = OFFLINE_CATCH_UP_MAX_BATCH_QUANTA;
+        catchUpFailureCount = 0;
         await runtime.resetWorld();
       }
       const beforeFrame = runtime.worldContinuityPosition();
@@ -464,9 +504,42 @@ async function runForever(): Promise<void> {
                 targetWorldMinutes,
               );
             }
-            const batch = await runtime.catchUpBatchTo(
-              catchUpTracker.targetWorldMinutes,
-            );
+            let batch;
+            try {
+              batch = await runtime.catchUpBatchTo(
+                catchUpTracker.targetWorldMinutes,
+                catchUpBatchQuanta,
+              );
+              catchUpFailureCount = 0;
+            } catch (error) {
+              if (error instanceof WorldRevisionConflictError) throw error;
+              const message = readableError(error);
+              console.warn(
+                '[Ainkrad offline catch-up] Durable batch failed; restoring the last committed world state.',
+                {
+                  message,
+                  batchQuanta: catchUpBatchQuanta,
+                  failureCount: catchUpFailureCount + 1,
+                },
+              );
+              await runtime.synchronize();
+              catchUpFailureCount += 1;
+              if (catchUpBatchQuanta > 1 && catchUpFailureCount <= 5) {
+                catchUpBatchQuanta = Math.max(
+                  1,
+                  Math.floor(catchUpBatchQuanta / 2),
+                );
+                publishCatchUpRecovery(message, false);
+              } else {
+                pendingOfflineCatchUp = undefined;
+                catchUpTracker = undefined;
+                publishCatchUpRecovery(message, true);
+                catchUpBatchQuanta = OFFLINE_CATCH_UP_MAX_BATCH_QUANTA;
+                catchUpFailureCount = 0;
+              }
+              await sleep(0);
+              continue;
+            }
             catchUpTracker.semanticQuantaProcessed +=
               batch.semanticQuantaProcessed;
             const elapsedRealMs = Math.max(
@@ -510,6 +583,8 @@ async function runForever(): Promise<void> {
             }
             pendingOfflineCatchUp = undefined;
             catchUpTracker = undefined;
+            catchUpBatchQuanta = OFFLINE_CATCH_UP_MAX_BATCH_QUANTA;
+            catchUpFailureCount = 0;
             completedCatchUpThisLoop = true;
           }
         }
@@ -609,6 +684,6 @@ void start().catch((error: unknown) => {
         ? error.message
         : 'Unknown live-world error.',
   } as const;
+  console.error('[Ainkrad live world] Worker stopped.', error);
   workerScope.postMessage(message);
-  frameChannel.postMessage(message);
 });

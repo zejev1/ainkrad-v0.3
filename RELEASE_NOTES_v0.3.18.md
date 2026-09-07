@@ -69,3 +69,21 @@ The final project is prepared as uncommitted changes on the read-only verified
 GitHub parent `dad1dc0f72bd0883f801b93e3da4cae1587b6270` in
 `zejev1/ainkrad-v0.3`. No commit, push, Vercel write or Convex connection was
 performed by the assistant.
+
+## 2026-09-07 mobile catch-up hotfix
+
+- Closed-browser restoration now commits at most 24 semantic quanta per
+  IndexedDB transaction. The reported day-300 plus 2.1-year restoration is
+  split into six durable batches instead of one mobile-hostile transaction.
+- A rejected durable batch is rolled back to the last committed state and
+  retried at progressively smaller sizes: 24, 12, 6, 3 and 1 quantum.
+- If even one quantum cannot be written, only offline catch-up is abandoned;
+  the saved world continues from its last confirmed point instead of killing
+  the live worker.
+- A fatal worker from one stale tab is no longer broadcast as a false world
+  failure to every other Ainkrad tab.
+- Catch-up failures now expose their real message in the visible restoration
+  panel instead of leaving an unexplained 0% indicator.
+- The hotfix is prepared as uncommitted changes on GitHub parent
+  `2a96ac62764db4df848543f16ed3d1d999dc650a`. The assistant performed no
+  commit, push or Vercel write.

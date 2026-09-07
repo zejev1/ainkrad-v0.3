@@ -1,0 +1,45 @@
+{
+  "release": "v0.3.18-mobile-catchup-hotfix",
+  "generatedAtUtc": "2026-09-07",
+  "sourceAuthority": {
+    "repository": "https://github.com/zejev1/ainkrad-v0.3.git",
+    "branch": "main",
+    "githubParent": "2a96ac62764db4df848543f16ed3d1d999dc650a",
+    "githubWritePerformed": false,
+    "vercelWritePerformed": false
+  },
+  "rootCauseEvidence": {
+    "reportedStartDay": 300,
+    "requestedCatchUpYears": 2.1,
+    "oldBatchCount": 1,
+    "oldBatchBytes": 1568171,
+    "oldBatchEvents": 2715,
+    "oldBatchMemories": 417,
+    "failureSurface": "mobile IndexedDB durable transaction"
+  },
+  "hotfixEvidence": {
+    "maximumSemanticQuantaPerBatch": 24,
+    "adaptiveRetryQuanta": [24, 12, 6, 3, 1],
+    "newBatchCount": 6,
+    "largestBatchBytes": 479715,
+    "largestBatchEvents": 547,
+    "largestBatchMemories": 88,
+    "targetReached": true,
+    "livingResidentsAtTarget": 12,
+    "savedWorldSurvivesCatchUpFailure": true,
+    "fatalErrorsAreTabLocal": true
+  },
+  "verification": {
+    "typecheckPassed": true,
+    "targetedTestFilesPassed": 2,
+    "targetedTestsPassed": 8,
+    "fullTestFilesPassed": 39,
+    "fullTestsPassed": 166,
+    "fullTestsDurationSeconds": 205.26,
+    "productionBuildPassed": true,
+    "workerBundleKilobytes": 481.66,
+    "applicationBundleKilobytes": 135.44,
+    "cssBundleKilobytes": 40.68,
+    "liveProductionVerificationRequiredAfterUserPush": true
+  }
+}

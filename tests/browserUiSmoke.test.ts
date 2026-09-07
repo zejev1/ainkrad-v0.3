@@ -39,6 +39,7 @@ describe('SPCK browser UI smoke contract', () => {
     expect(browserSource).toContain("document.addEventListener('visibilitychange'");
     expect(browserSource).toContain('resumeOfflineClockFromStoredAnchor');
     expect(browserSource).toContain("event.data.type === 'catch_up_progress'");
+    expect(browserSource).toContain("event.data.type === 'catch_up_recovery'");
     expect(browserSource).toContain('conversation.observerAudible');
     expect(browserSource).toContain(
       'cardinalActivity.authorizationDecisionCount > 0',

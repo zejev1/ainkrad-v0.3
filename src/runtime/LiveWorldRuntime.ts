@@ -85,6 +85,13 @@ import {
 } from '../v15/WorldHealthReportV15';
 
 const WORLD_TIME_EPSILON = 1e-7;
+/**
+ * IndexedDB on mobile browsers can abort one transaction when several years
+ * of resident events are written at once. Twenty-four semantic quanta are
+ * roughly four months of Ainkrad time: large enough for fast restoration,
+ * while keeping every durable transaction small enough for a phone.
+ */
+export const OFFLINE_CATCH_UP_MAX_BATCH_QUANTA = 24;
 // Keep the highly formative first two years at one durable revision per
 // semantic quantum. Mature worlds then batch quiet quanta, which is where
 // decade-scale ×10/×100 runs otherwise become I/O bound.
@@ -1016,9 +1023,9 @@ export class LiveWorldRuntime {
 
   /**
    * Fast closed-tab restoration. Resident dynamics still execute every fixed
-   * semantic quantum inside WorldEngine, but quiet time is committed in one
-   * bounded five-year transaction instead of hundreds of separate IndexedDB
-   * writes. Cardinal still observes every normal five-year boundary and every
+   * semantic quantum inside WorldEngine, but quiet time is committed in
+   * bounded mobile-safe transactions instead of one IndexedDB write per
+   * quantum. Cardinal still observes every normal five-year boundary and every
    * critical-population boundary. A birth/death inside a compressed interval
    * is preserved in world evidence and triggers an observation at the batch
    * boundary; it does not reopen four extra database commits while the tab is
@@ -1026,12 +1033,21 @@ export class LiveWorldRuntime {
    */
   async catchUpBatchTo(
     requestedTargetWorldMinutes: number,
+    requestedMaxBatchQuanta?: number,
   ): Promise<OfflineCatchUpBatchResult> {
     if (
       !Number.isFinite(requestedTargetWorldMinutes) ||
       requestedTargetWorldMinutes < 0
     ) {
       throw new Error('Offline catch-up target must be finite and non-negative.');
+    }
+    const maxBatchQuanta =
+      requestedMaxBatchQuanta ??
+      (this.continuity.durable
+        ? OFFLINE_CATCH_UP_MAX_BATCH_QUANTA
+        : 300);
+    if (!Number.isInteger(maxBatchQuanta) || maxBatchQuanta < 1) {
+      throw new Error('Offline catch-up batch limit must be a positive integer.');
     }
     const before = this.world.runtimeStateView();
     const fromWorldMinutes = before.calendar.elapsedWorldMinutes;
@@ -1071,11 +1087,12 @@ export class LiveWorldRuntime {
       // persistence operation.
       quantaInBatch = Math.max(1, 60 - (quantumIndex % 60));
     } else {
-      // Commit once at the next normal Cardinal boundary. All 300 resident
-      // quanta still execute in order inside WorldEngine; only redundant
-      // persistence and frame rendering are compressed.
+      // Aim at the next normal Cardinal boundary. The mobile-safe limit below
+      // may split that interval, but every resident quantum still executes in
+      // order and the exact Cardinal boundary remains observable.
       quantaInBatch = Math.max(1, 300 - (quantumIndex % 300));
     }
+    quantaInBatch = Math.min(quantaInBatch, maxBatchQuanta);
     const batchTarget = Math.min(
       targetWorldMinutes,
       fromWorldMinutes + quantaInBatch * quantum,

@@ -2820,6 +2820,13 @@ type LiveWorldWorkerMessage =
       completed: boolean;
     }
   | {
+      type: 'catch_up_recovery';
+      protocolVersion: string;
+      message: string;
+      batchQuanta: number;
+      abandoned: boolean;
+    }
+  | {
       type: 'fatal';
       protocolVersion: string;
       message: string;
@@ -3102,6 +3109,28 @@ liveWorldWorker.addEventListener(
       }
       return;
     }
+    if (event.data.type === 'catch_up_recovery') {
+      if (event.data.abandoned) {
+        offlineCatchUpTargetWorldMinutes = undefined;
+        catchUpOverlay.hidden = true;
+        offlineClockStatus.textContent =
+          'Догон остановлен, мир продолжает жить с последнего сохранённого момента';
+        offlineClockStatus.classList.remove('is-catching-up');
+        cardinalMessage.textContent =
+          `Браузер не смог записать даже минимальный пакет догона: ${event.data.message}. ` +
+          'Сохранённый мир не удалён и продолжает жить с последней подтверждённой точки.';
+      } else {
+        catchUpOverlay.hidden = false;
+        catchUpTitle.textContent = 'Уменьшаем пакет и продолжаем';
+        catchUpDetail.textContent =
+          `Мобильный браузер отклонил крупную запись. Повторяем безопаснее: ` +
+          `${event.data.batchQuanta} смысловых шагов в пакете.`;
+        offlineClockStatus.textContent =
+          `Догон продолжается меньшими пакетами · сохранение не повреждено`;
+        offlineClockStatus.classList.add('is-catching-up');
+      }
+      return;
+    }
     if (event.data.type === 'divine_audience_result') {
       if (event.data.requestId !== divineAudienceRequestId) return;
       divineAudienceRequestPending = false;
@@ -3115,13 +3144,24 @@ liveWorldWorker.addEventListener(
     }
 
     liveLabel.textContent = 'ОШИБКА МИРА';
+    liveLabel.title = event.data.message;
     liveIndicator.classList.remove('is-live');
     cardinalMessage.textContent = event.data.message;
+    if (offlineCatchUpTargetWorldMinutes !== undefined) {
+      catchUpTitle.textContent = 'Догон остановлен';
+      catchUpDetail.textContent = event.data.message;
+    }
   },
 );
 
 liveWorldWorker.addEventListener('error', () => {
   liveLabel.textContent = 'ОШИБКА МИРА';
+  liveLabel.title = 'Фоновый цикл мира остановился.';
   liveIndicator.classList.remove('is-live');
   cardinalMessage.textContent = 'Фоновый цикл мира остановился.';
+  if (offlineCatchUpTargetWorldMinutes !== undefined) {
+    catchUpTitle.textContent = 'Догон остановлен';
+    catchUpDetail.textContent =
+      'Фоновый цикл мира остановился. Перезагрузка продолжит с последней сохранённой точки.';
+  }
 });
