@@ -37,13 +37,20 @@ import {
 import type {
   AgentActionKind,
   AgentState,
-  DivineCallingRole,
+  DivineContactKind,
   DivineGiftKind,
   RelationshipState,
   WildlifeSpecies,
   WorldPlaceKind,
   WorldState,
 } from './world/types';
+import type {
+  V19AdventureAbility,
+  V19AdventureRank,
+  V19DivineInterpretation,
+  V19PrayerRecord,
+  V19PrayerTopic,
+} from './v19/types';
 import { projectedResidentPosition } from './presentation/ResidentMotionProjection';
 import {
   inspectPlaceV16,
@@ -123,6 +130,26 @@ const livelihoodStageLabels: Readonly<Record<V18LivelihoodStage, string>> = {
   master: 'мастер',
 };
 
+const adventureRankLabels: Readonly<Record<V19AdventureRank, string>> = {
+  unranked: 'без ранга',
+  F: 'F',
+  E: 'E',
+  D: 'D',
+  C: 'C',
+  B: 'B',
+  A: 'A',
+  S: 'S',
+};
+
+const adventureAbilityLabels: Readonly<Record<V19AdventureAbility, string>> = {
+  guardian_stance: 'стойка защитника',
+  pathfinder: 'следопыт',
+  keen_edge: 'точный удар',
+  rapid_recovery: 'быстрое восстановление',
+  mana_sense: 'чувство маны',
+  treasure_appraisal: 'оценка сокровищ',
+};
+
 const goalLabels: Record<AgentState['goal']['kind'], string> = {
   recover: 'восстановиться',
   secure_resources: 'обеспечить себя',
@@ -153,6 +180,8 @@ const skillLabels: Record<keyof AgentState['skills'], string> = {
 
 const raceLabels: Record<NonNullable<AgentState['race']>, string> = {
   human: 'человек',
+  elf: 'эльф',
+  dwarf: 'гном',
   goblin: 'гоблин',
   orc: 'орк',
   ogre: 'огр',
@@ -298,7 +327,7 @@ app.innerHTML = `
   <div class="ainkrad-app">
     <header class="world-header">
       <div>
-        <p class="eyebrow">AINKRAD v0.3.18 · путь к Underworld</p>
+        <p class="eyebrow">AINKRAD v0.3.19 · путь к Underworld</p>
         <h1 id="world-title">Мир · уровень 1</h1>
         <p class="world-subtitle">Время регулируется снаружи. Жители сами расширяют карту и проживают поколения.</p>
       </div>
@@ -428,6 +457,7 @@ app.innerHTML = `
             <div><dt>Тело</dt><dd id="resident-physiology">—</dd></div>
             <div><dt>Характер</dt><dd id="resident-traits">—</dd></div>
             <div><dt>Дело жизни</dt><dd id="resident-profession">—</dd></div>
+            <div><dt>Приключения</dt><dd id="resident-adventure">—</dd></div>
             <div><dt>Сильный навык</dt><dd id="resident-skill">—</dd></div>
             <div><dt>Выбор</dt><dd id="resident-choice">—</dd></div>
           </dl>
@@ -466,6 +496,21 @@ app.innerHTML = `
           </button>
         </section>
 
+        <section class="adventure-panel" aria-live="polite">
+          <div class="panel-heading-row">
+            <p class="panel-label">Подземелья и экономика</p>
+            <span class="adventure-mark">САМИ ИДУТ</span>
+          </div>
+          <div class="adventure-numbers">
+            <span><strong id="dungeon-count">0</strong>подземелий</span>
+            <span><strong id="adventurer-count">0</strong>искателей</span>
+            <span><strong id="artifact-count">0</strong>артефактов</span>
+            <span><strong id="trade-volume">0</strong>оборот</span>
+          </div>
+          <p class="adventure-latest" id="adventure-latest">Жители ещё не нашли входы в подземелья.</p>
+          <p class="adventure-economy-note" id="adventure-economy-note">Монеты и добыча не телепортируются: их переносят сами жители.</p>
+        </section>
+
         <section class="event-panel">
           <div class="panel-heading-row">
             <p class="panel-label">Жизнь мира</p>
@@ -478,6 +523,9 @@ app.innerHTML = `
             <strong>Подслушано в мире</strong>
             <div id="conversation-feed">Пока рядом не слышно разговора.</div>
           </div>
+          <button class="prayer-inbox-open" id="prayer-inbox-open" type="button">
+            Молитвы жителей <span id="prayer-unread-count">0</span>
+          </button>
         </section>
 
         <section class="cardinal-panel">
@@ -544,6 +592,27 @@ app.innerHTML = `
         <p class="world-inspector__evidence" id="world-inspector-evidence"></p>
       </section>
     </div>
+    <div class="prayer-inbox" id="prayer-inbox" hidden>
+      <section class="prayer-inbox__sheet" role="dialog" aria-modal="true" aria-labelledby="prayer-inbox-title">
+        <header>
+          <div>
+            <p class="prayer-inbox__badge">ЛИЧНЫЕ ОБРАЩЕНИЯ</p>
+            <h2 id="prayer-inbox-title">Молитвы жителей</h2>
+            <p id="prayer-inbox-summary">Здесь появляются реальные обращения из прожитой жизни NPC.</p>
+          </div>
+          <button id="prayer-inbox-close" type="button" aria-label="Закрыть молитвы">×</button>
+        </header>
+        <div class="prayer-inbox__filters">
+          <label>Поселение<select id="prayer-filter-settlement"><option value="">Все поселения</option></select></label>
+          <label>Житель<input id="prayer-filter-npc" type="search" placeholder="Имя жителя" /></label>
+          <label>Тема<select id="prayer-filter-topic"><option value="">Все темы</option></select></label>
+          <label>Вера<select id="prayer-filter-belief"><option value="">Любая</option><option value="high">Высокая</option><option value="low">Низкая или сомнение</option></select></label>
+          <label>Отчаяние<select id="prayer-filter-desperation"><option value="">Любое</option><option value="high">Сильное</option><option value="low">Невысокое</option></select></label>
+          <label>Порядок<select id="prayer-filter-order"><option value="newest">Сначала новые</option><option value="important">Сначала важные</option><option value="frequent">Часто молящиеся</option></select></label>
+        </div>
+        <div class="prayer-inbox__list" id="prayer-inbox-list"></div>
+      </section>
+    </div>
     <div class="divine-audience" id="divine-audience" hidden>
       <section class="divine-audience__sheet" role="dialog" aria-modal="true" aria-labelledby="divine-audience-title">
         <header>
@@ -561,28 +630,36 @@ app.innerHTML = `
           <label>Имя религии <small>(необязательно)</small>
             <input id="divine-religion-name" maxlength="64" placeholder="Например: Путь Создателя" />
           </label>
-          <label>Ваши слова этому жителю
-            <textarea id="divine-message" maxlength="480" required rows="4" placeholder="Скажите, зачем вы избрали именно его…"></textarea>
+          <label>Способ контакта
+            <select id="divine-contact-kind">
+              <option value="">Без прямого контакта</option>
+              <option value="message">Сообщение</option>
+              <option value="revelation">Откровение</option>
+              <option value="command">Приказ</option>
+              <option value="request">Просьба</option>
+              <option value="warning">Предупреждение</option>
+              <option value="vision">Видение</option>
+              <option value="sign">Неоднозначный знак</option>
+            </select>
           </label>
-          <label>Один дар
+          <label>Ваши слова или смысл знака
+            <textarea id="divine-message" maxlength="480" rows="4" placeholder="Житель услышит это только при выбранном контакте…"></textarea>
+          </label>
+          <label>Дар <small>(необязательно)</small>
             <select id="divine-gift">
+              <option value="">Без дара</option>
+              <option value="longevity">Долголетие</option>
               <option value="might">Сила</option>
               <option value="genius_inventor">Ум и дар изобретателя</option>
               <option value="crowd_charisma">Очарование и внушение толпе</option>
-              <option value="demon_king_hero">Герой, способный победить короля демонов</option>
+              <option value="healing_touch">Дар исцеления</option>
+              <option value="demon_king_hero">Комплексный дар уровня героя</option>
             </select>
           </label>
           <p class="divine-audience__gift-note" id="divine-gift-note"></p>
-          <label>Предложить призвание
-            <select id="divine-calling">
-              <option value="hero">Герой</option>
-              <option value="messenger">Посланник</option>
-              <option value="priest">Священник</option>
-            </select>
-          </label>
-          <p class="divine-audience__choice-note">Дар будет дан сразу. Призвание житель принимает или отвергает сам.</p>
+          <p class="divine-audience__choice-note">Дар не меняет профессию, характер или судьбу. Приказ не отнимает свободу воли. Священником или героем житель может стать только через собственную жизнь и признание окружающих.</p>
           <p class="divine-audience__status" id="divine-audience-status" aria-live="polite"></p>
-          <button class="divine-audience__grant" id="divine-audience-grant" type="submit">Обратиться и даровать</button>
+          <button class="divine-audience__grant" id="divine-audience-grant" type="submit">Совершить божественное действие</button>
         </form>
       </section>
     </div>
@@ -653,6 +730,7 @@ const residentEmotion = requiredElement<HTMLElement>('resident-emotion');
 const residentPhysiology = requiredElement<HTMLElement>('resident-physiology');
 const residentTraits = requiredElement<HTMLElement>('resident-traits');
 const residentProfession = requiredElement<HTMLElement>('resident-profession');
+const residentAdventure = requiredElement<HTMLElement>('resident-adventure');
 const residentSkill = requiredElement<HTMLElement>('resident-skill');
 const residentChoice = requiredElement<HTMLElement>('resident-choice');
 const relationshipNote = requiredElement<HTMLElement>('relationship-note');
@@ -660,6 +738,12 @@ const residentDetailsOpen = requiredElement<HTMLButtonElement>('resident-details
 const privateAudienceOpen = requiredElement<HTMLButtonElement>('private-audience-open');
 const eventFeed = requiredElement<HTMLOListElement>('event-feed');
 const conversationFeed = requiredElement<HTMLElement>('conversation-feed');
+const dungeonCount = requiredElement<HTMLElement>('dungeon-count');
+const adventurerCount = requiredElement<HTMLElement>('adventurer-count');
+const artifactCount = requiredElement<HTMLElement>('artifact-count');
+const tradeVolume = requiredElement<HTMLElement>('trade-volume');
+const adventureLatest = requiredElement<HTMLElement>('adventure-latest');
+const adventureEconomyNote = requiredElement<HTMLElement>('adventure-economy-note');
 const energyValue = requiredElement<HTMLElement>('energy-value');
 const energyBar = requiredElement<HTMLElement>('energy-bar');
 const stressValue = requiredElement<HTMLElement>('stress-value');
@@ -689,6 +773,18 @@ const worldInspectorTitle = requiredElement<HTMLElement>('world-inspector-title'
 const worldInspectorSubtitle = requiredElement<HTMLElement>('world-inspector-subtitle');
 const worldInspectorContent = requiredElement<HTMLElement>('world-inspector-content');
 const worldInspectorEvidence = requiredElement<HTMLElement>('world-inspector-evidence');
+const prayerInboxOpen = requiredElement<HTMLButtonElement>('prayer-inbox-open');
+const prayerUnreadCount = requiredElement<HTMLElement>('prayer-unread-count');
+const prayerInbox = requiredElement<HTMLElement>('prayer-inbox');
+const prayerInboxClose = requiredElement<HTMLButtonElement>('prayer-inbox-close');
+const prayerInboxSummary = requiredElement<HTMLElement>('prayer-inbox-summary');
+const prayerInboxList = requiredElement<HTMLElement>('prayer-inbox-list');
+const prayerFilterSettlement = requiredElement<HTMLSelectElement>('prayer-filter-settlement');
+const prayerFilterNpc = requiredElement<HTMLInputElement>('prayer-filter-npc');
+const prayerFilterTopic = requiredElement<HTMLSelectElement>('prayer-filter-topic');
+const prayerFilterBelief = requiredElement<HTMLSelectElement>('prayer-filter-belief');
+const prayerFilterDesperation = requiredElement<HTMLSelectElement>('prayer-filter-desperation');
+const prayerFilterOrder = requiredElement<HTMLSelectElement>('prayer-filter-order');
 const divineAudience = requiredElement<HTMLElement>('divine-audience');
 const divineAudienceClose = requiredElement<HTMLButtonElement>('divine-audience-close');
 const divineAudienceForm = requiredElement<HTMLFormElement>('divine-audience-form');
@@ -696,9 +792,9 @@ const divineAudienceSubtitle = requiredElement<HTMLElement>('divine-audience-sub
 const divineDeityName = requiredElement<HTMLInputElement>('divine-deity-name');
 const divineReligionName = requiredElement<HTMLInputElement>('divine-religion-name');
 const divineMessage = requiredElement<HTMLTextAreaElement>('divine-message');
+const divineContactKind = requiredElement<HTMLSelectElement>('divine-contact-kind');
 const divineGift = requiredElement<HTMLSelectElement>('divine-gift');
 const divineGiftNote = requiredElement<HTMLElement>('divine-gift-note');
-const divineCalling = requiredElement<HTMLSelectElement>('divine-calling');
 const divineAudienceStatus = requiredElement<HTMLElement>('divine-audience-status');
 const divineAudienceGrant = requiredElement<HTMLButtonElement>('divine-audience-grant');
 
@@ -721,6 +817,8 @@ let cardinalConsoleSnapshot: CardinalConsoleSnapshot | undefined;
 let highlightedPlaceIds = new Set<string>();
 let divineAudienceRequestId: string | undefined;
 let divineAudienceRequestPending = false;
+let activePrayerId: string | undefined;
+let lastSeenPrayerSequence = 0;
 let inspectedEntity:
   | { kind: 'resident' | 'wildlife' | 'place'; id: string }
   | undefined;
@@ -735,6 +833,7 @@ type CardinalConsoleTab =
 const CLOCK_PREFERENCE_KEY = 'ainkrad-v0.3.external-clock';
 const OFFLINE_CLOCK_ANCHOR_KEY = 'ainkrad-v0.3.offline-clock-anchor';
 const TEXT_SCALE_KEY = 'ainkrad-v0.3.text-scale';
+const LAST_SEEN_PRAYER_KEY = 'ainkrad-v0.3.last-seen-prayer-sequence';
 const TEXT_SCALE_STEPS = [1, 1.15, 1.3] as const;
 let preferredSpeedId: WorldSpeedId = DEFAULT_WORLD_SPEED_ID;
 let preferredSpeedMultiplier: WorldSpeedMultiplier =
@@ -778,6 +877,15 @@ try {
   }
 } catch {
   // Readability still has a useful mobile-first default without storage.
+}
+
+try {
+  const storedSequence = Number(localStorage.getItem(LAST_SEEN_PRAYER_KEY));
+  if (Number.isInteger(storedSequence) && storedSequence >= 0) {
+    lastSeenPrayerSequence = storedSequence;
+  }
+} catch {
+  // The prayer feed remains usable even when local preferences are blocked.
 }
 
 function applyTextScale(): void {
@@ -1098,42 +1206,60 @@ function closeWorldInspector(): void {
 }
 
 const divineGiftDescriptions: Readonly<Record<DivineGiftKind, string>> = {
+  longevity: 'Продлевает жизнь и устойчивость к старению, не меняя профессию и личность.',
   might: 'Почти предельная сила и выносливость, а также высокая боевая подготовка.',
   genius_inventor: 'Предельная способность учиться, изобретать и воплощать новые конструкции.',
   crowd_charisma: 'Предельное обаяние и сила убеждения; слушатели всё равно сохраняют свободу выбора.',
-  demon_king_hero: 'Уровень 100, сила, ум, проворность, мастерство воина, максимальная выносливость и лёгкие дальние походы.',
+  healing_touch: 'Позволяет добровольно помогать больным и раненым; получатель помощи может отказаться.',
+  demon_king_hero: 'Уровень 100, сила, ум, проворность, мастерство воина, максимальная выносливость и лёгкие дальние походы. Это набор способностей, а не роль героя.',
 };
 
-function selectedDivineGift(): DivineGiftKind {
-  return ['might', 'genius_inventor', 'crowd_charisma', 'demon_king_hero'].includes(
+function selectedDivineGift(): DivineGiftKind | undefined {
+  return ['longevity', 'might', 'genius_inventor', 'crowd_charisma', 'healing_touch', 'demon_king_hero'].includes(
     divineGift.value,
   )
     ? divineGift.value as DivineGiftKind
-    : 'might';
+    : undefined;
 }
 
-function selectedDivineCalling(): DivineCallingRole {
-  return ['hero', 'messenger', 'priest'].includes(divineCalling.value)
-    ? divineCalling.value as DivineCallingRole
-    : 'hero';
+function selectedDivineContactKind(): DivineContactKind | undefined {
+  return ['message', 'revelation', 'command', 'request', 'warning', 'vision', 'sign'].includes(
+    divineContactKind.value,
+  )
+    ? divineContactKind.value as DivineContactKind
+    : undefined;
 }
 
 function updateDivineGiftNote(): void {
-  divineGiftNote.textContent = divineGiftDescriptions[selectedDivineGift()];
+  const gift = selectedDivineGift();
+  divineGiftNote.textContent = gift
+    ? divineGiftDescriptions[gift]
+    : 'Можно передать только слова, предупреждение, просьбу, видение или знак — без дара.';
 }
 
-function openPrivateDivineAudience(): void {
+function updateDivineContactRequirements(): void {
+  const contact = selectedDivineContactKind();
+  divineMessage.required = contact !== undefined;
+  divineMessage.placeholder = contact
+    ? 'Передайте жителю сообщение или смысл знака…'
+    : 'При даре без контакта житель не узнает источник автоматически.';
+}
+
+function openPrivateDivineAudience(prayerId?: string): void {
   if (!lastFrame || !selectedAgentId || offlineCatchUpTargetWorldMinutes !== undefined) return;
   const agent = lastFrame.world.agents[selectedAgentId];
-  if (!agent?.life.alive || agent.privateDivineCalling) return;
+  if (!agent?.life.alive) return;
+  activePrayerId = prayerId;
   divineAudienceRequestId = undefined;
   divineAudienceRequestPending = false;
   divineAudienceGrant.disabled = false;
   divineAudienceStatus.textContent = '';
   divineMessage.value = '';
+  divineContactKind.value = prayerId ? 'message' : '';
   divineAudienceSubtitle.textContent =
-    `Время мира и старение ${agent.name} остановлены до закрытия этой аудиенции.`;
+    `${prayerId ? 'Ответ на молитву. ' : ''}Время мира и старение ${agent.name} остановлены до закрытия этой аудиенции.`;
   updateDivineGiftNote();
+  updateDivineContactRequirements();
   persistOfflineClockAnchor(lastFrame, Date.now());
   liveWorldWorker.postMessage({
     type: 'set_divine_audience_pause',
@@ -1147,6 +1273,7 @@ function openPrivateDivineAudience(): void {
 function closePrivateDivineAudience(): void {
   if (divineAudienceRequestPending) return;
   divineAudience.hidden = true;
+  activePrayerId = undefined;
   document.body.classList.remove('has-modal');
   offlineCatchUpTargetWorldMinutes = undefined;
   pendingOfflineClockAnchor = undefined;
@@ -1155,6 +1282,195 @@ function closePrivateDivineAudience(): void {
     type: 'set_divine_audience_pause',
     paused: false,
   });
+}
+
+const prayerTopicLabels: Readonly<Record<V19PrayerTopic, string>> = {
+  health: 'здоровье',
+  family: 'семья',
+  grief: 'утрата',
+  hunger: 'голод',
+  harvest: 'урожай',
+  war: 'война',
+  danger: 'опасность',
+  travel: 'путешествие',
+  poverty: 'бедность',
+  gratitude: 'благодарность',
+  purpose: 'смысл жизни',
+};
+
+function prayerStrength(value: number): string {
+  return value >= 0.7 ? 'высокая' : value >= 0.4 ? 'средняя' : 'низкая';
+}
+
+function prayerDesperation(value: number): string {
+  return value >= 0.72 ? 'сильное' : value >= 0.42 ? 'заметное' : 'невысокое';
+}
+
+function populatePrayerFilters(world: Readonly<WorldState>): void {
+  const selectedSettlement = prayerFilterSettlement.value;
+  const settlementIds = new Map<string, string>();
+  for (const prayer of world.v19?.divineAgency.recentPrayers ?? []) {
+    if (prayer.evidence.settlementId && prayer.evidence.settlementName) {
+      settlementIds.set(prayer.evidence.settlementId, prayer.evidence.settlementName);
+    }
+  }
+  const settlementOptions = [new Option('Все поселения', '')];
+  for (const [id, name] of [...settlementIds].sort((left, right) =>
+    left[1].localeCompare(right[1], 'ru'),
+  )) {
+    settlementOptions.push(new Option(name, id));
+  }
+  prayerFilterSettlement.replaceChildren(...settlementOptions);
+  prayerFilterSettlement.value = settlementIds.has(selectedSettlement)
+    ? selectedSettlement
+    : '';
+  if (prayerFilterTopic.options.length === 1) {
+    for (const [topic, label] of Object.entries(prayerTopicLabels)) {
+      prayerFilterTopic.add(new Option(label, topic));
+    }
+  }
+}
+
+function prayerCard(world: Readonly<WorldState>, prayer: Readonly<V19PrayerRecord>): HTMLElement {
+  const card = document.createElement('article');
+  card.className = `prayer-card${prayer.response ? ' is-answered' : ''}`;
+  const heading = document.createElement('header');
+  const identity = document.createElement('strong');
+  identity.textContent = `${prayer.npcName}, ${Math.floor(prayer.npcAgeYears)} лет`;
+  const place = document.createElement('span');
+  place.textContent = prayer.evidence.settlementName ??
+    localizedPlaceName(world.places[prayer.evidence.locationId]?.name ?? prayer.evidence.locationId);
+  heading.append(identity, place);
+
+  const recipient = document.createElement('p');
+  recipient.className = 'prayer-card__recipient';
+  recipient.textContent = `Кому: ${prayer.deityKnown ? prayer.deityName : 'неизвестному возможному божеству'} · ${formatAinkradWorldTime(prayer.worldMinute)}`;
+  const quote = document.createElement('blockquote');
+  quote.textContent = `«${prayer.generatedPrayerText}»`;
+  const context = document.createElement('dl');
+  for (const [label, value] of [
+    ['Причина', prayer.triggerEvent],
+    ['Желание', prayer.desiredOutcome],
+    ['Тема', prayerTopicLabels[prayer.topic]],
+    ['Состояние', prayer.emotionalState],
+    ['Сила веры', prayerStrength(prayer.beliefStrength)],
+    ['Отчаяние', prayerDesperation(prayer.desperation)],
+  ]) {
+    const row = document.createElement('div');
+    const term = document.createElement('dt');
+    const description = document.createElement('dd');
+    term.textContent = label;
+    description.textContent = value;
+    row.append(term, description);
+    context.append(row);
+  }
+  if (prayer.response) {
+    const response = document.createElement('p');
+    response.className = 'prayer-card__response';
+    response.textContent = `После вмешательства: «${prayer.response.residentResponse}»`;
+    card.append(heading, recipient, quote, context, response);
+  } else {
+    card.append(heading, recipient, quote, context);
+  }
+  const actions = document.createElement('div');
+  actions.className = 'prayer-card__actions';
+  const openNpc = document.createElement('button');
+  openNpc.type = 'button';
+  openNpc.textContent = 'Открыть NPC';
+  openNpc.addEventListener('click', () => {
+    selectedAgentId = prayer.npcId;
+    closePrayerInbox();
+    updateSelection();
+    openWorldInspector('resident', prayer.npcId);
+  });
+  const answer = document.createElement('button');
+  answer.type = 'button';
+  answer.textContent = prayer.response ? 'Новое действие' : 'Ответить или дать дар';
+  answer.disabled = !world.agents[prayer.npcId]?.life.alive;
+  answer.addEventListener('click', () => {
+    selectedAgentId = prayer.npcId;
+    closePrayerInbox();
+    updateSelection();
+    openPrivateDivineAudience(prayer.id);
+  });
+  actions.append(openNpc, answer);
+  card.append(actions);
+  return card;
+}
+
+function filteredPrayers(world: Readonly<WorldState>): V19PrayerRecord[] {
+  const agency = world.v19?.divineAgency;
+  if (!agency) return [];
+  const npcQuery = prayerFilterNpc.value.trim().toLocaleLowerCase('ru');
+  const settlementId = prayerFilterSettlement.value;
+  const topic = prayerFilterTopic.value;
+  const prayers = agency.recentPrayers.filter((prayer) =>
+    (!settlementId || prayer.evidence.settlementId === settlementId) &&
+    (!npcQuery || prayer.npcName.toLocaleLowerCase('ru').includes(npcQuery)) &&
+    (!topic || prayer.topic === topic) &&
+    (prayerFilterBelief.value !== 'high' || prayer.beliefStrength >= 0.65) &&
+    (prayerFilterBelief.value !== 'low' || prayer.beliefStrength < 0.4) &&
+    (prayerFilterDesperation.value !== 'high' || prayer.desperation >= 0.7) &&
+    (prayerFilterDesperation.value !== 'low' || prayer.desperation < 0.4)
+  );
+  return prayers.sort((left, right) => {
+    if (prayerFilterOrder.value === 'important') {
+      return right.importance - left.importance || right.sequence - left.sequence;
+    }
+    if (prayerFilterOrder.value === 'frequent') {
+      const leftCount = agency.byAgentId[left.npcId]?.totalPrayerCount ?? 0;
+      const rightCount = agency.byAgentId[right.npcId]?.totalPrayerCount ?? 0;
+      return rightCount - leftCount || right.sequence - left.sequence;
+    }
+    return right.sequence - left.sequence;
+  });
+}
+
+function renderPrayerInbox(world: Readonly<WorldState>): void {
+  const agency = world.v19?.divineAgency;
+  const latestSequence = Math.max(0, (agency?.nextPrayerSequence ?? 1) - 1);
+  const unread = Math.max(0, latestSequence - lastSeenPrayerSequence);
+  prayerUnreadCount.textContent = unread > 99 ? '99+' : String(unread);
+  prayerInboxOpen.classList.toggle('has-unread', unread > 0);
+  if (!agency || prayerInbox.hidden) return;
+  populatePrayerFilters(world);
+  const visible = filteredPrayers(world);
+  prayerInboxSummary.textContent =
+    `Всего молитв в истории: ${agency.totalPrayerCount}. ` +
+    `Подробно сохранены последние ${agency.recentPrayers.length}; более ранние учтены в счётчиках. ` +
+    `По фильтру: ${visible.length}.`;
+  prayerInboxList.replaceChildren();
+  if (visible.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'prayer-inbox__empty';
+    empty.textContent = 'Под эти фильтры молитв пока нет.';
+    prayerInboxList.append(empty);
+    return;
+  }
+  prayerInboxList.append(...visible.map((prayer) => prayerCard(world, prayer)));
+}
+
+function openPrayerInbox(): void {
+  if (!lastFrame) return;
+  prayerInbox.hidden = false;
+  document.body.classList.add('has-modal');
+  const latest = Math.max(
+    0,
+    (lastFrame.world.v19?.divineAgency.nextPrayerSequence ?? 1) - 1,
+  );
+  lastSeenPrayerSequence = latest;
+  try {
+    localStorage.setItem(LAST_SEEN_PRAYER_KEY, String(latest));
+  } catch {
+    // Read status may reset after reload when local preferences are blocked.
+  }
+  renderPrayerInbox(lastFrame.world);
+  prayerInboxClose.focus();
+}
+
+function closePrayerInbox(): void {
+  prayerInbox.hidden = true;
+  document.body.classList.remove('has-modal');
 }
 
 function renderRoads(world: Readonly<WorldState>): void {
@@ -1281,6 +1597,11 @@ function renderPlaces(world: Readonly<WorldState>): void {
     placeElements.delete(placeId);
   }
   const agentIds = Object.keys(world.agents);
+  const dungeonByEntrance = new Map(
+    Object.values(world.v19?.adventureEconomy.dungeonsById ?? {}).map(
+      (dungeon) => [dungeon.entrancePlaceId, dungeon] as const,
+    ),
+  );
   for (const [placeId, place] of Object.entries(world.places)) {
     const homeAgentIndex = agentIds.findIndex(
       (agentId) => world.agents[agentId]?.homeId === placeId,
@@ -1315,14 +1636,64 @@ function renderPlaces(world: Readonly<WorldState>): void {
     );
     placeElement.dataset.claimedBy = place.claimedBySettlementId ?? '';
     placeElement.classList.toggle('is-highlighted', highlightedPlaceIds.has(placeId));
+    const dungeon = dungeonByEntrance.get(placeId);
+    placeElement.classList.toggle('has-dungeon', dungeon !== undefined);
+    placeElement.dataset.dungeonRank = dungeon?.rank ?? '';
     placeElement.style.left = `${point.x}%`;
     placeElement.style.top = `${point.y}%`;
-    placeElement.setAttribute('aria-label', point.label);
+    placeElement.setAttribute(
+      'aria-label',
+      dungeon ? `${point.label}; вход в подземелье ранга ${dungeon.rank}` : point.label,
+    );
     const symbol = placeElement.querySelector<HTMLElement>('.place-symbol');
     const label = placeElement.querySelector<HTMLElement>('.place-label');
     if (symbol) symbol.textContent = point.symbol;
     if (label) label.textContent = point.label;
   }
+}
+
+function renderAdventurePanel(world: Readonly<WorldState>): void {
+  const adventure = world.v19?.adventureEconomy;
+  if (!adventure) {
+    dungeonCount.textContent = '0';
+    adventurerCount.textContent = '0';
+    artifactCount.textContent = '0';
+    tradeVolume.textContent = '0';
+    adventureLatest.textContent = 'Система продолжает старое сохранение.';
+    return;
+  }
+  const dungeons = Object.values(adventure.dungeonsById);
+  const profiles = Object.values(adventure.adventurersByAgentId);
+  const artifacts = Object.values(adventure.artifactsById);
+  const treasury = Object.values(adventure.settlementMarketsById).reduce(
+    (sum, market) => sum + market.treasuryCoin,
+    0,
+  );
+  dungeonCount.textContent = String(dungeons.length);
+  adventurerCount.textContent = String(
+    profiles.filter((profile) => profile.dungeonRuns > 0).length,
+  );
+  artifactCount.textContent = String(artifacts.length);
+  tradeVolume.textContent = adventure.totalTradeVolume.toFixed(1);
+  const latest = adventure.recentRuns.at(-1);
+  if (latest) {
+    const agent = world.agents[latest.agentId];
+    const dungeon = adventure.dungeonsById[latest.dungeonId];
+    const outcome =
+      latest.outcome === 'success'
+        ? `прошёл глубину ${latest.clearedDepth}`
+        : latest.outcome === 'retreat'
+          ? 'решил отступить'
+          : 'потерпел поражение и выбрался';
+    adventureLatest.textContent = `${agent?.name ?? latest.agentId} ${outcome} · ${dungeon?.name ?? latest.dungeonId} · ранг ${latest.rankAfter}`;
+  } else {
+    adventureLatest.textContent = dungeons.length > 0
+      ? `Открыто входов: ${dungeons.length}. Решение войти примут сами жители.`
+      : 'Жители ещё не нашли входы в подземелья.';
+  }
+  adventureEconomyNote.textContent =
+    `Из подземелий вынесено ${adventure.totalCoinRecovered.toFixed(1)} монет · ` +
+    `в казнах поселений ${treasury.toFixed(1)} · физических межпоселенческих связей ${Object.keys(adventure.tradeRelationsById).length}.`;
 }
 
 function renderWildlife(world: Readonly<WorldState>): void {
@@ -1555,15 +1926,28 @@ function updateSelection(): void {
   residentProfession.textContent = livelihood
     ? `${livelihoodLabels[livelihood.primary]} · ${livelihoodStageLabels[livelihood.stage]}`
     : 'запись создаётся';
+  const adventureProfile =
+    lastFrame.world.v19?.adventureEconomy.adventurersByAgentId[selected.id];
+  if (adventureProfile) {
+    const ability = adventureProfile.abilities.at(-1);
+    residentAdventure.textContent =
+      `ранг ${adventureRankLabels[adventureProfile.rank]} · походов ${adventureProfile.dungeonRuns} · ` +
+      `монет ${adventureProfile.coinBalance.toFixed(1)} · трофеев ${adventureProfile.artifactIds.length}` +
+      (ability ? ` · ${adventureAbilityLabels[ability]}` : '');
+  } else {
+    residentAdventure.textContent = 'в подземелья не ходил';
+  }
   residentSkill.textContent = strongestSkill(selected);
-  const priorAudience = selected.privateDivineCalling;
+  const divineProfile = lastFrame.world.v19?.divineAgency.byAgentId[selected.id];
+  const giftCount = divineProfile?.gifts.length ?? 0;
+  const contactCount = divineProfile?.contacts.length ?? 0;
   privateAudienceOpen.disabled =
-    priorAudience !== undefined || offlineCatchUpTargetWorldMinutes !== undefined;
-  privateAudienceOpen.textContent = priorAudience
-    ? `Дар уже получен · ${priorAudience.deityName}`
-    : offlineCatchUpTargetWorldMinutes !== undefined
+    offlineCatchUpTargetWorldMinutes !== undefined;
+  privateAudienceOpen.textContent = offlineCatchUpTargetWorldMinutes !== undefined
       ? 'Аудиенция доступна после догона мира'
-      : 'Закрытая аудиенция божества';
+      : giftCount + contactCount > 0
+        ? `Божественные действия · даров ${giftCount}, контактов ${contactCount}`
+        : 'Закрытая аудиенция божества';
 
   if (selected.lastDecision) {
     const openness = Math.round(selected.lastDecision.openness * 100);
@@ -1675,6 +2059,20 @@ function eventText(
       return event.payload.discovered
         ? `${name} нашёл новые ресурсы`
         : `${name} исследует окраину`;
+    case 'agent.dungeon.travel_started':
+      return `${name} сам отправился ко входу в подземелье ранга ${String(event.payload.rank ?? '?')}`;
+    case 'agent.dungeon.expedition':
+      return event.payload.outcome === 'success'
+        ? `${name} вернулся из подземелья с опытом и добычей`
+        : event.payload.outcome === 'retreat'
+          ? `${name} решил вовремя отступить из подземелья`
+          : `${name} выбрался из подземелья после поражения`;
+    case 'agent.market.food_purchase':
+      return `${name} купил настоящие припасы поселения`;
+    case 'agent.market.artifact_sale':
+      return `${name} продал найденный артефакт на местном рынке`;
+    case 'agent.market.artifact_purchase':
+      return `${name} купил артефакт у поселения`;
     case 'agent.reflected':
       return `${name} ушёл поразмышлять`;
     case 'agent.prayed':
@@ -1787,7 +2185,11 @@ function eventText(
     case 'world.sapient_people.discovered': {
       const race = String(event.payload.race ?? 'unknown');
       const label =
-        race === 'goblin'
+        race === 'elf'
+          ? 'эльфов'
+          : race === 'dwarf'
+            ? 'гномов'
+            : race === 'goblin'
           ? 'гоблинов'
           : race === 'orc'
             ? 'орков'
@@ -2176,6 +2578,9 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
       agent.life.stage === 'adolescent',
     );
     avatar.classList.toggle('is-elder', agent.life.stage === 'elder');
+    for (const race of ['human', 'elf', 'dwarf', 'goblin', 'orc', 'ogre'] as const) {
+      avatar.classList.toggle(`is-race-${race}`, (agent.race ?? 'human') === race);
+    }
     const physiology = (
       agent.life as Partial<AgentState['life']>
     ).physiology;
@@ -2335,6 +2740,8 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
 
   renderEventFeed(frame);
   renderAudibleConversations(frame);
+  renderAdventurePanel(frame.world);
+  renderPrayerInbox(frame.world);
   announceDisturbance(frame);
   updateSelection();
   refreshWorldInspector(frame.world);
@@ -2837,7 +3244,10 @@ type LiveWorldWorkerMessage =
       requestId: string;
       agentId: string;
       authorized: boolean;
-      acceptedCalling?: boolean;
+      giftGranted?: boolean;
+      contactRecorded?: boolean;
+      interpretation?: V19DivineInterpretation;
+      residentResponse?: string;
       reason: string;
     };
 
@@ -2921,24 +3331,46 @@ cardinalConsole.addEventListener('click', (event) => {
 residentDetailsOpen.addEventListener('click', () => {
   if (selectedAgentId) openWorldInspector('resident', selectedAgentId);
 });
-privateAudienceOpen.addEventListener('click', openPrivateDivineAudience);
+privateAudienceOpen.addEventListener('click', () => openPrivateDivineAudience());
 divineGift.addEventListener('change', updateDivineGiftNote);
+divineContactKind.addEventListener('change', updateDivineContactRequirements);
+prayerInboxOpen.addEventListener('click', openPrayerInbox);
+prayerInboxClose.addEventListener('click', closePrayerInbox);
+prayerInbox.addEventListener('click', (event) => {
+  if (event.target === prayerInbox) closePrayerInbox();
+});
+for (const control of [
+  prayerFilterSettlement,
+  prayerFilterNpc,
+  prayerFilterTopic,
+  prayerFilterBelief,
+  prayerFilterDesperation,
+  prayerFilterOrder,
+]) {
+  control.addEventListener(control === prayerFilterNpc ? 'input' : 'change', () => {
+    if (lastFrame) renderPrayerInbox(lastFrame.world);
+  });
+}
 divineAudienceClose.addEventListener('click', closePrivateDivineAudience);
 divineAudience.addEventListener('click', (event) => {
   if (event.target === divineAudience) closePrivateDivineAudience();
 });
 divineAudienceForm.addEventListener('submit', (event) => {
   event.preventDefault();
+  const gift = selectedDivineGift();
+  const contactKind = selectedDivineContactKind();
+  const message = divineMessage.value.trim();
   if (
     divineAudienceRequestPending ||
     !lastFrame ||
     !selectedAgentId ||
     !divineDeityName.value.trim() ||
-    !divineMessage.value.trim()
+    (!gift && !contactKind) ||
+    (contactKind && !message)
   ) return;
   divineAudienceRequestPending = true;
   divineAudienceGrant.disabled = true;
-  divineAudienceStatus.textContent = 'Дар передаётся выбранному жителю…';
+  divineAudienceStatus.textContent = 'Божественное действие проходит через независимый gateway…';
   divineAudienceRequestId =
     `audience:${lastFrame.world.epoch ?? 1}:${selectedAgentId}:${Date.now()}`;
   liveWorldWorker.postMessage({
@@ -2948,9 +3380,10 @@ divineAudienceForm.addEventListener('submit', (event) => {
     deityId: 'player_deity',
     deityName: divineDeityName.value.trim(),
     religionName: divineReligionName.value.trim() || undefined,
-    message: divineMessage.value.trim(),
-    gift: selectedDivineGift(),
-    calling: selectedDivineCalling(),
+    message: message || undefined,
+    gift,
+    contactKind,
+    relatedPrayerId: activePrayerId,
   });
 });
 residentPicker.addEventListener('change', () => {
@@ -2975,6 +3408,7 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && !cardinalConsole.hidden) closeCardinalConsole();
   if (event.key === 'Escape' && !worldInspector.hidden) closeWorldInspector();
   if (event.key === 'Escape' && !divineAudience.hidden) closePrivateDivineAudience();
+  if (event.key === 'Escape' && !prayerInbox.hidden) closePrayerInbox();
 });
 worldMapViewport.addEventListener(
   'wheel',
@@ -3134,11 +3568,9 @@ liveWorldWorker.addEventListener(
     if (event.data.type === 'divine_audience_result') {
       if (event.data.requestId !== divineAudienceRequestId) return;
       divineAudienceRequestPending = false;
-      divineAudienceGrant.disabled = event.data.authorized;
+      divineAudienceGrant.disabled = false;
       divineAudienceStatus.textContent = event.data.authorized
-        ? event.data.acceptedCalling
-          ? 'Дар получен. Житель по собственной воле принял предложенное призвание.'
-          : 'Дар получен. Житель сохранил его, но пока отказался от предложенного призвания.'
+        ? `${event.data.giftGranted ? 'Дар получен. ' : ''}${event.data.contactRecorded ? 'Контакт состоялся. ' : ''}${event.data.residentResponse ? `Житель отвечает: «${event.data.residentResponse}»` : 'Действие завершено.'}`
         : `Аудиенция не завершена: ${event.data.reason}`;
       return;
     }

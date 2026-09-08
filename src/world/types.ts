@@ -1,4 +1,5 @@
 import type { WorldV18State } from '../v18/types';
+import type { WorldV19State } from '../v19/types';
 
 export type AgentGoalKind =
   | 'recover'
@@ -26,7 +27,13 @@ export type AgentActionKind =
 
 export type AgentOrigin = 'native' | 'external_resident';
 export type AgentSex = 'male' | 'female';
-export type AgentRace = 'human' | 'goblin' | 'orc' | 'ogre';
+export type AgentRace =
+  | 'human'
+  | 'elf'
+  | 'dwarf'
+  | 'goblin'
+  | 'orc'
+  | 'ogre';
 
 export interface AgentProgressionState {
   level: number;
@@ -137,17 +144,27 @@ export interface AgentSkills {
 }
 
 export type DivineGiftKind =
+  | 'longevity'
   | 'might'
   | 'genius_inventor'
   | 'crowd_charisma'
+  | 'healing_touch'
   | 'demon_king_hero';
+
+export type DivineContactKind =
+  | 'message'
+  | 'revelation'
+  | 'command'
+  | 'request'
+  | 'warning'
+  | 'vision'
+  | 'sign';
 
 export type DivineCallingRole = 'hero' | 'messenger' | 'priest';
 
 /**
- * A private audience belongs to the resident's own continuity. It is not a
- * Cardinal intervention and creates no public world event. Other residents
- * can only learn of it if this person later chooses to speak about it.
+ * Deprecated v0.3.18 save shape, retained only for lossless migration into
+ * v19 gifts and contacts. Runtime decisions never consult the legacy calling.
  */
 export interface AgentDivineCallingState {
   audienceId: string;
@@ -178,7 +195,7 @@ export interface AgentDecisionState {
 }
 
 export interface AgentPlanState {
-  kind: 'explore_frontier' | 'hunt';
+  kind: 'explore_frontier' | 'dungeon_expedition' | 'hunt';
   targetPlaceId: string;
   startedAt: number;
   expiresAt: number;
@@ -838,6 +855,9 @@ export interface WorldState {
 
   /** v0.3.18 language, conversation and settlement-mobility evidence. */
   v18?: WorldV18State;
+
+  /** v0.3.19 independent gifts, divine contact and contextual prayers. */
+  v19?: WorldV19State;
 }
 
 export type WorldDisturbanceKind =

@@ -44,6 +44,9 @@ export * from './sensors/WorldSensors';
 
 export * from './v16/SocietyFoundationV16';
 export * from './v16/TruthfulInspectorsV16';
+export * from './v19/DivineAgencyV19';
+export * from './v19/AdventureEconomyV19';
+export * from './v19/types';
 
 export * from './world/events';
 export * from './world/InMemoryEventStore';
@@ -51,6 +54,7 @@ export * from './world/InMemoryMemoryStore';
 export * from './world/InMemoryWorldStore';
 export * from './world/memory';
 export * from './world/persistence';
+export * from './world/SapientPeoples';
 export * from './world/types';
 export * from './world/WorldClock';
 export * from './world/WorldEngine';

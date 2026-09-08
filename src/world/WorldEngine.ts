@@ -131,6 +131,29 @@ import {
 import type {
   V18FrontierExpeditionState,
 } from '../v18/types';
+import {
+  applyDivineActionV19,
+  applyPersistentDivineGiftEffectsV19,
+  assertWorldV19State,
+  createWorldV19State,
+  divineGiftActionAffinityV19,
+  DIVINE_CONTACT_KINDS_V19,
+  DIVINE_GIFTS_V19,
+  ensureWorldV19State,
+  hasDivineGiftV19,
+  recordContextualPrayerV19,
+  recordVoluntaryDivineContactShareV19,
+  repairWorldV19AdditiveSchema,
+  shareableDivineContactV19,
+  WORLD_RULES_VERSION_V19,
+} from '../v19/DivineAgencyV19';
+import {
+  chooseDungeonExpeditionV19,
+  isAdventureCandidateV19,
+  resolveDungeonExpeditionV19,
+  syncAdventureEconomyV19,
+  tryAdventureMarketTradeV19,
+} from '../v19/AdventureEconomyV19';
 import type { WorldEvent } from './events';
 import type { WorldStore } from './persistence';
 import { StaleWorldObservationError, WorldRevisionConflictError } from './persistence';
@@ -145,10 +168,17 @@ import {
   routeIdBetween,
   surfaceForPlace,
 } from './WorldNavigation';
+import {
+  raceFounderPersonality,
+  raceFounderSkills,
+  racePhysiology,
+  repairSapientHomelandGeography,
+  SAPIENT_PEOPLE_FOUNDATIONS,
+} from './SapientPeoples';
 import type {
   AgentActionKind,
   AgentDeathCause,
-  DivineCallingRole,
+  DivineContactKind,
   DivineGiftKind,
   AgentGoalKind,
   AgentLifeStage,
@@ -177,9 +207,10 @@ import type {
   WildlifeSpecies,
 } from './types';
 
-export const WORLD_RULES_VERSION = WORLD_RULES_VERSION_V18;
+export const WORLD_RULES_VERSION = WORLD_RULES_VERSION_V19;
 const V15_WORLD_RULES_VERSION = 'ainkrad-world-rules-0.3.15';
 const V16_WORLD_CONSTITUTION_VERSION = 'ainkrad-constitution-0.3.16';
+const V18_WORLD_CONSTITUTION_VERSION = 'ainkrad-constitution-0.3.18';
 const LEGACY_WORLD_RULES_VERSIONS = new Set([
   'ainkrad-world-rules-0.3.8',
   'ainkrad-world-rules-0.3.9',
@@ -189,10 +220,9 @@ const LEGACY_WORLD_RULES_VERSIONS = new Set([
   'ainkrad-world-rules-0.3.13',
   'ainkrad-world-rules-0.3.14',
 ]);
-export const WORLD_CONSTITUTION_VERSION = 'ainkrad-constitution-0.3.18';
+export const WORLD_CONSTITUTION_VERSION = 'ainkrad-constitution-0.3.19';
 export { WORLD_TICKS_PER_YEAR } from './WorldClock';
 const MIN_ADULT_AGE = 18;
-const ELDER_AGE = 62;
 const BIRTH_CHECK_INTERVAL = 12;
 const LEGACY_WORLD_TICKS_PER_YEAR = 96;
 const V15_SIMULATION_QUANTUM_WORLD_MINUTES = WORLD_MINUTES_PER_YEAR / 60;
@@ -385,12 +415,7 @@ function isRaceOriginCompatible(
 ): boolean {
   if (place.surface !== 'land' || place.biome === 'settlement') return false;
   if (race === 'human') return true;
-  const allowed: Record<Exclude<NonNullable<AgentState['race']>, 'human'>, readonly WorldBiome[]> = {
-    goblin: ['plains', 'forest', 'swamp'],
-    orc: ['mountains', 'ancient_ruins'],
-    ogre: ['swamp', 'mountains', 'ancient_ruins'],
-  };
-  if (!allowed[race].includes(place.biome)) return false;
+  if (!SAPIENT_PEOPLE_FOUNDATIONS[race].homelandBiomes.includes(place.biome)) return false;
   return true;
 }
 
@@ -926,7 +951,9 @@ function assertWorldState(value: unknown): asserts value is WorldState {
     ) !==
     (state.rulesVersion === WORLD_RULES_VERSION
       ? WORLD_CONSTITUTION_VERSION
-      : V16_WORLD_CONSTITUTION_VERSION)
+      : state.rulesVersion === WORLD_RULES_VERSION_V18
+        ? V18_WORLD_CONSTITUTION_VERSION
+        : V16_WORLD_CONSTITUTION_VERSION)
   ) {
     throw new Error('World constitution version is incompatible.');
   }
@@ -1674,7 +1701,11 @@ function assertWorldState(value: unknown): asserts value is WorldState {
 
     if (agent.plan !== undefined) {
       const plan = asRecord(agent.plan, `Agent ${agentId}.plan`);
-      if (!['explore_frontier', 'hunt'].includes(plan.kind as string)) {
+      if (
+        !['explore_frontier', 'dungeon_expedition', 'hunt'].includes(
+          plan.kind as string,
+        )
+      ) {
         throw new Error(`Agent ${agentId}.plan.kind is invalid.`);
       }
       const targetPlaceId = requiredString(
@@ -1752,6 +1783,7 @@ function assertWorldState(value: unknown): asserts value is WorldState {
 
   if (
     state.rulesVersion === WORLD_RULES_VERSION_V16 ||
+    state.rulesVersion === WORLD_RULES_VERSION_V18 ||
     state.rulesVersion === WORLD_RULES_VERSION
   ) {
     const v15 = asRecord(state.v15, 'World v15 state');
@@ -2600,8 +2632,14 @@ function assertWorldState(value: unknown): asserts value is WorldState {
       }
     }
 
-    if (state.rulesVersion === WORLD_RULES_VERSION) {
+    if (
+      state.rulesVersion === WORLD_RULES_VERSION_V18 ||
+      state.rulesVersion === WORLD_RULES_VERSION
+    ) {
       assertWorldV18State(state as unknown as WorldState);
+    }
+    if (state.rulesVersion === WORLD_RULES_VERSION) {
+      assertWorldV19State(state as unknown as WorldState);
     }
   }
 
@@ -3696,17 +3734,17 @@ async function migrateV16WorldToV18(
   legacy: WorldState,
 ): Promise<WorldState> {
   const operationId =
-    `migration:${WORLD_RULES_VERSION_V16}-to-${WORLD_RULES_VERSION}`;
+    `migration:${WORLD_RULES_VERSION_V16}-to-${WORLD_RULES_VERSION_V18}`;
   const operationFingerprint = stableJsonStringify({
     kind: 'world_migration',
     from: WORLD_RULES_VERSION_V16,
-    to: WORLD_RULES_VERSION,
+    to: WORLD_RULES_VERSION_V18,
     mode: 'additive_underworld_foundation',
   });
   const next = structuredClone(legacy);
-  next.rulesVersion = WORLD_RULES_VERSION;
+  next.rulesVersion = WORLD_RULES_VERSION_V18;
   next.revision = legacy.revision + 1;
-  next.governance.constitutionVersion = WORLD_CONSTITUTION_VERSION;
+  next.governance.constitutionVersion = V18_WORLD_CONSTITUTION_VERSION;
   next.v18 = createWorldV18State(next, WORLD_RULES_VERSION_V16);
   repairSecretLibraryPlacementV18(next);
 
@@ -3719,7 +3757,7 @@ async function migrateV16WorldToV18(
     occurredWorldMinutes: next.calendar.elapsedWorldMinutes,
     payload: {
       from: WORLD_RULES_VERSION_V16,
-      to: WORLD_RULES_VERSION,
+      to: WORLD_RULES_VERSION_V18,
       migrationMode: 'additive_underworld_foundation',
       preservedTick: next.now,
       preservedWorldMinutes: next.calendar.elapsedWorldMinutes,
@@ -3745,7 +3783,7 @@ async function migrateV16WorldToV18(
   } catch (error) {
     if (error instanceof WorldRevisionConflictError) {
       const concurrent = await store.loadWorld(legacy.id);
-      if (concurrent?.rulesVersion === WORLD_RULES_VERSION) return concurrent;
+      if (concurrent?.rulesVersion === WORLD_RULES_VERSION_V18) return concurrent;
     }
     throw error;
   }
@@ -3760,15 +3798,15 @@ async function repairCompatibleV18World(
 ): Promise<WorldState> {
   const operationFingerprint = stableJsonStringify({
     kind: 'world_migration',
-    from: WORLD_RULES_VERSION,
-    to: WORLD_RULES_VERSION,
+    from: WORLD_RULES_VERSION_V18,
+    to: WORLD_RULES_VERSION_V18,
     mode: 'same_version_additive_schema_repair',
     schemaRevision: '2026-09-07-cultural-agency',
   });
   let current = persisted;
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    if (current.rulesVersion !== WORLD_RULES_VERSION) return current;
+    if (current.rulesVersion !== WORLD_RULES_VERSION_V18) return current;
     const next = structuredClone(current);
     const before = stableJsonStringify(next);
     // v18 deliberately carries the authoritative v16 economy/evidence
@@ -3796,8 +3834,8 @@ async function repairCompatibleV18World(
       occurredAt: next.now,
       occurredWorldMinutes: next.calendar.elapsedWorldMinutes,
       payload: {
-        from: WORLD_RULES_VERSION,
-        to: WORLD_RULES_VERSION,
+        from: WORLD_RULES_VERSION_V18,
+        to: WORLD_RULES_VERSION_V18,
         migrationMode: 'same_version_additive_schema_repair',
         preservedTick: next.now,
         preservedWorldMinutes: next.calendar.elapsedWorldMinutes,
@@ -3828,6 +3866,153 @@ async function repairCompatibleV18World(
 
   throw new Error(
     `World ${persisted.id} changed repeatedly during v18 schema repair.`,
+  );
+}
+
+/**
+ * v0.3.19 adds only bounded spiritual evidence. Existing minds, professions,
+ * families, relationships, Cardinal experience and v18 cultural history are
+ * carried forward byte-for-byte. A legacy audience is translated into a gift
+ * and a contact record, but its old calling label no longer drives behaviour.
+ */
+async function migrateV18WorldToV19(
+  store: WorldStore,
+  legacy: WorldState,
+): Promise<WorldState> {
+  const operationId =
+    `migration:${WORLD_RULES_VERSION_V18}-to-${WORLD_RULES_VERSION}`;
+  const operationFingerprint = stableJsonStringify({
+    kind: 'world_migration',
+    from: WORLD_RULES_VERSION_V18,
+    to: WORLD_RULES_VERSION,
+    mode: 'additive_divine_agency_and_contextual_prayer',
+  });
+  const next = structuredClone(legacy);
+  next.rulesVersion = WORLD_RULES_VERSION;
+  next.revision = legacy.revision + 1;
+  next.governance.constitutionVersion = WORLD_CONSTITUTION_VERSION;
+  next.v19 = createWorldV19State(next, WORLD_RULES_VERSION_V18);
+  const relocatedSapientHomelands = repairSapientHomelandGeography(next);
+
+  const migrationEvent: WorldEvent = {
+    eventId: `migration:${next.id}:world-rules-0.3.19`,
+    worldId: next.id,
+    kind: 'world.migrated',
+    source: 'system',
+    occurredAt: next.now,
+    occurredWorldMinutes: next.calendar.elapsedWorldMinutes,
+    payload: {
+      from: WORLD_RULES_VERSION_V18,
+      to: WORLD_RULES_VERSION,
+      migrationMode: 'additive_divine_agency_and_contextual_prayer',
+      preservedTick: next.now,
+      preservedWorldMinutes: next.calendar.elapsedWorldMinutes,
+      preservedPeople: Object.keys(next.agents).length,
+      preservedRelationships: Object.keys(next.relationships).length,
+      preservedRngState: next.determinism.rngState,
+      fabricatedPrayerCount: 0,
+      relocatedSapientHomelands,
+    },
+  };
+
+  assertWorldState(next);
+  try {
+    const result = await store.commit({
+      operationId,
+      operationFingerprint,
+      worldId: legacy.id,
+      expectedRevision: legacy.revision,
+      nextState: next,
+      events: [migrationEvent],
+      memories: [],
+    });
+    return result.state;
+  } catch (error) {
+    if (error instanceof WorldRevisionConflictError) {
+      const concurrent = await store.loadWorld(legacy.id);
+      if (concurrent?.rulesVersion === WORLD_RULES_VERSION) return concurrent;
+    }
+    throw error;
+  }
+}
+
+const V19_ADDITIVE_SCHEMA_REPAIR_OPERATION_ID =
+  'migration:v19-additive-schema-repair-2026-09-08-sapient-geography';
+
+async function repairCompatibleV19World(
+  store: WorldStore,
+  persisted: WorldState,
+): Promise<WorldState> {
+  const operationFingerprint = stableJsonStringify({
+    kind: 'world_migration',
+    from: WORLD_RULES_VERSION,
+    to: WORLD_RULES_VERSION,
+    mode: 'same_version_additive_schema_repair',
+    schemaRevision: '2026-09-08-sapient-geography',
+  });
+  let current = persisted;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (current.rulesVersion !== WORLD_RULES_VERSION) return current;
+    const next = structuredClone(current);
+    const before = stableJsonStringify(next);
+    repairWorldV16AdditiveSchema(
+      next,
+      next.v16?.migratedFromRulesVersion ?? WORLD_RULES_VERSION_V16,
+    );
+    repairWorldV18AdditiveSchema(
+      next,
+      next.v18?.migratedFromRulesVersion ?? WORLD_RULES_VERSION_V16,
+    );
+    repairWorldV19AdditiveSchema(
+      next,
+      next.v19?.migratedFromRulesVersion ?? WORLD_RULES_VERSION_V18,
+    );
+    repairSapientHomelandGeography(next);
+    repairSecretLibraryPlacementV18(next);
+    if (stableJsonStringify(next) === before) return current;
+
+    next.revision = current.revision + 1;
+    const migrationEvent: WorldEvent = {
+      eventId: `migration:${next.id}:v19-additive-schema-repair-2026-09-08-sapient-geography`,
+      worldId: next.id,
+      kind: 'world.migrated',
+      source: 'system',
+      occurredAt: next.now,
+      occurredWorldMinutes: next.calendar.elapsedWorldMinutes,
+      payload: {
+        from: WORLD_RULES_VERSION,
+        to: WORLD_RULES_VERSION,
+        migrationMode: 'same_version_additive_schema_repair',
+        preservedTick: next.now,
+        preservedWorldMinutes: next.calendar.elapsedWorldMinutes,
+        preservedPeople: Object.keys(next.agents).length,
+        preservedRngState: next.determinism.rngState,
+      },
+    };
+
+    assertWorldState(next);
+    try {
+      const result = await store.commit({
+        operationId: V19_ADDITIVE_SCHEMA_REPAIR_OPERATION_ID,
+        operationFingerprint,
+        worldId: current.id,
+        expectedRevision: current.revision,
+        nextState: next,
+        events: [migrationEvent],
+        memories: [],
+      });
+      return result.state;
+    } catch (error) {
+      if (!(error instanceof WorldRevisionConflictError)) throw error;
+      const concurrent = await store.loadWorld(current.id);
+      if (!concurrent) throw error;
+      current = concurrent;
+    }
+  }
+
+  throw new Error(
+    `World ${persisted.id} changed repeatedly during v19 schema repair.`,
   );
 }
 
@@ -4177,6 +4362,7 @@ export class WorldEngine {
     applyFounderSmithAgentSeed(state.agents, state.v15!);
     state.v16 = createWorldV16State(state, WORLD_RULES_VERSION);
     state.v18 = createWorldV18State(state, WORLD_RULES_VERSION);
+    state.v19 = createWorldV19State(state, WORLD_RULES_VERSION);
     repairSecretLibraryPlacementV18(state);
 
     assertWorldState(state);
@@ -4199,12 +4385,16 @@ export class WorldEngine {
       state = await repairCompatibleV16World(options.store, state);
       state = await migrateV16WorldToV18(options.store, state);
     }
+    if (state.rulesVersion === WORLD_RULES_VERSION_V18) {
+      state = await repairCompatibleV18World(options.store, state);
+      state = await migrateV18WorldToV19(options.store, state);
+    }
     if (state.rulesVersion !== WORLD_RULES_VERSION) {
       throw new Error(
         `World ${options.worldId} uses rules ${state.rulesVersion}; runtime expects ${WORLD_RULES_VERSION}. Explicit migration is required.`,
       );
     }
-    state = await repairCompatibleV18World(options.store, state);
+    state = await repairCompatibleV19World(options.store, state);
     assertWorldState(state);
     return new WorldEngine(options.store, state);
   }
@@ -4327,6 +4517,10 @@ export class WorldEngine {
           WORLD_RULES_VERSION,
         );
         this.state.v18 = createWorldV18State(
+          this.state,
+          WORLD_RULES_VERSION,
+        );
+        this.state.v19 = createWorldV19State(
           this.state,
           WORLD_RULES_VERSION,
         );
@@ -5710,42 +5904,35 @@ export class WorldEngine {
     deityId: string,
     deityName: string,
     religionName: string | undefined,
-    message: string,
-    gift: DivineGiftKind,
-    calling: DivineCallingRole,
+    message: string | undefined,
+    gift: DivineGiftKind | undefined,
+    contactKind: DivineContactKind | undefined,
+    relatedPrayerId: string | undefined,
     now: number,
     operationId: string,
     expectedWorldRevision: number,
   ): Promise<WorldMutationResult> {
-    const gifts: readonly DivineGiftKind[] = [
-      'might',
-      'genius_inventor',
-      'crowd_charisma',
-      'demon_king_hero',
-    ];
-    const callings: readonly DivineCallingRole[] = [
-      'hero', 'messenger', 'priest',
-    ];
     if (
       worldId !== this.committedState.id ||
       !agentId.trim() ||
       !deityId.trim() ||
       !deityName.trim() ||
-      !message.trim() ||
       !operationId.trim() ||
       !Number.isFinite(now) ||
       !/^[a-zA-Z0-9][a-zA-Z0-9_-]{2,63}$/.test(deityId) ||
       deityName.length > 64 ||
-      message.length > 480 ||
+      (!gift && !contactKind) ||
+      (contactKind !== undefined && !message?.trim()) ||
+      (message !== undefined && message.length > 480) ||
       (religionName !== undefined &&
         (!religionName.trim() || religionName.length > 64)) ||
-      !gifts.includes(gift) ||
-      !callings.includes(calling)
+      (gift !== undefined && !DIVINE_GIFTS_V19.includes(gift)) ||
+      (contactKind !== undefined && !DIVINE_CONTACT_KINDS_V19.includes(contactKind))
     ) {
       throw new Error('Private divine audience is outside the entry gateway envelope.');
     }
     const fingerprint = stableJsonStringify({
-      kind: 'private_divine_audience',
+      kind: 'private_divine_action',
       worldId,
       agentId,
       deityId,
@@ -5753,7 +5940,8 @@ export class WorldEngine {
       religionName,
       message,
       gift,
-      calling,
+      contactKind,
+      relatedPrayerId,
       now,
       expectedWorldRevision,
     });
@@ -5765,96 +5953,35 @@ export class WorldEngine {
         if (!agent || !agent.life.alive) {
           throw new Error(`Living audience resident ${agentId} was not found.`);
         }
-        if (agent.privateDivineCalling) {
-          throw new Error(`${agent.name} has already received a private divine audience.`);
-        }
-
-        const fit =
-          calling === 'hero'
-            ? agent.personality.riskTolerance * 0.32 +
-              agent.personality.resilience * 0.24 +
-              agent.mind.values.care * 0.22 +
-              agent.mind.values.ambition * 0.22
-            : calling === 'messenger'
-              ? agent.personality.curiosity * 0.27 +
-                agent.personality.sociability * 0.24 +
-                agent.mind.values.freedom * 0.25 +
-                agent.mind.values.knowledge * 0.24
-              : agent.mind.values.tradition * 0.28 +
-                agent.mind.values.knowledge * 0.24 +
-                agent.mind.emotions.awe * 0.23 +
-                agent.mind.beliefs.divinePresence * 0.25;
-        const acceptedCalling =
-          this.rng.next() < clamp01(0.38 + fit * 0.52);
-        agent.privateDivineCalling = {
-          audienceId: operationId,
+        const result = applyDivineActionV19(this.state, {
+          operationId,
+          agentId,
           deityId,
           deityName,
           ...(religionName ? { religionName } : {}),
-          message,
-          gift,
-          calling,
-          acceptedCalling,
-          grantedWorldMinute: this.state.calendar.elapsedWorldMinutes,
-          sharedCount: 0,
-        };
-
-        const progression = this.ensureProgression(agent);
-        if (gift === 'might') {
-          agent.life.physiology.strength = Math.max(0.96, agent.life.physiology.strength);
-          agent.life.physiology.endurance = Math.max(0.92, agent.life.physiology.endurance);
-          progression.combatMastery = Math.max(0.72, progression.combatMastery);
-        } else if (gift === 'genius_inventor') {
-          agent.skills.craft = 1;
-          agent.skills.exploration = Math.max(0.9, agent.skills.exploration);
-          agent.mind.values.knowledge = 1;
-          const v15 = this.v15World();
-          const profile = v15.knowledgeByAgentId[agent.id];
-          if (profile) {
-            profile.aptitude.agriculture = 1;
-            profile.aptitude.construction = 1;
-            profile.aptitude.household = 1;
-            profile.aptitude.survival = 1;
-          }
-        } else if (gift === 'crowd_charisma') {
-          agent.skills.social = 1;
-          agent.personality.sociability = 1;
-          agent.mind.values.freedom = Math.max(0.88, agent.mind.values.freedom);
-        } else {
-          agent.life.health = 1;
-          agent.energy = 1;
-          agent.stress = 0;
-          agent.life.physiology = {
-            strength: 1,
-            endurance: 1,
-            mobility: 1,
-            recovery: 1,
-          };
-          agent.skills.hunting = 1;
-          agent.skills.craft = 1;
-          agent.skills.exploration = 1;
-          progression.experience = Math.max(progression.experience, 99 * 99 * 24);
-          progression.level = 100;
-          progression.combatMastery = 1;
-        }
-        agent.needs.purpose = clamp01(agent.needs.purpose + 0.16);
-        agent.mind.emotions.awe = clamp01(agent.mind.emotions.awe + 0.18);
-        agent.mind.emotions.hope = clamp01(agent.mind.emotions.hope + 0.12);
-        agent.lastMeaningfulEventAt = now;
+          ...(gift ? { gift } : {}),
+          ...(contactKind ? { contactKind } : {}),
+          ...(message?.trim() ? { message: message.trim() } : {}),
+          ...(relatedPrayerId ? { relatedPrayerId } : {}),
+          worldMinute: this.state.calendar.elapsedWorldMinutes,
+          interpretationRoll: this.rng.next(),
+        });
 
         // Deliberately no public WorldEvent: neither Cardinal nor bystanders
         // receive a direct notification. This durable memory belongs only to
-        // the selected person. Consequences can become public later only if
-        // that person voluntarily speaks or acts on the calling.
+        // the selected person. Consequences can become public only if that
+        // person later chooses to speak or acts with changed capabilities.
         this.stageMemory({
           memoryId: this.stableOperationEventId('private-divine-audience', operationId),
           worldId: this.state.id,
           agentId: agent.id,
           createdAt: now,
           kind: 'divine_audience',
-          summary: `${agent.name} privately heard ${deityName}: ${message}`,
+          summary: contactKind
+            ? `${agent.name} privately received a ${contactKind} from ${deityName}: ${message}`
+            : `${agent.name} experienced an unexplained change: ${gift}.`,
           importance: 1,
-          valence: acceptedCalling ? 0.82 : 0.34,
+          valence: result.interpretation === 'frightening' ? -0.32 : 0.42,
           relatedAgentIds: [],
         });
       },
@@ -7326,23 +7453,8 @@ export class WorldEngine {
       livelihoodActionAffinityV18(this.state, agent.id, action);
     const learnedKnowledgeBoost = (action: AgentActionKind) =>
       secretLibraryActionAffinityV18(this.state, agent.id, action);
-    const divineCallingBoost = (action: AgentActionKind): number => {
-      const calling = agent.privateDivineCalling;
-      if (!calling?.acceptedCalling) return 0;
-      if (
-        calling.calling === 'hero' &&
-        ['hunt', 'explore', 'help'].includes(action)
-      ) return 0.1;
-      if (
-        calling.calling === 'messenger' &&
-        ['explore', 'walk', 'socialize'].includes(action)
-      ) return 0.11;
-      if (
-        calling.calling === 'priest' &&
-        ['pray', 'socialize', 'reflect'].includes(action)
-      ) return 0.12;
-      return 0;
-    };
+    const divineCapabilityBoost = (action: AgentActionKind): number =>
+      divineGiftActionAffinityV19(this.state, agent.id, action);
 
     const scores: Array<{ action: AgentActionKind; score: number }> = [
       {
@@ -7371,7 +7483,7 @@ export class WorldEngine {
           agent.personality.curiosity * 0.46 +
           agent.personality.resilience * 0.08 +
           body.mobility * 0.18 +
-          divineCallingBoost('walk') +
+          divineCapabilityBoost('walk') +
           learnedKnowledgeBoost('walk') +
           emotions.joy * 0.09 -
           emotions.fear * 0.12 +
@@ -7414,7 +7526,7 @@ export class WorldEngine {
             huntTarget.alertness * 0.34 -
             huntTarget.threat * 0.36 +
             vocationBoost('hunt') +
-            divineCallingBoost('hunt') +
+            divineCapabilityBoost('hunt') +
             learnedKnowledgeBoost('hunt') +
             goalBoost('secure_resources')
           : -1,
@@ -7447,7 +7559,7 @@ export class WorldEngine {
             emotions.fear * 0.08 +
             environment.socialOpportunity * 0.08 +
             vocationBoost('socialize') +
-            divineCallingBoost('socialize') +
+            divineCapabilityBoost('socialize') +
             learnedKnowledgeBoost('socialize') +
             goalBoost('connect')),
       },
@@ -7457,7 +7569,7 @@ export class WorldEngine {
           ? agent.personality.generosity * 0.65 +
             (1 - agent.needs.purpose) * 0.24 +
             Math.max(0, agent.resources - 0.45) * 0.35 +
-            divineCallingBoost('help') +
+            divineCapabilityBoost('help') +
             learnedKnowledgeBoost('help') +
             goalBoost('contribute')
           : -1,
@@ -7477,7 +7589,7 @@ export class WorldEngine {
           emotions.fear * 0.28 +
           (1 - agent.needs.purpose) * 0.14 +
           vocationBoost('explore') +
-          divineCallingBoost('explore') +
+          divineCapabilityBoost('explore') +
           learnedKnowledgeBoost('explore') +
           goalBoost('explore') * 0.65 -
           Math.max(0, 0.35 - agent.resources) * 0.8 +
@@ -7493,7 +7605,7 @@ export class WorldEngine {
           (1 - agent.personality.sociability) * 0.08 +
           emotions.grief * 0.24 +
           emotions.fear * 0.12 +
-          divineCallingBoost('reflect') +
+          divineCapabilityBoost('reflect') +
           learnedKnowledgeBoost('reflect') +
           goalBoost('reflect'),
       },
@@ -7517,7 +7629,7 @@ export class WorldEngine {
           agent.mind.emotions.awe * 0.08 +
           agent.mind.values.tradition * 0.08 +
           vocationBoost('pray') +
-          divineCallingBoost('pray') +
+          divineCapabilityBoost('pray') +
           learnedKnowledgeBoost('pray') +
           goalBoost('seek_truth'),
       },
@@ -8159,8 +8271,11 @@ export class WorldEngine {
       rhythm.pendingArrivalWorldMinute =
         this.state.calendar.elapsedWorldMinutes;
     }
-    const effortlessHeroJourney =
-      agent.privateDivineCalling?.gift === 'demon_king_hero';
+    const effortlessHeroJourney = hasDivineGiftV19(
+      this.state,
+      agent.id,
+      'demon_king_hero',
+    );
     if (!effortlessHeroJourney) {
       agent.energy = clamp01(agent.energy - 0.008);
     }
@@ -8580,8 +8695,11 @@ export class WorldEngine {
     let monsterCountered = false;
     let monsterDamage = 0;
     let lethalChance = 0;
-    const legendaryHero =
-      agent.privateDivineCalling?.gift === 'demon_king_hero';
+    const legendaryHero = hasDivineGiftV19(
+      this.state,
+      agent.id,
+      'demon_king_hero',
+    );
     if (
       target.threat >= 0.25 &&
       target.count > 0 &&
@@ -8935,6 +9053,7 @@ export class WorldEngine {
   private performWork(agent: AgentState, now: number): void {
     const workshopId = this.localPlace(agent, ['workshop'], 'workshop');
     if (this.travelBeforeAction(agent, workshopId, 'work', now)) return;
+    this.tryAdventureMarketTrade(agent, now);
     const capacityScale = productiveCapacityScaleV16(
       agent.race ?? 'human',
       agent.life.ageYears,
@@ -8968,6 +9087,36 @@ export class WorldEngine {
     });
   }
 
+  private tryAdventureMarketTrade(agent: AgentState, now: number): void {
+    const settlementId = this.state.places[agent.locationId]?.settlementId;
+    if (!settlementId) return;
+    const transaction = tryAdventureMarketTradeV19(
+      this.state,
+      agent,
+      settlementId,
+      this.rng.next(),
+    );
+    if (!transaction) return;
+    this.stageEvent({
+      eventId: this.nextId('adventure-market'),
+      worldId: this.state.id,
+      kind: `agent.market.${transaction.kind}`,
+      source: 'agent',
+      occurredAt: now,
+      payload: {
+        transactionId: transaction.id,
+        agentId: agent.id,
+        settlementId,
+        physicalPlaceId: agent.locationId,
+        originSettlementId: transaction.originSettlementId ?? null,
+        coin: transaction.coin,
+        food: transaction.food,
+        artifactId: transaction.artifactId ?? null,
+        voluntary: true,
+      },
+    });
+  }
+
   private performExplore(agent: AgentState, now: number): void {
     const frontier =
       this.state.growth.discoveredRegionIds[
@@ -8975,6 +9124,131 @@ export class WorldEngine {
       ] ?? 'outskirts';
     const targetFrontier = this.state.places[frontier] ? frontier : 'outskirts';
     const livelihood = ensureLivelihoodV18(this.state, agent);
+    const adventure = syncAdventureEconomyV19(this.state);
+    let targetDungeon =
+      agent.plan?.kind === 'dungeon_expedition'
+        ? Object.values(adventure.dungeonsById).find(
+            (dungeon) => dungeon.entrancePlaceId === agent.plan?.targetPlaceId,
+          )
+        : undefined;
+    if (!targetDungeon && agent.plan?.kind !== 'dungeon_expedition') {
+      const reachableDungeons = Object.values(adventure.dungeonsById)
+        .map((dungeon) => ({
+          dungeon,
+          route: this.pathBetween(agent.locationId, dungeon.entrancePlaceId),
+        }))
+        .filter(
+          (candidate): candidate is {
+            dungeon: (typeof candidate)['dungeon'];
+            route: string[];
+          } => candidate.route !== undefined,
+        )
+        .sort(
+          (left, right) =>
+            left.route.length - right.route.length ||
+            left.dungeon.id.localeCompare(right.dungeon.id),
+        );
+      targetDungeon = chooseDungeonExpeditionV19(
+        this.state,
+        agent,
+        reachableDungeons.map((candidate) => candidate.dungeon.id),
+        this.rng.next(),
+      );
+    }
+    if (targetDungeon) {
+      const entranceId = targetDungeon.entrancePlaceId;
+      if (agent.locationId !== entranceId) {
+        agent.plan = {
+          kind: 'dungeon_expedition',
+          targetPlaceId: entranceId,
+          startedAt: agent.plan?.startedAt ?? now,
+          expiresAt: now + 96,
+        };
+        this.moveAgent(agent, entranceId);
+        agent.energy = clamp01(agent.energy - 0.026);
+        agent.resources = clamp01(agent.resources - 0.006);
+        agent.lastAction = 'explore';
+        agent.lastMeaningfulEventAt = now;
+        this.recordAgentEvent(agent, now, 'agent.dungeon.travel_started', {
+          dungeonId: targetDungeon.id,
+          entrancePlaceId: entranceId,
+          rank: targetDungeon.rank,
+          physicalRoute: true,
+          voluntary: true,
+          locationId: agent.locationId,
+        });
+        return;
+      }
+
+      agent.plan = undefined;
+      if (!isAdventureCandidateV19(this.state, agent)) {
+        // The journey remains real, but arriving exhausted does not force the
+        // resident through the door. They recover and may choose again later.
+        this.performRest(agent, now);
+        return;
+      }
+      const expedition = resolveDungeonExpeditionV19(
+        this.state,
+        agent,
+        targetDungeon.id,
+        {
+          continuation: this.rng.next(),
+          encounter: this.rng.next(),
+          depth: this.rng.next(),
+          artifact: this.rng.next(),
+          artifactKind: this.rng.next(),
+          ability: this.rng.next(),
+        },
+      );
+      recordLivelihoodPracticeV18(this.state, agent, {
+        action: 'explore',
+        placeId: entranceId,
+        choiceRoll: this.rng.next(),
+        professionHint: 'adventurer',
+        amount: expedition.run.outcome === 'success' ? 2 : 1.2,
+      });
+      agent.lastAction = 'explore';
+      agent.lastMeaningfulEventAt = now;
+      this.recordAgentEvent(agent, now, 'agent.dungeon.expedition', {
+        runId: expedition.run.id,
+        dungeonId: targetDungeon.id,
+        entrancePlaceId: entranceId,
+        outcome: expedition.run.outcome,
+        rankBefore: expedition.run.rankBefore,
+        rankAfter: expedition.run.rankAfter,
+        clearedDepth: expedition.run.clearedDepth,
+        experienceGained: expedition.run.experienceGained,
+        coinRecovered: expedition.run.coinRecovered,
+        artifactId: expedition.artifact?.id ?? null,
+        artifactName: expedition.artifact?.name ?? null,
+        learnedAbility: expedition.learnedAbility ?? null,
+        healthDamage: expedition.run.healthDamage,
+        voluntary: true,
+        locationId: agent.locationId,
+      });
+      this.stageMemory({
+        memoryId: this.nextId('memory'),
+        worldId: this.state.id,
+        agentId: agent.id,
+        createdAt: now,
+        kind: 'world_event',
+        summary:
+          expedition.run.outcome === 'success'
+            ? `${agent.name} прошёл ${expedition.run.clearedDepth} уровней подземелья «${targetDungeon.name}».`
+            : expedition.run.outcome === 'retreat'
+              ? `${agent.name} сам решил отступить из подземелья «${targetDungeon.name}».`
+              : `${agent.name} потерпел поражение и выбрался из подземелья «${targetDungeon.name}».`,
+        importance: expedition.run.outcome === 'success' ? 0.76 : 0.62,
+        valence:
+          expedition.run.outcome === 'success'
+            ? 0.58
+            : expedition.run.outcome === 'retreat'
+              ? -0.08
+              : -0.52,
+        relatedAgentIds: [],
+      });
+      return;
+    }
     if (!livelihood.mappedPlaceIds.includes(targetFrontier)) {
       livelihood.mappedPlaceIds.push(targetFrontier);
       livelihood.mappedPlaceIds = livelihood.mappedPlaceIds.slice(-256);
@@ -9071,6 +9345,7 @@ export class WorldEngine {
       now,
     );
     if (discoveredRegionId) {
+      syncAdventureEconomyV19(this.state);
       if (!livelihood.mappedPlaceIds.includes(discoveredRegionId)) {
         livelihood.mappedPlaceIds.push(discoveredRegionId);
         livelihood.mappedPlaceIds = livelihood.mappedPlaceIds.slice(-256);
@@ -9605,6 +9880,17 @@ export class WorldEngine {
           const meetingPlaceId = route[Math.floor(route.length / 2)];
           this.moveAgent(delegateA, meetingPlaceId);
           this.moveAgent(delegateB, meetingPlaceId);
+          // Choosing a distant meeting starts a real journey. Contact is
+          // recorded only on a later tick after both delegates physically
+          // arrive; moving 100-200 km can never create an instant encounter.
+          if (
+            delegateA.movement ||
+            delegateB.movement ||
+            delegateA.locationId !== meetingPlaceId ||
+            delegateB.locationId !== meetingPlaceId
+          ) {
+            continue;
+          }
           const securityA = this.settlementResourcesForAgent(delegateA);
           const securityB = this.settlementResourcesForAgent(delegateB);
           const scarcity =
@@ -11505,10 +11791,12 @@ export class WorldEngine {
       const deprivation =
         Math.max(0, 0.12 - effectiveResourceSecurity) * 0.014 +
         Math.max(0, 0.1 - agent.energy) * 0.012;
+      const elderAge =
+        SAPIENT_RACE_LIFE_PROFILES_V16[agent.race ?? 'human'].elderAtAge;
       const frailty =
-        agent.life.ageYears > ELDER_AGE
-          ? ((agent.life.ageYears - ELDER_AGE) /
-              Math.max(1, agent.life.lifespanYears - ELDER_AGE)) *
+        agent.life.ageYears > elderAge
+          ? ((agent.life.ageYears - elderAge) /
+              Math.max(1, agent.life.lifespanYears - elderAge)) *
             0.0018
           : 0;
       const recovery =
@@ -11523,23 +11811,15 @@ export class WorldEngine {
           frailty * Math.max(0.05, durationScale) -
           placeDanger * 0.00022,
       );
-      agent.life.physiology = physiologyForAge(
-        agent.life.ageYears,
-        agent.life.lifespanYears,
-        agent.life.health,
+      agent.life.physiology = racePhysiology(
+        agent.race ?? 'human',
+        physiologyForAge(
+          agent.life.ageYears,
+          agent.life.lifespanYears,
+          agent.life.health,
+        ),
       );
-      if (agent.privateDivineCalling?.gift === 'might') {
-        agent.life.physiology.strength = Math.max(0.96, agent.life.physiology.strength);
-        agent.life.physiology.endurance = Math.max(0.92, agent.life.physiology.endurance);
-      } else if (agent.privateDivineCalling?.gift === 'demon_king_hero') {
-        agent.life.health = Math.max(0.98, agent.life.health);
-        agent.life.physiology = {
-          strength: 1,
-          endurance: 1,
-          mobility: 1,
-          recovery: 1,
-        };
-      }
+      applyPersistentDivineGiftEffectsV19(this.state, agent);
 
       const ageRatio = agent.life.ageYears / agent.life.lifespanYears;
       const oldAgeChance =
@@ -12152,10 +12432,13 @@ export class WorldEngine {
         stage: 'child',
         alive: true,
         health: blueprint.health,
-        physiology: physiologyForAge(
-          0,
-          lifespanYears,
-          blueprint.health,
+        physiology: racePhysiology(
+          race,
+          physiologyForAge(
+            0,
+            lifespanYears,
+            blueprint.health,
+          ),
         ),
         generation: blueprint.generation,
         parentIds: [...blueprint.parentIds],
@@ -12256,25 +12539,27 @@ export class WorldEngine {
     const plans: Array<{
       race: Exclude<NonNullable<AgentState['race']>, 'human'>;
       minimumStage: number;
-      villageName: string;
       names: readonly string[];
-      homelandRadius: number;
-      homelandAngle: number;
     }> = [
       {
-        race: 'goblin', minimumStage: 0, villageName: 'Поселение зелёных равнин',
+        race: 'elf', minimumStage: 0,
+        names: ['Aelar', 'Lethiel', 'Faelar', 'Nimriel', 'Saeya', 'Iriwen', 'Calion', 'Elaria', 'Thalen', 'Naevia', 'Liarel', 'Aeris'],
+      },
+      {
+        race: 'dwarf', minimumStage: 0,
+        names: ['Borin', 'Dagna', 'Thora', 'Garin', 'Morda', 'Durim', 'Balgrim', 'Hilda', 'Korin', 'Fara', 'Torun', 'Brina'],
+      },
+      {
+        race: 'goblin', minimumStage: 0,
         names: ['Ruk', 'Mog', 'Vera', 'Nim', 'Tuk', 'Miri', 'Vek', 'Sena', 'Kip', 'Rina', 'Gor', 'Luma'],
-        homelandRadius: 135, homelandAngle: 2.2,
       },
       {
-        race: 'orc', minimumStage: 0, villageName: 'Поселение каменного клана',
+        race: 'orc', minimumStage: 0,
         names: ['Gar', 'Dorn', 'Lira', 'Ona', 'Bran', 'Kora', 'Targ', 'Mira', 'Rok', 'Dara', 'Vor', 'Lena'],
-        homelandRadius: 180, homelandAngle: 3.15,
       },
       {
-        race: 'ogre', minimumStage: 0, villageName: 'Поселение великанов',
+        race: 'ogre', minimumStage: 0,
         names: ['Bram', 'Tor', 'Mara', 'Sia', 'Grom', 'Vala', 'Bora', 'Tima', 'Orr', 'Nara', 'Krag', 'Mina'],
-        homelandRadius: 230, homelandAngle: 4.15,
       },
     ];
 
@@ -12307,31 +12592,13 @@ export class WorldEngine {
 
     const settlementId = `settlement_${plan.race}_homeland`;
     if (this.state.places[settlementId]) return;
-
-    const existingCenters = Object.values(this.state.places).filter(
-      (place) =>
-        (place.kind === 'village' || place.kind === 'city') &&
-        place.surface === 'land',
-    );
-    let angle = plan.homelandAngle;
-    let radius = plan.homelandRadius;
-    let centerX = 50 + Math.cos(angle) * radius;
-    let centerY = 50 + Math.sin(angle) * radius;
-    for (let attempt = 0; attempt < 12; attempt += 1) {
-      const minimumDistance = existingCenters.reduce(
-        (minimum, place) =>
-          Math.min(minimum, Math.hypot(centerX - place.mapX, centerY - place.mapY)),
-        Number.POSITIVE_INFINITY,
-      );
-      if (minimumDistance >= 110) break;
-      radius += 24;
-      angle += 0.31;
-      centerX = 50 + Math.cos(angle) * radius;
-      centerY = 50 + Math.sin(angle) * radius;
-    }
+    const foundation = SAPIENT_PEOPLE_FOUNDATIONS[plan.race];
+    const centerX = foundation.homelandCenter.x;
+    const centerY = foundation.homelandCenter.y;
+    const angle = Math.atan2(centerY - 50, centerX - 50);
     this.state.places[settlementId] = createPlace(
       settlementId,
-      plan.villageName,
+      foundation.homelandName,
       'village',
       40,
       {
@@ -12371,20 +12638,17 @@ export class WorldEngine {
         },
       );
 
-      const personality: AgentState['personality'] = {
-        sociability: this.rng.between(0.28, 0.82),
-        diligence: this.rng.between(0.3, 0.86),
-        curiosity: this.rng.between(0.28, 0.86),
-        generosity: this.rng.between(0.24, 0.82),
-        resilience: this.rng.between(0.45, 0.92),
-        riskTolerance: this.rng.between(0.38, 0.9),
-      };
+      const personality = raceFounderPersonality(
+        plan.race,
+        (minimum, maximum) => this.rng.between(minimum, maximum),
+      );
       const needs = { belonging: 0.7, purpose: 0.62 };
       const adultAge = SAPIENT_RACE_LIFE_PROFILES_V16[plan.race].adultAtAge;
       // A viable remote community, not four same-generation specimens. Ages
       // remain comfortably inside each race's voluntary family window.
       const ageYears = adultAge + 1 + ((index * 3) % 18);
-      const lifespanBase = plan.race === 'goblin' ? 68 : plan.race === 'orc' ? 82 : 96;
+      const lifespanBase = foundation.lifespanBaseYears;
+      const lifespanYears = lifespanBase + personality.resilience * 16;
       const health = 0.9;
       const partial = {
         id: agentId,
@@ -12394,24 +12658,26 @@ export class WorldEngine {
         race: plan.race,
         progression: {
           level: 1, experience: 0, objectControlAuthority: 0.1, systemControlAuthority: 0.06,
-          combatMastery: plan.race === 'goblin' ? 0.12 : plan.race === 'orc' ? 0.18 : 0.22, sacredArts: 0.03,
+          combatMastery: foundation.founderCombatMastery, sacredArts: 0.03,
         },
         energy: 0.82, stress: 0.08, resources: 0.58, socialDrive: personality.sociability, personality,
         life: {
           bornAt: now - ageYears * WORLD_TICKS_PER_YEAR, ageYears,
-          lifespanYears: lifespanBase + personality.resilience * 16,
+          lifespanYears,
           stage: lifeStageForRaceV16(plan.race, ageYears),
           alive: true, health,
-          physiology: physiologyForAge(ageYears, lifespanBase + personality.resilience * 16, health),
+          physiology: racePhysiology(
+            plan.race,
+            physiologyForAge(ageYears, lifespanYears, health),
+          ),
           generation: 0, parentIds: [], childIds: [],
         },
         mind: createMindState(this.state.id, agentId, personality, needs),
         needs,
-        skills: {
-          gathering: this.rng.between(0.18, 0.45), hunting: this.rng.between(0.22, 0.52),
-          craft: this.rng.between(0.16, 0.44), social: this.rng.between(0.18, 0.48),
-          exploration: this.rng.between(0.22, 0.55),
-        },
+        skills: raceFounderSkills(
+          plan.race,
+          (minimum, maximum) => this.rng.between(minimum, maximum),
+        ),
         homeId, locationId: settlementId,
         position: { x: this.state.places[settlementId].mapX, y: this.state.places[settlementId].mapY, layerId: 'surface' as const },
         lastMeaningfulEventAt: now,
@@ -12426,14 +12692,14 @@ export class WorldEngine {
     }
 
     const services = [
-      { suffix: 'field', name: 'Поля и фермы', kind: 'resource_field' as const, dx: -5.6, dy: 2.2, fertility: 0.74 },
-      { suffix: 'workshop', name: 'Мастерская', kind: 'workshop' as const, dx: 2.4, dy: 1.2, fertility: 0.3 },
-      { suffix: 'quiet', name: 'Тихое место', kind: 'quiet_space' as const, dx: -1.8, dy: -2.2, fertility: 0.6 },
+      { suffix: 'field', name: plan.race === 'dwarf' ? 'Рудные штольни' : plan.race === 'elf' ? 'Лесные сады' : 'Поля и фермы', kind: 'resource_field' as const, biome: (plan.race === 'dwarf' ? 'mountains' : plan.race === 'elf' ? 'forest' : 'plains') as WorldBiome, dx: -5.6, dy: 2.2, fertility: plan.race === 'dwarf' ? 0.38 : 0.74 },
+      { suffix: 'workshop', name: 'Мастерская', kind: 'workshop' as const, biome: 'settlement' as WorldBiome, dx: 2.4, dy: 1.2, fertility: 0.3 },
+      { suffix: 'quiet', name: 'Тихое место', kind: 'quiet_space' as const, biome: (plan.race === 'elf' ? 'forest' : 'settlement') as WorldBiome, dx: -1.8, dy: -2.2, fertility: 0.6 },
     ];
     for (const service of services) {
       const serviceId = `${settlementId}_${service.suffix}`;
-      this.state.places[serviceId] = createPlace(serviceId, `${plan.villageName}: ${service.name}`, service.kind, 10, {
-        biome: service.kind === 'resource_field' ? 'plains' : 'settlement',
+      this.state.places[serviceId] = createPlace(serviceId, `${foundation.homelandName}: ${service.name}`, service.kind, 10, {
+        biome: service.biome,
         mapX: this.state.places[settlementId].mapX + service.dx,
         mapY: this.state.places[settlementId].mapY + service.dy,
         connectedPlaceIds: [settlementId], fertility: service.fertility, danger: 0.05, surface: 'land',
@@ -12707,8 +12973,11 @@ export class WorldEngine {
       this.rng.next(),
     );
 
-    const legendaryHero =
-      agent.privateDivineCalling?.gift === 'demon_king_hero';
+    const legendaryHero = hasDivineGiftV19(
+      this.state,
+      agent.id,
+      'demon_king_hero',
+    );
     const choseFight = decision.execution === 'fight_now';
     const evasion = clamp01(
       agent.life.physiology.mobility * 0.42 +
@@ -13084,10 +13353,12 @@ export class WorldEngine {
     );
     agent.lastAction = 'pray';
     agent.lastMeaningfulEventAt = now;
-    const prayerIsMeaningful =
-      agent.mind.emotions.awe >= 0.42 ||
-      agent.mind.beliefs.divinePresence >= 0.52 ||
-      Math.floor(now) % ROUTINE_EVENT_SAMPLE_INTERVAL === 0;
+    const prayer = recordContextualPrayerV19(this.state, agent, {
+      subject: this.rng.next(),
+      deity: this.rng.next(),
+      wording: this.rng.next(),
+    });
+    const prayerIsMeaningful = prayer.importance >= 0.62;
     if (prayerIsMeaningful) {
       this.stageMemory({
         memoryId: this.nextId('memory'),
@@ -13095,13 +13366,25 @@ export class WorldEngine {
         agentId: agent.id,
         createdAt: now,
         kind: 'reflection',
-        summary: `${agent.name} searched for meaning beyond the visible world.`,
-        importance: clamp01(0.38 + agent.mind.emotions.awe * 0.3),
-        valence: clampSigned(0.12 + agent.mind.emotions.hope * 0.18),
-        relatedAgentIds: [],
+        summary: `${agent.name} prayed about ${prayer.subject}: ${prayer.generatedPrayerText}`,
+        importance: prayer.importance,
+        valence: clampSigned(
+          prayer.emotionalState === 'gratitude'
+            ? 0.55
+            : prayer.emotionalState === 'hope'
+              ? 0.24
+              : -prayer.desperation * 0.38,
+        ),
+        relatedAgentIds: prayer.targetPersonId ? [prayer.targetPersonId] : [],
       });
     }
     this.recordAgentEvent(agent, now, 'agent.prayed', {
+      prayerId: prayer.id,
+      topic: prayer.topic,
+      targetDeityId: prayer.deityId,
+      targetKnown: prayer.deityKnown,
+      desperation: prayer.desperation,
+      beliefStrength: prayer.beliefStrength,
       mysteryLevel: this.state.cosmology.mysteryLevel,
       divineBelief: agent.mind.beliefs.divinePresence,
       locationId: agent.locationId,
@@ -13181,13 +13464,14 @@ export class WorldEngine {
   }
 
   private chooseHelpTarget(agent: AgentState, allAgents: AgentState[]): AgentState | undefined {
+    const canHeal = hasDivineGiftV19(this.state, agent.id, 'healing_touch');
     let best: { other: AgentState; score: number } | undefined;
     for (const other of allAgents) {
       if (
         other.id === agent.id ||
         !other.life.alive ||
         other.locationId !== agent.locationId ||
-        other.resources >= 0.5
+        (other.resources >= 0.5 && (!canHeal || other.life.health >= 0.98))
       ) {
         continue;
       }
@@ -13195,6 +13479,7 @@ export class WorldEngine {
         this.state.relationships[relationshipKey(agent.id, other.id)];
       const need =
         (1 - other.resources) * 0.65 +
+        (canHeal ? (1 - other.life.health) * 0.85 : 0) +
         other.stress * 0.2 +
         (1 - other.needs.belonging) * 0.15;
       const willingness = relationship
@@ -13215,6 +13500,9 @@ export class WorldEngine {
     this.moveAgent(a, b.locationId);
     const key = relationshipKey(a.id, b.id);
     const current = this.relationshipFor(a, b, now);
+    const canHeal =
+      hasDivineGiftV19(this.state, a.id, 'healing_touch') &&
+      b.life.health < 0.98;
     const offered = Math.min(0.065, Math.max(0, a.resources - 0.35), 0.72 - b.resources);
     const acceptance = clamp01(
       0.35 +
@@ -13224,11 +13512,15 @@ export class WorldEngine {
         current.conflict * 0.35 +
         b.personality.sociability * 0.08,
     );
-    const accepted = offered > 0.005 && this.rng.next() < acceptance;
+    const accepted = (offered > 0.005 || canHeal) && this.rng.next() < acceptance;
+    const healed = accepted && canHeal
+      ? Math.min(0.1, 1 - b.life.health)
+      : 0;
 
     if (accepted) {
       a.resources = clamp01(a.resources - offered);
       b.resources = clamp01(b.resources + offered);
+      b.life.health = clamp01(b.life.health + healed);
       a.needs.purpose = clamp01(a.needs.purpose + 0.06);
       b.needs.belonging = clamp01(b.needs.belonging + 0.06);
       b.stress = clamp01(b.stress - 0.025);
@@ -13250,13 +13542,15 @@ export class WorldEngine {
       };
     }
 
-    a.energy = clamp01(a.energy - 0.018);
+    a.energy = clamp01(a.energy - 0.018 - healed * 0.22);
     a.lastAction = 'help';
     a.lastMeaningfulEventAt = now;
     b.lastMeaningfulEventAt = now;
 
     const summary = accepted
-      ? `${b.name} accepted help from ${a.name}.`
+      ? healed > 0
+        ? `${b.name} accepted care from ${a.name} and felt their health improve.`
+        : `${b.name} accepted help from ${a.name}.`
       : `${b.name} declined help from ${a.name}.`;
     for (const agent of [a, b]) {
       this.stageMemory({
@@ -13275,6 +13569,7 @@ export class WorldEngine {
     this.recordAgentEvent(a, now, accepted ? 'agent.help.accepted' : 'agent.help.rejected', {
       targetId: b.id,
       amount: accepted ? offered : 0,
+      healing: healed,
       locationId: a.locationId,
     });
     recordResidentContactEvidenceV16(
@@ -13434,6 +13729,7 @@ export class WorldEngine {
     b.lastMeaningfulEventAt = now;
     a.lastAction = 'socialize';
     a.energy = clamp01(a.energy - 0.018);
+    this.tryAdventureMarketTrade(a, now);
     const socialCeiling = (agent: Readonly<AgentState>) => {
       const profession = this.state.v18?.livelihoodByAgentId[agent.id]?.primary;
       return clamp01(
@@ -13520,37 +13816,29 @@ export class WorldEngine {
       });
     }
 
-    const divineCalling = a.privateDivineCalling;
-    const sinceLastDivineShare = divineCalling?.lastSharedWorldMinute === undefined
-      ? Number.POSITIVE_INFINITY
-      : this.state.calendar.elapsedWorldMinutes -
-        divineCalling.lastSharedWorldMinute;
-    const callingShareChance = divineCalling?.calling === 'messenger'
-      ? 0.18
-      : divineCalling?.calling === 'priest'
-        ? 0.14
-        : 0.06;
-    const voluntarilySharedDivineMessage =
-      divineCalling?.acceptedCalling === true &&
-      sentiment > -0.15 &&
-      sinceLastDivineShare >= WORLD_MINUTES_PER_YEAR * 0.25 &&
-      this.rng.next() <
-        callingShareChance +
-          a.personality.sociability * 0.08 +
-          a.mind.values.tradition * 0.05;
-    if (divineCalling && voluntarilySharedDivineMessage) {
-      divineCalling.sharedCount += 1;
-      divineCalling.lastSharedWorldMinute =
-        this.state.calendar.elapsedWorldMinutes;
+    const sharedContact = shareableDivineContactV19(
+      this.state,
+      a,
+      sentiment,
+      this.rng.next(),
+    );
+    if (sharedContact) {
       const listenerInterpretationChance = clamp01(
         0.08 +
           b.personality.curiosity * 0.2 +
           b.mind.values.tradition * 0.18 +
           next.trust * 0.18 +
           b.mind.emotions.awe * 0.12 +
-          (divineCalling.gift === 'crowd_charisma' ? 0.28 : 0),
+          (hasDivineGiftV19(this.state, a.id, 'crowd_charisma') ? 0.28 : 0),
       );
       const listenerMoved = this.rng.next() < listenerInterpretationChance;
+      recordVoluntaryDivineContactShareV19(
+        this.state,
+        a.id,
+        b.id,
+        sharedContact.id,
+        listenerMoved,
+      );
       b.mind.emotions.awe = clamp01(
         b.mind.emotions.awe + (listenerMoved ? 0.025 : 0.006),
       );
@@ -13565,18 +13853,11 @@ export class WorldEngine {
         agentId: b.id,
         createdAt: now,
         kind: 'interaction',
-        summary: `${a.name} spoke privately to ${b.name} of ${divineCalling.deityName}: ${divineCalling.message}`,
+        summary: `${a.name} chose to tell ${b.name} of ${sharedContact.deityName}: ${sharedContact.message}`,
         importance: clamp01(0.58 + next.trust * 0.18),
         valence: listenerMoved ? 0.42 : 0.08,
         relatedAgentIds: [a.id],
       });
-      if (
-        divineCalling.religionName &&
-        divineCalling.sharedCount >= 5 &&
-        !this.state.cosmology.traditions.includes(divineCalling.religionName)
-      ) {
-        this.state.cosmology.traditions.push(divineCalling.religionName);
-      }
       if (conversation.observerAudible) {
         this.stageEvent({
           eventId: this.nextId('divine-message-shared'),
@@ -13587,21 +13868,26 @@ export class WorldEngine {
           payload: {
             speakerId: a.id,
             listenerId: b.id,
-            deityName: divineCalling.deityName,
-            religionName: divineCalling.religionName ?? '',
-            calling: divineCalling.calling,
+            deityName: sharedContact.deityName,
+            religionName: sharedContact.religionName ?? '',
+            contactKind: sharedContact.kind,
             listenerMoved,
+            voluntary: true,
           },
         });
       }
+      const prayerCount =
+        ensureWorldV19State(this.state).divineAgency.byAgentId[a.id]
+          ?.totalPrayerCount ?? 0;
+      const naturallySpiritual =
+        prayerCount >= 5 &&
+        a.mind.beliefs.divinePresence >= 0.58 &&
+        sharedContact.sharedCount >= 2;
       recordLivelihoodPracticeV18(this.state, a, {
-        action: divineCalling.calling === 'priest' ? 'pray' : 'socialize',
+        action: naturallySpiritual ? 'pray' : 'socialize',
         placeId: a.locationId,
         choiceRoll: this.rng.next(),
-        professionHint:
-          divineCalling.calling === 'priest'
-            ? 'spiritual_keeper'
-            : 'teacher',
+        professionHint: naturallySpiritual ? 'spiritual_keeper' : 'teacher',
         amount: 0.7,
       });
     }
@@ -13762,7 +14048,7 @@ export class WorldEngine {
 
     const mobilityScale =
       (0.8 + agent.life.physiology.mobility * 0.4) *
-      (agent.privateDivineCalling?.gift === 'demon_king_hero' ? 5 : 1);
+      (hasDivineGiftV19(this.state, agent.id, 'demon_king_hero') ? 5 : 1);
     const movementBudget =
       RESIDENT_WALK_MAP_UNITS_PER_WORLD_MINUTE *
       mobilityScale *

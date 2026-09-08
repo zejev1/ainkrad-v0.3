@@ -6,14 +6,14 @@ import {
   WorldRevisionConflictError,
 } from '../world/persistence';
 import type {
-  DivineCallingRole,
+  DivineContactKind,
   DivineGiftKind,
   WorldEntryRole,
   WorldState,
 } from '../world/types';
 
 export const WORLD_ENTRY_GATEWAY_POLICY_VERSION =
-  'ainkrad-world-entry-gateway-0.3.10';
+  'ainkrad-world-entry-gateway-0.3.19';
 
 export type DivineOmenKind =
   | 'aurora'
@@ -47,9 +47,10 @@ export interface PrivateDivineAudienceRequest {
   deityId: string;
   deityName: string;
   religionName?: string;
-  message: string;
-  gift: DivineGiftKind;
-  calling: DivineCallingRole;
+  message?: string;
+  gift?: DivineGiftKind;
+  contactKind?: DivineContactKind;
+  relatedPrayerId?: string;
   requestedAt: number;
 }
 
@@ -97,9 +98,10 @@ export interface WorldEntryTarget {
     deityId: string,
     deityName: string,
     religionName: string | undefined,
-    message: string,
-    gift: DivineGiftKind,
-    calling: DivineCallingRole,
+    message: string | undefined,
+    gift: DivineGiftKind | undefined,
+    contactKind: DivineContactKind | undefined,
+    relatedPrayerId: string | undefined,
     now: number,
     operationId: string,
     expectedWorldRevision: number,
@@ -249,19 +251,39 @@ export class IndependentWorldEntryGateway {
     if (!agent?.life.alive) {
       return this.record(base, 'audience', false, 'Selected resident is not alive.');
     }
-    if (agent.privateDivineCalling) {
-      return this.record(base, 'audience', false, 'This resident already received a private audience.');
-    }
+    const existingGifts = expectedWorld.v19?.divineAgency.byAgentId[
+      request.agentId
+    ]?.gifts ?? [];
+    const duplicateGift = request.gift
+      ? existingGifts.some((grant) => grant.gift === request.gift)
+      : false;
+    const relatedPrayer = request.relatedPrayerId
+      ? expectedWorld.v19?.divineAgency.recentPrayers.find(
+          (prayer) =>
+            prayer.id === request.relatedPrayerId &&
+            prayer.npcId === request.agentId,
+        ) ??
+        expectedWorld.v19?.divineAgency.byAgentId[
+          request.agentId
+        ]?.significantPrayers.find(
+          (prayer) => prayer.prayerId === request.relatedPrayerId,
+        )
+      : undefined;
     if (
       !/^[a-zA-Z0-9][a-zA-Z0-9_-]{2,63}$/.test(request.deityId) ||
       !request.deityName.trim() ||
       request.deityName.length > 64 ||
-      !request.message.trim() ||
-      request.message.length > 480 ||
+      (!request.gift && !request.contactKind) ||
+      (request.contactKind && !request.message?.trim()) ||
+      (request.message !== undefined && request.message.length > 480) ||
       (request.religionName !== undefined &&
         (!request.religionName.trim() || request.religionName.length > 64)) ||
-      !['might', 'genius_inventor', 'crowd_charisma', 'demon_king_hero'].includes(request.gift) ||
-      !['hero', 'messenger', 'priest'].includes(request.calling)
+      (request.gift !== undefined &&
+        !['longevity', 'might', 'genius_inventor', 'crowd_charisma', 'healing_touch', 'demon_king_hero'].includes(request.gift)) ||
+      (request.contactKind !== undefined &&
+        !['message', 'revelation', 'command', 'request', 'warning', 'vision', 'sign'].includes(request.contactKind)) ||
+      (request.relatedPrayerId !== undefined && !relatedPrayer) ||
+      (duplicateGift && !request.contactKind)
     ) {
       return this.record(base, 'audience', false, 'Private audience request is outside the gateway envelope.');
     }
@@ -275,7 +297,8 @@ export class IndependentWorldEntryGateway {
         request.religionName,
         request.message,
         request.gift,
-        request.calling,
+        request.contactKind,
+        request.relatedPrayerId,
         request.requestedAt,
         request.requestId,
         expectedWorld.revision,
@@ -294,7 +317,7 @@ export class IndependentWorldEntryGateway {
         base,
         'audience',
         true,
-        'The gift was granted privately. Cardinal and bystanders received no direct event.',
+        'The private divine action was delivered through the independent gateway. Cardinal and bystanders received no direct event.',
       ),
       committedWorldRevision: result.committedRevision,
     };

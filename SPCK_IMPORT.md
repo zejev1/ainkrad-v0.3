@@ -1,39 +1,39 @@
-# Ainkrad v0.3.18: import and commit in SPCK
+# Ainkrad v0.3.19: import and commit in SPCK
 
-The final release ZIP is a complete SPCK project. Its verified v15-derived
-world code is overlaid as ordinary working-tree changes on the read-only
-verified `main` parent
-`eed7de361bec4e07bb39882937b6c1c76a0d22fa` from:
+The final ZIP is a complete, flat SPCK project. Repository files and `.git`
+are located directly at the archive root, not inside a second project folder.
+The working-tree changes are based on the verified GitHub `main` parent:
+
+`66538c03ff8dfcea0bccb2e493c6af1666facfad`
+
+Remote:
 
 `https://github.com/zejev1/ainkrad-v0.3.git`
 
 No credential, commit or push is included.
 
-1. Download the single `Ainkrad_v0.3.18_SPCK_READY_FINAL_*.zip` file. Do not
-   unpack it manually and do not combine it with another Ainkrad archive.
-2. In SPCK open **Projects → + → Import ZIP**, select the ZIP and create a new
-   project named `Ainkrad`.
-3. Open **Git**. The archive already contains `.git`; do not initialize another
-   repository and do not clone GitHub. SPCK must show uncommitted v0.3.18
-   changes on branch `main`. Project files must be directly at the project
-   root; if SPCK shows a second project folder inside it, the wrong ZIP was
-   selected.
+1. Download the single `Ainkrad-v0.3.19-SPCK-READY-FINAL-*.zip` file.
+2. In SPCK choose **Projects → + → Import ZIP** and select that ZIP. Do not
+   first create an empty project and extract the archive into it; that produces
+   the unwanted project-inside-project layout.
+3. Open **Git**. Do not initialize another repository and do not clone GitHub.
+   SPCK must show branch `main` and the uncommitted v0.3.19 changes immediately.
 4. If SPCK asks for Git identity, use
    `zejev1@users.noreply.github.com`.
-5. Use one commit message:
-   `fix(v0.3.18): restore world continuity and resident agency`
-6. Tap **Commit**, then **Push**. Those actions remain yours.
-   This archive is already based on the current GitHub `main`; never enable a
-   force push for this package.
-7. After Vercel succeeds, open the existing world first. Confirm that schema
-   repair preserves its people and Cardinal experience, catch-up finishes,
-   residents visibly travel, the resident picker selects the intended person,
-   text size can be changed and audible Russian conversations appear.
-8. Only then create a fresh world and confirm its Cardinal panel starts with
-   current-epoch counters instead of interventions from the previous world.
+5. Suggested commit message:
+   `feat(v0.3.19): add lived prayers, gifts and adventure economy`
+6. Tap **Commit**, then **Push**. Those actions remain yours. Never enable a
+   force push for this archive.
+7. After Vercel succeeds, open the existing world first. Confirm that catch-up
+   completes, the Secret Library remains fixed beside Ainkrad, Cardinal keeps
+   its experience, prayers appear in their inbox, and dungeon entrances and
+   adventure evidence appear without a world-error badge.
+8. Then create a fresh world and confirm that births, cultural names,
+   conversations, distant settlements, voluntary professions and adventure
+   ranks develop from the new epoch rather than old cached counters.
 
-The assistant performed no GitHub/Vercel write. `node_modules`, `dist`, CPU
-profiles and generated acceptance artifacts are intentionally excluded.
+The assistant performed no GitHub or Vercel write. `node_modules`, `dist`,
+`tsconfig.tsbuildinfo`, CPU profiles and generated audit caches are excluded.
 
 Do **not** connect Ainkrad v0.3 to Convex. This project intentionally has no
 Convex adapter or credential.

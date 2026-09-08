@@ -16,6 +16,7 @@ import {
   SECRET_LIBRARY_MAX_VISITORS_PER_YEAR_V18,
   SECRET_LIBRARY_PLACE_ID_V18,
 } from '../v18/SecretLibraryV18';
+import { SAPIENT_PEOPLE_FOUNDATIONS } from '../world/SapientPeoples';
 
 export interface TruthfulInspectorRowV16 {
   label: string;
@@ -53,6 +54,8 @@ const actionLabels: Readonly<Record<AgentActionKind, string>> = {
 
 const raceLabels: Readonly<Record<AgentRace, string>> = {
   human: 'человек',
+  elf: 'эльф',
+  dwarf: 'гном',
   goblin: 'гоблин',
   orc: 'орк',
   ogre: 'огр',
@@ -162,6 +165,7 @@ export function inspectResidentV16(
   const agent = world.agents[agentId];
   if (!agent) return undefined;
   const race = agent.race ?? 'human';
+  const people = SAPIENT_PEOPLE_FOUNDATIONS[race];
   const evidence = world.v16?.residentEvidenceByAgentId[agent.id];
   const knowledge = world.v15?.knowledgeByAgentId[agent.id];
   const livelihood = world.v18?.livelihoodByAgentId[agent.id];
@@ -264,6 +268,30 @@ export function inspectResidentV16(
             value: world.places[agent.locationId]?.name ?? agent.locationId,
           },
           { label: 'Цель', value: agent.goal.kind },
+        ],
+      },
+      {
+        title: 'Народ и тело',
+        rows: [
+          {
+            label: 'Культурные сильные стороны',
+            value: people.culturalStrengths.join(' · '),
+          },
+          {
+            label: 'Физиология',
+            value: `сила ${percent(agent.life.physiology.strength)} · выносливость ${percent(agent.life.physiology.endurance)} · подвижность ${percent(agent.life.physiology.mobility)} · восстановление ${percent(agent.life.physiology.recovery)}`,
+          },
+          {
+            label: 'Исходная память о людях',
+            value:
+              people.historicDispositionToHumans === 'friendly'
+                ? 'дружелюбная, но меняется по реальным поступкам'
+                : people.historicDispositionToHumans === 'hostile'
+                  ? 'враждебная, но не отменяет личный выбор'
+                  : people.historicDispositionToHumans === 'wary'
+                    ? 'настороженная; дальше решает опыт'
+                    : 'собственный народ Айнкрада',
+          },
         ],
       },
       {

@@ -17,9 +17,10 @@ import type {
   WorldSpeedMultiplier,
 } from '../world/WorldClock';
 import type {
-  DivineCallingRole,
+  DivineContactKind,
   DivineGiftKind,
 } from '../world/types';
+import type { V19DivineInterpretation } from '../v19/types';
 
 const WORLD_LOCK_NAME = 'ainkrad-v0-3-live-world-writer';
 const WORLD_CHANNEL_NAME = 'ainkrad-v0-3-live-world-frames';
@@ -31,7 +32,7 @@ const DIVINE_AUDIENCE_CHANNEL_NAME = 'ainkrad-v0-3-divine-audience';
 const STORAGE_CHECK_INTERVAL_TICKS = 300;
 const AINKRAD_STORAGE_SOFT_BUDGET_BYTES = 2 * 1024 * 1024 * 1024;
 const AINKRAD_STORAGE_CRITICAL_BUDGET_BYTES = 4 * 1024 * 1024 * 1024;
-const FRAME_PROTOCOL_VERSION = 'ainkrad-live-frame-0.3.18';
+const FRAME_PROTOCOL_VERSION = 'ainkrad-live-frame-0.3.19';
 const COMPATIBLE_FRAME_PROTOCOLS = new Set([
   'ainkrad-live-frame-0.3.10',
   'ainkrad-live-frame-0.3.11',
@@ -41,6 +42,7 @@ const COMPATIBLE_FRAME_PROTOCOLS = new Set([
   'ainkrad-live-frame-0.3.15',
   'ainkrad-live-frame-0.3.16',
   'ainkrad-live-frame-0.3.17',
+  'ainkrad-live-frame-0.3.18',
   FRAME_PROTOCOL_VERSION,
 ]);
 
@@ -91,7 +93,10 @@ type LiveWorldWorkerMessage =
       requestId: string;
       agentId: string;
       authorized: boolean;
-      acceptedCalling?: boolean;
+      giftGranted?: boolean;
+      contactRecorded?: boolean;
+      interpretation?: V19DivineInterpretation;
+      residentResponse?: string;
       reason: string;
     };
 
@@ -124,9 +129,10 @@ interface PrivateDivineAudienceCommand {
   deityId: string;
   deityName: string;
   religionName?: string;
-  message: string;
-  gift: DivineGiftKind;
-  calling: DivineCallingRole;
+  message?: string;
+  gift?: DivineGiftKind;
+  contactKind?: DivineContactKind;
+  relatedPrayerId?: string;
 }
 
 type LiveWorldWorkerCommand =
@@ -243,11 +249,21 @@ async function grantPrivateDivineAudience(
     ...(request.religionName?.trim()
       ? { religionName: request.religionName.trim() }
       : {}),
-    message: request.message,
-    gift: request.gift,
-    calling: request.calling,
+    ...(request.message?.trim() ? { message: request.message.trim() } : {}),
+    ...(request.gift ? { gift: request.gift } : {}),
+    ...(request.contactKind ? { contactKind: request.contactKind } : {}),
+    ...(request.relatedPrayerId
+      ? { relatedPrayerId: request.relatedPrayerId }
+      : {}),
   });
-  const agent = activeRuntime.worldSnapshot().agents[request.agentId];
+  const world = activeRuntime.worldSnapshot();
+  const profile = world.v19?.divineAgency.byAgentId[request.agentId];
+  const gift = profile?.gifts.find(
+    (candidate) => candidate.id === `gift:${request.requestId}`,
+  );
+  const contact = profile?.contacts.find(
+    (candidate) => candidate.id === `contact:${request.requestId}`,
+  );
   const result = {
     type: 'divine_audience_result',
     protocolVersion: FRAME_PROTOCOL_VERSION,
@@ -255,7 +271,16 @@ async function grantPrivateDivineAudience(
     agentId: request.agentId,
     authorized: record.authorized,
     ...(record.authorized
-      ? { acceptedCalling: agent?.privateDivineCalling?.acceptedCalling ?? false }
+      ? {
+          giftGranted: Boolean(gift),
+          contactRecorded: Boolean(contact),
+          ...(contact?.interpretation || gift?.interpretation
+            ? { interpretation: contact?.interpretation ?? gift?.interpretation }
+            : {}),
+          ...(contact?.residentResponse || gift?.residentResponse
+            ? { residentResponse: contact?.residentResponse ?? gift?.residentResponse }
+            : {}),
+        }
       : {}),
     reason: record.reason,
   } as const;

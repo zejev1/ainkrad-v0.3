@@ -32,6 +32,20 @@ const CULTURES_V18: Readonly<Record<AgentRace, NamingCultureV18>> = {
     femaleEndings: ['a', 'ia', 'ra', 'na', 'elle', 'is', 'ya', 'e', 'in', 'ora'],
     legacyBases: ['Ari', 'Lio', 'Sena', 'Tali', 'Neri', 'Eden', 'Sora', 'Ayla', 'Lev', 'Yuna'],
   },
+  elf: {
+    onsets: ['Ae', 'Al', 'Cele', 'Ela', 'Eli', 'Fa', 'Iri', 'Lae', 'Lia', 'Na', 'Sae', 'Tha'],
+    cores: ['a', 'e', 'ia', 'iel', 'ien', 'ir', 'ae', 'ora', 'yth'],
+    maleEndings: ['l', 'r', 'n', 's', 'th', 'ion', 'iel'],
+    femaleEndings: ['a', 'iel', 'wen', 'ria', 'thea', 'ine', 'ya'],
+    legacyBases: ['Aelar', 'Lethiel', 'Faelar', 'Nimriel', 'Saeya', 'Iriwen'],
+  },
+  dwarf: {
+    onsets: ['Bal', 'Bar', 'Bor', 'Dor', 'Dur', 'Far', 'Gar', 'Har', 'Kor', 'Mor', 'Thar', 'Tor'],
+    cores: ['a', 'o', 'u', 'ar', 'or', 'ur', 'in', 'un'],
+    maleEndings: ['k', 'n', 'r', 'm', 'din', 'grim', 'gar'],
+    femaleEndings: ['a', 'da', 'dis', 'hild', 'na', 'ra', 'rin'],
+    legacyBases: ['Borin', 'Dagna', 'Thora', 'Garin', 'Morda', 'Durim'],
+  },
   goblin: {
     onsets: ['Br', 'Dr', 'Gr', 'Kr', 'M', 'N', 'R', 'Sk', 'Sn', 'T', 'V', 'Z'],
     cores: ['a', 'e', 'i', 'o', 'u', 'ak', 'ik', 'og', 'ur'],

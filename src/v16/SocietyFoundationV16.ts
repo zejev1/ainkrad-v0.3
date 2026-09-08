@@ -16,11 +16,17 @@ import type {
   WorldState,
   WorldV16State,
 } from '../world/types';
+import {
+  initialRaceDiplomacy,
+  settlementFoundingRace,
+} from '../world/SapientPeoples';
 
 export const WORLD_RULES_VERSION_V16 = 'ainkrad-world-rules-0.3.16';
 
 export const SAPIENT_RACES_V16 = [
   'human',
+  'elf',
+  'dwarf',
   'goblin',
   'orc',
   'ogre',
@@ -62,6 +68,24 @@ export const SAPIENT_RACE_LIFE_PROFILES_V16: Readonly<
     minimumReproductiveHealth: 0.58,
     raceBirthSpacingWorldMinutes: WORLD_MINUTES_PER_YEAR * 0.8,
     lifespanScale: 1,
+  },
+  elf: {
+    childUntilAge: 18,
+    adultAtAge: 25,
+    elderAtAge: 170,
+    maximumReproductiveAge: 150,
+    minimumReproductiveHealth: 0.62,
+    raceBirthSpacingWorldMinutes: WORLD_MINUTES_PER_YEAR * 1.4,
+    lifespanScale: 2.5,
+  },
+  dwarf: {
+    childUntilAge: 14,
+    adultAtAge: 21,
+    elderAtAge: 108,
+    maximumReproductiveAge: 92,
+    minimumReproductiveHealth: 0.61,
+    raceBirthSpacingWorldMinutes: WORLD_MINUTES_PER_YEAR * 1.08,
+    lifespanScale: 1.72,
   },
   goblin: {
     childUntilAge: 10,
@@ -1025,23 +1049,28 @@ function settlementRelationKey(a: string, b: string): string {
 }
 
 function emptySettlementRelation(
+  state: Readonly<WorldState>,
   settlementA: string,
   settlementB: string,
   worldMinutes: number,
 ): V16SettlementRelationEvidenceState {
   const [left, right] = [settlementA, settlementB].sort();
+  const prior = initialRaceDiplomacy(
+    settlementFoundingRace(state, left),
+    settlementFoundingRace(state, right),
+  );
   return {
     id: settlementRelationKey(left, right),
     settlementA: left,
     settlementB: right,
     contactEvents: 0,
-    familiarity: 0,
-    trust: 0.5,
-    fear: 0,
-    grievance: 0,
+    familiarity: prior.familiarity,
+    trust: prior.trust,
+    fear: prior.fear,
+    grievance: prior.grievance,
     obligation: 0,
-    cooperation: 0,
-    hostility: 0,
+    cooperation: prior.cooperation,
+    hostility: prior.hostility,
     activeWar: false,
     conflictRounds: 0,
     resourceRaids: 0,
@@ -1059,6 +1088,7 @@ export function ensureSettlementRelationV16(
   const v16 = ensureWorldV16State(state);
   const key = settlementRelationKey(settlementA, settlementB);
   v16.settlementRelations[key] ??= emptySettlementRelation(
+    state,
     settlementA,
     settlementB,
     state.calendar.elapsedWorldMinutes,
@@ -1166,7 +1196,7 @@ export function recordResidentContactEvidenceV16(
   const key = settlementRelationKey(settlementA, settlementB);
   const relation =
     v16.settlementRelations[key] ??
-    emptySettlementRelation(settlementA, settlementB, worldMinutes);
+    emptySettlementRelation(state, settlementA, settlementB, worldMinutes);
   relation.contactEvents += 1;
   relation.familiarity = clamp01(relation.familiarity + 0.018);
   relation.trust = clamp01(

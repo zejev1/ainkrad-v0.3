@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   allowedActionsForAgeV16,
   ensureSettlementRelationV16,
+  lifeStageForRaceV16,
   productiveCapacityScaleV16,
+  SAPIENT_RACE_LIFE_PROFILES_V16,
   settlementFamilyCapacityV16,
   SAPIENT_RACES_V16,
   worldPopulationCapacityV16,
@@ -715,8 +717,12 @@ describe('v0.3.16 material settlements and death aftermath', () => {
       }
     }
     for (const agent of living) {
-      agent.life.stage = 'adult';
-      agent.life.ageYears = Math.max(24, agent.life.ageYears);
+      const race = agent.race ?? 'human';
+      agent.life.ageYears = Math.max(
+        SAPIENT_RACE_LIFE_PROFILES_V16[race].adultAtAge + 1,
+        agent.life.ageYears,
+      );
+      agent.life.stage = lifeStageForRaceV16(race, agent.life.ageYears);
       agent.life.health = 1;
       agent.energy = 1;
       agent.movement = undefined;

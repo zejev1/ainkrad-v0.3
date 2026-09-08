@@ -6,7 +6,7 @@ import {
 } from '../src/v18/UnderworldFoundationV18';
 import { WORLD_RULES_VERSION_V16 } from '../src/v16/SocietyFoundationV16';
 import { InMemoryWorldStore } from '../src/world/InMemoryWorldStore';
-import { WorldEngine } from '../src/world/WorldEngine';
+import { WORLD_RULES_VERSION, WorldEngine } from '../src/world/WorldEngine';
 
 describe('v0.3.18 additive Underworld foundation', () => {
   it('migrates v16 once without changing people, time, relations, RNG or Cardinal-facing history', async () => {
@@ -36,7 +36,7 @@ describe('v0.3.18 additive Underworld foundation', () => {
 
     const opened = await WorldEngine.open({ worldId: legacy.id, store });
     const migrated = opened.snapshot();
-    expect(migrated.rulesVersion).toBe(WORLD_RULES_VERSION_V18);
+    expect(migrated.rulesVersion).toBe(WORLD_RULES_VERSION);
     expect({
       now: migrated.now,
       calendar: migrated.calendar,

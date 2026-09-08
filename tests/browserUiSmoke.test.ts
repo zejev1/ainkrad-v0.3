@@ -30,8 +30,16 @@ describe('SPCK browser UI smoke contract', () => {
     expect(template).toContain('id="text-scale"');
     expect(template).toContain('id="resident-picker"');
     expect(template).toContain('id="resident-profession"');
+    expect(template).toContain('id="resident-adventure"');
+    expect(template).toContain('id="dungeon-count"');
+    expect(template).toContain('id="trade-volume"');
     expect(template).toContain('id="satiety-value"');
     expect(template).toContain('id="conversation-feed"');
+    expect(template).toContain('id="prayer-inbox-open"');
+    expect(template).toContain('id="prayer-inbox-list"');
+    expect(template).toContain('id="prayer-filter-settlement"');
+    expect(template).toContain('id="divine-contact-kind"');
+    expect(template).not.toContain('id="divine-calling"');
     expect(browserSource).toContain('readableLawReports');
     expect(browserSource).toContain('readableInterventionReports');
     expect(browserSource).toContain('deathDiagnostics');
@@ -41,6 +49,8 @@ describe('SPCK browser UI smoke contract', () => {
     expect(browserSource).toContain("event.data.type === 'catch_up_progress'");
     expect(browserSource).toContain("event.data.type === 'catch_up_recovery'");
     expect(browserSource).toContain('conversation.observerAudible');
+    expect(browserSource).toContain('prayer.generatedPrayerText');
+    expect(browserSource).toContain('relatedPrayerId: activePrayerId');
     expect(browserSource).toContain(
       'cardinalActivity.authorizationDecisionCount > 0',
     );
@@ -55,6 +65,8 @@ describe('SPCK browser UI smoke contract', () => {
     expect(css).toContain('.map-place:not(.is-active) .place-count');
     expect(css).toContain('.resident-picker-label select');
     expect(css).toContain('.conversation-window');
+    expect(css).toContain('.map-place.has-dungeon');
+    expect(css).toContain('.adventure-panel');
     expect(css).toContain('.need-track.need-track--satiety span');
     expect(css).toContain('pointer-events: auto');
     expect(browserSource).toContain("report.kind === 'place'");

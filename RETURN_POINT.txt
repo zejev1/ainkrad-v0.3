@@ -1,68 +1,64 @@
-AINKRAD v0.3.18 FINAL SOURCE RETURN POINT
-Date: 2026-08-31 UTC
-Status: implementation and release audit complete; ready for SPCK staging
+AINKRAD v0.3.19 SOURCE RETURN POINT
+Date: 2026-09-08 UTC
+Status: implementation, regression and 100-year audit completed
 
 SOURCE AUTHORITY
-- Continue from this v0.3.18 tree. It is the v15-derived autonomous world with
-  the complete v16/v17 foundations and additive v18 Underworld layer.
-- Correct read-only verified GitHub parent:
-  dad1dc0f72bd0883f801b93e3da4cae1587b6270 on branch main at
-  https://github.com/zejev1/ainkrad-v0.3.git
-- GitHub and Vercel remain read-only to the assistant. Do not commit or push.
-- No Convex connection, adapter or credential belongs in this project.
+- Continue from this complete v0.3.19 tree; do not restore an older ZIP.
+- Git HEAD: 66538c03ff8dfcea0bccb2e493c6af1666facfad, branch main.
+- Remote: https://github.com/zejev1/ainkrad-v0.3.git
+- Changes are intentionally uncommitted and unstaged.
+- Only the user commits and pushes through SPCK. No assistant GitHub/Vercel
+  writes and no Convex connection.
 
-FINAL v0.3.18 IMPLEMENTATION
-- Physical routes advance continuously; decisions and Cardinal opportunities
-  remain on the fixed canonical Ainkrad-time grid.
-- Closed-browser restoration uses an epoch-scoped absolute target, executes all
-  semantic quanta and batches persistence/UI work. Progress exposes percent
-  and ETA; a 200-year benchmark completed in 43.128 seconds.
-- Hunger, real meals and local stocks constrain life. Completed actions require
-  arrival at compatible fields, forests, mountains, water or workshops.
-- Fifteen livelihood paths arise from repeated lived work and vocational fit,
-  never Cardinal assignment or settlement quotas. Safe chores can begin before
-  adulthood; dangerous adult actions retain age gates.
-- Descendants can independently volunteer for frontier expeditions, reconsider
-  at camp, found settlements or return. Generation-zero founders may guide but
-  never permanently leave Ainkrad.
-- Settlement abandonment, ruins, reoccupation, contact, resource transfer and
-  voluntary conflict remain material world events.
-- Russian conversation and Cyrillic literacy grow from witnessed interaction.
-  The observer exposes only bounded persisted audible dialogue.
-- The original strategy-style map adds roads, work zones, smaller residents,
-  exact resident selection and three mobile text sizes without copied assets.
-- Cardinal gained read-only aggregate observations only. It has no resident
-  mind, action, identity, language or profession writer.
-- Player entry is a dormant schema/authority foundation. Production login,
-  avatar and controls remain disabled.
-- Ordinary territorial wildlife remains dangerous but less lethal than true
-  monsters. Monsters physically attack and feed; kills still leave remains.
+IMPLEMENTED
+- All preceding v0.3.18 fixes retained: world catch-up and continuity,
+  Cardinal experience, fixed Secret Library, learning, cultural names,
+  contextual conversations, livelihoods, physical routes and planet map.
+- Gifts change capabilities independently of profession or imposed calling.
+  Hero is a capability preset. Direct messages and signs remain separate.
+- Private audience pauses time and age. Cardinal cannot access private contact.
+- Life events drive contextual prayers with cause, subject, wish, emotion,
+  belief and desperation. Inbox filters link to NPCs and divine responses.
+  Prayer counts never create automatic rewards; interpretations remain personal.
+- Voluntary dungeon journeys, experience ranks, abilities and artifacts;
+  real-stock purchases and physically carried inter-settlement trade.
+- Six peoples: humans, elves, dwarves, goblins, orcs and ogres. Founding
+  homelands are 100-200 km apart, with distinct physiology, life windows,
+  cultural skills, names, terrain traditions and appearance.
+- Friendly elf/dwarf and hostile goblin/orc initial human relations can evolve
+  through actual events. Individuals retain their choices.
+- Existing canonical close homelands are relocated once with places,
+  residents and route repair. Time, history, identity and RNG are retained.
 
-EXECUTED FINAL CHECKS
+EXECUTED CHECKS
 - TypeScript: PASS.
-- Full sequential regression: PASS, 38/38 files and 160/160 tests.
-- Cardinal x1/x10/x100 equal-time causality: PASS.
-- OFF/OBSERVER world equivalence: PASS.
-- Production Vite build and dedicated worker: PASS.
-- Production HTTP/worker smoke: PASS.
-- 100-year run: 20 living, 11 moving, 7 settlements; 4 expeditions founded,
-  1 returned and 1 failed; 15.573 seconds.
-- 138-year run: 38 living, 16 moving, 6 settlements; 24.516 seconds.
-- 200-year run: 88 living, 40 moving, 7 settlements; 43.128 seconds.
-- Real cloud-browser local preview: NOT PASS. Both local URLs were blocked with
-  ERR_BLOCKED_BY_CLIENT; this limitation is recorded honestly and requires a
-  real mobile Vercel smoke after the user's SPCK push.
-- Human-readable evidence: TEST_RESULTS_v0.3.18.md.
-- Machine-readable evidence: docs/V0_3_18_RELEASE_AUDIT.json.
+- Full regression: 43/43 files, 185/185 tests, 101.51 seconds.
+- Equal-time x1/x10/x100 causality and OFF/OBSERVER autonomy: PASS.
+- Production Vite build: PASS; dedicated worker emitted.
+- Local production HTTP smoke: index and worker returned 200.
+- 100-year ainkrad-browser-world audit, Cardinal OFF: 114.169 seconds,
+  738 living, 751 births, 83 deaths, 10 inhabited settlements.
+- Six living peoples: human 65, elf 122, dwarf 161, goblin 66, orc 156,
+  ogre 168. No deprivation deaths; no artificial population ceiling.
+- 751 distinct child names, no technical-number names; 95 distinct utterances
+  among 96 recent conversations. 340 prayers and 308 dungeon runs.
+- All 15 homeland pairs within 100-200 km; migration repair idempotent.
+- Evidence: TEST_RESULTS_v0.3.19.md and docs/V0_3_19_RELEASE_AUDIT.json.
 
-FINAL PACKAGING
-- Overlay this source without its old .git/node_modules/dist/CPU profiles onto
-  a clean staging tree whose .git HEAD is exactly dad1dc0 on main.
-- Regenerate SHA256SUMS.txt, verify it, run typecheck/tests/build on staging,
-  remove generated dependencies/output and ZIP project contents at archive
-  root including .git. Do not commit or push.
+LIMITS
+- Actual Android Chrome/Vercel rendering and IndexedDB smoke still needed
+  after the user's push. Local HTTP smoke is not a mobile browser test.
+- The 100-year audit does not assert a 300-year population or all-seed outcome.
+- Prayer detail retains the latest 256 records plus 12 significant entries
+  per resident; older totals remain counted. Other v19 histories are bounded.
+
+PACKAGING
+- Archive contents at root, including .git; no enclosing project directory.
+- Exclude node_modules, dist, tsconfig.tsbuildinfo, CPU profiles and .tmp-audit.
+- Verify unpacked HEAD, main, remote, empty index and all source hashes.
+- No commit, push or force push by the assistant.
 
 SPCK HANDOFF
 - Git email: zejev1@users.noreply.github.com
-- Commit message:
-  feat(v0.3.18): deepen autonomous livelihoods and Underworld foundations
+- Suggested commit:
+  feat(v0.3.19): add lived prayers, gifts and adventure economy

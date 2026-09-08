@@ -1,4 +1,4 @@
-# Ainkrad v0.3.18
+# Ainkrad v0.3.19
 
 An experimental autonomous world for developing and testing a self-checking AI governance layer.
 
@@ -18,6 +18,72 @@ If implementation code conflicts with these principles, the implementation is wr
 The city, agents, runtime, database, UI and infrastructure exist to create a real autonomous environment in which Cardinal can be tested, challenged, audited and potentially disproven.
 
 Technical optimization must never silently remove the history, observability or independence required to evaluate Cardinal.
+
+## v0.3.19: independent gifts, lived prayers and voluntary adventure
+
+This release keeps the repaired v0.3.18 population, knowledge, naming,
+conversation, map and mobile-continuity systems, then adds a separate spiritual
+agency layer.
+
+- The founding homes of humans, elves, dwarves, goblins, orcs and ogres are
+  separated by 100-200 physical kilometres. An existing close-layout save is
+  repaired once by moving only canonical homelands, their buildings, resident
+  positions and routes; lived history and Cardinal experience remain intact.
+- The six peoples differ through actual rules: life windows, physiology,
+  founder aptitudes, preferred terrain, material traditions, cultural naming
+  and visible bodies. Elves and dwarves begin friendly toward humans; goblins
+  and orcs begin hostile; ogres begin wary. This is only first-contact cultural
+  history—real actions can produce peace, worsening war or changed alliances,
+  and no individual's morality is forced by race.
+
+- A gift is a capability, never a profession, class or compulsory destiny.
+  Ordinary residents keep their character, family, relationships, livelihood,
+  goals and freedom after receiving longevity, might, inventive intelligence,
+  charisma, healing or the level-100 hero capability preset.
+- A private message, revelation, request, command, warning, vision or sign is
+  independent from gifts. A resident records and interprets it, then decides
+  whether to act, ignore it or tell another person. Priests and traditions can
+  emerge only from repeated voluntary prayer, testimony and recognition.
+- Prayer records are composed from the resident's current lived evidence:
+  relatives, health, grief, hunger, land, war, danger, travel, resources,
+  profession, belief, doubt and desperation. They are not randomly selected
+  complete stock phrases and they never trigger an automatic reward.
+- The player receives a filterable prayer inbox, can open the exact resident,
+  observe the context and choose whether to answer with words, a sign, a gift
+  or nothing. The resident's written reaction and uncertain attribution remain
+  visible in prayer history.
+- Detailed recent prayers and per-person significant histories are bounded;
+  cumulative topic and prayer counts preserve evidence that older prayers
+  existed. Private divine actions pass through the independent gateway and
+  send no direct event to Cardinal or bystanders.
+- Opening an existing v0.3.18 world performs one additive migration without
+  changing people, time, relationships, professions, RNG state or Cardinal
+  experience. Reopening the migrated world is revision-neutral.
+
+The same release adds an original adventure-economy layer inspired only by
+general fantasy-RPG ideas; it copies no story, characters, terminology, art or
+code from another work.
+
+- A dungeon exists only below a discovered physical land entrance such as a
+  ruin, mountain cave or dangerous marsh. A resident must choose the expedition
+  and travel there; selection never teleports them inside.
+- Adventure rank runs from unranked through F, E, D, C, B, A and S. It is
+  evidence of completed expeditions, not a quota or a class assigned by
+  Cardinal. Adventurer livelihood likewise emerges from repeated lived
+  practice, while retreat and refusal remain valid choices.
+- Expeditions consume energy, food and health, can end in success, retreat or
+  defeat, and award fast but earned experience. Finite dungeon reserves may
+  yield old coin, equipment, relics and skill books; abilities are learned from
+  specific recovered objects rather than granted to the whole population.
+- Settlement markets start with no invented currency. Residents physically
+  carry dungeon coin and artifacts, buy actual food deducted from the v16
+  granary, sell or barter finds, and create inter-settlement trust only by a
+  completed journey and transaction.
+- Dungeon, artifact, run and transaction histories all have explicit bounds so
+  a centuries-old browser world does not accumulate an unbounded hot snapshot.
+
+Executed release evidence is recorded in `TEST_RESULTS_v0.3.19.md` and
+`docs/V0_3_19_RELEASE_AUDIT.json`.
 
 ## v0.3.18: lived professions, frontier agency and fast continuity
 

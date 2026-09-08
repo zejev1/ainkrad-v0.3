@@ -806,6 +806,29 @@ button {
   box-shadow: 0 0 0 8px rgba(255, 224, 92, 0.2), 0 0 25px rgba(255, 221, 94, 0.52);
 }
 
+.map-place.has-dungeon .place-building {
+  border-color: rgba(212, 157, 255, 0.78);
+  box-shadow: 0 0 0 4px rgba(137, 73, 184, 0.18), 0 0 18px rgba(190, 112, 245, 0.38);
+}
+
+.map-place.has-dungeon::before {
+  position: absolute;
+  top: -17px;
+  left: 50%;
+  z-index: 8;
+  min-width: 20px;
+  padding: 2px 5px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(226, 188, 255, 0.46);
+  border-radius: 999px;
+  background: rgba(43, 17, 63, 0.94);
+  color: #efd8ff;
+  content: attr(data-dungeon-rank);
+  font-size: 0.52rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
 .map-place--surface-shore::after {
   position: absolute;
   z-index: -1;
@@ -1144,6 +1167,39 @@ button {
   transform-origin: center bottom;
 }
 
+.resident-avatar.is-race-elf {
+  --resident-color: #9ce7b6;
+  --resident-dark: #315f4a;
+}
+
+.resident-avatar.is-race-dwarf {
+  --resident-color: #c99763;
+  --resident-dark: #5e3624;
+}
+
+.resident-avatar.is-race-goblin {
+  --resident-color: #80b96a;
+  --resident-dark: #304e2b;
+}
+
+.resident-avatar.is-race-orc {
+  --resident-color: #7e9c68;
+  --resident-dark: #3c422d;
+}
+
+.resident-avatar.is-race-ogre {
+  --resident-color: #a97f78;
+  --resident-dark: #523b37;
+}
+
+.resident-avatar.is-race-dwarf .resident-figure {
+  scale: calc(var(--life-scale, 0.62) * 0.9) calc(var(--life-scale, 0.62) * 0.82);
+}
+
+.resident-avatar.is-race-ogre .resident-figure {
+  scale: calc(var(--life-scale, 0.62) * 1.18);
+}
+
 .resident-shadow {
   position: absolute;
   bottom: 0;
@@ -1342,6 +1398,7 @@ button {
 }
 
 .resident-panel,
+.adventure-panel,
 .event-panel,
 .cardinal-panel {
   border: 1px solid rgba(136, 170, 156, 0.17);
@@ -1349,6 +1406,60 @@ button {
   background: rgba(7, 22, 31, 0.82);
   box-shadow: 0 15px 38px rgba(0, 0, 0, 0.17);
   backdrop-filter: blur(16px);
+}
+
+.adventure-panel {
+  padding: 15px 16px;
+  border-color: rgba(197, 137, 236, 0.22);
+  background: linear-gradient(145deg, rgba(31, 16, 45, 0.88), rgba(7, 22, 31, 0.86));
+}
+
+.adventure-mark {
+  padding: 3px 6px;
+  border: 1px solid rgba(215, 164, 247, 0.32);
+  border-radius: 999px;
+  color: #e3bbfb;
+  font-size: 0.52rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.adventure-numbers {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 11px;
+}
+
+.adventure-numbers span {
+  padding: 8px 4px;
+  border: 1px solid rgba(218, 170, 246, 0.12);
+  border-radius: 9px;
+  color: #aa9db2;
+  font-size: 0.55rem;
+  text-align: center;
+}
+
+.adventure-numbers strong {
+  display: block;
+  margin-bottom: 2px;
+  color: #f1ddff;
+  font-size: 0.9rem;
+}
+
+.adventure-latest,
+.adventure-economy-note {
+  margin: 10px 0 0;
+  color: #cbbbd4;
+  font-size: 0.68rem;
+  line-height: 1.42;
+}
+
+.adventure-economy-note {
+  padding-top: 9px;
+  border-top: 1px solid rgba(215, 164, 247, 0.12);
+  color: #998ca2;
+  font-size: 0.62rem;
 }
 
 .resident-panel {
@@ -1581,6 +1692,35 @@ button {
   cursor: default;
 }
 
+.prayer-inbox-open {
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(112, 209, 224, 0.28);
+  border-radius: 11px;
+  background: rgba(38, 111, 126, 0.14);
+  color: #c9f4fa;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 850;
+}
+
+.prayer-inbox-open span {
+  display: inline-grid;
+  min-width: 22px;
+  min-height: 22px;
+  margin-left: 6px;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(116, 180, 192, 0.2);
+}
+
+.prayer-inbox-open.has-unread {
+  border-color: rgba(121, 234, 218, 0.62);
+  box-shadow: 0 0 0 2px rgba(77, 190, 176, 0.1);
+}
+
 .event-panel {
   padding: 15px 16px;
 }
@@ -1714,6 +1854,186 @@ body.has-modal {
 
 .world-inspector[hidden] {
   display: none;
+}
+
+.prayer-inbox[hidden] {
+  display: none;
+}
+
+.prayer-inbox {
+  position: fixed;
+  inset: 0;
+  z-index: 115;
+  display: grid;
+  justify-items: end;
+  padding: 12px;
+  background: rgba(0, 8, 12, 0.82);
+  backdrop-filter: blur(9px);
+}
+
+.prayer-inbox__sheet {
+  width: min(760px, 100%);
+  height: 100%;
+  overflow: auto;
+  padding: 18px;
+  border: 1px solid rgba(112, 216, 213, 0.3);
+  border-radius: 22px;
+  background: linear-gradient(155deg, #0b1d24, #091218 70%);
+  box-shadow: 0 24px 90px rgba(0, 0, 0, 0.64);
+}
+
+.prayer-inbox__sheet > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(124, 218, 211, 0.14);
+}
+
+.prayer-inbox__badge {
+  margin: 0;
+  color: #7fe0d4;
+  font-size: 0.58rem;
+  font-weight: 900;
+  letter-spacing: 0.13em;
+}
+
+.prayer-inbox__sheet h2 {
+  margin: 5px 0 3px;
+  color: #ebfffc;
+}
+
+#prayer-inbox-summary {
+  margin: 0;
+  color: #91aaa8;
+  font-size: 0.7rem;
+  line-height: 1.42;
+}
+
+#prayer-inbox-close {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(133, 226, 217, 0.25);
+  border-radius: 50%;
+  background: rgba(44, 129, 125, 0.12);
+  color: #eafffb;
+  font-size: 1.5rem;
+}
+
+.prayer-inbox__filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+  margin: 14px 0;
+}
+
+.prayer-inbox__filters label {
+  display: grid;
+  gap: 5px;
+  color: #91aaa8;
+  font-size: 0.62rem;
+  font-weight: 750;
+}
+
+.prayer-inbox__filters input,
+.prayer-inbox__filters select {
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid rgba(127, 208, 202, 0.19);
+  border-radius: 9px;
+  background: #0d1a20;
+  color: #e4f6f3;
+  font: inherit;
+  font-size: 0.7rem;
+}
+
+.prayer-inbox__list {
+  display: grid;
+  gap: 12px;
+}
+
+.prayer-card {
+  padding: 14px;
+  border: 1px solid rgba(113, 204, 198, 0.16);
+  border-radius: 14px;
+  background: rgba(20, 49, 56, 0.42);
+}
+
+.prayer-card.is-answered {
+  border-color: rgba(190, 151, 230, 0.3);
+}
+
+.prayer-card > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: #eafffb;
+  font-size: 0.76rem;
+}
+
+.prayer-card > header span,
+.prayer-card__recipient {
+  color: #85a4a2;
+  font-size: 0.63rem;
+}
+
+.prayer-card blockquote {
+  margin: 11px 0;
+  padding: 11px 13px;
+  border-left: 3px solid rgba(124, 226, 211, 0.5);
+  background: rgba(4, 19, 24, 0.48);
+  color: #e2f4f0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.prayer-card dl {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.prayer-card dl div {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  gap: 8px;
+  font-size: 0.63rem;
+}
+
+.prayer-card dt { color: #70908e; }
+.prayer-card dd { margin: 0; color: #b8ceca; }
+
+.prayer-card__response {
+  padding: 9px;
+  border-radius: 9px;
+  background: rgba(121, 75, 157, 0.14);
+  color: #dfc9ee;
+  font-size: 0.68rem;
+  line-height: 1.45;
+}
+
+.prayer-card__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 11px;
+}
+
+.prayer-card__actions button {
+  flex: 1;
+  padding: 9px;
+  border: 1px solid rgba(123, 218, 205, 0.24);
+  border-radius: 9px;
+  background: rgba(38, 117, 113, 0.14);
+  color: #c9efea;
+  font: inherit;
+  font-size: 0.64rem;
+  font-weight: 800;
+}
+
+.prayer-inbox__empty {
+  color: #8ca6a3;
+  text-align: center;
 }
 
 .divine-audience[hidden] {
@@ -2344,6 +2664,24 @@ body.has-modal {
 
   .world-inspector {
     padding: 0;
+  }
+
+  .prayer-inbox {
+    padding: 0;
+  }
+
+  .prayer-inbox__sheet {
+    padding: 14px;
+    border-radius: 0;
+  }
+
+  .prayer-inbox__filters {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .prayer-card > header,
+  .prayer-card__actions {
+    flex-direction: column;
   }
 
   .world-inspector__sheet {

@@ -225,6 +225,12 @@ for (const lifecycle of Object.values(
   settlementStatusCounts[lifecycle.status] =
     (settlementStatusCounts[lifecycle.status] ?? 0) + 1;
 }
+const adventure = snapshot.v19?.adventureEconomy;
+const adventureRankCounts: Record<string, number> = {};
+for (const profile of Object.values(adventure?.adventurersByAgentId ?? {})) {
+  adventureRankCounts[profile.rank] =
+    (adventureRankCounts[profile.rank] ?? 0) + 1;
+}
 const history = await worldStore.history(snapshot.id);
 const recentCutoff = Math.max(
   0,
@@ -356,6 +362,27 @@ console.log(
       oralRecords: libraryKnowledge.filter(
         (record) => record.learnedFromAgentId !== undefined,
       ).length,
+    },
+    divineAgency: {
+      totalPrayers: snapshot.v19?.divineAgency.totalPrayerCount ?? 0,
+      recentPrayers: snapshot.v19?.divineAgency.recentPrayers.length ?? 0,
+      prayerTopics: snapshot.v19?.divineAgency.prayerCountByTopic ?? {},
+    },
+    adventureEconomy: {
+      dungeons: Object.keys(adventure?.dungeonsById ?? {}).length,
+      activeDungeons: Object.values(adventure?.dungeonsById ?? {}).filter(
+        (dungeon) => dungeon.active,
+      ).length,
+      adventurers: Object.keys(adventure?.adventurersByAgentId ?? {}).length,
+      rankCounts: adventureRankCounts,
+      totalRuns: adventure?.totalRuns ?? 0,
+      successfulRuns: adventure?.totalSuccessfulRuns ?? 0,
+      artifacts: Object.keys(adventure?.artifactsById ?? {}).length,
+      totalCoinRecovered: Number((adventure?.totalCoinRecovered ?? 0).toFixed(2)),
+      totalTradeVolume: Number((adventure?.totalTradeVolume ?? 0).toFixed(2)),
+      carriedTradeRelations: Object.keys(adventure?.tradeRelationsById ?? {}).length,
+      recentRunWindow: adventure?.recentRuns.length ?? 0,
+      recentTransactionWindow: adventure?.recentTransactions.length ?? 0,
     },
     recentTenYearEventCounts,
     settlementStocks,
