@@ -1,4 +1,10 @@
-# Ainkrad v0.3.20
+# Ainkrad v0.3.20 — startup fix 1
+
+This package adds a focused saved-world startup repair on published commit
+0957253d42cf9393b792292461833cc2bb7ef9af. See
+[RELEASE_NOTES_v0.3.20_FIX1.md](RELEASE_NOTES_v0.3.20_FIX1.md).
+All v0.3.20 world mechanics below are retained. Use the FIX1 audit for current
+verification; the original v0.3.20 test and benchmark reports are historical.
 
 An experimental autonomous world for developing and testing a self-checking AI governance layer.
 

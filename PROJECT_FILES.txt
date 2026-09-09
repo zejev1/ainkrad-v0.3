@@ -9,6 +9,7 @@ RELEASE_NOTES_v0.3.17.md
 RELEASE_NOTES_v0.3.18.md
 RELEASE_NOTES_v0.3.19.md
 RELEASE_NOTES_v0.3.20.md
+RELEASE_NOTES_v0.3.20_FIX1.md
 RETURN_POINT.txt
 SHA256SUMS.txt
 SHA256SUMS_RETURN_POINT.txt
@@ -45,6 +46,10 @@ docs/V0_3_18_MOBILE_CATCHUP_HOTFIX_AUDIT.json
 docs/V0_3_18_RELEASE_AUDIT.json
 docs/V0_3_19_RELEASE_AUDIT.json
 docs/V0_3_20_BENCHMARK_50_YEARS.json
+docs/V0_3_20_FIX1_AUDIT.json
+docs/V0_3_20_FIX1_BUILD_LOG.txt
+docs/V0_3_20_FIX1_TEST_LOG.txt
+docs/V0_3_20_FIX1_WORK_STATE.md
 docs/V0_3_20_RELEASE_AUDIT.json
 docs/V0_3_20_TEST_LOG.txt
 docs/V0_3_20_WORK_STATE.md
@@ -204,6 +209,7 @@ tests/v0_3_19_adventureEconomy.test.ts
 tests/v0_3_19_divineAgency.test.ts
 tests/v0_3_19_sapientPeoples.test.ts
 tests/v0_3_20_regressions.test.ts
+tests/v0_3_20_startupRepair.test.ts
 tests/v15FamilyAgency.test.ts
 tests/worldAuthority.test.ts
 tests/worldAutonomy.test.ts

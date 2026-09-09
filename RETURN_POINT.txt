@@ -1,51 +1,37 @@
-AINKRAD v0.3.20 SOURCE RETURN POINT
+AINKRAD v0.3.20 STARTUP FIX 1
 Date: 2026-09-09 UTC
-Status: source implementation and release regression completed
+Package version: 0.3.20-hotfix.1
+Source HEAD/main: 0957253d42cf9393b792292461833cc2bb7ef9af
+Remote: https://github.com/zejev1/ainkrad-v0.3.git
+Index empty; only the user commits/pushes through SPCK.
+No assistant commit, push or deployment. No Convex. Original Ainkrad untouched.
 
-CONTINUE FROM THIS TREE
-Repository: https://github.com/zejev1/ainkrad-v0.3.git
-HEAD/main: 045036fa9eb9ae78a52ba9a23217d296ccb08e2e
-GitHub main rechecked on release day: same commit.
-Index empty. All v0.3.20 changes intentionally uncommitted and unstaged.
-Only the user commits/pushes through SPCK. No assistant GitHub/Vercel writes.
-Original zejev1/ainkrad is outside this task. No Convex.
+REPORTED ERROR
+World v16 race opportunity elf must be an object.
 
-COMPLETED
-Human-only library; anchored elven House of Memory; year-long access,
-elapsed-time reading, sourced Chinese teachings and real practice.
-At least 1000 km between homelands; local discovery/testimony/contact;
-no automatic intercontinental roads, diplomacy or dungeon knowledge.
-No settlement-wide birth cooldown. Children learn; adolescents apprentice.
-29 independent capability gifts, selected inheritance and visible mark.
-Correct food/poverty/travel prayer triggers; no automatic divine rewards.
-Local dungeon discovery; eligible residents physically execute journeys.
-Cardinal observes/learns for first 200 years; retained XP on reopen.
-Named 10/50/100 years-per-minute targets; bounded batches, visible errors.
-New World protected in bottom settings. Roads show traversed terrain paths.
+REPRODUCTION
+Missing elf evidence plus an earlier completed additive-repair operation.
+The fixed world-wide operation ID returned the incomplete current projection
+as a duplicate instead of persisting the repaired nextState.
 
-EXECUTED
-TypeScript PASS. Vite production build PASS.
-Vitest 44/44 files, 193/193 tests, 135.65 seconds.
-50 years, ainkrad-browser-world, Cardinal OFF: 99.208 seconds.
-540 living: human 97, elf 67, dwarf 106, goblin 83, orc 122, ogre 65.
-472 births; monster/old-age deaths 2; deprivation deaths 0.
-147 places, 7 settlements, 114 residents moving.
-472 distinct child names with no technical numbers; 95/96 distinct utterances.
-Reports: TEST_RESULTS_v0.3.20.md, docs/V0_3_20_RELEASE_AUDIT.json,
-docs/V0_3_20_BENCHMARK_50_YEARS.json, docs/V0_3_20_TEST_LOG.txt.
+FIX
+Scope additive repair operation/event IDs to the saved revision.
+Covers v16, v18, v19/v20 same-version repair paths.
+Preserve valid counters, people, families, stocks, calendar, RNG and Cardinal XP.
+Strict validation remains for damaged existing evidence.
+Reopening the repaired projection is revision-neutral.
 
-LIMITS
-Android/browser interaction not verified; local browser blocked.
-Speed presets are targets, not performance guarantees.
-No millennium or 300-year population claim; recorded benchmark is 50 years.
-Knowledge/speech rules remain finite; unrestricted book understanding and
-human-level intelligence are not implemented.
-Purpose dominates prayer topics. Full prayer text has bounded retention;
-older aggregate counts remain. Population growth increases computation cost.
+CHECKS
+Six targeted startup regressions PASS.
+TypeScript PASS. Vite production build PASS (2.56 seconds).
+Full Vitest: 199/199 tests, 45/45 files PASS, 107.68 seconds.
+Final suite result: docs/V0_3_20_FIX1_AUDIT.json and associated full test log.
+Previous v0.3.20 mechanics and their historical audit remain in the tree.
+No new 50-year benchmark: no demographic/simulation policy change in this fix.
+The user's actual Chrome database was not accessible; verify after user push.
 
 HANDOFF
-Flat root including .git. Exclude dependencies, build output, caches/profiles.
-Verify extracted HEAD/main/remote, empty index and all file hashes.
-Email: zejev1@users.noreply.github.com
-Commit: fix(v0.3.20): restore lived knowledge and world continuity
-Continue the existing world on its existing URL; do not clear site storage.
+Ainkrad-v0.3.20-FIX1-SPCK-READY.zip; flat root including .git.
+Git email: zejev1@users.noreply.github.com
+Commit: fix: resume saved worlds after repeated schema repair
+Continue the existing world at the same URL. Do not clear browser storage.

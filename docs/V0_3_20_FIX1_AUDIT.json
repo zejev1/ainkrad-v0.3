@@ -1,0 +1,75 @@
+{
+  "version": "0.3.20-hotfix.1",
+  "dateUtc": "2026-09-09",
+  "baseHead": "0957253d42cf9393b792292461833cc2bb7ef9af",
+  "branch": "main",
+  "remote": "https://github.com/zejev1/ainkrad-v0.3.git",
+  "status": "PASS_WITH_DOCUMENTED_DEVICE_LIMIT",
+  "reportedError": "World v16 race opportunity elf must be an object.",
+  "reproducedBeforePatch": true,
+  "reproduction": "Missing elf evidence plus a completed old additive repair operation returns the stale state as a duplicate.",
+  "fix": "Scope compatible v16/v18/v19 repair operation IDs and event IDs to the saved revision.",
+  "verification": {
+    "typecheck": "PASS",
+    "productionBuild": {
+      "status": "PASS",
+      "seconds": 2.56
+    },
+    "targetedStartupTests": {
+      "status": "PASS",
+      "count": 6
+    },
+    "fullRegression": {
+      "status": "PASS",
+      "files": 45,
+      "tests": 199,
+      "seconds": 107.68
+    },
+    "preserved": [
+      "valid evidence counters",
+      "residents and relationships",
+      "world time",
+      "RNG",
+      "stocks",
+      "Cardinal experience"
+    ],
+    "repeatOpenRevisionNeutral": true,
+    "laterRevisionRepair": true,
+    "invalidExistingDataNotSilentlyReset": true,
+    "browserDatabaseFromUser": "NOT_AVAILABLE",
+    "actualAndroidAfterInstall": "NOT_RUN",
+    "newDemographicBenchmark": "NOT_RUN; simulation mechanics unchanged; prior release report remains historical"
+  },
+  "sourceChanges": [
+    "src/world/WorldEngine.ts repair identities",
+    "src/browser.ts visible fix label",
+    "package version",
+    "targeted tests and release documentation"
+  ],
+  "buildAssets": [
+    {
+      "path": "dist/assets/index-CiO88in4.js",
+      "bytes": 158588,
+      "sha256": "6d73ebab3749e6eecaf5969d699a940c8b286e76b12f6139a8099a9bc1f8983b"
+    },
+    {
+      "path": "dist/assets/index-TumYmTr6.css",
+      "bytes": 45747,
+      "sha256": "c247e669a22bd1d3550bdf83bcf553b76110422d5f3118e452c8fb734b779b75"
+    },
+    {
+      "path": "dist/assets/liveWorld.worker-C5dTJF4k.js",
+      "bytes": 584009,
+      "sha256": "7f614d70105afbd27cdc864d3bc9012a85243b03a47b652db0cd1e9488b33ed9"
+    },
+    {
+      "path": "dist/index.html",
+      "bytes": 399,
+      "sha256": "195be50b4d1a5e9f455ee09925bbbc9acce708c83a074d5308c9e787035606be"
+    }
+  ],
+  "assistantCommit": false,
+  "assistantPush": false,
+  "assistantDeploy": false,
+  "handoff": "Flat SPCK ZIP with .git; preserve existing browser world and close outdated tabs."
+}

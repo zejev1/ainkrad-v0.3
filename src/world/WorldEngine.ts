@@ -3650,6 +3650,11 @@ async function migrateV15WorldToV16(
   }
 }
 
+// A repair applies to a persisted revision, not once forever to a world.
+// Older tabs/recovery builds may subsequently persist an incomplete projection.
+// A fixed operation ID would return that stale projection as a duplicate and
+// discard the valid repaired nextState. Revision keys preserve atomic retry
+// semantics while allowing recovery again after a later write.
 const V16_ADDITIVE_SCHEMA_REPAIR_OPERATION_ID =
   'migration:v16-additive-schema-repair-2026-08-26';
 
@@ -3684,7 +3689,7 @@ async function repairCompatibleV16World(
 
     next.revision = current.revision + 1;
     const migrationEvent: WorldEvent = {
-      eventId: `migration:${next.id}:v16-additive-schema-repair-2026-08-26`,
+      eventId: `migration:${next.id}:v16-additive-schema-repair-2026-08-26:revision:${current.revision}`,
       worldId: next.id,
       kind: 'world.migrated',
       source: 'system',
@@ -3704,7 +3709,7 @@ async function repairCompatibleV16World(
     assertWorldState(next);
     try {
       const result = await store.commit({
-        operationId: V16_ADDITIVE_SCHEMA_REPAIR_OPERATION_ID,
+        operationId: `${V16_ADDITIVE_SCHEMA_REPAIR_OPERATION_ID}:revision:${current.revision}`,
         operationFingerprint,
         worldId: current.id,
         expectedRevision: current.revision,
@@ -3830,7 +3835,7 @@ async function repairCompatibleV18World(
 
     next.revision = current.revision + 1;
     const migrationEvent: WorldEvent = {
-      eventId: `migration:${next.id}:v18-additive-schema-repair-2026-09-07-cultural-agency`,
+      eventId: `migration:${next.id}:v18-additive-schema-repair-2026-09-07-cultural-agency:revision:${current.revision}`,
       worldId: next.id,
       kind: 'world.migrated',
       source: 'system',
@@ -3850,7 +3855,7 @@ async function repairCompatibleV18World(
     assertWorldState(next);
     try {
       const result = await store.commit({
-        operationId: V18_ADDITIVE_SCHEMA_REPAIR_OPERATION_ID,
+        operationId: `${V18_ADDITIVE_SCHEMA_REPAIR_OPERATION_ID}:revision:${current.revision}`,
         operationFingerprint,
         worldId: current.id,
         expectedRevision: current.revision,
@@ -3978,7 +3983,7 @@ async function repairCompatibleV19World(
 
     next.revision = current.revision + 1;
     const migrationEvent: WorldEvent = {
-      eventId: `migration:${next.id}:v20-knowledge-boundaries-2026-09-09`,
+      eventId: `migration:${next.id}:v20-knowledge-boundaries-2026-09-09:revision:${current.revision}`,
       worldId: next.id,
       kind: 'world.migrated',
       source: 'system',
@@ -3998,7 +4003,7 @@ async function repairCompatibleV19World(
     assertWorldState(next);
     try {
       const result = await store.commit({
-        operationId: V19_ADDITIVE_SCHEMA_REPAIR_OPERATION_ID,
+        operationId: `${V19_ADDITIVE_SCHEMA_REPAIR_OPERATION_ID}:revision:${current.revision}`,
         operationFingerprint,
         worldId: current.id,
         expectedRevision: current.revision,
