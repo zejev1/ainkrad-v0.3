@@ -639,8 +639,6 @@ button {
   border: 3px double rgba(219, 190, 121, 0.5);
   border-radius: 28% 34% 30% 36%;
   background:
-    linear-gradient(90deg, transparent 47%, rgba(219, 197, 141, 0.18) 48% 52%, transparent 53%),
-    linear-gradient(0deg, transparent 47%, rgba(219, 197, 141, 0.16) 48% 52%, transparent 53%),
     repeating-linear-gradient(90deg, rgba(129, 139, 83, 0.08) 0 12%, transparent 12% 24%),
     radial-gradient(circle, rgba(233, 207, 136, 0.17), rgba(104, 128, 80, 0.06) 68%, transparent 71%);
   box-shadow:
@@ -668,8 +666,6 @@ button {
   border-width: 5px;
   border-color: rgba(255, 207, 105, 0.42);
   background:
-    linear-gradient(90deg, transparent 46%, rgba(233, 201, 132, 0.24) 47% 53%, transparent 54%),
-    linear-gradient(0deg, transparent 46%, rgba(233, 201, 132, 0.22) 47% 53%, transparent 54%),
     repeating-linear-gradient(45deg, rgba(139, 120, 76, 0.08) 0 8%, transparent 8% 16%),
     radial-gradient(circle, rgba(235, 194, 104, 0.2), rgba(99, 116, 74, 0.07) 70%, transparent 73%);
 }
@@ -2775,3 +2771,14 @@ body.has-modal {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Physical markers: scaling the world must not spread a town over kilometres. */
+.map-place { transform: translate(-50%, -50%) scale(var(--place-scale, 1)); }
+.resident-avatar { transform: translate(-50%, -58%) scale(var(--resident-scale, 1)); }
+.wildlife-population { transform: translate(-50%, -50%) scale(var(--place-scale, 1)); }
+.roads path { stroke-width: var(--road-width, 1); }
+.roads .road-main { stroke-width: calc(var(--road-width, 1) * 1.35); }
+.roads path.is-highlighted { stroke-width: calc(var(--road-width, 1) * 1.6); }
+#live-clock-throughput { white-space: normal; }
+
+.external-clock small { grid-column: 1 / -1; white-space: normal; }

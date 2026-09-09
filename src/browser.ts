@@ -1,3 +1,4 @@
+import { createWorldMapProjection } from './presentation/WorldMapProjection';
 import { GIFT_CATALOG_V20 } from './v20/DivineGiftsV20';
 import './browser.css';
 import type {
@@ -328,7 +329,7 @@ app.innerHTML = `
   <div class="ainkrad-app">
     <header class="world-header">
       <div>
-        <p class="eyebrow">AINKRAD v0.3.20 · исправление 1 · путь к Underworld</p>
+        <p class="eyebrow">AINKRAD v0.3.20 · исправление 2 · путь к Underworld</p>
         <h1 id="world-title">Мир · уровень 1</h1>
         <p class="world-subtitle">Время регулируется снаружи. Жители сами расширяют карту и проживают поколения.</p>
       </div>
@@ -366,6 +367,7 @@ app.innerHTML = `
           ).join('')}
         </select>
       </label>
+      <small id="live-clock-throughput" aria-live="polite">Измеряем скорость мира…</small>
       <small id="offline-clock-status">После закрытия мир продолжит время при следующем открытии · Cardinal не имеет доступа</small>
     </section>
 
@@ -389,7 +391,8 @@ app.innerHTML = `
             <span id="map-time-value">Рассвет · Весна</span>
             <button id="map-zoom-out" type="button" aria-label="Уменьшить карту">−</button>
             <button id="map-zoom-fit" type="button" aria-label="Показать всю карту">100%</button>
-            <button id="map-zoom-in" type="button" aria-label="Увеличить карту">+</button>
+            <button id="map-city-focus" type="button">Город</button>
+          <button id="map-zoom-in" type="button" aria-label="Увеличить карту">+</button>
             <button id="text-scale" type="button" aria-label="Увеличить размер текста">Текст 115%</button>
           </div>
         </div>
@@ -704,6 +707,7 @@ const worldSpeedSelect = requiredElement<HTMLSelectElement>('world-speed-select'
 const resetWorldButton = requiredElement<HTMLButtonElement>('reset-world');
 const clockRateValue = requiredElement<HTMLElement>('clock-rate-value');
 const offlineClockStatus = requiredElement<HTMLElement>('offline-clock-status');
+const liveClockThroughput = requiredElement<HTMLElement>('live-clock-throughput');
 const catchUpOverlay = requiredElement<HTMLElement>('catch-up-overlay');
 const catchUpTitle = requiredElement<HTMLElement>('catch-up-title');
 const catchUpPercent = requiredElement<HTMLElement>('catch-up-percent');
@@ -964,36 +968,24 @@ function localizedPlaceName(name: string): string {
     .join(' ');
 }
 
-const clampMapCoordinate = (value: number) =>
-  Math.max(4.5, Math.min(95.5, value));
+let mapProjection: ReturnType<typeof createWorldMapProjection> | undefined;
+let projectedWorld: Readonly<WorldState> | undefined;
+function projectionForWorld(world: Readonly<WorldState>) {
+  if (projectedWorld !== world || !mapProjection) {
+    projectedWorld = world;
+    mapProjection = createWorldMapProjection(world);
+  }
+  return mapProjection;
+}
 
 function normalizeWorldCoordinates(
-  world: Readonly<WorldState>,
-  mapX: number,
-  mapY: number,
+  world: Readonly<WorldState>, mapX: number, mapY: number,
 ): Pick<MapPoint, 'x' | 'y'> {
-  const places = Object.values(world.places);
-  const minX = Math.min(...places.map((place) => place.mapX));
-  const maxX = Math.max(...places.map((place) => place.mapX));
-  const minY = Math.min(...places.map((place) => place.mapY));
-  const maxY = Math.max(...places.map((place) => place.mapY));
-  const spanX = Math.max(12, maxX - minX);
-  const spanY = Math.max(12, maxY - minY);
-  const paddingX = spanX * 0.08;
-  const paddingY = spanY * 0.08;
-
-  return {
-    x: clampMapCoordinate(
-      5 + ((mapX - minX + paddingX) / (spanX + paddingX * 2)) * 90,
-    ),
-    y: clampMapCoordinate(
-      5 + ((mapY - minY + paddingY) / (spanY + paddingY * 2)) * 90,
-    ),
-  };
+  return projectionForWorld(world).point(mapX, mapY);
 }
 
 // The player may inspect the whole planetary frontier or a single resident.
-const clampMapZoom = (value: number) => Math.max(0.03, Math.min(12, value));
+const clampMapZoom = (value: number) => Math.max(0.001, Math.min(24, value));
 
 function applyMapZoom(): void {
   worldMap.style.width = `${mapBaseWidth}px`;
@@ -1028,10 +1020,8 @@ function fitMapToViewport(): void {
 
 function updateWorldMapScale(world: Readonly<WorldState>): void {
   const places = Object.values(world.places);
-  const minX = Math.min(...places.map((place) => place.mapX));
-  const maxX = Math.max(...places.map((place) => place.mapX));
-  const minY = Math.min(...places.map((place) => place.mapY));
-  const maxY = Math.max(...places.map((place) => place.mapY));
+  const projection = projectionForWorld(world);
+  const { minX, maxX, minY, maxY } = projection;
   // Persisted map coordinates are compact spatial units. Treating every unit
   // as a whole kilometre made the founding village appear 100 km wide and
   // contradicted its physical travel time. One unit is 100 metres on the
@@ -1047,6 +1037,11 @@ function updateWorldMapScale(world: Readonly<WorldState>): void {
 
   mapBaseWidth = width;
   mapBaseHeight = height;
+  const pixelsPerUnit = Math.min(projection.scaleX * width, projection.scaleY * height) / 100;
+  // Physical plot sizes stay fixed when distant homelands enlarge the map.
+  worldMap.style.setProperty('--place-scale', String(Math.min(1, pixelsPerUnit * 0.72 / 58)));
+  worldMap.style.setProperty('--resident-scale', String(Math.min(1, pixelsPerUnit * 0.22 / 32)));
+  worldMap.style.setProperty('--road-width', String(Math.min(5, pixelsPerUnit * 0.09)));
   applyMapZoom();
   worldTitle.textContent = `Мир · уровень ${worldLevel}`;
   worldLevelValue.textContent = `ур. ${worldLevel}`;
@@ -1557,11 +1552,7 @@ function renderSettlements(world: Readonly<WorldState>): void {
       settlement.centerX,
       settlement.centerY,
     );
-    const edge = normalizeWorldCoordinates(
-      world,
-      settlement.centerX + settlement.radius,
-      settlement.centerY,
-    );
+    const footprint = projectionForWorld(world).size(settlement.radius * 2);
     let element = settlementElements.get(settlement.id);
     if (!element) {
       element = document.createElement('div');
@@ -1569,12 +1560,11 @@ function renderSettlements(world: Readonly<WorldState>): void {
       settlementsLayer.append(element);
       settlementElements.set(settlement.id, element);
     }
-    const diameter = Math.max(9, Math.abs(edge.x - center.x) * 2);
     element.className = `settlement-boundary settlement-boundary--${settlement.kind}`;
     element.style.left = `${center.x}%`;
     element.style.top = `${center.y}%`;
-    element.style.width = `${diameter}%`;
-    element.style.aspectRatio = '1';
+    element.style.width = `${footprint.width}%`;
+    element.style.height = `${footprint.height}%`;
     const label = element.querySelector<HTMLElement>('span');
     if (label) {
       label.textContent = `${settlement.kind === 'city' ? 'Город' : 'Поселение'} ${settlement.name}`;
@@ -1589,21 +1579,13 @@ function renderPlaces(world: Readonly<WorldState>): void {
     element.remove();
     placeElements.delete(placeId);
   }
-  const agentIds = Object.keys(world.agents);
   const dungeonByEntrance = new Map(
     Object.values(world.v19?.adventureEconomy.dungeonsById ?? {}).map(
       (dungeon) => [dungeon.entrancePlaceId, dungeon] as const,
     ),
   );
   for (const [placeId, place] of Object.entries(world.places)) {
-    const homeAgentIndex = agentIds.findIndex(
-      (agentId) => world.agents[agentId]?.homeId === placeId,
-    );
-    const point = pointForPlace(
-      placeId,
-      Math.max(0, homeAgentIndex),
-      world,
-    );
+    const point = pointForPlace(placeId, 0, world);
     let placeElement = placeElements.get(placeId);
     if (!placeElement) {
       placeElement = document.createElement('button');
@@ -1697,7 +1679,8 @@ function renderWildlife(world: Readonly<WorldState>): void {
     wildlifeElements.delete(populationId);
   }
   for (const [populationId, population] of Object.entries(world.wildlife)) {
-    const habitat = pointForPlace(population.habitatId, 0, world);
+    const habitat = world.places[population.habitatId];
+    if (!habitat) continue;
     const offsets: Record<WildlifeSpecies, { x: number; y: number }> = {
       rabbit: { x: 6, y: 4 },
       deer: { x: 7, y: 5 },
@@ -1726,8 +1709,9 @@ function renderWildlife(world: Readonly<WorldState>): void {
       wildlifeElements.set(populationId, element);
     }
 
-    element.style.left = `${clampMapCoordinate(habitat.x + offset.x)}%`;
-    element.style.top = `${clampMapCoordinate(habitat.y + offset.y)}%`;
+    const point = normalizeWorldCoordinates(world, habitat.mapX + offset.x, habitat.mapY + offset.y);
+    element.style.left = `${point.x}%`;
+    element.style.top = `${point.y}%`;
 
     const label = wildlifeLabels[population.species];
     const count = element.querySelector<HTMLElement>('.wildlife-count');
@@ -2374,7 +2358,7 @@ function persistOfflineClockAnchor(
 ): void {
   if (!offlineClockStorageAvailable) return;
   const worldMinutes = Math.max(
-    frame.world.calendar.elapsedWorldMinutes,
+    frame.world.calendar.elapsedWorldMinutes + (frame.liveTiming?.pendingWorldMinutes ?? 0),
     offlineCatchUpTargetWorldMinutes ?? 0,
   );
   try {
@@ -2542,13 +2526,7 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
           persistedPosition.y,
         )
       : pointForPlace(agent.locationId, index, frame.world);
-    const residentsHere = occupancy.get(agent.locationId) ?? [agent];
-    const localIndex = residentsHere.findIndex((item) => item.id === agent.id);
-    const angle =
-      (Math.PI * 2 * localIndex) / Math.max(1, residentsHere.length);
-    const radius = agent.movement ? 0 : Math.min(1.7, residentsHere.length * 0.35);
-    const x = clampMapCoordinate(base.x + Math.cos(angle) * radius);
-    const y = clampMapCoordinate(base.y + Math.sin(angle) * radius * 0.72);
+    const { x, y } = base;
     const isMoving = Boolean(agent.movement);
 
     avatar.style.left = `${x}%`;
@@ -2656,6 +2634,15 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
     preferredSpeedId = frame.clock.speedId;
     preferredSpeedMultiplier = frame.clock.multiplier;
     showClockControl(frame.clock.speedId, frame.clock.multiplier);
+  }
+  const timing = frame.liveTiming;
+  if (timing?.actualWorldMinutesPerRealMinute !== undefined) {
+    const rate = timing.actualWorldMinutesPerRealMinute;
+    const tempo = rate >= WORLD_MINUTES_PER_YEAR ? `${(rate / WORLD_MINUTES_PER_YEAR).toFixed(1)} г.` :
+      rate >= 1440 ? `${(rate / 1440).toFixed(1)} дн.` : `${rate.toFixed(1)} мин.`;
+    liveClockThroughput.textContent = `Фактически за минуту: ${tempo}` +
+      (timing.pendingWorldMinutes > frame.clock.worldMinutesPerTick * 2
+        ? ` · осталось рассчитать ${worldDurationDescription(timing.pendingWorldMinutes)}` : '');
   }
   updateOfflineClockContinuity(frame);
 
@@ -3270,6 +3257,14 @@ const liveWorldWorker = new Worker(
 mapZoomOut.addEventListener('click', () => setMapZoom(mapZoom / 1.22));
 mapZoomIn.addEventListener('click', () => setMapZoom(mapZoom * 1.22));
 mapZoomFit.addEventListener('click', fitMapToViewport);
+requiredElement<HTMLButtonElement>('map-city-focus').addEventListener('click', () => {
+  if (!lastFrame) return;
+  const center = lastFrame.world.places.commons;
+  const point = normalizeWorldCoordinates(lastFrame.world, center.mapX, center.mapY);
+  setMapZoom(12);
+  worldMapViewport.scrollTo({left: point.x / 100 * mapBaseWidth * mapZoom - worldMapViewport.clientWidth / 2,
+    top: point.y / 100 * mapBaseHeight * mapZoom - worldMapViewport.clientHeight / 2, behavior: 'smooth'});
+});
 
 let pinchStartDistance = 0;
 let pinchStartZoom = 1;

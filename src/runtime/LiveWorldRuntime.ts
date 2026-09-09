@@ -141,6 +141,7 @@ export interface LiveWorldContinuity {
 }
 
 export interface LiveWorldFrame {
+  liveTiming?: { pendingWorldMinutes: number; actualWorldMinutesPerRealMinute?: number };
   tick: number;
   world: WorldState;
   metrics: CardinalMetrics;
@@ -485,6 +486,9 @@ export class LiveWorldRuntime {
   private displayedEvaluation?: CardinalEvaluation;
   private responsiveQuanta = 1;
   private pendingLiveMinutes = 0;
+  private liveMeasuredMilliseconds = 0;
+  private liveMeasuredWorldMinutes = 0;
+  private liveCoveredThroughWorldMinutes = 0;
 
   private cardinalBurstUntilWorldMinutes = 0;
 
@@ -637,7 +641,8 @@ export class LiveWorldRuntime {
 
   setWorldSpeed(speedId: unknown, multiplier: unknown): WorldClockControl {
     const clock = this.clockGateway.set(speedId, multiplier);
-    this.pendingLiveMinutes = 0;
+    this.liveMeasuredMilliseconds = 0;
+    this.liveMeasuredWorldMinutes = 0;
     return clock;
   }
 
@@ -702,6 +707,10 @@ export class LiveWorldRuntime {
     );
     await this.synchronize();
     this.continuity.resumed = false;
+    this.pendingLiveMinutes = 0;
+    this.liveCoveredThroughWorldMinutes = 0;
+    this.liveMeasuredMilliseconds = 0;
+    this.liveMeasuredWorldMinutes = 0;
     this.continuity.resumedFromTick = this.world.snapshot().now;
     this.continuity.resumedFromWorldMinutes = 0;
     this.cardinalBurstUntilWorldMinutes =
@@ -829,22 +838,74 @@ export class LiveWorldRuntime {
     });
   }
 
-  /** Bounded worker work; excess requested time stays queued, never skipped. */
+  /** Bounded work; UI snapshots are requested separately at display cadence. */
   async responsiveTick(realMilliseconds: number): Promise<LiveWorldFrame> {
-    this.pendingLiveMinutes += this.clockGateway.current().worldMinutesPerTick * Math.max(0, realMilliseconds) / 1000;
+    return (await this.advanceResponsive(realMilliseconds, true))!;
+  }
+
+  liveTiming(): { pendingWorldMinutes: number; actualWorldMinutesPerRealMinute?: number } {
+    return {
+      pendingWorldMinutes: this.pendingLiveMinutes,
+      ...(this.liveMeasuredMilliseconds > 0 ? {
+        actualWorldMinutesPerRealMinute: this.liveMeasuredWorldMinutes * 60_000 / this.liveMeasuredMilliseconds,
+      } : {}),
+    };
+  }
+
+  enqueueLiveElapsed(realMilliseconds: number): void {
+    if (!Number.isFinite(realMilliseconds) || realMilliseconds < 0) {
+      throw new Error('Live elapsed milliseconds must be finite and non-negative.');
+    }
+    this.pendingLiveMinutes += this.clockGateway.current().worldMinutesPerTick * realMilliseconds / 1000;
+    if (this.liveMeasuredMilliseconds >= 10_000) {
+      this.liveMeasuredMilliseconds = 0;
+      this.liveMeasuredWorldMinutes = 0;
+    }
+    this.liveMeasuredMilliseconds += realMilliseconds;
+  }
+
+  coverLiveTimeThrough(targetWorldMinutes: number, worldEpoch = this.world.runtimeStateView().epoch ?? 1): void {
+    const world = this.world.runtimeStateView();
+    if (worldEpoch !== (world.epoch ?? 1)) return;
+    const covered = Math.max(0, targetWorldMinutes - Math.max(
+      world.calendar.elapsedWorldMinutes, this.liveCoveredThroughWorldMinutes));
+    this.pendingLiveMinutes = Math.max(0, this.pendingLiveMinutes - covered);
+    this.liveCoveredThroughWorldMinutes = Math.max(this.liveCoveredThroughWorldMinutes, targetWorldMinutes);
+  }
+
+  async advanceResponsive(realMilliseconds: number, emitFrame = false): Promise<LiveWorldFrame | undefined> {
+    this.enqueueLiveElapsed(realMilliseconds);
     const minutes = Math.min(this.pendingLiveMinutes, this.responsiveQuanta * CANONICAL_WORLD_QUANTUM_MINUTES);
+    const before = this.world.runtimeStateView().calendar.elapsedWorldMinutes;
     const started = performance.now();
-    const frame = await this.tick(minutes);
-    this.pendingLiveMinutes = Math.max(0, this.pendingLiveMinutes - minutes);
-    const elapsed = performance.now() - started;
-    this.responsiveQuanta = Math.max(1, Math.min(8, Math.floor(this.responsiveQuanta * 100 / Math.max(20, elapsed))));
+    // Deduct only committed time, including recovery after a partially completed
+    // call. A speed change cannot erase elapsed time that is already owed.
+    let frame: LiveWorldFrame | undefined;
+    try {
+      frame = await this.runTick(minutes, emitFrame);
+    } finally {
+      const processed = Math.max(0, this.world.runtimeStateView().calendar.elapsedWorldMinutes - before);
+      // A visibility/catch-up message may arrive during an awaited commit.
+      // Its transferred interval is no longer part of the live queue.
+      const consumedLive = Math.max(0, before + processed - Math.max(before, this.liveCoveredThroughWorldMinutes));
+      this.pendingLiveMinutes = Math.max(0, this.pendingLiveMinutes - consumedLive);
+      this.liveMeasuredWorldMinutes += processed;
+      const elapsed = performance.now() - started;
+      if (processed > 0) this.responsiveQuanta = Math.max(1, Math.min(24,
+        Math.ceil(processed / CANONICAL_WORLD_QUANTUM_MINUTES * 200 / Math.max(1, elapsed))));
+    }
+    if (frame) frame.liveTiming = this.liveTiming();
     return frame;
   }
 
   async tick(overrideWorldMinutes?: number): Promise<LiveWorldFrame> {
+    return (await this.runTick(overrideWorldMinutes, true))!;
+  }
+
+  private async runTick(overrideWorldMinutes: number | undefined, emitFrame: boolean): Promise<LiveWorldFrame | undefined> {
     const tick = Math.max(
       this.currentTechnicalTick + 1,
-      this.world.snapshot().now + 1,
+      this.world.runtimeStateView().now + 1,
     );
     const scheduledDisturbances = this.disturbances.filter(
       (disturbance) => disturbance.tick === tick,
@@ -878,7 +939,7 @@ export class LiveWorldRuntime {
       await this.world.applyDisturbance(
         disturbance.kind,
         disturbance.magnitude,
-        this.world.snapshot().now,
+        this.world.runtimeStateView().now,
         disturbance.duration ?? 8,
         disturbance.operationId ?? `live:${index}:${tick}`,
       );
@@ -895,7 +956,7 @@ export class LiveWorldRuntime {
     if (dueDisturbances.length > 0) {
       this.cardinalBurstUntilWorldMinutes = Math.max(
         this.cardinalBurstUntilWorldMinutes,
-        this.world.snapshot().calendar.elapsedWorldMinutes +
+        this.world.runtimeStateView().calendar.elapsedWorldMinutes +
           CARDINAL_SIGNAL_BURST_WORLD_MINUTES,
       );
     }
@@ -906,7 +967,7 @@ export class LiveWorldRuntime {
     let worldAuthority: WorldAuthorityRecord | undefined;
 
     while (remainingWorldMinutes > WORLD_TIME_EPSILON) {
-      const beforeQuantum = this.world.snapshot();
+      const beforeQuantum = this.world.runtimeStateView();
       const pendingWorldMinutes =
         beforeQuantum.v15?.simulationClock.pendingWorldMinutes ?? 0;
       const toBoundary = Math.max(
@@ -963,7 +1024,7 @@ export class LiveWorldRuntime {
         remainingWorldMinutes - chunkWorldMinutes,
       );
 
-      const afterQuantum = this.world.snapshot();
+      const afterQuantum = this.world.runtimeStateView();
       const quantumAdvanced =
         (afterQuantum.v15?.simulationClock.quantumIndex ?? afterQuantum.now) >
         (beforeQuantum.v15?.simulationClock.quantumIndex ?? beforeQuantum.now);
@@ -987,7 +1048,7 @@ export class LiveWorldRuntime {
         afterQuantum.calendar.elapsedWorldMinutes,
       );
       const opportunity = await this.processCardinalOpportunity(
-        this.world.snapshot(),
+        this.world.runtimeStateView(),
       );
       if (opportunity.evaluation) evaluation = opportunity.evaluation;
       if (opportunity.intervention) intervention = opportunity.intervention;
@@ -996,15 +1057,19 @@ export class LiveWorldRuntime {
       }
     }
 
+    this.currentTechnicalTick = tick;
+    if (evaluation) this.displayedEvaluation = evaluation;
+    if (!emitFrame) return undefined;
+
     const observation = await this.sensors.observe(
-      this.world.snapshot(),
-      this.world.snapshot().now,
+      this.world.runtimeStateView(),
+      this.world.runtimeStateView().now,
     );
 
     const recentEvents = await this.store.recent(
-      this.world.snapshot().id,
+      this.world.runtimeStateView().id,
       10,
-      this.world.snapshot().now,
+      this.world.runtimeStateView().now,
     );
     const latestCardinalEvent = [...recentEvents]
       .reverse()
@@ -1022,12 +1087,9 @@ export class LiveWorldRuntime {
       );
     }
 
-    this.currentTechnicalTick = tick;
-    if (evaluation) this.displayedEvaluation = evaluation;
-
     return structuredClone({
       tick,
-      world: this.world.snapshot(),
+      world: this.world.runtimeStateView(),
       metrics: observation.metrics,
       disturbances: dueDisturbances,
       evaluation: evaluation ?? this.displayedEvaluation,

@@ -1,3 +1,4 @@
+import { LiveWallClock, liveLoopDelay } from './LiveWallClock';
 import {
   LiveWorldRuntime,
   OFFLINE_CATCH_UP_MAX_BATCH_QUANTA,
@@ -32,7 +33,7 @@ const DIVINE_AUDIENCE_CHANNEL_NAME = 'ainkrad-v0-3-divine-audience';
 const STORAGE_CHECK_INTERVAL_TICKS = 300;
 const AINKRAD_STORAGE_SOFT_BUDGET_BYTES = 2 * 1024 * 1024 * 1024;
 const AINKRAD_STORAGE_CRITICAL_BUDGET_BYTES = 4 * 1024 * 1024 * 1024;
-const FRAME_PROTOCOL_VERSION = 'ainkrad-live-frame-0.3.20';
+const FRAME_PROTOCOL_VERSION = 'ainkrad-live-frame-0.3.20-fix2';
 const COMPATIBLE_FRAME_PROTOCOLS = new Set([FRAME_PROTOCOL_VERSION]);
 
 // Test disturbances never run automatically in the persistent live world.
@@ -148,6 +149,7 @@ const resetChannel = new BroadcastChannel(RESET_CHANNEL_NAME);
 const offlineClockChannel = new BroadcastChannel(OFFLINE_CLOCK_CHANNEL_NAME);
 const divineAudienceChannel = new BroadcastChannel(DIVINE_AUDIENCE_CHANNEL_NAME);
 let activeRuntime: LiveWorldRuntime | undefined;
+const liveWallClock = new LiveWallClock(performance.now());
 let pendingClockControl: LiveWorldClockMessage | undefined;
 let pendingWorldReset = false;
 let pendingOfflineCatchUp: OfflineClockCatchUpMessage | undefined;
@@ -171,6 +173,9 @@ function applyClockControl(message: LiveWorldClockMessage): void {
   ) {
     throw new Error('Rejected malformed external clock control.');
   }
+  if (activeRuntime && !divineAudiencePaused && !pendingOfflineCatchUp) {
+    activeRuntime.enqueueLiveElapsed(liveWallClock.sample(performance.now()));
+  } else liveWallClock.reset(performance.now());
   pendingClockControl = message;
   activeRuntime?.setWorldSpeed(message.speedId, message.multiplier);
 }
@@ -196,6 +201,7 @@ function applyOfflineCatchUp(message: OfflineClockCatchUpMessage): void {
       catchUpBatchQuanta = OFFLINE_CATCH_UP_MAX_BATCH_QUANTA;
       catchUpFailureCount = 0;
     }
+    activeRuntime?.coverLiveTimeThrough(message.targetWorldMinutes, message.worldEpoch);
     pendingOfflineCatchUp = message;
   }
 }
@@ -222,6 +228,10 @@ function publishCatchUpRecovery(
 }
 
 function applyDivineAudiencePause(message: DivineAudiencePauseCommand): void {
+  if (!divineAudiencePaused && activeRuntime && !pendingOfflineCatchUp) {
+    activeRuntime.enqueueLiveElapsed(liveWallClock.sample(performance.now()));
+  }
+  liveWallClock.reset(performance.now());
   divineAudiencePaused = message.paused === true;
 }
 
@@ -230,7 +240,7 @@ async function grantPrivateDivineAudience(
   broadcast: boolean,
 ): Promise<void> {
   if (!activeRuntime) return;
-  divineAudiencePaused = true;
+  applyDivineAudiencePause({ type: 'set_divine_audience_pause', paused: true });
   const record = await activeRuntime.grantPrivateDivineAudience({
     requestId: request.requestId,
     agentId: request.agentId,
@@ -471,7 +481,7 @@ async function runForever(): Promise<void> {
     durable: true,
   });
   activeRuntime = runtime;
-  let lastLiveWallTime = performance.now();
+  liveWallClock.reset(performance.now());
   let lastFramePostedAt = -Infinity;
   if (pendingClockControl) {
     runtime.setWorldSpeed(
@@ -481,9 +491,10 @@ async function runForever(): Promise<void> {
   }
 
   while (true) {
+    const loopStartedAt = performance.now();
     try {
       if (divineAudiencePaused) {
-        lastLiveWallTime = performance.now();
+        liveWallClock.reset(performance.now());
         await sleep(100);
         continue;
       }
@@ -494,6 +505,7 @@ async function runForever(): Promise<void> {
         catchUpBatchQuanta = OFFLINE_CATCH_UP_MAX_BATCH_QUANTA;
         catchUpFailureCount = 0;
         await runtime.resetWorld();
+        liveWallClock.reset(performance.now());
       }
       const beforeFrame = runtime.worldContinuityPosition();
       let completedCatchUpThisLoop = false;
@@ -613,22 +625,22 @@ async function runForever(): Promise<void> {
         }
       }
       const wallNow = performance.now();
+      if (completedCatchUpThisLoop) liveWallClock.reset(wallNow);
+      const emitFrame = completedCatchUpThisLoop || wallNow - lastFramePostedAt >= 1000;
+      // Sample BEFORE the await. Work and persistence time are charged by the
+      // next iteration; there is no one-second clamp dropping elapsed time.
+      const elapsed = liveWallClock.sample(wallNow);
       const frame = completedCatchUpThisLoop ? await runtime.tick(0) :
-        await runtime.responsiveTick(Math.min(1000, Math.max(0, wallNow - lastLiveWallTime)));
-      lastLiveWallTime = performance.now();
-      const message = {
-        type: 'frame',
-        protocolVersion: FRAME_PROTOCOL_VERSION,
-        frame,
-      } as const;
-      if (completedCatchUpThisLoop || performance.now() - lastFramePostedAt >= 1000) {
+        await runtime.advanceResponsive(elapsed, emitFrame);
+      if (frame) {
+        const message = { type: 'frame', protocolVersion: FRAME_PROTOCOL_VERSION, frame } as const;
         workerScope.postMessage(message);
         frameChannel.postMessage(message);
-        lastFramePostedAt = performance.now();
+        lastFramePostedAt = wallNow;
       }
 
       if (
-        frame.tick % STORAGE_CHECK_INTERVAL_TICKS === 0 &&
+        frame && frame.tick % STORAGE_CHECK_INTERVAL_TICKS === 0 &&
         navigator.storage?.estimate
       ) {
         try {
@@ -665,7 +677,7 @@ async function runForever(): Promise<void> {
         throw error;
       }
     }
-    await sleep(50);
+    await sleep(liveLoopDelay(performance.now() - loopStartedAt, runtime.liveTiming().pendingWorldMinutes));
   }
 }
 

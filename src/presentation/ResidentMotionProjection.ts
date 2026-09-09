@@ -19,7 +19,8 @@ function restingFootprintRadius(
 ): number {
   const place = world.places[agent.locationId];
   if (!place) return 0.8;
-  if (place.kind === 'home') return 0.72;
+  if (place.kind === 'home') return 0.14;
+  if (place.kind === 'workshop' || place.kind === 'library') return 0.24;
 
   const settlement = place.settlementId
     ? world.settlements[place.settlementId]
@@ -33,8 +34,6 @@ function restingFootprintRadius(
       return Math.max(2.4, Math.min(7.5, settlementRadius * 0.42));
     case 'resource_field':
       return Math.max(2.2, Math.min(5.6, settlementRadius * 0.34));
-    case 'workshop':
-      return Math.max(1.5, Math.min(3.4, settlementRadius * 0.22));
     case 'quiet_space':
     case 'meadow':
     case 'forest':
@@ -99,7 +98,7 @@ export function projectedResidentPosition(
       return { x: stableX, y: stableY, layerId: agent.position.layerId };
     }
     const ambientPhase = phase + safeFrameSequence * 0.23;
-    const ambientRadius = 0.18 + mobility * 0.24;
+    const ambientRadius = Math.min(footprint * 0.15, 0.18 + mobility * 0.24);
     return {
       x: stableX + Math.cos(ambientPhase) * ambientRadius,
       y: stableY + Math.sin(ambientPhase) * ambientRadius * 0.62,

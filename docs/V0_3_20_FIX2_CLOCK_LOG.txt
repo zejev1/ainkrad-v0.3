@@ -1,0 +1,19 @@
+
+ RUN  v3.1.1 /workspace/scratch/f1f71aca20c3/Ainkrad-v0.3.20-FIX2-stage
+
+ ✓ tests/liveWorldRuntime.test.ts (5 tests) 2334ms
+   ✓ Cardinal semantic speed equivalence > gives Cardinal identical opportunities at ×1, ×10 and ×100 for equal Ainkrad time  1875ms
+stdout | tests/v0_3_20_fix2Clock.test.ts > FIX2 elapsed time and bounded live work > retains work across speed changes, counts ten years for one minute, and exposes real backlog
+{"benchmark":"10 requested world years","realSeconds":3.2167659799999995,"simulatedYears":10,"living":41}
+
+ ✓ tests/v0_3_20_fix2Clock.test.ts (5 tests) 3986ms
+   ✓ FIX2 elapsed time and bounded live work > simulates the same year and Cardinal observations with or without presentation frames  704ms
+   ✓ FIX2 elapsed time and bounded live work > retains work across speed changes, counts ten years for one minute, and exposes real backlog  3223ms
+ ✓ tests/v0_3_18_offlineCatchUp.test.ts (3 tests) 8551ms
+   ✓ v0.3.18 closed-browser catch-up > executes every semantic quantum while bounding durable commits  8284ms
+
+ Test Files  3 passed (3)
+      Tests  13 passed (13)
+   Start at  19:19:06
+   Duration  16.51s (transform 703ms, setup 0ms, collect 1.09s, tests 14.87s, environment 0ms, prepare 144ms)
+

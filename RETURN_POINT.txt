@@ -1,37 +1,31 @@
-AINKRAD v0.3.20 STARTUP FIX 1
+AINKRAD v0.3.20 FIX 2 — live time and city streets
 Date: 2026-09-09 UTC
-Package version: 0.3.20-hotfix.1
-Source HEAD/main: 0957253d42cf9393b792292461833cc2bb7ef9af
+Package version: 0.3.20-hotfix.2
+Source HEAD/main: ba1735146bd4bf3593cc1d4c366a984a32dbff4b
 Remote: https://github.com/zejev1/ainkrad-v0.3.git
-Index empty; only the user commits/pushes through SPCK.
-No assistant commit, push or deployment. No Convex. Original Ainkrad untouched.
+Index empty; user commits and pushes through SPCK.
+No assistant commit, push, deployment, Convex or changes to original Ainkrad.
 
-REPORTED ERROR
-World v16 race opportunity elf must be an object.
+FINISHED
+Count awaited work/persistence time; preserve requested time across speed changes.
+Make live UI frames at display cadence, read immutable committed state internally.
+Protect queued time through overlapping catch-up targets and in-flight commits.
+Display achieved pace and remaining work.
+One physical map projection; no planet-percent resident/animal displacement.
+Physical settlement bounds; remove fictitious cross roads; scale local markers.
+Walk around occupied buildings, reserve separated dry plots for new homes.
+Migrate routes without moving residents, erasing route history or resetting the world.
+Button "Город" returns from planetary overview to Ainkrad streets.
 
-REPRODUCTION
-Missing elf evidence plus an earlier completed additive-repair operation.
-The fixed world-wide operation ID returned the incomplete current projection
-as a duplicate instead of persisting the repaired nextState.
-
-FIX
-Scope additive repair operation/event IDs to the saved revision.
-Covers v16, v18, v19/v20 same-version repair paths.
-Preserve valid counters, people, families, stocks, calendar, RNG and Cardinal XP.
-Strict validation remains for damaged existing evidence.
-Reopening the repaired projection is revision-neutral.
-
-CHECKS
-Six targeted startup regressions PASS.
-TypeScript PASS. Vite production build PASS (2.56 seconds).
-Full Vitest: 199/199 tests, 45/45 files PASS, 107.68 seconds.
-Final suite result: docs/V0_3_20_FIX1_AUDIT.json and associated full test log.
-Previous v0.3.20 mechanics and their historical audit remain in the tree.
-No new 50-year benchmark: no demographic/simulation policy change in this fix.
-The user's actual Chrome database was not accessible; verify after user push.
+VALIDATION
+Full suite: 206/206 tests, 47 files, 110.56s.
+Final clock refinement: 13/13 affected tests, 3 files, 16.51s; 207 unique tests in tree.
+Final TypeScript and Vite build PASS. Current audit: docs/V0_3_20_FIX2_AUDIT.json.
+10 years from 60000ms input processed in 3.217s in-memory; not an Android measurement.
+No new millennium benchmark or mobile-Chrome visual pass claimed.
 
 HANDOFF
-Ainkrad-v0.3.20-FIX1-SPCK-READY.zip; flat root including .git.
+Ainkrad-v0.3.20-FIX2-SPCK-READY.zip, flat root, .git included.
 Git email: zejev1@users.noreply.github.com
-Commit: fix: resume saved worlds after repeated schema repair
-Continue the existing world at the same URL. Do not clear browser storage.
+Commit suggestion: fix: account for live time and align city streets
+Continue the existing world at the same URL; do not clear browser site data.

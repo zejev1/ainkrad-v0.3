@@ -1,10 +1,12 @@
-# Ainkrad v0.3.20 — startup fix 1
+# Ainkrad v0.3.20 — clock and streets fix 2
 
-This package adds a focused saved-world startup repair on published commit
-0957253d42cf9393b792292461833cc2bb7ef9af. See
-[RELEASE_NOTES_v0.3.20_FIX1.md](RELEASE_NOTES_v0.3.20_FIX1.md).
-All v0.3.20 world mechanics below are retained. Use the FIX1 audit for current
-verification; the original v0.3.20 test and benchmark reports are historical.
+This package builds on published main ba1735146bd4bf3593cc1d4c366a984a32dbff4b.
+It repairs elapsed-time accounting, reduces unnecessary live-frame work, and
+uses physical coordinates for residents, buildings and settlement footprints.
+Walking routes avoid occupied plots; new homes reserve space for lanes.
+See [RELEASE_NOTES_v0.3.20_FIX2.md](RELEASE_NOTES_v0.3.20_FIX2.md) and
+[docs/V0_3_20_FIX2_AUDIT.json](docs/V0_3_20_FIX2_AUDIT.json).
+Earlier versioned audits remain historical. Continue the existing world.
 
 An experimental autonomous world for developing and testing a self-checking AI governance layer.
 

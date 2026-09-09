@@ -10,6 +10,7 @@ RELEASE_NOTES_v0.3.18.md
 RELEASE_NOTES_v0.3.19.md
 RELEASE_NOTES_v0.3.20.md
 RELEASE_NOTES_v0.3.20_FIX1.md
+RELEASE_NOTES_v0.3.20_FIX2.md
 RETURN_POINT.txt
 SHA256SUMS.txt
 SHA256SUMS_RETURN_POINT.txt
@@ -50,6 +51,12 @@ docs/V0_3_20_FIX1_AUDIT.json
 docs/V0_3_20_FIX1_BUILD_LOG.txt
 docs/V0_3_20_FIX1_TEST_LOG.txt
 docs/V0_3_20_FIX1_WORK_STATE.md
+docs/V0_3_20_FIX2_AUDIT.json
+docs/V0_3_20_FIX2_BUILD_LOG.txt
+docs/V0_3_20_FIX2_CLOCK_LOG.txt
+docs/V0_3_20_FIX2_TEST_LOG.txt
+docs/V0_3_20_FIX2_TYPECHECK_LOG.txt
+docs/V0_3_20_FIX2_WORK_STATE.md
 docs/V0_3_20_RELEASE_AUDIT.json
 docs/V0_3_20_TEST_LOG.txt
 docs/V0_3_20_WORK_STATE.md
@@ -93,6 +100,8 @@ src/index.ts
 src/persistence/AppendOnlyLog.ts
 src/persistence/IndexedDbPersistence.ts
 src/presentation/ResidentMotionProjection.ts
+src/presentation/WorldMapProjection.ts
+src/runtime/LiveWallClock.ts
 src/runtime/LiveWorldRuntime.ts
 src/runtime/OfflineWorldClock.ts
 src/runtime/WorldRuntime.ts
@@ -164,6 +173,7 @@ src/world/InMemoryEventStore.ts
 src/world/InMemoryMemoryStore.ts
 src/world/InMemoryWorldStore.ts
 src/world/SapientPeoples.ts
+src/world/SettlementStreets.ts
 src/world/WorldClock.ts
 src/world/WorldEngine.ts
 src/world/WorldNavigation.ts
@@ -208,6 +218,8 @@ tests/v0_3_18_underworldFoundation.test.ts
 tests/v0_3_19_adventureEconomy.test.ts
 tests/v0_3_19_divineAgency.test.ts
 tests/v0_3_19_sapientPeoples.test.ts
+tests/v0_3_20_fix2Clock.test.ts
+tests/v0_3_20_fix2Map.test.ts
 tests/v0_3_20_regressions.test.ts
 tests/v0_3_20_startupRepair.test.ts
 tests/v15FamilyAgency.test.ts

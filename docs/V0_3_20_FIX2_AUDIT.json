@@ -1,0 +1,83 @@
+{
+  "version": "0.3.20-hotfix.2",
+  "dateUtc": "2026-09-09",
+  "baseHead": "ba1735146bd4bf3593cc1d4c366a984a32dbff4b",
+  "branch": "main",
+  "remote": "https://github.com/zejev1/ainkrad-v0.3.git",
+  "status": "PASS_WITH_DOCUMENTED_DEVICE_LIMIT",
+  "reportedIssues": [
+    "Elapsed work time excluded from acceleration",
+    "Residents and city footprints drift across the expanded map",
+    "Buildings need gaps and walkable lanes"
+  ],
+  "verifiedCauses": [
+    "Worker reset wall sample after awaited computation, discarding elapsed work time",
+    "20 complete frames generated per second for 1 display update",
+    "Screen-percent resident and wildlife offsets scale with planetary extent",
+    "City minimum diameter was 9% of world map"
+  ],
+  "verification": {
+    "typecheck": "PASS",
+    "productionBuild": {
+      "status": "PASS",
+      "seconds": 1.25
+    },
+    "fullRegression": {
+      "status": "PASS",
+      "files": 47,
+      "tests": 206,
+      "seconds": 110.56
+    },
+    "finalClockRefinement": {
+      "status": "PASS",
+      "files": 3,
+      "tests": 13,
+      "seconds": 16.51,
+      "note": "After full suite, refined overlapping offline targets and in-flight commits; reran affected runtime/offline tests and final typecheck/build. Adds one regression (207 unique tests in tree)."
+    },
+    "benchmark": {
+      "benchmark": "10 requested world years",
+      "realSeconds": 3.2167659799999995,
+      "simulatedYears": 10,
+      "living": 41,
+      "storage": "InMemoryWorldStore",
+      "clockInput": "60000ms accounted elapsed time; no real-time wait",
+      "device": "test environment, not Android"
+    },
+    "migrationAndContinuity": "PASS: same world, living people, families, calendar, RNG, route traversal history; repeated open idempotent",
+    "residentAutonomy": "PASS: existing autonomy, child-work and private knowledge regressions",
+    "cardinalGatewayCausality": "PASS: unchanged canonical observation boundaries and protected gateways",
+    "cardinalExperience": "PASS: nonzero experience survives reopening repaired world",
+    "boundedStorage": "PASS: existing persistence/history/journal-scaling tests; new pacing state uses constant-size counters; local plot search bounded to 512 candidates",
+    "physicalMap": "PASS: resting child stays within 15m of home at 0/1000/10000km extent; no extra screen-percent offsets",
+    "walkingStreets": "PASS: routes avoid occupied building plots, all ten founding homes connected, vacant plot separation",
+    "actualAndroid": "NOT_RUN; browser automation unavailable in this environment; exact phone throughput not claimed",
+    "thousandYearStability": "NOT_RUN; outside this focused bug fix"
+  },
+  "buildAssets": [
+    {
+      "path": "dist/assets/index-BriHdohO.js",
+      "bytes": 159535,
+      "sha256": "787b4f074f9776a4f0d04d0c62a1b1abb0de2babec508156eb3c07f027152cd0"
+    },
+    {
+      "path": "dist/assets/index-CkycKuk1.css",
+      "bytes": 45927,
+      "sha256": "c7a20966b9c40ea9395394a209a4a376090cc631b4bc1a36d952c0a16996638d"
+    },
+    {
+      "path": "dist/assets/liveWorld.worker-Dh1nsA-C.js",
+      "bytes": 588405,
+      "sha256": "22da8f99414858667984ca8d49b86f9f8cb56674a0f32022773fbaec58515eaf"
+    },
+    {
+      "path": "dist/index.html",
+      "bytes": 399,
+      "sha256": "f8b64439f5150c0013faddaef896341793055bfe6f340057f623543772f3ad59"
+    }
+  ],
+  "assistantCommit": false,
+  "assistantPush": false,
+  "assistantDeploy": false,
+  "handoff": "Flat SPCK ZIP, existing Git history; continue same browser world at same URL."
+}

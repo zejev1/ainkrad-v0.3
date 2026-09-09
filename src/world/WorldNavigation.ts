@@ -1,3 +1,4 @@
+import { routeAroundBuildings } from './SettlementStreets';
 import type {
   WorldPlace,
   WorldPoint2D,
@@ -217,6 +218,14 @@ export function rebuildWorldRoutes(
         // Follow the verified bank segment if a decorative bend would cut water.
         route.waypoints = [{ x: place.mapX, y: place.mapY }, { x: connected.mapX, y: connected.mapY }];
         route.distance = pointDistance(route.waypoints[0], route.waypoints[1]);
+      }
+      if (traversal === 'walk') {
+        const walkingPath = routeAroundBuildings(route.waypoints, place.id, connected.id, places);
+        if (!walkingPath || walkingPath.slice(1).some((point, index) => segmentCrossesWaterArea(
+          { ...place, mapX: walkingPath[index].x, mapY: walkingPath[index].y },
+          { ...connected, mapX: point.x, mapY: point.y }, places))) continue;
+        route.waypoints = walkingPath;
+        route.distance = walkingPath.slice(1).reduce((sum, p, i) => sum + pointDistance(walkingPath[i], p), 0);
       }
       routes[id] = route;
     }

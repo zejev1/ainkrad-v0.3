@@ -1,6 +1,7 @@
 import { ensureElfLibraryV20, elfStudyMaterialV20, readingBudgetV20 } from '../v20/LibraryLearningV20';
 import type { InterventionKind } from '../cardinal/types';
 import { observeLocalPlacesV20, sharePlaceKnowledgeV20, removeUnsurveyedHomelandLinksV20, frontierSiteV20, mayKnowPlaceV20 } from '../v20/KnowledgeBoundariesV20';
+import { vacantHomePlot } from './SettlementStreets';
 import { hasGiftV20, learningFactorV20, canReadLibraryV20, giftLearningSnapshotV20, applyLivedGiftLearningV20 } from '../v20/DivineGiftsV20';
 import { stableJsonStringify } from '../core/stableJson';
 import type { InputEnvelope } from '../runtime/inputBus/types';
@@ -3979,6 +3980,8 @@ async function repairCompatibleV19World(
     repairSapientHomelandGeography(next);
     removeUnsurveyedHomelandLinksV20(next);
     repairSecretLibraryPlacementV18(next);
+    // Update physical walking lanes without moving residents already travelling.
+    next.routes = rebuildWorldRoutes(next.places, next.routes);
     if (stableJsonStringify(next) === before) return current;
 
     next.revision = current.revision + 1;
@@ -9715,6 +9718,15 @@ export class WorldEngine {
         }
         const center = this.state.places[settlement.centerPlaceId];
         const angle = sequence * 2.399963229728653;
+        const plot = vacantHomePlot(this.state.places, {
+          x: center.mapX + Math.cos(angle) * (4.2 + sequence * 0.18),
+          y: center.mapY + Math.sin(angle) * (4.2 + sequence * 0.18),
+        });
+        if (!plot) {
+          economy.stocks.wood += 0.65;
+          economy.stocks.stone += 0.35;
+          continue;
+        }
         this.state.places[homeId] = createPlace(
           homeId,
           `Построенный дом ${sequence}`,
@@ -9722,8 +9734,8 @@ export class WorldEngine {
           6,
           {
             biome: 'settlement',
-            mapX: center.mapX + Math.cos(angle) * (4.2 + sequence * 0.18),
-            mapY: center.mapY + Math.sin(angle) * (4.2 + sequence * 0.18),
+            mapX: plot.x,
+            mapY: plot.y,
             connectedPlaceIds: [settlement.centerPlaceId],
             fertility: 0.54,
             danger: 0.035,
