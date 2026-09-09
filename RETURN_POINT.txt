@@ -1,64 +1,51 @@
-AINKRAD v0.3.19 SOURCE RETURN POINT
-Date: 2026-09-08 UTC
-Status: implementation, regression and 100-year audit completed
+AINKRAD v0.3.20 SOURCE RETURN POINT
+Date: 2026-09-09 UTC
+Status: source implementation and release regression completed
 
-SOURCE AUTHORITY
-- Continue from this complete v0.3.19 tree; do not restore an older ZIP.
-- Git HEAD: 66538c03ff8dfcea0bccb2e493c6af1666facfad, branch main.
-- Remote: https://github.com/zejev1/ainkrad-v0.3.git
-- Changes are intentionally uncommitted and unstaged.
-- Only the user commits and pushes through SPCK. No assistant GitHub/Vercel
-  writes and no Convex connection.
+CONTINUE FROM THIS TREE
+Repository: https://github.com/zejev1/ainkrad-v0.3.git
+HEAD/main: 045036fa9eb9ae78a52ba9a23217d296ccb08e2e
+GitHub main rechecked on release day: same commit.
+Index empty. All v0.3.20 changes intentionally uncommitted and unstaged.
+Only the user commits/pushes through SPCK. No assistant GitHub/Vercel writes.
+Original zejev1/ainkrad is outside this task. No Convex.
 
-IMPLEMENTED
-- All preceding v0.3.18 fixes retained: world catch-up and continuity,
-  Cardinal experience, fixed Secret Library, learning, cultural names,
-  contextual conversations, livelihoods, physical routes and planet map.
-- Gifts change capabilities independently of profession or imposed calling.
-  Hero is a capability preset. Direct messages and signs remain separate.
-- Private audience pauses time and age. Cardinal cannot access private contact.
-- Life events drive contextual prayers with cause, subject, wish, emotion,
-  belief and desperation. Inbox filters link to NPCs and divine responses.
-  Prayer counts never create automatic rewards; interpretations remain personal.
-- Voluntary dungeon journeys, experience ranks, abilities and artifacts;
-  real-stock purchases and physically carried inter-settlement trade.
-- Six peoples: humans, elves, dwarves, goblins, orcs and ogres. Founding
-  homelands are 100-200 km apart, with distinct physiology, life windows,
-  cultural skills, names, terrain traditions and appearance.
-- Friendly elf/dwarf and hostile goblin/orc initial human relations can evolve
-  through actual events. Individuals retain their choices.
-- Existing canonical close homelands are relocated once with places,
-  residents and route repair. Time, history, identity and RNG are retained.
+COMPLETED
+Human-only library; anchored elven House of Memory; year-long access,
+elapsed-time reading, sourced Chinese teachings and real practice.
+At least 1000 km between homelands; local discovery/testimony/contact;
+no automatic intercontinental roads, diplomacy or dungeon knowledge.
+No settlement-wide birth cooldown. Children learn; adolescents apprentice.
+29 independent capability gifts, selected inheritance and visible mark.
+Correct food/poverty/travel prayer triggers; no automatic divine rewards.
+Local dungeon discovery; eligible residents physically execute journeys.
+Cardinal observes/learns for first 200 years; retained XP on reopen.
+Named 10/50/100 years-per-minute targets; bounded batches, visible errors.
+New World protected in bottom settings. Roads show traversed terrain paths.
 
-EXECUTED CHECKS
-- TypeScript: PASS.
-- Full regression: 43/43 files, 185/185 tests, 101.51 seconds.
-- Equal-time x1/x10/x100 causality and OFF/OBSERVER autonomy: PASS.
-- Production Vite build: PASS; dedicated worker emitted.
-- Local production HTTP smoke: index and worker returned 200.
-- 100-year ainkrad-browser-world audit, Cardinal OFF: 114.169 seconds,
-  738 living, 751 births, 83 deaths, 10 inhabited settlements.
-- Six living peoples: human 65, elf 122, dwarf 161, goblin 66, orc 156,
-  ogre 168. No deprivation deaths; no artificial population ceiling.
-- 751 distinct child names, no technical-number names; 95 distinct utterances
-  among 96 recent conversations. 340 prayers and 308 dungeon runs.
-- All 15 homeland pairs within 100-200 km; migration repair idempotent.
-- Evidence: TEST_RESULTS_v0.3.19.md and docs/V0_3_19_RELEASE_AUDIT.json.
+EXECUTED
+TypeScript PASS. Vite production build PASS.
+Vitest 44/44 files, 193/193 tests, 135.65 seconds.
+50 years, ainkrad-browser-world, Cardinal OFF: 99.208 seconds.
+540 living: human 97, elf 67, dwarf 106, goblin 83, orc 122, ogre 65.
+472 births; monster/old-age deaths 2; deprivation deaths 0.
+147 places, 7 settlements, 114 residents moving.
+472 distinct child names with no technical numbers; 95/96 distinct utterances.
+Reports: TEST_RESULTS_v0.3.20.md, docs/V0_3_20_RELEASE_AUDIT.json,
+docs/V0_3_20_BENCHMARK_50_YEARS.json, docs/V0_3_20_TEST_LOG.txt.
 
 LIMITS
-- Actual Android Chrome/Vercel rendering and IndexedDB smoke still needed
-  after the user's push. Local HTTP smoke is not a mobile browser test.
-- The 100-year audit does not assert a 300-year population or all-seed outcome.
-- Prayer detail retains the latest 256 records plus 12 significant entries
-  per resident; older totals remain counted. Other v19 histories are bounded.
+Android/browser interaction not verified; local browser blocked.
+Speed presets are targets, not performance guarantees.
+No millennium or 300-year population claim; recorded benchmark is 50 years.
+Knowledge/speech rules remain finite; unrestricted book understanding and
+human-level intelligence are not implemented.
+Purpose dominates prayer topics. Full prayer text has bounded retention;
+older aggregate counts remain. Population growth increases computation cost.
 
-PACKAGING
-- Archive contents at root, including .git; no enclosing project directory.
-- Exclude node_modules, dist, tsconfig.tsbuildinfo, CPU profiles and .tmp-audit.
-- Verify unpacked HEAD, main, remote, empty index and all source hashes.
-- No commit, push or force push by the assistant.
-
-SPCK HANDOFF
-- Git email: zejev1@users.noreply.github.com
-- Suggested commit:
-  feat(v0.3.19): add lived prayers, gifts and adventure economy
+HANDOFF
+Flat root including .git. Exclude dependencies, build output, caches/profiles.
+Verify extracted HEAD/main/remote, empty index and all file hashes.
+Email: zejev1@users.noreply.github.com
+Commit: fix(v0.3.20): restore lived knowledge and world continuity
+Continue the existing world on its existing URL; do not clear site storage.

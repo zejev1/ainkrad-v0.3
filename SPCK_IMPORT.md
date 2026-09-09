@@ -1,39 +1,19 @@
-# Ainkrad v0.3.19: import and commit in SPCK
+# Ainkrad v0.3.20 — установка с телефона
 
-The final ZIP is a complete, flat SPCK project. Repository files and `.git`
-are located directly at the archive root, not inside a second project folder.
-The working-tree changes are based on the verified GitHub `main` parent:
+ZIP плоский: src, package.json и .git лежат в корне. Вложенной папки проекта нет.
 
-`66538c03ff8dfcea0bccb2e493c6af1666facfad`
+1. Скачайте Ainkrad-v0.3.20-SPCK-READY.zip.
+2. В SPCK: **Проекты → + → Импорт ZIP**, выберите архив.
+3. Откройте **Git**. Ветка main, изменения готовы к вашему коммиту. Повторно инициализировать Git не нужно.
+4. Git email: **zejev1@users.noreply.github.com**.
+5. Сообщение: **fix(v0.3.20): restore lived knowledge and world continuity**
+6. Выполните **Commit → Push**. При отказе из-за расхождения истории сохраните сообщение об ошибке; force push для установки не требуется.
+7. После сборки Vercel откройте прежний адрес мира. Сохраните данные браузера и существующий мир. Закройте другие вкладки Ainkrad со старой версией.
 
-Remote:
+Основа: 045036fa9eb9ae78a52ba9a23217d296ccb08e2e.
+Remote: https://github.com/zejev1/ainkrad-v0.3.git
+GitHub main сверен перед упаковкой. Индекс пуст; созданного помощником коммита нет. Commit/push/deploy помощником не выполнялись.
 
-`https://github.com/zejev1/ainkrad-v0.3.git`
+Мир хранится в данных сайта. ZIP содержит исходники приложения и не переносит сохранение между адресами Vercel, браузерами или телефонами. «Новый мир» находится в закрытых настройках внизу и требует подтверждения. Для обновления нажимать его не нужно.
 
-No credential, commit or push is included.
-
-1. Download the single `Ainkrad-v0.3.19-SPCK-READY-FINAL-*.zip` file.
-2. In SPCK choose **Projects → + → Import ZIP** and select that ZIP. Do not
-   first create an empty project and extract the archive into it; that produces
-   the unwanted project-inside-project layout.
-3. Open **Git**. Do not initialize another repository and do not clone GitHub.
-   SPCK must show branch `main` and the uncommitted v0.3.19 changes immediately.
-4. If SPCK asks for Git identity, use
-   `zejev1@users.noreply.github.com`.
-5. Suggested commit message:
-   `feat(v0.3.19): add lived prayers, gifts and adventure economy`
-6. Tap **Commit**, then **Push**. Those actions remain yours. Never enable a
-   force push for this archive.
-7. After Vercel succeeds, open the existing world first. Confirm that catch-up
-   completes, the Secret Library remains fixed beside Ainkrad, Cardinal keeps
-   its experience, prayers appear in their inbox, and dungeon entrances and
-   adventure evidence appear without a world-error badge.
-8. Then create a fresh world and confirm that births, cultural names,
-   conversations, distant settlements, voluntary professions and adventure
-   ranks develop from the new epoch rather than old cached counters.
-
-The assistant performed no GitHub or Vercel write. `node_modules`, `dist`,
-`tsconfig.tsbuildinfo`, CPU profiles and generated audit caches are excluded.
-
-Do **not** connect Ainkrad v0.3 to Convex. This project intentionally has no
-Convex adapter or credential.
+Проверки и ограничения: TEST_RESULTS_v0.3.20.md.

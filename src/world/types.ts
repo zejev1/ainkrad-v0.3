@@ -143,13 +143,7 @@ export interface AgentSkills {
   exploration: number;
 }
 
-export type DivineGiftKind =
-  | 'longevity'
-  | 'might'
-  | 'genius_inventor'
-  | 'crowd_charisma'
-  | 'healing_touch'
-  | 'demon_king_hero';
+export type DivineGiftKind = import('../v20/DivineGiftsV20').GiftKindV20;
 
 export type DivineContactKind =
   | 'message'
@@ -223,9 +217,12 @@ export interface AgentMovementState {
   nextWaypointIndex: number;
   startedAt: number;
   worldStageAtStart: number;
+  routeIds?: string[];
 }
 
 export interface AgentState {
+  knownPlaceIds?: string[];
+  knownDungeonIds?: string[];
   id: string;
   name: string;
   origin: AgentOrigin;
@@ -349,6 +346,7 @@ export interface WorldPlace {
 }
 
 export interface WorldRouteState {
+  completedTraversals?: number;
   id: string;
   fromPlaceId: string;
   toPlaceId: string;

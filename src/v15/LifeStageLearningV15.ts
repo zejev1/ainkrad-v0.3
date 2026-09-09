@@ -70,7 +70,7 @@ export function learningStagePolicyV15(
       // Older children may choose supervised household/farm/workshop chores.
       // Productive capacity remains far below an adult and hazardous hunting
       // is still forbidden.
-      mayWork: olderChild,
+      mayWork: false,
       mayBondAsAdultPartner: false,
       mayTeachPeers: false,
       mayTeachYoungerResidents: false,

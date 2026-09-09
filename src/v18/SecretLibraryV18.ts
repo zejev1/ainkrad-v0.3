@@ -1,3 +1,4 @@
+import { hasGiftV20 } from '../v20/DivineGiftsV20';
 import type { GenesisDomain } from '../v15/GenesisBootstrap';
 import { rebuildWorldRoutes } from '../world/WorldNavigation';
 import type {
@@ -19,11 +20,12 @@ import {
 export const SECRET_LIBRARY_PLACE_ID_V18 = 'secret_library_v18';
 export const SECRET_LIBRARY_PLACE_NAME_V18 = 'Тайная библиотека';
 export const SECRET_LIBRARY_MAX_VISITORS_PER_YEAR_V18 = 5;
-export const SECRET_LIBRARY_MAX_KNOWLEDGE_PER_AGENT_V18 = 64;
+export const SECRET_LIBRARY_MAX_KNOWLEDGE_PER_AGENT_V18 = 512;
 // Four verified six-hour reading sessions fit inside the one-month access
 // window after the first physical journey to the building.
-export const SECRET_LIBRARY_STUDY_QUANTA_V18 = 4;
-export const SECRET_LIBRARY_MONTH_WORLD_MINUTES_V18 = 30 * 24 * 60;
+export const SECRET_LIBRARY_STUDY_QUANTA_V18 = 60;
+// Compatibility name; the access window is now a full Ainkrad year.
+export const SECRET_LIBRARY_MONTH_WORLD_MINUTES_V18 = 365 * 24 * 60;
 
 export type SecretLibraryVisitorStatusV18 =
   | 'travelling'
@@ -34,6 +36,10 @@ export type SecretLibraryVisitorStatusV18 =
 
 export interface SecretLibraryVisitorV18 {
   agentId: string;
+  libraryPlaceId?: string;
+  readingMinutes?: number;
+  wordsRead?: number;
+  lastStudyWorldMinute?: number;
   accessYear: number;
   status: SecretLibraryVisitorStatusV18;
   selectedWorldMinute: number;
@@ -210,6 +216,10 @@ function repairedVisitor(
             : 'travelling';
   return {
     agentId,
+    libraryPlaceId: stringValue(value.libraryPlaceId, SECRET_LIBRARY_PLACE_ID_V18),
+    readingMinutes: Math.max(0, finiteNumber(value.readingMinutes, 0)),
+    wordsRead: Math.max(0, finiteNumber(value.wordsRead, 0)),
+    lastStudyWorldMinute: Math.max(0, finiteNumber(value.lastStudyWorldMinute, finiteNumber(value.arrivedWorldMinute, 0))),
     accessYear: Math.max(1, nonNegativeInteger(value.accessYear, fallbackYear)),
     status,
     selectedWorldMinute: finiteNumber(value.selectedWorldMinute, 0),
@@ -316,7 +326,7 @@ export function repairSecretLibraryStateV18(
     .filter((visitor, index, all) =>
       all.findIndex((candidate) => candidate.agentId === visitor.agentId) === index,
     )
-    .slice(0, SECRET_LIBRARY_MAX_VISITORS_PER_YEAR_V18);
+    .slice(0, SECRET_LIBRARY_MAX_VISITORS_PER_YEAR_V18 * 4);
   const knowledgeByAgentId: Record<string, SecretLibraryKnowledgeRecordV18[]> = {};
   const rawKnowledge = asRecord(value.knowledgeByAgentId) ?? {};
   for (const [agentId, records] of Object.entries(rawKnowledge)) {
@@ -434,7 +444,7 @@ export function rankedSecretLibraryCandidatesV18(
   priorKnowledgeByAgentId: Readonly<Record<string, readonly SecretLibraryKnowledgeRecordV18[]>>,
 ): AgentState[] {
   return agents
-    .filter((agent) => agent.life.alive && agent.life.ageYears >= 10)
+    .filter((agent) => agent.life.alive && ['human', 'elf'].includes(agent.race ?? 'human') && agent.life.stage !== 'child')
     .map((agent) => ({
       agent,
       score:
@@ -692,6 +702,7 @@ export function shareSecretLibraryKnowledgeV18(input: {
     !speaker ||
     !listener ||
     speaker.locationId !== listener.locationId ||
+    Boolean(speaker.movement || listener.movement) ||
     !speakerRecord ||
     speakerRecord.understanding < 0.22 ||
     !listenerLanguage ||
@@ -714,7 +725,7 @@ export function shareSecretLibraryKnowledgeV18(input: {
   const heardUnderstanding = clamp01(
     Math.min(
       speakerRecord.understanding * 0.58,
-      0.035 + speakerRecord.understanding * attention * 0.32,
+      0.035 + speakerRecord.understanding * attention * (hasGiftV20(world, speakerId, 'gifted_teacher') ? 0.6 : 0.32),
     ),
   );
   let changed = false;
@@ -772,7 +783,7 @@ export function assertSecretLibraryStateV18(world: Readonly<WorldState>): void {
     throw new Error('Secret Library physical anchor is invalid.');
   }
   if (
-    library.visitors.length > SECRET_LIBRARY_MAX_VISITORS_PER_YEAR_V18 ||
+    library.visitors.length > SECRET_LIBRARY_MAX_VISITORS_PER_YEAR_V18 * 4 ||
     new Set(library.visitors.map((visitor) => visitor.agentId)).size !==
       library.visitors.length
   ) {

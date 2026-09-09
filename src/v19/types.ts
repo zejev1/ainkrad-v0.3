@@ -20,6 +20,7 @@ export interface V19DivineGiftGrant {
   deityId: string;
   deityName: string;
   grantedWorldMinute: number;
+  inheritableGift?: DivineGiftKind;
   delivery: V19DivineDelivery;
   interpretation: V19DivineInterpretation;
   residentResponse?: string;

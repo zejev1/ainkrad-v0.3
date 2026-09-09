@@ -39,11 +39,17 @@ async function preparedWorld(worldId: string): Promise<{
   };
   state.places.outskirts.connectedPlaceIds.push('adventure_ruins');
   state.growth.discoveredRegionIds.push('adventure_ruins');
+  // A scout first physically discovers the entrance, then tells the resident.
+  const scout = state.agents.agent_2;
+  scout.locationId = 'adventure_ruins';
+  scout.position = { x: 74, y: 64, layerId: 'surface' };
+  scout.movement = undefined;
   const adventure = syncAdventureEconomyV19(state);
   const dungeon = Object.values(adventure.dungeonsById).find(
     (candidate) => candidate.entrancePlaceId === 'adventure_ruins',
   )!;
   const resident = Object.values(state.agents)[0];
+  resident.knownDungeonIds = [dungeon.id];
   resident.life.stage = 'adult';
   resident.life.ageYears = Math.max(20, resident.life.ageYears);
   resident.life.health = 1;

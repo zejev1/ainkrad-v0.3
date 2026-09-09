@@ -27,16 +27,11 @@ import {
 
 export const WORLD_RULES_VERSION_V19 = 'ainkrad-world-rules-0.3.19';
 export const WORLD_V19_SCHEMA_VERSION = 'v19' as const;
+import { GIFT_CATALOG_V20, hasGiftV20 } from '../v20/DivineGiftsV20';
+
 export const DIVINE_AGENCY_VERSION_V19 = 'divine-agency-v19' as const;
 
-export const DIVINE_GIFTS_V19: readonly DivineGiftKind[] = [
-  'longevity',
-  'might',
-  'genius_inventor',
-  'crowd_charisma',
-  'healing_touch',
-  'demon_king_hero',
-] as const;
+export const DIVINE_GIFTS_V19 = Object.keys(GIFT_CATALOG_V20) as DivineGiftKind[];
 
 export const DIVINE_CONTACT_KINDS_V19: readonly DivineContactKind[] = [
   'message',
@@ -64,7 +59,7 @@ export const PRAYER_TOPICS_V19: readonly V19PrayerTopic[] = [
 
 export const MAX_RECENT_PRAYERS_V19 = 256;
 export const MAX_SIGNIFICANT_PRAYERS_PER_AGENT_V19 = 12;
-export const MAX_DIVINE_GIFTS_PER_AGENT_V19 = 12;
+export const MAX_DIVINE_GIFTS_PER_AGENT_V19 = 32;
 export const MAX_DIVINE_CONTACTS_PER_AGENT_V19 = 24;
 export const MAX_DEITY_RELATIONSHIPS_PER_AGENT_V19 = 12;
 export const MAX_RELIGION_SPEAKERS_V19 = 64;
@@ -363,13 +358,7 @@ export function applyPersistentDivineGiftEffectsV19(
   world: WorldState,
   agent: AgentState,
 ): void {
-  if (hasDivineGiftV19(world, agent.id, 'longevity')) {
-    agent.life.lifespanYears = Math.max(
-      agent.life.lifespanYears,
-      agent.life.ageYears + 150,
-      220,
-    );
-  }
+  // Longevity affects ageing; never roll the death threshold forward on every tick.
   if (hasDivineGiftV19(world, agent.id, 'might')) {
     agent.life.physiology.strength = Math.max(
       0.96,
@@ -380,8 +369,9 @@ export function applyPersistentDivineGiftEffectsV19(
       agent.life.physiology.endurance,
     );
   }
+  if (hasGiftV20(world, agent.id, 'agility')) agent.life.physiology.mobility = Math.max(agent.life.physiology.mobility, 0.95);
+  if (hasGiftV20(world, agent.id, 'tireless')) agent.life.physiology.endurance = Math.max(agent.life.physiology.endurance, 0.98);
   if (hasDivineGiftV19(world, agent.id, 'demon_king_hero')) {
-    agent.life.health = Math.max(0.98, agent.life.health);
     agent.life.physiology = {
       strength: 1,
       endurance: 1,
@@ -510,6 +500,7 @@ export interface DivineActionV19Input {
   deityName: string;
   religionName?: string;
   gift?: DivineGiftKind;
+  inheritanceGift?: DivineGiftKind;
   contactKind?: DivineContactKind;
   message?: string;
   relatedPrayerId?: string;
@@ -534,6 +525,8 @@ export function applyDivineActionV19(
     throw new Error(`Living divine-action resident ${input.agentId} was not found.`);
   }
   const profile = ensureAgentDivineAgencyV19(world, agent.id);
+  if (input.gift === 'legacy' && (!input.inheritanceGift || input.inheritanceGift === 'legacy' ||
+      !profile.gifts.some(grant => grant.gift === input.inheritanceGift))) throw new Error('Наследие требует выбрать один уже полученный дар.');
   const relationship = ensureDeityRelationshipV19(
     world,
     agent.id,
@@ -564,6 +557,7 @@ export function applyDivineActionV19(
     const grant: V19DivineGiftGrant = {
       id: `gift:${input.operationId}`,
       gift: input.gift,
+      ...(input.gift === 'legacy' ? { inheritableGift: input.inheritanceGift } : {}),
       deityId: input.deityId,
       deityName: input.deityName,
       grantedWorldMinute: input.worldMinute,
@@ -588,31 +582,12 @@ export function applyDivineActionV19(
       combatMastery: 0,
       sacredArts: 0,
     });
-    if (input.gift === 'longevity') {
-      agent.life.lifespanYears = Math.max(
-        agent.life.lifespanYears,
-        agent.life.ageYears + 150,
-        220,
-      );
-    } else if (input.gift === 'might') {
+    if (input.gift === 'might') {
       agent.life.physiology.strength = Math.max(0.96, agent.life.physiology.strength);
       agent.life.physiology.endurance = Math.max(0.92, agent.life.physiology.endurance);
-      progression.combatMastery = Math.max(0.72, progression.combatMastery);
-    } else if (input.gift === 'genius_inventor') {
-      agent.skills.craft = 1;
-      agent.skills.exploration = Math.max(0.9, agent.skills.exploration);
-      const knowledge = world.v15?.knowledgeByAgentId[agent.id];
-      if (knowledge) {
-        knowledge.aptitude.agriculture = 1;
-        knowledge.aptitude.construction = 1;
-        knowledge.aptitude.household = 1;
-        knowledge.aptitude.survival = 1;
-      }
-    } else if (input.gift === 'crowd_charisma') {
-      agent.skills.social = 1;
     } else if (input.gift === 'healing_touch') {
       progression.sacredArts = Math.max(0.95, progression.sacredArts);
-    } else {
+    } else if (input.gift === 'demon_king_hero') {
       agent.life.health = 1;
       agent.energy = 1;
       agent.life.physiology = {
@@ -876,7 +851,7 @@ function buildPrayerCandidates(
       ({ person, closeness }) =>
         person.life.alive &&
         closeness >= 0.5 &&
-        person.locationId !== person.homeId,
+        world.places[person.locationId]?.settlementId !== world.places[person.homeId]?.settlementId,
     )
     .sort((left, right) => right.closeness - left.closeness)[0];
   const settlementId = settlement?.id;
@@ -886,10 +861,9 @@ function buildPrayerCandidates(
   const economy = settlementId
     ? world.v16?.settlementEconomyById[settlementId]
     : undefined;
-  const foodCapacity = economy?.storageCapacity.food ?? 0;
-  const foodShare = foodCapacity > 0
-    ? clamp01((economy?.stocks.food ?? 0) / foodCapacity)
-    : resources?.storedResources;
+  const residents = Object.values(world.agents).filter(person => person.life.alive && world.places[person.homeId]?.settlementId === settlementId).length;
+  const neededFood = Math.max(0.2, residents * 0.028);
+  const foodShare = economy ? clamp01(economy.stocks.food / neededFood) : resources?.storedResources;
   const rhythm = world.v18?.lifeRhythmByAgentId[agent.id];
   const satiety = rhythm?.satiety ?? clamp01(0.48 + agent.resources * 0.38);
   const localDanger = world.places[agent.locationId]?.danger ?? 0;
@@ -941,7 +915,7 @@ function buildPrayerCandidates(
       score: 0.56 + agent.mind.emotions.grief * 0.78 + dead.closeness * 0.2,
     });
   }
-  if (satiety < 0.58 || (foodShare !== undefined && foodShare < 0.32)) {
+  if ((satiety < 0.4 && (rhythm?.missedMealQuanta ?? 0) >= 2) || (foodShare !== undefined && foodShare < 0.25 && satiety < 0.65)) {
     candidates.push({
       topic: 'hunger',
       triggerEvent: 'food_shortage',
@@ -998,7 +972,7 @@ function buildPrayerCandidates(
       score: 0.38 + absent.closeness * 0.42 + agent.mind.emotions.fear * 0.22,
     });
   }
-  if (agent.locationId !== agent.homeId || agent.movement) {
+  if (world.places[agent.locationId]?.settlementId !== world.places[agent.homeId]?.settlementId || (agent.movement && Math.hypot(agent.position.x - (world.places[agent.homeId]?.mapX ?? agent.position.x), agent.position.y - (world.places[agent.homeId]?.mapY ?? agent.position.y)) > 30)) {
     candidates.push({
       topic: 'travel',
       triggerEvent: 'own_distant_journey',
@@ -1009,7 +983,7 @@ function buildPrayerCandidates(
       score: 0.3 + agent.mind.emotions.fear * 0.32 + (1 - agent.energy) * 0.28,
     });
   }
-  if (agent.resources < 0.3) {
+  if (agent.life.stage !== 'child' && agent.resources < 0.3 && (foodShare ?? 0) < 0.4) {
     candidates.push({
       topic: 'poverty',
       triggerEvent: 'personal_resource_poverty',
@@ -1023,14 +997,14 @@ function buildPrayerCandidates(
   if (
     agent.life.health > 0.82 &&
     satiety > 0.66 &&
-    agent.mind.emotions.joy > 0.58
+    (agent.mind.emotions.joy > 0.35 || agent.life.childIds.some(id => world.agents[id]?.life.alive && world.agents[id].life.ageYears < 1))
   ) {
     candidates.push({
       topic: 'gratitude',
       triggerEvent: 'lived_good_fortune',
       subject: `благополучие семьи и дома`,
       desiredOutcome: `выразить благодарность без требования награды`,
-      fact: `сегодня я здоров, сыт и могу вернуться к тем, кто мне дорог`,
+      fact: `сегодня я здоров, сыт${agent.life.childIds.some(id => world.agents[id]?.life.alive && world.agents[id].life.ageYears < 1) ? ', и мой маленький ребёнок живёт рядом' : ', и у меня есть силы прожить этот день'}`,
       request: `я ничего не требую — только благодарю за этот день`,
       score: 0.28 + agent.mind.emotions.joy * 0.32 + agent.mind.emotions.awe * 0.2,
     });

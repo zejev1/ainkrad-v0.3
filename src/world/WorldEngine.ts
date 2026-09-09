@@ -1,4 +1,7 @@
+import { ensureElfLibraryV20, elfStudyMaterialV20, readingBudgetV20 } from '../v20/LibraryLearningV20';
 import type { InterventionKind } from '../cardinal/types';
+import { observeLocalPlacesV20, sharePlaceKnowledgeV20, removeUnsurveyedHomelandLinksV20, frontierSiteV20, mayKnowPlaceV20 } from '../v20/KnowledgeBoundariesV20';
+import { hasGiftV20, learningFactorV20, canReadLibraryV20, giftLearningSnapshotV20, applyLivedGiftLearningV20 } from '../v20/DivineGiftsV20';
 import { stableJsonStringify } from '../core/stableJson';
 import type { InputEnvelope } from '../runtime/inputBus/types';
 import { SeededRng } from '../utils/rng';
@@ -3937,7 +3940,7 @@ async function migrateV18WorldToV19(
 }
 
 const V19_ADDITIVE_SCHEMA_REPAIR_OPERATION_ID =
-  'migration:v19-additive-schema-repair-2026-09-08-sapient-geography';
+  'migration:v20-continuity-knowledge-boundaries-2026-09-09';
 
 async function repairCompatibleV19World(
   store: WorldStore,
@@ -3948,7 +3951,7 @@ async function repairCompatibleV19World(
     from: WORLD_RULES_VERSION,
     to: WORLD_RULES_VERSION,
     mode: 'same_version_additive_schema_repair',
-    schemaRevision: '2026-09-08-sapient-geography',
+    schemaRevision: '2026-09-09-knowledge-boundaries',
   });
   let current = persisted;
 
@@ -3969,12 +3972,13 @@ async function repairCompatibleV19World(
       next.v19?.migratedFromRulesVersion ?? WORLD_RULES_VERSION_V18,
     );
     repairSapientHomelandGeography(next);
+    removeUnsurveyedHomelandLinksV20(next);
     repairSecretLibraryPlacementV18(next);
     if (stableJsonStringify(next) === before) return current;
 
     next.revision = current.revision + 1;
     const migrationEvent: WorldEvent = {
-      eventId: `migration:${next.id}:v19-additive-schema-repair-2026-09-08-sapient-geography`,
+      eventId: `migration:${next.id}:v20-knowledge-boundaries-2026-09-09`,
       worldId: next.id,
       kind: 'world.migrated',
       source: 'system',
@@ -4228,7 +4232,7 @@ export class WorldEngine {
         belonging: rng.between(0.35, 0.8),
         purpose: rng.between(0.35, 0.8),
       };
-      const ageYears = 21 + ((index * 7) % 27);
+      const ageYears = 20 + ((index * 3) % 15);
       const partial = {
         id,
         name,
@@ -4365,6 +4369,7 @@ export class WorldEngine {
     state.v19 = createWorldV19State(state, WORLD_RULES_VERSION);
     repairSecretLibraryPlacementV18(state);
 
+    for (const resident of Object.values(state.agents)) observeLocalPlacesV20(state, resident);
     assertWorldState(state);
     await options.store.initializeWorld(state);
     return new WorldEngine(options.store, state);
@@ -4828,6 +4833,7 @@ export class WorldEngine {
   ): void {
     const worldMinutes = this.state.calendar.elapsedWorldMinutes;
     const year = Math.floor(worldMinutes / WORLD_MINUTES_PER_YEAR) + 1;
+    ensureElfLibraryV20(this.state);
     const library = ensureWorldV18State(this.state).secretLibrary;
     if (library.currentAccessYear >= year) return;
 
@@ -4838,7 +4844,7 @@ export class WorldEngine {
     library.opensAtWorldMinute = worldMinutes;
     library.closesAtWorldMinute =
       library.opensAtWorldMinute + SECRET_LIBRARY_MONTH_WORLD_MINUTES_V18;
-    library.visitors = [];
+    library.visitors = library.visitors.filter(v => ['studying', 'travelling', 'returning'].includes(v.status) && worldMinutes - v.selectedWorldMinute < 2 * WORLD_MINUTES_PER_YEAR);
 
     const literacyByAgentId = Object.fromEntries(
       Object.entries(ensureWorldV18State(this.state).languageByAgentId).map(
@@ -4852,9 +4858,10 @@ export class WorldEngine {
       library.knowledgeByAgentId,
     );
     for (const agent of ranked) {
-      if (library.visitors.length >= SECRET_LIBRARY_MAX_VISITORS_PER_YEAR_V18) {
-        break;
-      }
+      const libraryPlaceId = agent.race === 'elf' ? 'elf_library_v20' : SECRET_LIBRARY_PLACE_ID_V18;
+      if (!this.state.places[libraryPlaceId] || library.visitors.some(v => v.agentId === agent.id) ||
+          library.visitors.filter(v => v.accessYear === year && (v.libraryPlaceId ?? SECRET_LIBRARY_PLACE_ID_V18) === libraryPlaceId).length >= SECRET_LIBRARY_MAX_VISITORS_PER_YEAR_V18 ||
+          !this.pathBetween(agent.locationId, libraryPlaceId)) continue;
       const literacy = literacyByAgentId[agent.id] ?? 0;
       const voluntaryAcceptanceChance = clamp01(
         0.16 +
@@ -4867,6 +4874,10 @@ export class WorldEngine {
       if (this.rng.next() >= voluntaryAcceptanceChance) continue;
       library.visitors.push({
         agentId: agent.id,
+        libraryPlaceId,
+        readingMinutes: 0,
+        wordsRead: 0,
+        lastStudyWorldMinute: 0,
         accessYear: year,
         status: 'travelling',
         selectedWorldMinute: worldMinutes,
@@ -4878,7 +4889,7 @@ export class WorldEngine {
         learnedKnowledgeIds: [],
       });
     }
-    library.totalVisits += library.visitors.length;
+    library.totalVisits += library.visitors.filter(v => v.accessYear === year).length;
     library.status = library.visitors.length > 0 ? 'open' : 'closed';
   }
 
@@ -4895,33 +4906,35 @@ export class WorldEngine {
 
     for (const visitor of library.visitors) {
       const agent = this.state.agents[visitor.agentId];
-      if (!agent?.life.alive) {
+      const libraryPlaceId = visitor.libraryPlaceId ?? SECRET_LIBRARY_PLACE_ID_V18;
+      if (!agent?.life.alive || !canReadLibraryV20(agent, libraryPlaceId)) {
         visitor.status = 'missed';
         continue;
       }
       if (
-        windowClosed &&
+        worldMinutes - (visitor.arrivedWorldMinute ?? visitor.selectedWorldMinute) >= WORLD_MINUTES_PER_YEAR &&
         visitor.status !== 'completed' &&
         visitor.status !== 'missed' &&
         visitor.status !== 'returning'
       ) {
         visitor.status = 'returning';
-        if (agent.movement?.targetPlaceId === SECRET_LIBRARY_PLACE_ID_V18) {
+        if (agent.movement?.targetPlaceId === libraryPlaceId) {
           agent.movement = undefined;
         }
       }
 
       if (visitor.status === 'travelling') {
         if (
-          agent.locationId === SECRET_LIBRARY_PLACE_ID_V18 &&
+          agent.locationId === libraryPlaceId &&
           !agent.movement
         ) {
           visitor.status = 'studying';
           visitor.arrivedWorldMinute ??= worldMinutes;
-        } else if (agent.movement?.targetPlaceId !== SECRET_LIBRARY_PLACE_ID_V18) {
+          visitor.lastStudyWorldMinute = worldMinutes;
+        } else if (agent.movement?.targetPlaceId !== libraryPlaceId) {
           this.travelBeforeAction(
             agent,
-            SECRET_LIBRARY_PLACE_ID_V18,
+            libraryPlaceId,
             'reflect',
             now,
           );
@@ -4929,19 +4942,19 @@ export class WorldEngine {
       }
 
       if (visitor.status === 'studying') {
-        if (agent.locationId !== SECRET_LIBRARY_PLACE_ID_V18 || agent.movement) {
+        if (agent.locationId !== libraryPlaceId || agent.movement) {
           visitor.status = 'travelling';
           continue;
         }
         this.performSecretLibraryStudyV18(agent, visitor, now);
         studying.add(agent.id);
-        if (visitor.studyQuanta >= SECRET_LIBRARY_STUDY_QUANTA_V18) {
+        if (worldMinutes - (visitor.arrivedWorldMinute ?? worldMinutes) >= WORLD_MINUTES_PER_YEAR) {
           visitor.status = 'returning';
           visitor.completedWorldMinute = worldMinutes;
           this.recordAgentEvent(agent, now, 'agent.secret_library.completed', {
             accessYear: visitor.accessYear,
             learnedCount: visitor.learnedKnowledgeIds.length,
-            placeId: SECRET_LIBRARY_PLACE_ID_V18,
+            placeId: libraryPlaceId,
           });
           this.stageMemory({
             memoryId: this.nextId('memory'),
@@ -4949,7 +4962,7 @@ export class WorldEngine {
             agentId: agent.id,
             createdAt: now,
             kind: 'reflection',
-            summary: `${agent.name} completed a voluntary month of reading in the Secret Library.`,
+            summary: `${agent.name} completed a voluntary year of reading in the Secret Library.`,
             importance: 0.76,
             valence: 0.58,
             relatedAgentIds: [],
@@ -4972,7 +4985,7 @@ export class WorldEngine {
           : agent.homeId;
         if (agent.locationId === destinationId && !agent.movement) {
           visitor.status =
-            visitor.studyQuanta >= SECRET_LIBRARY_STUDY_QUANTA_V18
+            visitor.studyQuanta > 0
               ? 'completed'
               : 'missed';
         } else if (agent.movement?.targetPlaceId !== destinationId) {
@@ -5003,12 +5016,22 @@ export class WorldEngine {
     const library = ensureWorldV18State(this.state).secretLibrary;
     const existingRecords = library.knowledgeByAgentId[agent.id] ?? [];
     const priorKnowledgeIds = existingRecords.map((record) => record.knowledgeId);
-    const material = secretLibraryStudyMaterialV18(
+    const baseMaterial = secretLibraryStudyMaterialV18(
       agent.id,
       visitor.accessYear,
       visitor.studyQuanta,
       [...new Set([...priorKnowledgeIds, ...visitor.learnedKnowledgeIds])],
     );
+    const material = agent.race === 'elf' ? elfStudyMaterialV20(visitor.studyQuanta, baseMaterial) : baseMaterial;
+    const minute = this.state.calendar.elapsedWorldMinutes;
+    const budget = readingBudgetV20(agent, this.state.v18?.languageByAgentId[agent.id]?.cyrillicLiteracy ?? 0,
+      minute - (visitor.lastStudyWorldMinute ?? visitor.arrivedWorldMinute ?? minute), material.knowledge.difficulty);
+    visitor.lastStudyWorldMinute = minute;
+    if (budget.minutes <= 0) return;
+    const words = material.knowledge.knowledge.join(' ').split(/\s+/u).length;
+    visitor.readingMinutes = (visitor.readingMinutes ?? 0) + Math.min(budget.minutes, words / budget.wordsPerMinute);
+    visitor.wordsRead = (visitor.wordsRead ?? 0) + Math.min(words, budget.maximumWords);
+    if (budget.maximumWords < words) return;
     const profile = this.v15World().knowledgeByAgentId[agent.id];
     const learner = this.v15LearningPerson(agent);
     const practice = applyIndependentPractice(learner, {
@@ -5016,7 +5039,7 @@ export class WorldEngine {
       personId: agent.id,
       domain: material.domain,
       worldMinutes: this.state.calendar.elapsedWorldMinutes,
-      durationWorldMinutes: 360,
+      durationWorldMinutes: budget.minutes,
       activityVerified: true,
       challenge: material.knowledge.difficulty,
     });
@@ -5075,7 +5098,7 @@ export class WorldEngine {
     library.knowledgeByAgentId[agent.id] = existingRecords.slice(
       -SECRET_LIBRARY_MAX_KNOWLEDGE_PER_AGENT_V18,
     );
-    visitor.studyQuanta += 1;
+    visitor.studyQuanta = Math.min(SECRET_LIBRARY_STUDY_QUANTA_V18, visitor.studyQuanta + 1);
     if (!visitor.learnedKnowledgeIds.includes(material.knowledge.id)) {
       visitor.learnedKnowledgeIds.push(material.knowledge.id);
     }
@@ -5911,6 +5934,7 @@ export class WorldEngine {
     now: number,
     operationId: string,
     expectedWorldRevision: number,
+    inheritanceGift?: DivineGiftKind,
   ): Promise<WorldMutationResult> {
     if (
       worldId !== this.committedState.id ||
@@ -5933,6 +5957,7 @@ export class WorldEngine {
     }
     const fingerprint = stableJsonStringify({
       kind: 'private_divine_action',
+      inheritanceGift,
       worldId,
       agentId,
       deityId,
@@ -5960,6 +5985,7 @@ export class WorldEngine {
           deityName,
           ...(religionName ? { religionName } : {}),
           ...(gift ? { gift } : {}),
+          ...(inheritanceGift ? { inheritanceGift } : {}),
           ...(contactKind ? { contactKind } : {}),
           ...(message?.trim() ? { message: message.trim() } : {}),
           ...(relatedPrayerId ? { relatedPrayerId } : {}),
@@ -6964,7 +6990,7 @@ export class WorldEngine {
           worldMinutes: this.state.calendar.elapsedWorldMinutes,
         },
         parentKind,
-        this.rng.next(),
+        this.rng.next() * (hasGiftV20(this.state, agent.id, 'discovery_spark') || hasGiftV20(this.state, agent.id, 'genius_inventor') ? 0.65 : 1),
         ideaId,
       );
       if (innovation.succeeded && innovation.idea) {
@@ -7010,6 +7036,7 @@ export class WorldEngine {
       this.advanceMonsterEncounter(agent, environment, now);
       if (!agent.life.alive) return;
     }
+    const giftBefore = giftLearningSnapshotV20(this.state, agent);
     const ageAllowedActions = allowedActionsForAgeV16(
       agent.race ?? 'human',
       agent.life.ageYears,
@@ -7060,6 +7087,7 @@ export class WorldEngine {
       this.advanceMind(agent);
       return;
     }
+    observeLocalPlacesV20(this.state, agent);
     this.updateGoal(agent, now);
 
     const localAgents = this.agentsAtLocation(agent.locationId);
@@ -7176,12 +7204,13 @@ export class WorldEngine {
       now,
     );
     practiceSecretLibraryKnowledgeV18(this.state, agent.id, livedAction);
+    applyLivedGiftLearningV20(this.state, agent, giftBefore);
     this.advanceMind(agent);
   }
 
   private applyPassiveNeeds(agent: AgentState, environment: WorldEnvironment): void {
     agent.energy = clamp01(
-      agent.energy - (0.016 + (1 - agent.life.physiology.endurance) * 0.014),
+      agent.energy - (0.016 + (1 - agent.life.physiology.endurance) * 0.014) * (hasGiftV20(this.state, agent.id, 'tireless') ? 0.3 : 1),
     );
 
     // Food is consumed as food. Natural fertility and a high scalar resource
@@ -9118,13 +9147,15 @@ export class WorldEngine {
   }
 
   private performExplore(agent: AgentState, now: number): void {
-    const frontier =
-      this.state.growth.discoveredRegionIds[
-        this.state.growth.discoveredRegionIds.length - 1
-      ] ?? 'outskirts';
-    const targetFrontier = this.state.places[frontier] ? frontier : 'outskirts';
+    observeLocalPlacesV20(this.state, agent);
+    const known = new Set(agent.knownPlaceIds ?? []);
+    const localFrontiers = [...known].map(id => this.state.places[id])
+      .filter(place => place && !['home', 'village', 'graveyard'].includes(place.kind) && this.pathBetween(agent.locationId, place.id))
+      .sort((a,b) => Math.hypot(b.mapX-this.state.places[agent.homeId].mapX,b.mapY-this.state.places[agent.homeId].mapY)-Math.hypot(a.mapX-this.state.places[agent.homeId].mapX,a.mapY-this.state.places[agent.homeId].mapY));
+    const targetFrontier = localFrontiers[0]?.id ?? agent.locationId;
     const livelihood = ensureLivelihoodV18(this.state, agent);
     const adventure = syncAdventureEconomyV19(this.state);
+    observeLocalPlacesV20(this.state, agent);
     let targetDungeon =
       agent.plan?.kind === 'dungeon_expedition'
         ? Object.values(adventure.dungeonsById).find(
@@ -9141,7 +9172,7 @@ export class WorldEngine {
           (candidate): candidate is {
             dungeon: (typeof candidate)['dungeon'];
             route: string[];
-          } => candidate.route !== undefined,
+          } => candidate.route !== undefined && known.has(candidate.dungeon.entrancePlaceId),
         )
         .sort(
           (left, right) =>
@@ -9416,7 +9447,7 @@ export class WorldEngine {
 
     const expansion =
       WORLD_EXPANSIONS.find((candidate) => candidate.stage === nextStage) ??
-      this.createProceduralExpansion(nextStage, now);
+      this.createProceduralExpansion(nextStage, now, agent);
 
     this.state.places[expansion.place.id] = {
       ...structuredClone(expansion.place),
@@ -9849,6 +9880,12 @@ export class WorldEngine {
           settlementB.centerPlaceId,
         );
         if (!route) continue;
+        // A connected atlas is not shared knowledge. Delegates and armies
+        // require testimony or a resident who actually reached the other town.
+        const knowsOther = (locals: AgentState[], otherId: string) =>
+          locals.some(person => (person.knownPlaceIds ?? []).includes(otherId));
+        if (!knowsOther(residentsA, settlementB.centerPlaceId) ||
+            !knowsOther(residentsB, settlementA.centerPlaceId)) continue;
         const relationKeyId = relationshipKey(settlementA.id, settlementB.id);
         let relation = this.state.v16?.settlementRelations[relationKeyId];
 
@@ -11349,6 +11386,7 @@ export class WorldEngine {
   private createProceduralExpansion(
     stage: number,
     now: number,
+    explorer: AgentState,
   ): WorldExpansionDefinition {
     const proceduralBiomes: readonly WorldBiome[] = [
       'mountains',
@@ -11395,35 +11433,9 @@ export class WorldEngine {
     const suffixes = REGION_NAME_SUFFIXES[biome];
     const suffix = suffixes[stage % suffixes.length];
     const regionId = `region_${stage}`;
-    const priorRegionId =
-      this.state.growth.discoveredRegionIds[
-        this.state.growth.discoveredRegionIds.length - 1
-      ] ?? 'outskirts';
-    const goldenAngle = 2.399963229728653;
-    // One map unit is 100 metres. The old 38..80-unit rings kept an entire
-    // world inside roughly ten kilometres and placed every people beside the
-    // human city. The frontier now opens into genuinely distant geography;
-    // the browser already derives its viewport from accumulated bounds.
-    const frontierBand = Math.floor(Math.max(0, stage - 4) / 8);
-    const ring = 125 + frontierBand * 58 + (stage % 4) * 8;
-    const angle = stage * goldenAngle;
-    const rawMapX = 50 + Math.cos(angle) * ring;
-    const rawMapY = 50 + Math.sin(angle) * ring;
-    // The founding continent ends at the continuous eastern ocean. Reflect a
-    // land frontier that would otherwise be generated in open water back onto
-    // the same continental side instead of drawing another walkable island.
-    const coastlineX = 88;
-    const continentalMapX =
-      rawMapX >= coastlineX
-        ? coastlineX - Math.max(8, rawMapX - coastlineX)
-        : rawMapX;
-    const planet = this.state.v18?.planetaryGeography;
-    const mapX = planet
-      ? Math.max(planet.minMapX, Math.min(coastlineX, continentalMapX))
-      : continentalMapX;
-    const mapY = planet
-      ? Math.max(planet.minMapY, Math.min(planet.maxMapY, rawMapY))
-      : rawMapY;
+    const site = frontierSiteV20(this.state, explorer, stage);
+    const mapX = site.x;
+    const mapY = site.y;
     const fertilityByBiome: Record<WorldBiome, number> = {
       settlement: 0.52,
       plains: 0.78,
@@ -11482,7 +11494,7 @@ export class WorldEngine {
         biome,
         mapX,
         mapY,
-        connectedPlaceIds: [priorRegionId],
+        connectedPlaceIds: site.connections,
         fertility: fertilityByBiome[biome],
         danger: dangerByBiome[biome],
         discoveredAt: now,
@@ -11769,7 +11781,7 @@ export class WorldEngine {
       if (!agent.life.alive) continue;
 
       const previousStage = agent.life.stage;
-      agent.life.ageYears += ageDelta;
+      agent.life.ageYears += ageDelta * (previousStage !== 'child' && previousStage !== 'adolescent' && hasGiftV20(this.state, agent.id, 'longevity') ? 0.5 : 1);
       agent.life.stage = lifeStageForRaceV16(
         agent.race ?? 'human',
         agent.life.ageYears,
@@ -11806,10 +11818,10 @@ export class WorldEngine {
           : 0;
       agent.life.health = clamp01(
         agent.life.health +
-          recovery -
+          recovery * (hasGiftV20(this.state, agent.id, 'rapid_healing') ? 2.5 : 1) -
           deprivation -
           frailty * Math.max(0.05, durationScale) -
-          placeDanger * 0.00022,
+          placeDanger * (hasGiftV20(this.state, agent.id, 'robust_health') ? 0.00007 : 0.00022),
       );
       agent.life.physiology = racePhysiology(
         agent.race ?? 'human',
@@ -11848,6 +11860,10 @@ export class WorldEngine {
     threat?: DeathThreatContextV15,
   ): void {
     if (!agent.life.alive) return;
+    if (cause !== 'old_age' && hasGiftV20(this.state, agent.id, 'divine_protection') && this.rng.next() < 0.08) {
+      agent.life.health = Math.max(agent.life.health, 0.08);
+      return;
+    }
 
     const v15 = this.v15World();
     const deathId = this.nextId('death');
@@ -12052,12 +12068,6 @@ export class WorldEngine {
         candidatesBySettlement.set(settlementId, local);
       }
 
-      const inhabitedSettlementCount = new Set(
-        living
-          .filter((agent) => (agent.race ?? 'human') === selectedRace)
-          .map((agent) => this.homeSettlementId(agent))
-          .filter((settlementId): settlementId is string => Boolean(settlementId)),
-      ).size;
       for (const [settlementId, localCandidates] of [
         ...candidatesBySettlement.entries(),
       ].sort(([left], [right]) => left.localeCompare(right))) {
@@ -12072,28 +12082,9 @@ export class WorldEngine {
           selectedRace,
           localCandidates.length,
         );
-        const diversifiedFamilyOpportunities =
-          worldMinutes >= WORLD_MINUTES_PER_YEAR * 30 &&
-          inhabitedSettlementCount >= 2;
-        if (
-          !diversifiedFamilyOpportunities &&
-          localOpportunity.lastBirthWorldMinute !== undefined &&
-          worldMinutes - localOpportunity.lastBirthWorldMinute <
-            raceProfile.raceBirthSpacingWorldMinutes
-        ) {
-          continue;
-        }
-
-        const localRaceResidentCount =
-          this.residentCountByHomeRace?.get(
-            `${settlementId}\u0000${selectedRace}`,
-          ) ?? 0;
-        // Simultaneous physical opportunities scale with the local people and
-        // therefore never become a population ceiling. The divisor limits one
-        // semantic batch, not the eventual size of a race or settlement.
-        const localBirthLimit = diversifiedFamilyOpportunities
-          ? Math.max(1, Math.ceil(localRaceResidentCount / 24))
-          : 1;
+        const localRaceResidentCount = this.residentCountByHomeRace?.get(`${settlementId}\u0000${selectedRace}`) ?? 0;
+        // Fertility belongs to consenting adults, never to a settlement-wide quota.
+        const localBirthLimit = Number.POSITIVE_INFINITY;
         let localBirths = 0;
         // Only a rotating, population-proportional share of couples reaches a
         // physical family opportunity in one two-month window. This avoids
@@ -12119,6 +12110,7 @@ export class WorldEngine {
               (candidateOffset + candidateIndex) % localCandidates.length
             ];
           const { a, b, relationship } = candidate;
+          if (!this.canConsiderChildDecision(a, b, now)) continue;
 
           ensureAgentV15State(this.state, a);
           ensureAgentV15State(this.state, b);
@@ -12260,7 +12252,8 @@ export class WorldEngine {
           0.32 +
             fertilitySupport * 0.34 +
             Math.min(a.life.health, b.life.health) * 0.18 +
-            signals.familyReadiness * 0.14,
+            signals.familyReadiness * 0.14 +
+            ((hasGiftV20(this.state, a.id, 'fertility') || hasGiftV20(this.state, b.id, 'fertility')) ? 0.15 : 0),
         );
         const timeScale = Math.max(
           0.2,
@@ -12458,6 +12451,15 @@ export class WorldEngine {
       lastMeaningfulEventAt: now,
     };
     this.state.agents[childId] = child;
+    observeLocalPlacesV20(this.state, child);
+    for (const parent of [a, b]) {
+      const legacy = this.state.v19?.divineAgency.byAgentId[parent.id]?.gifts.find(g => g.gift === 'legacy');
+      if (legacy?.inheritableGift && this.rng.next() < 0.25) applyDivineActionV19(this.state, {
+        operationId: `inherit:${childId}:${parent.id}`, agentId: childId, deityId: legacy.deityId,
+        deityName: legacy.deityName, gift: legacy.inheritableGift,
+        worldMinute: this.state.calendar.elapsedWorldMinutes, interpretationRoll: 0.5,
+      });
+    }
     ensureAgentV15State(this.state, child);
     ensureAgentV16State(this.state, child);
     ensureRussianKnowledgeV18(this.state, child);
@@ -12605,8 +12607,8 @@ export class WorldEngine {
         biome: 'settlement',
         mapX: centerX,
         mapY: centerY,
-        connectedPlaceIds: [anchor.id],
-        fertility: clamp01(0.5 + anchor.fertility * 0.18),
+        connectedPlaceIds: [],
+        fertility: 0.62,
         danger: 0.07,
         surface: 'land',
         settlementId,
@@ -12896,6 +12898,8 @@ export class WorldEngine {
       )
       .sort((a, b) => b.threat - a.threat)[0];
     if (!monster) return;
+    if (!monster.isMonster && hasGiftV20(this.state, agent.id, 'beast_friend') && this.rng.next() < 0.7) return;
+    if (hasGiftV20(this.state, agent.id, 'premonition') && this.rng.next() < 0.18) return;
 
     const placeDanger = this.state.places[agent.locationId]?.danger ?? 0.5;
     const safetyFactor = 1 - environment.safetySupport * 0.78;
@@ -12985,7 +12989,10 @@ export class WorldEngine {
         agent.personality.riskTolerance * 0.08 +
         (agent.progression?.combatMastery ?? 0) * 0.16 +
         (agent.progression?.objectControlAuthority ?? 0) * 0.08 +
-        environment.safetySupport * 0.08,
+        environment.safetySupport * 0.08 +
+        (hasGiftV20(this.state, agent.id, 'agility') ? 0.18 : 0) +
+        (hasGiftV20(this.state, agent.id, 'keen_eye') ? 0.1 : 0) +
+        (hasGiftV20(this.state, agent.id, 'luck') ? 0.025 : 0),
     );
     const counterCapacity = legendaryHero ? 1 : clamp01(
       agent.life.physiology.strength * 0.18 +
@@ -13201,7 +13208,7 @@ export class WorldEngine {
     agent.mind.memoryCoherence = clamp01(
       agent.mind.memoryCoherence +
         (action === 'reflect' ? 0.006 : 0.001) -
-        agent.stress * 0.0014,
+        agent.stress * (hasGiftV20(this.state, agent.id, 'perfect_memory') ? 0.000014 : 0.0014),
     );
     agent.mind.autonomy = clamp01(
       0.45 +
@@ -13325,7 +13332,7 @@ export class WorldEngine {
       | { place: WorldPlace; distance: number }
       | undefined;
     for (const place of sacredPlaces) {
-      if (this.pathBetween(agent.locationId, place.id) === undefined) continue;
+      if (!(agent.knownPlaceIds ?? []).includes(place.id) || this.pathBetween(agent.locationId, place.id) === undefined) continue;
       const distance = Math.hypot(
         place.mapX - agent.position.x,
         place.mapY - agent.position.y,
@@ -13337,7 +13344,8 @@ export class WorldEngine {
     const sacredPlaceId =
       nearestSacred?.place.id ??
       this.localPlace(agent, ['quiet_space'], agent.homeId);
-    if (this.travelBeforeAction(agent, sacredPlaceId, 'pray', now)) return;
+    // Residents can speak to a deity where they actually are, including home.
+    // A sacred place is optional, not a long mandatory journey before every prayer.
     const resonance =
       this.lawValue('mystic_resonance', 0.35);
     agent.energy = clamp01(agent.energy + 0.012);
@@ -13500,6 +13508,10 @@ export class WorldEngine {
     this.moveAgent(a, b.locationId);
     const key = relationshipKey(a.id, b.id);
     const current = this.relationshipFor(a, b, now);
+    if (current.trust > 0.25) {
+      sharePlaceKnowledgeV20(this.state, a, b);
+      sharePlaceKnowledgeV20(this.state, b, a);
+    }
     const canHeal =
       hasDivineGiftV19(this.state, a.id, 'healing_touch') &&
       b.life.health < 0.98;
@@ -13704,7 +13716,9 @@ export class WorldEngine {
       this.rng.between(-0.72, 0.72) +
         (priorMood - 0.35) * 0.5 +
         (compatibility - 0.5) * 0.24 +
-        socialSkill * 0.08 -
+        socialSkill * 0.08 +
+        (hasGiftV20(this.state, a.id, 'charm') ? 0.07 : 0) +
+        (hasGiftV20(this.state, a.id, 'eloquence') ? 0.05 : 0) -
         stressPenalty,
     );
 
@@ -13718,6 +13732,19 @@ export class WorldEngine {
     };
 
     this.state.relationships[key] = next;
+    // Visible evidence can provoke awe or fear without assigning a religion.
+    if (hasGiftV20(this.state, a.id, 'marked')) {
+      b.mind.emotions.awe = clamp01(b.mind.emotions.awe + 0.06);
+      if (sentiment < 0) b.mind.emotions.fear = clamp01(b.mind.emotions.fear + 0.025);
+    }
+    if (hasGiftV20(this.state, a.id, 'crowd_charisma')) {
+      for (const listener of this.agentsAtLocation(a.locationId).filter(person => person.id !== a.id && person.id !== b.id && !person.movement).slice(0, 12)) {
+        if (this.rng.next() < listener.personality.sociability * 0.45) {
+          const heard = this.relationshipFor(a, listener, now);
+          heard.respect = clamp01(heard.respect + sentiment * 0.015);
+        }
+      }
+    }
     recordResidentContactEvidenceV16(
       this.state,
       a,
@@ -13983,6 +14010,7 @@ export class WorldEngine {
     if (!destination) {
       throw new Error(`Cannot move ${agent.id} to unknown place ${locationId}.`);
     }
+    if (!mayKnowPlaceV20(agent, locationId)) return;
     if (agent.movement && agent.movement.targetPlaceId !== locationId) {
       // Another resident's interaction cannot pull a traveller off a route.
       return;
@@ -14015,6 +14043,7 @@ export class WorldEngine {
         nextWaypointIndex: 1,
         startedAt: this.state.now,
         worldStageAtStart: this.state.growth.stage,
+        routeIds: path.slice(0, -1).map((from, index) => routeIdBetween(from, path[index + 1])),
       };
       return;
     }
@@ -14077,7 +14106,12 @@ export class WorldEngine {
             agent.position.x = place.mapX;
             agent.position.y = place.mapY;
           }
+          for (const id of movement.routeIds ?? []) {
+            const route = this.state.routes[id];
+            if (route) route.completedTraversals = (route.completedTraversals ?? 0) + 1;
+          }
           agent.movement = undefined;
+          observeLocalPlacesV20(this.state, agent);
         }
         continue;
       }

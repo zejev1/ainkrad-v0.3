@@ -482,6 +482,10 @@ function buildWorldHealthForConsole(
  */
 export class LiveWorldRuntime {
   private currentTechnicalTick: number;
+  private displayedEvaluation?: CardinalEvaluation;
+  private responsiveQuanta = 1;
+  private pendingLiveMinutes = 0;
+
   private cardinalBurstUntilWorldMinutes = 0;
 
   private constructor(
@@ -592,6 +596,8 @@ export class LiveWorldRuntime {
           existing?.calendar.elapsedWorldMinutes ?? 0,
       },
     );
+    runtime.displayedEvaluation = [...allEvaluations].sort((a,b) =>
+      (b.experience?.totalExperience ?? 0) - (a.experience?.totalExperience ?? 0))[0];
     return runtime;
   }
 
@@ -630,7 +636,9 @@ export class LiveWorldRuntime {
   }
 
   setWorldSpeed(speedId: unknown, multiplier: unknown): WorldClockControl {
-    return this.clockGateway.set(speedId, multiplier);
+    const clock = this.clockGateway.set(speedId, multiplier);
+    this.pendingLiveMinutes = 0;
+    return clock;
   }
 
   worldSnapshot(): WorldState {
@@ -821,6 +829,18 @@ export class LiveWorldRuntime {
     });
   }
 
+  /** Bounded worker work; excess requested time stays queued, never skipped. */
+  async responsiveTick(realMilliseconds: number): Promise<LiveWorldFrame> {
+    this.pendingLiveMinutes += this.clockGateway.current().worldMinutesPerTick * Math.max(0, realMilliseconds) / 1000;
+    const minutes = Math.min(this.pendingLiveMinutes, this.responsiveQuanta * CANONICAL_WORLD_QUANTUM_MINUTES);
+    const started = performance.now();
+    const frame = await this.tick(minutes);
+    this.pendingLiveMinutes = Math.max(0, this.pendingLiveMinutes - minutes);
+    const elapsed = performance.now() - started;
+    this.responsiveQuanta = Math.max(1, Math.min(8, Math.floor(this.responsiveQuanta * 100 / Math.max(20, elapsed))));
+    return frame;
+  }
+
   async tick(overrideWorldMinutes?: number): Promise<LiveWorldFrame> {
     const tick = Math.max(
       this.currentTechnicalTick + 1,
@@ -1003,13 +1023,14 @@ export class LiveWorldRuntime {
     }
 
     this.currentTechnicalTick = tick;
+    if (evaluation) this.displayedEvaluation = evaluation;
 
     return structuredClone({
       tick,
       world: this.world.snapshot(),
       metrics: observation.metrics,
       disturbances: dueDisturbances,
-      evaluation,
+      evaluation: evaluation ?? this.displayedEvaluation,
       intervention,
       worldAuthority,
       evaluationCount: this.evaluationCount,
@@ -1198,7 +1219,8 @@ export class LiveWorldRuntime {
     let intervention: InterventionRecord | undefined;
     let worldAuthority: WorldAuthorityRecord | undefined;
 
-    if (this.mode === 'intervene' && evaluation.proposal) {
+    const interventionAllowed = this.mode === 'intervene' && worldMinutes >= 200 * WORLD_MINUTES_PER_YEAR;
+    if (interventionAllowed && evaluation.proposal) {
       const interventionWorld = this.world.snapshot();
       intervention = await this.gateway.execute(
         evaluation.evaluationId,
@@ -1238,7 +1260,7 @@ export class LiveWorldRuntime {
       ),
     );
 
-    if (this.mode === 'intervene') {
+    if (interventionAllowed) {
       const authoritySnapshot = this.world.snapshot();
       const authorityEvidence = (
         await this.store.recent(

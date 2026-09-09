@@ -706,6 +706,34 @@ describe('v0.3.16 material settlements and death aftermath', () => {
     const settlements = Object.values(raw.settlements);
     expect(settlements.length).toBeGreaterThanOrEqual(2);
     const [settlementA, settlementB] = settlements;
+    // Two already-contacted human frontier communities share a short surveyed
+    // border; this fixture must not invent a 1000 km route between unknown peoples.
+    const oldId = settlementB.id;
+    const localId = 'test_contacted_frontier';
+    raw.settlements[oldId] = { ...structuredClone(settlementB), memberPlaceIds: [settlementB.centerPlaceId] };
+    settlementB.id = localId;
+    raw.settlements[localId] = settlementB;
+    const centerA = raw.places[settlementA.centerPlaceId];
+    const oldCenterId = settlementB.centerPlaceId;
+    const originalCenter = structuredClone(raw.places[oldCenterId]);
+    const centerB = raw.places[oldCenterId];
+    const dx = centerA.mapX - 12 - centerB.mapX;
+    const dy = centerA.mapY - centerB.mapY;
+    for (const place of Object.values(raw.places)) if (place.settlementId === oldId) {
+      place.settlementId = localId; place.mapX += dx; place.mapY += dy;
+    }
+    const newCenterId = 'test_contacted_frontier_center';
+    centerB.id = newCenterId;
+    raw.places[newCenterId] = centerB;
+    raw.places[oldCenterId] = originalCenter;
+    settlementB.centerPlaceId = newCenterId;
+    settlementB.memberPlaceIds = settlementB.memberPlaceIds.map(id => id === oldCenterId ? newCenterId : id);
+    for (const place of Object.values(raw.places)) if (place.settlementId === localId)
+      place.connectedPlaceIds = place.connectedPlaceIds.map(id => id === oldCenterId ? newCenterId : id);
+    for (const agent of Object.values(raw.agents)) if (agent.locationId === oldCenterId) agent.locationId = newCenterId;
+    settlementB.centerX = centerB.mapX; settlementB.centerY = centerB.mapY;
+    centerA.connectedPlaceIds.push(centerB.id);
+    centerB.connectedPlaceIds.push(centerA.id);
     const homesB = settlementB.memberPlaceIds.filter(
       (placeId) => raw.places[placeId]?.kind === 'home',
     );
@@ -729,6 +757,8 @@ describe('v0.3.16 material settlements and death aftermath', () => {
       agent.plan = undefined;
       agent.personality.riskTolerance = 1;
       agent.mind.values.ambition = 1;
+      agent.knownPlaceIds = [...new Set([...(agent.knownPlaceIds ?? []), settlementA.centerPlaceId, settlementB.centerPlaceId])];
+      agent.position = { x: raw.places[agent.locationId].mapX, y: raw.places[agent.locationId].mapY, layerId: 'surface' };
       if (agent.progression) agent.progression.combatMastery = 1;
     }
     const relation = ensureSettlementRelationV16(

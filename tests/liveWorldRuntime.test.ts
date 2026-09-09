@@ -75,7 +75,7 @@ describe('Live world continuity', () => {
     expect(resumed.recentEvents.length).toBeGreaterThan(0);
   });
 
-  it('lets a fresh Cardinal detect persistent pressure and reach the gateway', async () => {
+  it('lets a fresh Cardinal study pressure without intervening during the first 200 years', async () => {
     const runtime = await LiveWorldRuntime.create({
       mode: 'intervene',
       seed: 'ainkrad-browser-world',
@@ -93,8 +93,8 @@ describe('Live world continuity', () => {
     }
 
     expect(frame.cardinalActivity.proposalCount).toBeGreaterThan(0);
-    expect(frame.cardinalActivity.authorizationDecisionCount).toBeGreaterThan(0);
-    expect(frame.executedInterventionCount).toBeGreaterThan(0);
+    expect(frame.cardinalActivity.authorizationDecisionCount).toBe(0);
+    expect(frame.executedInterventionCount).toBe(0);
 
     const consoleSnapshot = await runtime.cardinalConsole();
     expect(consoleSnapshot.laws.length).toBeGreaterThan(0);
@@ -110,11 +110,11 @@ describe('Live world continuity', () => {
     )).toBe(true);
     expect(Array.isArray(consoleSnapshot.deathDiagnostics)).toBe(true);
     expect(consoleSnapshot.evaluations.length).toBeLessThanOrEqual(160);
-    expect(consoleSnapshot.interventions.length).toBeGreaterThan(0);
+    expect(consoleSnapshot.interventions).toEqual([]);
     expect(
       consoleSnapshot.audits.some(
         (audit) =>
-          audit.evaluationId === consoleSnapshot.interventions[0].evaluationId,
+          consoleSnapshot.evaluations.some(e => e.evaluationId === audit.evaluationId),
       ),
     ).toBe(true);
   });
@@ -133,7 +133,8 @@ describe('Live world continuity', () => {
 
     let prior = await runtime.tick();
     for (let tick = 2; tick <= 24; tick += 1) prior = await runtime.tick();
-    expect(prior.executedInterventionCount).toBeGreaterThan(0);
+    expect(prior.evaluationCount).toBeGreaterThan(0);
+    expect(prior.evaluation?.experience.totalExperience).toBeGreaterThan(0);
 
     await runtime.resetWorld('cardinal-epoch-counter-isolation-new');
     const freshEpoch = await runtime.tick(0);

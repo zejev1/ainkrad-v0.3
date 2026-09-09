@@ -31,15 +31,15 @@ async function advanceYearByYear(
 }
 
 describe('v0.3.19 distinct sapient peoples and continental homelands', () => {
-  it('places every pair of founding peoples 100-200 physical kilometres apart', () => {
+  it('places every pair of founding peoples at least 1000 physical kilometres apart', () => {
     expect(SAPIENT_RACES_V16).toEqual(races);
     for (let left = 0; left < races.length; left += 1) {
       for (let right = left + 1; right < races.length; right += 1) {
         const a = SAPIENT_PEOPLE_FOUNDATIONS[races[left]].homelandCenter;
         const b = SAPIENT_PEOPLE_FOUNDATIONS[races[right]].homelandCenter;
         const kilometres = Math.hypot(a.x - b.x, a.y - b.y) / 10;
-        expect(kilometres).toBeGreaterThanOrEqual(99.999);
-        expect(kilometres).toBeLessThanOrEqual(200.001);
+        expect(kilometres).toBeGreaterThanOrEqual(1000);
+        expect(kilometres).toBeLessThan(4000);
       }
     }
   });

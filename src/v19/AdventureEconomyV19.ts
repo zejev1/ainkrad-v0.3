@@ -135,13 +135,9 @@ function eligibleDungeonEntrance(place: Readonly<WorldPlace>): boolean {
 function dungeonRankForPlace(
   place: Readonly<WorldPlace>,
 ): Exclude<V19AdventureRank, 'unranked'> {
-  const distance = Math.hypot(place.mapX - 50, place.mapY - 50);
-  // Early frontier entrances remain viable for an unranked explorer, while
-  // genuinely planetary distances can still produce A/S-rank sites later.
-  const score = Math.max(
-    0,
-    place.danger * 2.4 - 0.65 + Math.min(6.2, distance / 250),
-  );
+  // Distance from the human capital is not a difficulty level. A first
+  // local discovery is weak; danger is learned from the terrain/encounters.
+  const score = place.danger < 0.55 ? 0 : Math.floor((place.danger - 0.5) * 10);
   const ranks: Array<Exclude<V19AdventureRank, 'unranked'>> = [
     'F',
     'E',
@@ -202,7 +198,7 @@ function syncIntoState(
   const existingCount = Object.keys(state.dungeonsById).length;
   if (existingCount >= MAX_DUNGEONS_V19) return;
   const candidates = Object.values(world.places)
-    .filter(eligibleDungeonEntrance)
+    .filter(place => eligibleDungeonEntrance(place) && Object.values(world.agents).some(agent => agent.life.alive && !agent.movement && agent.locationId === place.id))
     .sort(
       (left, right) =>
         (left.discoveredAt ?? 0) - (right.discoveredAt ?? 0) ||
@@ -355,6 +351,7 @@ export function isAdventureCandidateV19(
   agent: Readonly<AgentState>,
 ): boolean {
   if (
+    !['human', 'elf', 'dwarf'].includes(agent.race ?? 'human') ||
     !agent.life.alive ||
     agent.life.stage !== 'adult' ||
     agent.life.health < 0.5 ||
@@ -398,6 +395,7 @@ export function chooseDungeonExpeditionV19(
       (dungeon): dungeon is V19DungeonState =>
         dungeon !== undefined &&
         dungeon.active &&
+        ((agent.knownDungeonIds ?? []).includes(dungeon.id) || agent.locationId === dungeon.entrancePlaceId) &&
         dungeon.treasureReserve >= 0.2 &&
         rankIndex(dungeon.rank) <= maximumRankIndex,
     )

@@ -15,7 +15,10 @@ export type WorldSpeedId =
   | 'hour_per_minute'
   | 'day_per_minute'
   | 'month_per_minute'
-  | 'year_per_minute';
+  | 'year_per_minute'
+  | 'decade_per_minute'
+  | 'fifty_years_per_minute'
+  | 'century_per_minute';
 
 export type WorldSpeedMultiplier = 1 | 10 | 100;
 
@@ -57,6 +60,9 @@ export const WORLD_SPEED_PRESETS: readonly WorldSpeedPreset[] = [
     shortLabel: '1м = 1г',
     description: 'Одна минута снаружи равна году мира',
   },
+  { id: 'decade_per_minute', worldMinutesPerRealMinute: WORLD_MINUTES_PER_YEAR * 10, shortLabel: '1м ≈ 10 лет', description: 'Целевая скорость; фактическая зависит от мира и устройства' },
+  { id: 'fifty_years_per_minute', worldMinutesPerRealMinute: WORLD_MINUTES_PER_YEAR * 50, shortLabel: '1м ≈ 50 лет', description: 'Целевая скорость без пропуска событий' },
+  { id: 'century_per_minute', worldMinutesPerRealMinute: WORLD_MINUTES_PER_YEAR * 100, shortLabel: '1м ≈ 100 лет', description: 'Предельная целевая скорость; крупный мир будет идти медленнее' },
 ] as const;
 
 export const DEFAULT_WORLD_SPEED_ID: WorldSpeedId = 'year_per_minute';

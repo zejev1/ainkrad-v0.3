@@ -187,6 +187,11 @@ export function allowedActionsForAgeV16(
   }
   if ((capabilityMask & (1 << 7)) !== 0) actions.add('hunt');
   if ((capabilityMask & (1 << 8)) !== 0) actions.add('bond');
+  if (ageYears < profile.childUntilAge) {
+    actions.delete('gather');
+    actions.delete('work');
+    actions.delete('hunt');
+  }
   ALLOWED_ACTIONS_BY_CAPABILITY_V16.set(cacheKey, actions);
   return actions;
 }
@@ -196,7 +201,7 @@ export function productiveCapacityScaleV16(
   ageYears: number,
 ): number {
   const profile = SAPIENT_RACE_LIFE_PROFILES_V16[race];
-  const start = profile.adultAtAge * 0.36;
+  const start = profile.childUntilAge;
   if (ageYears < start) return 0;
   if (ageYears >= profile.adultAtAge) return 1;
   return Math.max(

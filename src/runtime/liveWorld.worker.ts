@@ -32,19 +32,8 @@ const DIVINE_AUDIENCE_CHANNEL_NAME = 'ainkrad-v0-3-divine-audience';
 const STORAGE_CHECK_INTERVAL_TICKS = 300;
 const AINKRAD_STORAGE_SOFT_BUDGET_BYTES = 2 * 1024 * 1024 * 1024;
 const AINKRAD_STORAGE_CRITICAL_BUDGET_BYTES = 4 * 1024 * 1024 * 1024;
-const FRAME_PROTOCOL_VERSION = 'ainkrad-live-frame-0.3.19';
-const COMPATIBLE_FRAME_PROTOCOLS = new Set([
-  'ainkrad-live-frame-0.3.10',
-  'ainkrad-live-frame-0.3.11',
-  'ainkrad-live-frame-0.3.12',
-  'ainkrad-live-frame-0.3.13',
-  'ainkrad-live-frame-0.3.14',
-  'ainkrad-live-frame-0.3.15',
-  'ainkrad-live-frame-0.3.16',
-  'ainkrad-live-frame-0.3.17',
-  'ainkrad-live-frame-0.3.18',
-  FRAME_PROTOCOL_VERSION,
-]);
+const FRAME_PROTOCOL_VERSION = 'ainkrad-live-frame-0.3.20';
+const COMPATIBLE_FRAME_PROTOCOLS = new Set([FRAME_PROTOCOL_VERSION]);
 
 // Test disturbances never run automatically in the persistent live world.
 const disturbances: readonly LiveWorldDisturbance[] = [];
@@ -131,6 +120,7 @@ interface PrivateDivineAudienceCommand {
   religionName?: string;
   message?: string;
   gift?: DivineGiftKind;
+  inheritanceGift?: DivineGiftKind;
   contactKind?: DivineContactKind;
   relatedPrayerId?: string;
 }
@@ -252,6 +242,7 @@ async function grantPrivateDivineAudience(
     ...(request.message?.trim() ? { message: request.message.trim() } : {}),
     ...(request.gift ? { gift: request.gift } : {}),
     ...(request.contactKind ? { contactKind: request.contactKind } : {}),
+    ...(request.inheritanceGift ? { inheritanceGift: request.inheritanceGift } : {}),
     ...(request.relatedPrayerId
       ? { relatedPrayerId: request.relatedPrayerId }
       : {}),
@@ -431,12 +422,16 @@ frameChannel.addEventListener(
   'message',
   (event: MessageEvent<Partial<LiveWorldWorkerMessage>>) => {
     // A waiting tab remains a read-only mirror of the tab that owns the
-    // exclusive world-writer lock. Compatible old frames are normalized to
-    // the current protocol until that tab closes and this worker takes over.
+    // exclusive world-writer lock. Older code must not masquerade as the new
+    // simulation; the existing tab keeps its save until ownership is released.
     if (
       !event.data.protocolVersion ||
       !COMPATIBLE_FRAME_PROTOCOLS.has(event.data.protocolVersion)
     ) {
+      if (event.data.type === 'frame' && event.data.protocolVersion) workerScope.postMessage({
+        type: 'fatal', protocolVersion: FRAME_PROTOCOL_VERSION,
+        message: 'Мир открыт другой вкладкой старой версии. Закройте остальные вкладки Ainkrad: сохранённый мир продолжится здесь без сброса.',
+      });
       return;
     }
     workerScope.postMessage({
@@ -476,6 +471,8 @@ async function runForever(): Promise<void> {
     durable: true,
   });
   activeRuntime = runtime;
+  let lastLiveWallTime = performance.now();
+  let lastFramePostedAt = -Infinity;
   if (pendingClockControl) {
     runtime.setWorldSpeed(
       pendingClockControl.speedId,
@@ -486,6 +483,7 @@ async function runForever(): Promise<void> {
   while (true) {
     try {
       if (divineAudiencePaused) {
+        lastLiveWallTime = performance.now();
         await sleep(100);
         continue;
       }
@@ -614,16 +612,20 @@ async function runForever(): Promise<void> {
           }
         }
       }
-      const frame = await runtime.tick(
-        completedCatchUpThisLoop ? 0 : undefined,
-      );
+      const wallNow = performance.now();
+      const frame = completedCatchUpThisLoop ? await runtime.tick(0) :
+        await runtime.responsiveTick(Math.min(1000, Math.max(0, wallNow - lastLiveWallTime)));
+      lastLiveWallTime = performance.now();
       const message = {
         type: 'frame',
         protocolVersion: FRAME_PROTOCOL_VERSION,
         frame,
       } as const;
-      workerScope.postMessage(message);
-      frameChannel.postMessage(message);
+      if (completedCatchUpThisLoop || performance.now() - lastFramePostedAt >= 1000) {
+        workerScope.postMessage(message);
+        frameChannel.postMessage(message);
+        lastFramePostedAt = performance.now();
+      }
 
       if (
         frame.tick % STORAGE_CHECK_INTERVAL_TICKS === 0 &&
@@ -663,7 +665,7 @@ async function runForever(): Promise<void> {
         throw error;
       }
     }
-    await sleep(LIVE_TICK_DELAY_MS);
+    await sleep(50);
   }
 }
 

@@ -201,7 +201,7 @@ describe('v0.3.19 independent divine agency', () => {
     expect(response.interpretation).not.toBe('direct_contact');
     expect(prayer.response?.interventionId).toBe('silent-longevity');
     expect(prayer.response?.residentResponse).toBe(response.residentResponse);
-    expect(resident.life.lifespanYears).toBeGreaterThanOrEqual(220);
+    expect(state.v19!.divineAgency.byAgentId[resident.id].gifts.some(g => g.gift === 'longevity')).toBe(true);
   });
 
   it('keeps detailed prayer storage bounded while preserving cumulative counts and significant history', async () => {

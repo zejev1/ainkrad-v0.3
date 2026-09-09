@@ -1,3 +1,4 @@
+import { GIFT_CATALOG_V20 } from '../v20/DivineGiftsV20';
 import { createStableId } from '../core/stableId';
 import { stableJsonStringify } from '../core/stableJson';
 import type { WorldMutationResult } from '../world/WorldEngine';
@@ -49,6 +50,7 @@ export interface PrivateDivineAudienceRequest {
   religionName?: string;
   message?: string;
   gift?: DivineGiftKind;
+  inheritanceGift?: DivineGiftKind;
   contactKind?: DivineContactKind;
   relatedPrayerId?: string;
   requestedAt: number;
@@ -105,6 +107,7 @@ export interface WorldEntryTarget {
     now: number,
     operationId: string,
     expectedWorldRevision: number,
+    inheritanceGift?: DivineGiftKind,
   ): Promise<WorldMutationResult>;
 }
 
@@ -279,7 +282,7 @@ export class IndependentWorldEntryGateway {
       (request.religionName !== undefined &&
         (!request.religionName.trim() || request.religionName.length > 64)) ||
       (request.gift !== undefined &&
-        !['longevity', 'might', 'genius_inventor', 'crowd_charisma', 'healing_touch', 'demon_king_hero'].includes(request.gift)) ||
+        !Object.hasOwn(GIFT_CATALOG_V20, request.gift)) ||
       (request.contactKind !== undefined &&
         !['message', 'revelation', 'command', 'request', 'warning', 'vision', 'sign'].includes(request.contactKind)) ||
       (request.relatedPrayerId !== undefined && !relatedPrayer) ||
@@ -302,6 +305,7 @@ export class IndependentWorldEntryGateway {
         request.requestedAt,
         request.requestId,
         expectedWorld.revision,
+        request.inheritanceGift,
       );
     } catch (error) {
       if (

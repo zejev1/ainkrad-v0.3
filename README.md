@@ -1,4 +1,4 @@
-# Ainkrad v0.3.19
+# Ainkrad v0.3.20
 
 An experimental autonomous world for developing and testing a self-checking AI governance layer.
 
@@ -18,6 +18,20 @@ If implementation code conflicts with these principles, the implementation is wr
 The city, agents, runtime, database, UI and infrastructure exist to create a real autonomous environment in which Cardinal can be tested, challenged, audited and potentially disproven.
 
 Technical optimization must never silently remove the history, observability or independence required to evaluate Cardinal.
+
+## v0.3.20: lived knowledge and world continuity
+
+The current release is documented in [RELEASE_NOTES_v0.3.20.md](RELEASE_NOTES_v0.3.20.md)
+and [TEST_RESULTS_v0.3.20.md](TEST_RESULTS_v0.3.20.md). Current rules include
+1000 km homeland separation, local discovery, separate human/elven libraries,
+29 capability gifts, no productive child labour, and Cardinal observation-only
+for the first 200 years. Named speed presets use bounded worker batches.
+
+Continue the existing world. Current limitations include prepared knowledge,
+bounded prayer text history, and hardware-dependent simulation speed. Android
+interaction and thousand-year stability are not verified by this release audit.
+The versioned sections below record earlier releases; v0.3.20 supersedes their
+changed distance, child-work, library and speed policies and benchmark claims.
 
 ## v0.3.19: independent gifts, lived prayers and voluntary adventure
 

@@ -1,3 +1,4 @@
+import { GIFT_CATALOG_V20 } from './v20/DivineGiftsV20';
 import './browser.css';
 import type {
   AuditRecord,
@@ -327,7 +328,7 @@ app.innerHTML = `
   <div class="ainkrad-app">
     <header class="world-header">
       <div>
-        <p class="eyebrow">AINKRAD v0.3.19 · путь к Underworld</p>
+        <p class="eyebrow">AINKRAD v0.3.20 · путь к Underworld</p>
         <h1 id="world-title">Мир · уровень 1</h1>
         <p class="world-subtitle">Время регулируется снаружи. Жители сами расширяют карту и проживают поколения.</p>
       </div>
@@ -365,8 +366,6 @@ app.innerHTML = `
           ).join('')}
         </select>
       </label>
-      <button id="speed-multiplier" type="button" aria-label="Переключить ускорение в десять раз">×1</button>
-      <button id="reset-world" type="button" aria-label="Создать новый мир с сохранением опыта Cardinal">Новый мир</button>
       <small id="offline-clock-status">После закрытия мир продолжит время при следующем открытии · Cardinal не имеет доступа</small>
     </section>
 
@@ -578,6 +577,10 @@ app.innerHTML = `
         <div class="cardinal-console__content" id="cardinal-console-content">Загрузка журнала…</div>
       </section>
     </div>
+    <details class="world-maintenance"><summary>Управление сохранённым миром</summary>
+      <p>Обновления продолжают существующий мир. Создание нового завершит текущую эпоху.</p>
+      <button id="reset-world" type="button" aria-label="Создать новый мир с сохранением опыта Cardinal">Новый мир</button>
+    </details>
     <div class="world-inspector" id="world-inspector" hidden>
       <section class="world-inspector__sheet" role="dialog" aria-modal="true" aria-labelledby="world-inspector-title">
         <header>
@@ -648,13 +651,11 @@ app.innerHTML = `
           <label>Дар <small>(необязательно)</small>
             <select id="divine-gift">
               <option value="">Без дара</option>
-              <option value="longevity">Долголетие</option>
-              <option value="might">Сила</option>
-              <option value="genius_inventor">Ум и дар изобретателя</option>
-              <option value="crowd_charisma">Очарование и внушение толпе</option>
-              <option value="healing_touch">Дар исцеления</option>
-              <option value="demon_king_hero">Комплексный дар уровня героя</option>
+              ${Object.entries(GIFT_CATALOG_V20).map(([id, entry]) => `<option value="${id}">${entry[0]}</option>`).join('')}
             </select>
+          </label>
+          <label id="divine-legacy-label" hidden>Дар для наследования
+            <select id="divine-legacy-gift"></select>
           </label>
           <p class="divine-audience__gift-note" id="divine-gift-note"></p>
           <p class="divine-audience__choice-note">Дар не меняет профессию, характер или судьбу. Приказ не отнимает свободу воли. Священником или героем житель может стать только через собственную жизнь и признание окружающих.</p>
@@ -700,7 +701,6 @@ const monsterValue = requiredElement<HTMLElement>('monster-value');
 const resourceValue = requiredElement<HTMLElement>('resource-value');
 const saveValue = requiredElement<HTMLElement>('save-value');
 const worldSpeedSelect = requiredElement<HTMLSelectElement>('world-speed-select');
-const speedMultiplierButton = requiredElement<HTMLButtonElement>('speed-multiplier');
 const resetWorldButton = requiredElement<HTMLButtonElement>('reset-world');
 const clockRateValue = requiredElement<HTMLElement>('clock-rate-value');
 const offlineClockStatus = requiredElement<HTMLElement>('offline-clock-status');
@@ -916,8 +916,6 @@ function showClockControl(
   multiplier: WorldSpeedMultiplier,
 ): void {
   worldSpeedSelect.value = speedId;
-  speedMultiplierButton.textContent = `×${multiplier}`;
-  speedMultiplierButton.classList.toggle('is-accelerated', multiplier === 10);
   clockRateValue.textContent = clockRateLabel(speedId, multiplier);
 }
 
@@ -1205,17 +1203,10 @@ function closeWorldInspector(): void {
   worldInspector.hidden = true;
 }
 
-const divineGiftDescriptions: Readonly<Record<DivineGiftKind, string>> = {
-  longevity: 'Продлевает жизнь и устойчивость к старению, не меняя профессию и личность.',
-  might: 'Почти предельная сила и выносливость, а также высокая боевая подготовка.',
-  genius_inventor: 'Предельная способность учиться, изобретать и воплощать новые конструкции.',
-  crowd_charisma: 'Предельное обаяние и сила убеждения; слушатели всё равно сохраняют свободу выбора.',
-  healing_touch: 'Позволяет добровольно помогать больным и раненым; получатель помощи может отказаться.',
-  demon_king_hero: 'Уровень 100, сила, ум, проворность, мастерство воина, максимальная выносливость и лёгкие дальние походы. Это набор способностей, а не роль героя.',
-};
+const divineGiftDescriptions = Object.fromEntries(Object.entries(GIFT_CATALOG_V20).map(([id, entry]) => [id, entry[1]])) as Readonly<Record<DivineGiftKind, string>>;
 
 function selectedDivineGift(): DivineGiftKind | undefined {
-  return ['longevity', 'might', 'genius_inventor', 'crowd_charisma', 'healing_touch', 'demon_king_hero'].includes(
+  return Object.keys(GIFT_CATALOG_V20).includes(
     divineGift.value,
   )
     ? divineGift.value as DivineGiftKind
@@ -1232,6 +1223,10 @@ function selectedDivineContactKind(): DivineContactKind | undefined {
 
 function updateDivineGiftNote(): void {
   const gift = selectedDivineGift();
+  const legacy = requiredElement<HTMLSelectElement>('divine-legacy-gift');
+  requiredElement<HTMLElement>('divine-legacy-label').hidden = gift !== 'legacy';
+  const gifts = lastFrame?.world.v19?.divineAgency.byAgentId[selectedAgentId ?? '']?.gifts ?? [];
+  legacy.replaceChildren(...gifts.filter(g => g.gift !== 'legacy').map(g => new Option(GIFT_CATALOG_V20[g.gift][0], g.gift)));
   divineGiftNote.textContent = gift
     ? divineGiftDescriptions[gift]
     : 'Можно передать только слова, предупреждение, просьбу, видение или знак — без дара.';
@@ -1477,15 +1472,13 @@ function renderRoads(world: Readonly<WorldState>): void {
   roadsLayer.replaceChildren();
 
   for (const route of Object.values(world.routes)) {
+    if (!(route.completedTraversals ?? 0)) continue;
     const points = route.waypoints.map((point) =>
       normalizeWorldCoordinates(world, point.x, point.y),
     );
     if (points.length < 2) continue;
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    const drawing =
-      points.length === 3
-        ? `M${points[0].x} ${points[0].y} Q${points[1].x} ${points[1].y} ${points[2].x} ${points[2].y}`
-        : `M${points.map((point) => `${point.x} ${point.y}`).join(' L')}`;
+    const drawing = `M${points.map((point) => `${point.x} ${point.y}`).join(' L')}`;
     path.setAttribute('d', drawing);
     path.classList.toggle(
       'road-main',
@@ -3384,6 +3377,7 @@ divineAudienceForm.addEventListener('submit', (event) => {
     gift,
     contactKind,
     relatedPrayerId: activePrayerId,
+    inheritanceGift: gift === 'legacy' ? requiredElement<HTMLSelectElement>('divine-legacy-gift').value : undefined,
   });
 });
 residentPicker.addEventListener('change', () => {
@@ -3456,19 +3450,16 @@ function publishClockControl(): void {
 worldSpeedSelect.addEventListener('change', () => {
   if (!isWorldSpeedId(worldSpeedSelect.value)) return;
   preferredSpeedId = worldSpeedSelect.value;
+  preferredSpeedMultiplier = 1;
   publishClockControl();
 });
 
-speedMultiplierButton.addEventListener('click', () => {
-  preferredSpeedMultiplier = preferredSpeedMultiplier === 1 ? 10 : 1;
-  publishClockControl();
-});
 
 resetWorldButton.addEventListener('click', () => {
   const accepted = window.confirm(
     'Создать новый мир? Текущая эпоха завершится, но накопленный опыт Cardinal сохранится.',
   );
-  if (!accepted) return;
+  if (!accepted || window.prompt('Чтобы завершить текущую эпоху, введите НОВЫЙ МИР') !== 'НОВЫЙ МИР') return;
   pendingOfflineClockAnchor = undefined;
   offlineCatchUpTargetWorldMinutes = undefined;
   liveWorldWorker.postMessage({ type: 'reset_world' });
@@ -3577,6 +3568,7 @@ liveWorldWorker.addEventListener(
 
     liveLabel.textContent = 'ОШИБКА МИРА';
     liveLabel.title = event.data.message;
+    saveValue.textContent = event.data.message;
     liveIndicator.classList.remove('is-live');
     cardinalMessage.textContent = event.data.message;
     if (offlineCatchUpTargetWorldMinutes !== undefined) {

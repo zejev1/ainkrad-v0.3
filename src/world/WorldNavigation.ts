@@ -143,6 +143,7 @@ export function buildRoute(
   from: Readonly<WorldPlace>,
   to: Readonly<WorldPlace>,
   traversal: WorldTraversalKind = 'walk',
+  terrain: Readonly<Record<string, WorldPlace>> = {},
 ): WorldRouteState {
   const start = { x: from.mapX, y: from.mapY };
   const end = { x: to.mapX, y: to.mapY };
@@ -155,10 +156,27 @@ export function buildRoute(
     x: (start.x + end.x) / 2 + perpendicularX * bend * sign,
     y: (start.y + end.y) / 2 + perpendicularY * bend * sign,
   };
-  const waypoints = [start, middle, end];
-  const distance =
-    pointDistance(waypoints[0], waypoints[1]) +
-    pointDistance(waypoints[1], waypoints[2]);
+  const waypoints = directDistance < 7 ? [start, middle, end] : [start];
+  if (directDistance >= 7) {
+    const rough = Object.values(terrain).filter(place => ['mountains', 'swamp', 'forest'].includes(place.kind) &&
+      pointDistance(start, { x: place.mapX, y: place.mapY }) < directDistance + 12);
+    for (let index = 1; index <= 4; index += 1) {
+      const t = index / 5;
+      const base = { x: start.x + (end.x-start.x)*t, y: start.y + (end.y-start.y)*t };
+      const amplitude = Math.min(4, directDistance*0.12) * Math.sin(Math.PI*t);
+      const options = [-1, 0, 1].map(side => ({ x: base.x+perpendicularX*amplitude*side, y: base.y+perpendicularY*amplitude*side, side }));
+      options.sort((a,b) => {
+        const cost = (point: typeof a) => rough.reduce((total, place) => total +
+          (place.kind === 'mountains' ? 7 : place.kind === 'swamp' ? 5 : 2) /
+          (1 + Math.hypot(place.mapX-point.x, place.mapY-point.y)), 0) +
+          (point.side === sign ? 0 : 0.04);
+        return cost(a)-cost(b);
+      });
+      waypoints.push({ x: options[0].x, y: options[0].y });
+    }
+    waypoints.push(end);
+  }
+  const distance = waypoints.slice(1).reduce((sum, point, index) => sum + pointDistance(waypoints[index], point), 0);
 
   return {
     id: routeIdBetween(from.id, to.id),
@@ -190,7 +208,17 @@ export function rebuildWorldRoutes(
       ) {
         continue;
       }
-      routes[id] = buildRoute(place, connected, traversal);
+      const route = buildRoute(place, connected, traversal, places);
+      route.completedTraversals = explicit?.completedTraversals ?? 0;
+      if (traversal === 'walk' && route.waypoints.slice(1).some((point, index) =>
+        segmentCrossesWaterArea(
+          { ...place, mapX: route.waypoints[index].x, mapY: route.waypoints[index].y },
+          { ...connected, mapX: point.x, mapY: point.y }, places))) {
+        // Follow the verified bank segment if a decorative bend would cut water.
+        route.waypoints = [{ x: place.mapX, y: place.mapY }, { x: connected.mapX, y: connected.mapY }];
+        route.distance = pointDistance(route.waypoints[0], route.waypoints[1]);
+      }
+      routes[id] = route;
     }
   }
   return routes;

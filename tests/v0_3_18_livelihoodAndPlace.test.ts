@@ -5,10 +5,10 @@ import { WORLD_MINUTES_PER_YEAR } from '../src/world/WorldClock';
 import { allowedActionsForAgeV16 } from '../src/v16/SocietyFoundationV16';
 
 describe('v0.3.18 truthful livelihoods and workplaces', () => {
-  it('lets older children choose bounded chores without adult hunting', () => {
+  it('keeps children out of adult production and hunting', () => {
     const humanActions = allowedActionsForAgeV16('human', 9);
-    expect(humanActions.has('gather')).toBe(true);
-    expect(humanActions.has('work')).toBe(true);
+    expect(humanActions.has('gather')).toBe(false);
+    expect(humanActions.has('work')).toBe(false);
     expect(humanActions.has('hunt')).toBe(false);
     expect(humanActions.has('bond')).toBe(false);
   });

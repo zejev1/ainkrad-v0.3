@@ -1,0 +1,437 @@
+{
+  "completed": true,
+  "requestedYears": 50,
+  "mode": "off",
+  "elapsedSeconds": 99.208,
+  "living": 540,
+  "births": 472,
+  "deaths": 2,
+  "relationships": 12046,
+  "places": 147,
+  "settlements": 7,
+  "seed": "ainkrad-browser-world",
+  "currentOutsideHomeSettlement": 32,
+  "currentOutsideHomeSettlementShare": 0.0593,
+  "residentsInPhysicalMovement": 114,
+  "cumulativeOutsideActions": 20967,
+  "cumulativeProductiveActions": 32152,
+  "averageSatiety": 0.7254,
+  "averageMealsConsumed": 240.26,
+  "professionCounts": {
+    "scribe": 51,
+    "artisan": 117,
+    "teacher": 40,
+    "scout": 9,
+    "guard": 5,
+    "adventurer": 8,
+    "undecided": 304,
+    "caregiver": 2,
+    "warrior": 4
+  },
+  "strongestPracticeCounts": {
+    "teacher": 118,
+    "scribe": 54,
+    "artisan": 219,
+    "farmer": 6,
+    "guard": 1,
+    "caregiver": 26,
+    "spiritual_keeper": 5,
+    "miner": 1,
+    "adventurer": 110
+  },
+  "totalPracticeByKind": {
+    "farmer": 1530.22,
+    "forager": 421.88,
+    "woodcutter": 243.21,
+    "miner": 412.16,
+    "fisher": 10.39,
+    "hunter": 5.19,
+    "artisan": 9922.93,
+    "smith": 115.41,
+    "builder": 9.04,
+    "caregiver": 624.22,
+    "scout": 1215.46,
+    "cartographer": 170.76,
+    "adventurer": 716.59,
+    "teacher": 9910.64,
+    "scribe": 4625.27,
+    "guard": 82.21,
+    "warrior": 191.54,
+    "spiritual_keeper": 273.2
+  },
+  "professionStageCounts": {
+    "practitioner": 122,
+    "master": 41,
+    "apprentice": 159,
+    "observing": 218
+  },
+  "raceCounts": {
+    "human": 97,
+    "elf": 67,
+    "dwarf": 106,
+    "goblin": 83,
+    "orc": 122,
+    "ogre": 65
+  },
+  "raceBirthCounts": {
+    "human": 88,
+    "elf": 55,
+    "dwarf": 94,
+    "goblin": 71,
+    "orc": 110,
+    "ogre": 54
+  },
+  "culturalNaming": {
+    "nativeChildren": 472,
+    "technicalNumberedNames": 0,
+    "distinctNames": 472
+  },
+  "raceFamilyOpportunities": {
+    "human": {
+      "race": "human",
+      "opportunityChecks": 250,
+      "eligiblePairChecks": 30294,
+      "voluntaryIntimacyChoices": 682,
+      "voluntaryChildChoices": 417,
+      "birthsSinceTracking": 88,
+      "lastOpportunityWorldMinute": 26280000,
+      "lastBirthWorldMinute": 25333920
+    },
+    "elf": {
+      "race": "elf",
+      "opportunityChecks": 197,
+      "eligiblePairChecks": 8160,
+      "voluntaryIntimacyChoices": 548,
+      "voluntaryChildChoices": 212,
+      "birthsSinceTracking": 55,
+      "lastOpportunityWorldMinute": 26280000,
+      "lastBirthWorldMinute": 26280000
+    },
+    "dwarf": {
+      "race": "dwarf",
+      "opportunityChecks": 197,
+      "eligiblePairChecks": 10146,
+      "voluntaryIntimacyChoices": 646,
+      "voluntaryChildChoices": 346,
+      "birthsSinceTracking": 94,
+      "lastOpportunityWorldMinute": 26280000,
+      "lastBirthWorldMinute": 25964640
+    },
+    "goblin": {
+      "race": "goblin",
+      "opportunityChecks": 241,
+      "eligiblePairChecks": 12459,
+      "voluntaryIntimacyChoices": 471,
+      "voluntaryChildChoices": 377,
+      "birthsSinceTracking": 71,
+      "lastOpportunityWorldMinute": 26280000,
+      "lastBirthWorldMinute": 26069760
+    },
+    "orc": {
+      "race": "orc",
+      "opportunityChecks": 192,
+      "eligiblePairChecks": 15648,
+      "voluntaryIntimacyChoices": 572,
+      "voluntaryChildChoices": 460,
+      "birthsSinceTracking": 110,
+      "lastOpportunityWorldMinute": 26280000,
+      "lastBirthWorldMinute": 26280000
+    },
+    "ogre": {
+      "race": "ogre",
+      "opportunityChecks": 190,
+      "eligiblePairChecks": 11650,
+      "voluntaryIntimacyChoices": 485,
+      "voluntaryChildChoices": 264,
+      "birthsSinceTracking": 54,
+      "lastOpportunityWorldMinute": 26280000,
+      "lastBirthWorldMinute": 26174880
+    }
+  },
+  "generationCounts": {
+    "0": 69,
+    "1": 296,
+    "2": 169,
+    "3": 6
+  },
+  "sexCounts": {
+    "male": 276,
+    "female": 264
+  },
+  "reproductiveAdultCounts": {
+    "human:male": 28,
+    "human:female": 35,
+    "elf:male": 11,
+    "elf:female": 11,
+    "dwarf:male": 19,
+    "goblin:male": 29,
+    "orc:female": 25,
+    "ogre:female": 12,
+    "ogre:male": 15,
+    "dwarf:female": 15,
+    "goblin:female": 21,
+    "orc:male": 27
+  },
+  "deathCauseCounts": {
+    "monster": 1,
+    "old_age": 1
+  },
+  "deathRaceCounts": {
+    "ogre": 1,
+    "human": 1
+  },
+  "deathEncounterReasonCounts": {
+    "territorial_defense": 1,
+    "none": 1
+  },
+  "deathMechanismCounts": {
+    "monster_encounter": 1,
+    "old_age_probability": 1
+  },
+  "deprivationLocationCounts": {},
+  "deprivationContexts": [],
+  "expeditionStageCounts": {
+    "returned": 2,
+    "founded": 1,
+    "travelling": 1
+  },
+  "expeditionEventCounts": {
+    "world.expedition.prepared": 4,
+    "world.expedition.departed": 4,
+    "world.expedition.camp_established": 3,
+    "world.expedition.returned": 2
+  },
+  "expeditionReturnReasons": {
+    "members_chose_not_to_settle": 2
+  },
+  "expeditionPreparedGroups": [
+    {
+      "expeditionId": "expedition:v18-offline-benchmark-ainkrad-browser-world:1",
+      "memberGenerations": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        0
+      ]
+    },
+    {
+      "expeditionId": "expedition:v18-offline-benchmark-ainkrad-browser-world:2",
+      "memberGenerations": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "expeditionId": "expedition:v18-offline-benchmark-ainkrad-browser-world:3",
+      "memberGenerations": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        0
+      ]
+    },
+    {
+      "expeditionId": "expedition:v18-offline-benchmark-ainkrad-browser-world:4",
+      "memberGenerations": [
+        2,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        2,
+        1,
+        1,
+        1
+      ]
+    }
+  ],
+  "settlementStatusCounts": {
+    "inhabited": 7
+  },
+  "observerAudibleConversations": 30,
+  "conversationAgency": {
+    "recentWindow": 96,
+    "distinctUtterances": 95,
+    "knowledgeGrounded": 11,
+    "knowledgeTransferred": 7
+  },
+  "appliedLibraryKnowledge": {
+    "records": 2542,
+    "practicedRecords": 2289,
+    "sharedRecords": 954,
+    "oralRecords": 2233
+  },
+  "divineAgency": {
+    "totalPrayers": 2219,
+    "recentPrayers": 256,
+    "prayerTopics": {
+      "health": 0,
+      "family": 1,
+      "grief": 33,
+      "hunger": 0,
+      "harvest": 0,
+      "war": 0,
+      "danger": 4,
+      "travel": 318,
+      "poverty": 0,
+      "gratitude": 5,
+      "purpose": 1858
+    }
+  },
+  "adventureEconomy": {
+    "dungeons": 11,
+    "activeDungeons": 11,
+    "adventurers": 3,
+    "rankCounts": {
+      "D": 1,
+      "unranked": 1,
+      "F": 1
+    },
+    "totalRuns": 12,
+    "successfulRuns": 5,
+    "artifacts": 1,
+    "totalCoinRecovered": 15.12,
+    "totalTradeVolume": 41.53,
+    "carriedTradeRelations": 0,
+    "recentRunWindow": 12,
+    "recentTransactionWindow": 40
+  },
+  "recentTenYearEventCounts": {
+    "world.monster.hunted_prey": 94,
+    "agent.life.stage_changed": 245,
+    "agent.smithing.learned": 3244,
+    "agent.conversation.spoken": 7417,
+    "agent.help.accepted": 104,
+    "agent.writing.practiced": 790,
+    "agent.family.child_decision": 639,
+    "agent.family.intimacy": 1041,
+    "agent.born": 121,
+    "world.expedition.camp_established": 2,
+    "agent.level.changed": 177,
+    "world.monster.encountered": 13,
+    "agent.market.food_purchase": 9,
+    "agent.rested": 7,
+    "agent.socialize.blocked": 1,
+    "agent.travel.started": 9,
+    "agent.hunt.declined": 34,
+    "agent.resettled": 8,
+    "world.settlement.founded": 1,
+    "agent.learning.progressed": 49,
+    "agent.walked": 1,
+    "agent.smithing.craft_failed": 56,
+    "agent.reflected": 1,
+    "agent.died": 2,
+    "world.monster.fed": 1,
+    "agent.market.artifact_sale": 3,
+    "world.expedition.prepared": 2,
+    "agent.market.artifact_purchase": 2,
+    "agent.hunt.preparation_travel": 9,
+    "world.monster.hunger": 4,
+    "world.expedition.departed": 2,
+    "world.expedition.returned": 1,
+    "agent.bond.accepted": 2,
+    "agent.hunt.prepared": 3,
+    "agent.dungeon.travel_started": 2,
+    "agent.dungeon.expedition": 3,
+    "agent.relaxed": 1
+  },
+  "settlementStocks": {
+    "settlement_ainkrad": {
+      "food": 27.16,
+      "wood": 3.203,
+      "stone": 0.07,
+      "metal": 0,
+      "fuel": 0.601
+    },
+    "settlement_dwarf_homeland": {
+      "food": 12.713,
+      "wood": 0.01,
+      "stone": 1.929,
+      "metal": 0.131,
+      "fuel": 0.16
+    },
+    "settlement_elf_homeland": {
+      "food": 15.584,
+      "wood": 3.203,
+      "stone": 0.06,
+      "metal": 0,
+      "fuel": 0.604
+    },
+    "settlement_frontier_7": {
+      "food": 1.024,
+      "wood": 0.731,
+      "stone": 0.682,
+      "metal": 0,
+      "fuel": 0.16
+    },
+    "settlement_goblin_homeland": {
+      "food": 5.32,
+      "wood": 2.024,
+      "stone": 1.578,
+      "metal": 0,
+      "fuel": 0.609
+    },
+    "settlement_ogre_homeland": {
+      "food": 5.543,
+      "wood": 2.224,
+      "stone": 1.621,
+      "metal": 0.038,
+      "fuel": 0.23
+    },
+    "settlement_orc_homeland": {
+      "food": 17.525,
+      "wood": 0.09,
+      "stone": 2.169,
+      "metal": 0.167,
+      "fuel": 0.16
+    }
+  },
+  "actionShares": {
+    "walk": 0.3808,
+    "rest": 0.2386,
+    "socialize": 0.1776,
+    "reflect": 0.0556,
+    "work": 0.0542,
+    "relax": 0.0395,
+    "help": 0.0164,
+    "explore": 0.0162,
+    "gather": 0.0137,
+    "pray": 0.0069,
+    "bond": 0.0002,
+    "hunt": 0.0002
+  },
+  "averageSkills": {
+    "gathering": 0.1228,
+    "hunting": 0.0849,
+    "craft": 0.2802,
+    "social": 0.2894,
+    "exploration": 0.167
+  },
+  "batches": 13,
+  "quanta": 3000,
+  "revision": 13
+}

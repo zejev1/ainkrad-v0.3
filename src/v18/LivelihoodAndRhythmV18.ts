@@ -341,7 +341,7 @@ export function recordLivelihoodPracticeV18(
       (kind === 'guard' || kind === 'warrior' ? 10 : 18) &&
     strongest.kind === kind &&
     practicedKindEvidence >= firstCommitmentPractice(kind) &&
-    fit >= minimumVocationalFit(kind) &&
+    (fit >= minimumVocationalFit(kind) || practicedKindEvidence >= firstCommitmentPractice(kind) * 1.5) &&
     clamp01(input.choiceRoll) < commitmentChance;
   const alternativeClearlyLived =
     livelihood.primary !== 'undecided' &&
