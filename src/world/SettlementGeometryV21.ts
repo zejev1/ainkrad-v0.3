@@ -60,7 +60,7 @@ export function updateSettlementGeometry(world:WorldState,move:(id:string,point:
       let point=safe(place,{x:origin.x+Math.cos(angle)*r,y:origin.y+Math.sin(angle)*r},edge+(isField?.34:.04));
       if(point&&isField) {
         // Survey the whole agricultural plot, including its corners.
-        for(let n=0;n<32;n++) {
+        for(let n=0;point&&n<32;n++) {
           const candidate={...place,mapX:point.x,mapY:point.y,rotation:angle},polygon=fieldPolygon(candidate);
           if(!polygonsOverlap(polygon,town.boundaryPolygon)&&!water.some(p=>polygonsOverlap(polygon,p.waterPolygon??p.boundaryPolygon??[]))) {
             place.rotation=angle;break;

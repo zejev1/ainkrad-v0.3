@@ -1,5 +1,5 @@
 import { orientedRouteWaypoints, routeIdBetween } from './WorldNavigation';
-import { routeAroundWater, worldWaterPolygons } from './WaterNavigation';
+import { pathCrossesWater, routeAroundWater, worldWaterPolygons } from './WaterNavigation';
 import { pointInPolygon } from './BuildingFootprints';
 import { routeAroundBuildings } from './SettlementStreets';
 import type { WorldPoint2D, WorldRouteState, WorldState } from './types';
@@ -48,6 +48,7 @@ export function reconcileRouteGeometry(world:WorldState,oldRoutes:Readonly<Recor
       });
       const dry=routeAroundWater(adjusted,world.places);
       path=dry?routeAroundBuildings(dry,agent.locationId,movement.targetPlaceId,world.places):undefined;
+      if(path&&pathCrossesWater(path,water))path=undefined;
     }
     if(!path||path.length<2) {
       // A physically closed path ends on the last reachable dry point. No new

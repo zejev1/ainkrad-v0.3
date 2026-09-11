@@ -1,3 +1,4 @@
+import { installWorldMapGestures } from './presentation/WorldMapGestures';
 import { installObserverChrome } from './presentation/ObserverChrome';
 import { WorldAtlasRenderer } from './presentation/WorldAtlasRenderer';
 import { atlasLevel } from './presentation/WorldAtlasIndex';
@@ -638,7 +639,7 @@ app.innerHTML = `
       <section class="divine-audience__sheet" role="dialog" aria-modal="true" aria-labelledby="divine-audience-title">
         <header>
           <div>
-            <p class="divine-audience__badge">ВНЕ ВЕДЕНИЯ CARDINAL</p>
+            <p class="divine-audience__badge">ЛИЧНАЯ АУДИЕНЦИЯ</p>
             <h2 id="divine-audience-title">Закрытая аудиенция</h2>
             <p id="divine-audience-subtitle">Мир и возраст выбранного жителя остановлены.</p>
           </div>
@@ -2391,6 +2392,7 @@ function renderMap(frame: Readonly<LiveWorldFrame>): void {
 }
 
 function updateWorld(frame: Readonly<LiveWorldFrame>): void {
+  observerChrome.clear();
   lastFrame = frame;
   const agents=Object.values(frame.world.agents).filter(agent=>agent.life.alive);
   syncResidentPicker(frame.world,agents);
@@ -3092,53 +3094,10 @@ requiredElement<HTMLButtonElement>('map-city-focus').addEventListener('click', (
   if (focus) { mapCamera.x=focus.x;mapCamera.y=focus.y;setMapZoom(focus.pixelsPerUnit/100); }
 });
 requiredElement<HTMLButtonElement>('map-resident-focus').addEventListener('click', focusSelectedResident);
-const mapPointers=new Map<number,{x:number;y:number}>();
-worldMapViewport.addEventListener('pointerdown', event=>{
-  mapPointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
-  if(!(event.target as Element).closest('button'))worldMapViewport.setPointerCapture(event.pointerId);
+installWorldMapGestures(worldMapViewport,mapCamera,()=>{
+  mapZoom=mapCamera.pixelsPerUnit/100;scheduleMapPaint();
 });
-worldMapViewport.addEventListener('pointermove',event=>{
-  const previous=mapPointers.get(event.pointerId);
-  if(!previous)return;
-  if(mapPointers.size===1){mapCamera.pan(event.clientX-previous.x,event.clientY-previous.y);scheduleMapPaint();}
-  mapPointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
-});
-for(const kind of ['pointerup','pointercancel','lostpointercapture'] as const)
-  worldMapViewport.addEventListener(kind,event=>mapPointers.delete(event.pointerId));
 new ResizeObserver(scheduleMapPaint).observe(worldMapViewport);
-
-let pinchStartDistance = 0;
-let pinchStartZoom = 1;
-worldMapViewport.addEventListener(
-  'touchstart',
-  (event) => {
-    if (event.touches.length !== 2) return;
-    pinchStartDistance = Math.hypot(
-      event.touches[1].clientX - event.touches[0].clientX,
-      event.touches[1].clientY - event.touches[0].clientY,
-    );
-    pinchStartZoom = mapZoom;
-  },
-  { passive: true },
-);
-worldMapViewport.addEventListener(
-  'touchmove',
-  (event) => {
-    if (event.touches.length !== 2 || pinchStartDistance <= 0) return;
-    event.preventDefault();
-    const distance = Math.hypot(
-      event.touches[1].clientX - event.touches[0].clientX,
-      event.touches[1].clientY - event.touches[0].clientY,
-    );
-    const bounds = worldMapViewport.getBoundingClientRect();
-    const focalX =
-      (event.touches[0].clientX + event.touches[1].clientX) / 2 - bounds.left;
-    const focalY =
-      (event.touches[0].clientY + event.touches[1].clientY) / 2 - bounds.top;
-    setMapZoom(pinchStartZoom * (distance / pinchStartDistance), focalX, focalY);
-  },
-  { passive: false },
-);
 
 cardinalOpen.addEventListener('click', () => requestCardinalConsole('laws'));
 document.querySelectorAll<HTMLButtonElement>('[data-cardinal-tab]').forEach((button) => {
@@ -3199,7 +3158,7 @@ divineAudienceForm.addEventListener('submit', (event) => {
   ) return;
   divineAudienceRequestPending = true;
   divineAudienceGrant.disabled = true;
-  divineAudienceStatus.textContent = 'Божественное действие проходит через независимый gateway…';
+  divineAudienceStatus.textContent = 'Передаём обращение…';
   divineAudienceRequestId =
     `audience:${lastFrame.world.epoch ?? 1}:${selectedAgentId}:${Date.now()}`;
   liveWorldWorker.postMessage({
@@ -3241,20 +3200,6 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && !divineAudience.hidden) closePrivateDivineAudience();
   if (event.key === 'Escape' && !prayerInbox.hidden) closePrayerInbox();
 });
-worldMapViewport.addEventListener(
-  'wheel',
-  (event) => {
-    if (!event.ctrlKey && !event.metaKey) return;
-    event.preventDefault();
-    const bounds = worldMapViewport.getBoundingClientRect();
-    setMapZoom(
-      mapZoom * (event.deltaY > 0 ? 0.9 : 1.1),
-      event.clientX - bounds.left,
-      event.clientY - bounds.top,
-    );
-  },
-  { passive: false },
-);
 
 function publishClockControl(initial = false): void {
   clockPanel.publish(preferredSpeedId, preferredSpeedMultiplier, initial);
@@ -3333,12 +3278,12 @@ liveWorldWorker.addEventListener(
           'Сохранённый мир не удалён и продолжает жить с последней подтверждённой точки.';
       } else {
         catchUpOverlay.hidden = false;
-        catchUpTitle.textContent = 'Уменьшаем пакет и продолжаем';
+        catchUpTitle.textContent = 'Продолжаем расчёт';
         catchUpDetail.textContent =
-          `Мобильный браузер отклонил крупную запись. Повторяем безопаснее: ` +
+          `Браузеру требуется больше времени. ` +
           'Сохраняем уже прожитую историю.';
         offlineClockStatus.textContent =
-          `Догон продолжается меньшими пакетами · сохранение не повреждено`;
+          `Продолжаем с сохранённого момента`;
         offlineClockStatus.classList.add('is-catching-up');
       }
       return;
