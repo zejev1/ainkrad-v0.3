@@ -1,58 +1,34 @@
 name: Ainkrad CI
-
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-
 permissions:
   contents: read
-
 jobs:
-  check:
+  diagnosis:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '22'
-
-      - name: Install dependencies
-        run: npm ci --no-audit --no-fund
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Tests
-        run: npm run test -- --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/ainkrad-tests.json"
-
-      - name: Production build
-        run: npm run build
-      - name: Compare mature-world catch-up with the published base
+      - run: npm ci --no-audit --no-fund
+      - run: npm install --no-save --package-lock=false playwright@1.56.1
+      - run: npx --no-install playwright install --with-deps chromium
+      - name: Verify command execution and profile a mature browser world
         run: |
-          git worktree add --detach "$RUNNER_TEMP/ainkrad-base" d2a3463540e5b931847f2b09980ea6df6b16b884
-          ln -s "$GITHUB_WORKSPACE/node_modules" "$RUNNER_TEMP/ainkrad-base/node_modules"
-          npx --no-install tsx scripts/benchmark-catchup.ts "$RUNNER_TEMP/ainkrad-base" d2a3463540e5b931847f2b09980ea6df6b16b884
-      - name: Audit and prepare SPCK checkout
-        id: package
-        if: github.event_name == 'pull_request' && github.head_ref == 'work/ainkrad-v021-fix2'
-        run: node scripts/package-spck.mjs
-      - name: Upload SPCK ZIP
-        if: github.event_name == 'pull_request' && github.head_ref == 'work/ainkrad-v021-fix2'
-        uses: actions/upload-artifact@v4
+          npx --no-install tsx scripts/profile-fix5.ts
+          node scripts/profile-fix5-browser.mjs
+          rg -n -i 'игров.{0,15}минут|игровое время|видимые жители|путь к Underworld' src
+      - uses: actions/upload-artifact@v4
         with:
-          name: Ainkrad21Fix4
-          path: ${{ steps.package.outputs.directory }}
-          include-hidden-files: true
+          name: AinkradFix5Diagnosis
+          path: ${{ runner.temp }}/fix5-*profile*
           if-no-files-found: error
-          retention-days: 30

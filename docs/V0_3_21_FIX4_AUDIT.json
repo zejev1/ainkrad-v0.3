@@ -1,0 +1,56 @@
+{
+  "release": "0.3.21-hotfix.4",
+  "status": "passed",
+  "base_commit": "d2a3463540e5b931847f2b09980ea6df6b16b884",
+  "tested_commit": "a53d72fe39238882dd70f8b4a5feb80081d6b083",
+  "ci_run": "34620891036",
+  "environment": {
+    "node": "v22.23.2",
+    "execution_and_read_write": "passed"
+  },
+  "gates": {
+    "typecheck": "passed",
+    "tests": {
+      "passed": 266,
+      "failed": 0,
+      "total": 266
+    },
+    "production_build": "passed"
+  },
+  "review": "docs/V0_3_21_FIX4_REVIEW.md",
+  "performance_comparison": {
+    "environment": "Node 22 / GitHub Actions, in-memory persistence; not Android or Xbox",
+    "baseline": "d2a3463540e5b931847f2b09980ea6df6b16b884",
+    "populationAt27Years": 243,
+    "comparedWorldYears": 1,
+    "baselineSeconds": 10.604980608999998,
+    "fixedSeconds": 2.5405963440000052,
+    "speedup": 4.1742091907064385,
+    "newBatches": 10,
+    "largestNewBatchMs": 352.4591549999968,
+    "worldHistoryEqualExceptRevision": true,
+    "originalQueueYearsAfterSlowdown": 100,
+    "browserQueueBounded": true,
+    "cancellationPreservesCommittedWorld": true,
+    "ioProbe": "passed"
+  },
+  "protected": {
+    "main_unchanged": true,
+    "draft_pr_not_merged": true,
+    "no_deployment": true,
+    "cardinal_and_gateway_sources_unchanged": true
+  },
+  "delivery": {
+    "branch": "main",
+    "head": "d2a3463540e5b931847f2b09980ea6df6b16b884",
+    "changes": "uncommitted",
+    "git_email": "zejev1@users.noreply.github.com"
+  },
+  "limitations": [
+    "No real Android or Xbox run",
+    "Original device save was not supplied; clock cancellation and continuity use compatible synthetic saves",
+    "100 years per minute is a requested ceiling, not guaranteed throughput; acceleration while closed requires opt-in",
+    "Different origins retain separate worlds",
+    "Three same-database backups cannot survive deletion of all browser site data"
+  ]
+}
