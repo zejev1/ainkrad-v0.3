@@ -922,6 +922,7 @@ export class LiveWorldRuntime {
   }
 
   private async runTick(overrideWorldMinutes: number | undefined, emitFrame: boolean): Promise<LiveWorldFrame | undefined> {
+    const budgetToken = this.liveBudget.token;
     const tick = Math.max(
       this.currentTechnicalTick + 1,
       this.world.runtimeStateView().now + 1,
@@ -1074,7 +1075,7 @@ export class LiveWorldRuntime {
       if (opportunity.worldAuthority) {
         worldAuthority = opportunity.worldAuthority;
       }
-      if (this.execution?.shouldStop()) break;
+      if (this.execution?.shouldStop() || budgetToken !== this.liveBudget.token) break;
     }
 
     this.currentTechnicalTick = tick;

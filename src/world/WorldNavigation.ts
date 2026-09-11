@@ -1,3 +1,4 @@
+import { routeAroundWater, pathCrossesWater } from './WaterNavigation';
 import { routeAroundBuildings, urbanStreetPath } from './SettlementStreets';
 import type {
   WorldPlace,
@@ -44,80 +45,6 @@ export function surfaceForPlace(
     return 'shore';
   }
   return 'land';
-}
-
-function orientation(
-  a: Readonly<WorldPoint2D>,
-  b: Readonly<WorldPoint2D>,
-  c: Readonly<WorldPoint2D>,
-): number {
-  return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
-}
-
-function segmentsIntersect(
-  a: Readonly<WorldPoint2D>,
-  b: Readonly<WorldPoint2D>,
-  c: Readonly<WorldPoint2D>,
-  d: Readonly<WorldPoint2D>,
-): boolean {
-  const abC = orientation(a, b, c);
-  const abD = orientation(a, b, d);
-  const cdA = orientation(c, d, a);
-  const cdB = orientation(c, d, b);
-  return (
-    ((abC > 0 && abD < 0) || (abC < 0 && abD > 0)) &&
-    ((cdA > 0 && cdB < 0) || (cdA < 0 && cdB > 0))
-  );
-}
-
-function pointInsidePolygon(
-  point: Readonly<WorldPoint2D>,
-  polygon: readonly WorldPoint2D[],
-): boolean {
-  let inside = false;
-  for (let index = 0, prior = polygon.length - 1; index < polygon.length; prior = index++) {
-    const a = polygon[index];
-    const b = polygon[prior];
-    const crosses =
-      (a.y > point.y) !== (b.y > point.y) &&
-      point.x <
-        ((b.x - a.x) * (point.y - a.y)) /
-          (b.y - a.y) +
-          a.x;
-    if (crosses) inside = !inside;
-  }
-  return inside;
-}
-
-function segmentCrossesWaterArea(
-  from: Readonly<WorldPlace>,
-  to: Readonly<WorldPlace>,
-  places: Readonly<Record<string, WorldPlace>>,
-): boolean {
-  const start = { x: from.mapX, y: from.mapY };
-  const end = { x: to.mapX, y: to.mapY };
-  const middle = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
-  return Object.values(places).some((place) => {
-    const polygon = place.boundaryPolygon;
-    if (place.surface !== 'water' || !polygon || polygon.length < 3) {
-      return false;
-    }
-    if (
-      pointInsidePolygon(start, polygon) ||
-      pointInsidePolygon(end, polygon) ||
-      pointInsidePolygon(middle, polygon)
-    ) {
-      return true;
-    }
-    return polygon.some((point, index) =>
-      segmentsIntersect(
-        start,
-        end,
-        point,
-        polygon[(index + 1) % polygon.length],
-      ),
-    );
-  });
 }
 
 export function isSurfaceWalkable(surface: WorldSurfaceKind): boolean {
@@ -204,29 +131,37 @@ export function rebuildWorldRoutes(
       const explicit = existing[id];
       const traversal = explicit?.traversal ?? traversalBetween(place, connected);
       if (!traversal) continue;
-      if (
-        traversal === 'walk' &&
-        segmentCrossesWaterArea(place, connected, places)
-      ) {
-        continue;
+      if(explicit?.geometryVersion===1 && explicit.waypoints.length>1) {
+        const first=explicit.waypoints[0],last=explicit.waypoints.at(-1)!;
+        const direct=explicit.fromPlaceId===place.id;
+        const a=direct?place:connected,b=direct?connected:place;
+        if(pointDistance(first,{x:a.mapX,y:a.mapY})<1e-8&&pointDistance(last,{x:b.mapX,y:b.mapY})<1e-8&&
+          (traversal!=='walk'||(!pathCrossesWater(explicit.waypoints,places)&&
+            routeAroundBuildings(explicit.waypoints,place.id,connected.id,places)===explicit.waypoints))) {
+          routes[id]=explicit;continue;
+        }
       }
       const route = buildRoute(place, connected, traversal, places);
       route.completedTraversals = explicit?.completedTraversals ?? 0;
-      if (traversal === 'walk' && route.waypoints.slice(1).some((point, index) =>
-        segmentCrossesWaterArea(
-          { ...place, mapX: route.waypoints[index].x, mapY: route.waypoints[index].y },
-          { ...connected, mapX: point.x, mapY: point.y }, places))) {
-        // Follow the verified bank segment if a decorative bend would cut water.
-        route.waypoints = [{ x: place.mapX, y: place.mapY }, { x: connected.mapX, y: connected.mapY }];
-        route.distance = pointDistance(route.waypoints[0], route.waypoints[1]);
-      }
+      route.geometryVersion=1;route.widthMetres=traversal==='walk'?3:4;
       if (traversal === 'walk') {
-        const walkingPath = routeAroundBuildings(route.waypoints, place.id, connected.id, places);
-        if (!walkingPath || walkingPath.slice(1).some((point, index) => segmentCrossesWaterArea(
-          { ...place, mapX: walkingPath[index].x, mapY: walkingPath[index].y },
-          { ...connected, mapX: point.x, mapY: point.y }, places))) continue;
-        route.waypoints = walkingPath;
-        route.distance = walkingPath.slice(1).reduce((sum, p, i) => sum + pointDistance(walkingPath[i], p), 0);
+        let path:WorldPoint2D[]|undefined=route.waypoints;
+        for(let attempt=0;attempt<3;attempt++) {
+          path=routeAroundBuildings(path,place.id,connected.id,places);
+          if(!path)break;
+          path=routeAroundWater(path,places);
+          if(!path)break;
+          const checked=routeAroundBuildings(path,place.id,connected.id,places);
+          if(checked&&!pathCrossesWater(checked,places)){path=checked;break;}
+          path=checked;
+          if(!path)break;
+        }
+        if(!path||pathCrossesWater(path,places))continue;
+        // A final building pass must not invalidate the verified water route.
+        const final=routeAroundBuildings(path,place.id,connected.id,places);
+        if(!final||pathCrossesWater(final,places))continue;
+        route.waypoints=final;
+        route.distance=final.slice(1).reduce((sum,p,i)=>sum+pointDistance(final[i],p),0);
       }
       routes[id] = route;
     }

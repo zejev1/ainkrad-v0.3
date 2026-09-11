@@ -1,3 +1,4 @@
+import { buildingPolygon, polygonGap } from '../src/world/BuildingFootprints';
 import { describe, expect, it } from 'vitest';
 import { WorldMapCamera, clipMapPolygon, clipMapSegment } from '../src/presentation/WorldMapCamera';
 import { WorldEngine } from '../src/world/WorldEngine';
@@ -29,16 +30,16 @@ describe('FIX3 metre-scale cities and bounded map surfaces', () => {
     const world=(await WorldEngine.create({worldId:'city-metres',seed:'street',store:new InMemoryWorldStore()})).snapshot();
     const homes=Object.values(world.places).filter(p=>p.kind==='home').sort((a,b)=>a.urbanLot!-b.urbanLot!);
     expect(homes).toHaveLength(10);
-    const mainGap=(homes[1].mapX-homes[0].mapX)*100-12;
-    const laneGap=(homes[2].mapY-homes[0].mapY)*100-10;
-    expect(mainGap).toBeGreaterThanOrEqual(6);expect(mainGap).toBeLessThanOrEqual(10);
+    const pair=homes.find(p=>homes.some(q=>q.urbanLot===(p.urbanLot!^1)))!;
+    const opposite=homes.find(p=>p.urbanLot===(pair.urbanLot!^1))!;
+    const laneGap=polygonGap(buildingPolygon(pair),buildingPolygon(opposite))*100;
     expect(laneGap).toBeGreaterThanOrEqual(3);expect(laneGap).toBeLessThanOrEqual(6);
     const positions=homes.map(p=>[p.mapX,p.mapY]);
     world.places.far={...world.places.commons,id:'far',settlementId:'far',mapX:10_000,mapY:-10_000};
-    expect(repairCompactSettlementLayout(world)).toBe(false);
+    repairCompactSettlementLayout(world); // Adding a remote site updates atlas metadata, never the local plots.
     expect(homes.map(p=>[p.mapX,p.mapY])).toEqual(positions);
     const plot=nextUrbanHomeLot(world.places,{x:50,y:50},'settlement_ainkrad')!;
-    expect(plot.lot).toBe(10);
+    expect(homes.some(p=>p.urbanLot===plot.lot)).toBe(false);
     expect(urbanHomeLot({x:50,y:50},plot.lot)).toEqual({x:plot.x,y:plot.y});
     for (const r of Object.values(world.routes).filter(r=>r.fromPlaceId.startsWith('home_')||r.toPlaceId.startsWith('home_'))) {
       expect(r.distance*100).toBeLessThan(150);

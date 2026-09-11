@@ -2883,12 +2883,12 @@ function rebuildSettlementProjection(
 ): Record<string, WorldSettlementState> {
   const main = mainSettlement(places, foundedAt);
   const priorMain = prior[main.id];
-  if (priorMain?.layoutVersion === 2) {
-    main.layoutVersion = 2; main.layoutSignature = priorMain.layoutSignature; main.radius = priorMain.radius;
+  if (priorMain?.layoutVersion === 3) {
+    main.layoutVersion = 3; main.layoutSignature = priorMain.layoutSignature; main.radius = priorMain.radius; main.boundaryPolygon = priorMain.boundaryPolygon;
   }
   if (priorMain?.kind === 'city') {
     main.kind = 'city';
-    main.radius = priorMain.layoutVersion === 2 ? priorMain.radius : Math.max(20, priorMain.radius);
+    main.radius = priorMain.layoutVersion === 3 ? priorMain.radius : Math.max(20, priorMain.radius);
   }
   const settlements: Record<string, WorldSettlementState> = {
     settlement_ainkrad: main,
@@ -2911,7 +2911,7 @@ function rebuildSettlementProjection(
       centerX: place.mapX,
       centerY: place.mapY,
       radius: existing?.radius ?? (place.kind === 'city' ? 20 : 11),
-      ...(existing?.layoutVersion === 2 ? {layoutVersion: 2 as const, layoutSignature: existing.layoutSignature} : {}),
+      ...(existing?.layoutVersion === 3 ? {layoutVersion: 3 as const, layoutSignature: existing.layoutSignature, boundaryPolygon: existing.boundaryPolygon} : {}),
       memberPlaceIds,
       foundedAt: existing?.foundedAt ?? place.discoveredAt ?? foundedAt,
     };
@@ -3966,7 +3966,7 @@ async function migrateV18WorldToV19(
 }
 
 const V19_ADDITIVE_SCHEMA_REPAIR_OPERATION_ID =
-  'migration:v20-continuity-knowledge-boundaries-2026-09-09';
+  'migration:v21-world-geography-fix5-2026-09-11';
 
 async function repairCompatibleV19World(
   store: WorldStore,
@@ -3977,7 +3977,7 @@ async function repairCompatibleV19World(
     from: WORLD_RULES_VERSION,
     to: WORLD_RULES_VERSION,
     mode: 'same_version_additive_schema_repair',
-    schemaRevision: '2026-09-11-founding-ocean-continuity',
+    schemaRevision: '2026-09-11-world-geography-fix5',
   });
   let current = persisted;
 
@@ -4012,7 +4012,7 @@ async function repairCompatibleV19World(
     await store.checkpointWorld?.(current.id, current.revision, 'before-additive-schema-migration');
     next.revision = current.revision + 1;
     const migrationEvent: WorldEvent = {
-      eventId: `migration:${next.id}:v21-admissions-town-continuity-2026-09-11:revision:${current.revision}`,
+      eventId: `migration:${next.id}:v21-geography-fix5-2026-09-11:revision:${current.revision}`,
       worldId: next.id,
       kind: 'world.migrated',
       source: 'system',
@@ -9682,7 +9682,8 @@ export class WorldEngine {
           },
         );
         this.state.places[homeId].urbanLot = plot.lot;
-        this.state.places[homeId].urbanLayoutVersion = 2;
+        this.state.places[homeId].urbanLayoutVersion = 3;
+        this.state.places[homeId].rotation = plot.rotation;
         makeConnectionsReciprocal(this.state.places);
         this.rebuildSpatialProjection();
         economy.constructionEvents += 1;

@@ -1,3 +1,4 @@
+import { pointInPolygon, pointSegmentDistance } from '../world/BuildingFootprints';
 import type {
   AgentPositionState,
   AgentState,
@@ -23,26 +24,14 @@ function restingFootprintRadius(
   if (place.kind === 'workshop' || place.kind === 'library') return 0.04;
   if (['commons', 'city', 'village', 'quiet_space'].includes(place.kind)) return 0.08;
 
-  const settlement = place.settlementId
-    ? world.settlements[place.settlementId]
-    : undefined;
-  const settlementRadius = settlement?.radius ?? 7;
-
-  switch (place.kind) {
-    case 'village':
-    case 'city':
-    case 'commons':
-      return Math.max(2.4, Math.min(7.5, settlementRadius * 0.42));
-    case 'resource_field':
-      return Math.max(2.2, Math.min(5.6, settlementRadius * 0.34));
-    case 'quiet_space':
-    case 'meadow':
-    case 'forest':
-    case 'shore':
-      return Math.max(1.8, Math.min(4.8, settlementRadius * 0.3));
-    default:
-      return 1.45;
+  const polygon=place.boundaryPolygon;
+  const anchor={x:place.mapX,y:place.mapY};
+  if(polygon?.length&&pointInPolygon(anchor,polygon)) {
+    return Math.min(.5,Math.max(.015,Math.min(...polygon.map((p,i)=>pointSegmentDistance(anchor,p,polygon[(i+1)%polygon.length])))*.65));
   }
+  // A bank marker denotes dry land, not the middle of a water body.
+  if(place.surface==='shore')return .025;
+  return place.kind==='resource_field'?.10:.06;
 }
 
 function residentPhase(agentId: string): number {

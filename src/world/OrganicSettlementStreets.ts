@@ -1,49 +1,65 @@
 import type { WorldPlace, WorldPoint2D } from './types';
 
-function branchOf(lot: number): number { return Math.floor(lot / 16); }
-function branchX(branch: number): number {
-  return branch === 0 ? 0 : Math.ceil(branch / 2) * (branch % 2 ? 1 : -1) * 0.38;
+const TAU=Math.PI*2, RING_STEP=.32, FIRST_RING=.36;
+function phase(center:WorldPoint2D):number { return Math.sin(center.x*.17+center.y*.113)*.25; }
+function radius(ring:number):number { return FIRST_RING+ring*RING_STEP; }
+function axisAngle(center:WorldPoint2D,sector:number):number { return phase(center)+sector*Math.PI/2; }
+export function organicLanePoint(center:WorldPoint2D,ring:number,angle:number):WorldPoint2D {
+  const r=radius(ring)*(1+.065*Math.sin(angle*3+phase(center))+.035*Math.sin(angle*5+.9));
+  return {x:center.x+r*Math.cos(angle),y:center.y+r*Math.sin(angle)};
 }
-function trunkY(x: number): number { return Math.sin(x * 3) * 0.035; }
-function lanePoint(center: WorldPoint2D, branch: number, step: number): WorldPoint2D {
-  const x = branchX(branch), direction = branch % 4 < 2 ? 1 : -1;
-  return { x: center.x + x + Math.sin(step * 0.62 + branch * 0.8) * 0.018 - Math.sin(branch * 0.8) * 0.018,
-    y: center.y + trunkY(x) + direction * step * 0.15 };
+function slots(ring:number):number[] {
+  const r=radius(ring),count=Math.max(8,Math.floor(TAU*(r-.09)/.18));
+  const result:number[]=[];
+  for(let n=0;n<count;n++) {
+    const a=TAU*(n+.5)/count;
+    const d=Math.abs(((a+Math.PI/4)%(Math.PI/2))-Math.PI/4)*r;
+    if(d>.12)result.push(a);
+  }
+  return result;
 }
-export function organicHomeLot(center: WorldPoint2D, lot: number): WorldPoint2D {
-  const branch = branchOf(lot), row = Math.floor((lot % 16) / 2), side = lot % 2 ? 1 : -1;
-  const point = lanePoint(center, branch, row + 2);
-  // 12 x 10m houses: ordinary lane 4–4.6m, central lane 8–8.6m.
-  return { x: point.x + side * ((branch === 0 ? 0.10 : 0.08) + 0.003 * (1 + Math.sin(lot * 1.7)) / 2),
-    y: point.y + Math.sin(lot * 1.3) * 0.004 };
+export function organicLotAddress(center:WorldPoint2D,lot:number) {
+  let pair=Math.floor(lot/2),ring=0,angles=slots(0);
+  while(pair>=angles.length) {pair-=angles.length;angles=slots(++ring);}
+  // Opposite parcels face the same winding street across a 4.5–5m gap.
+  const angle=angles[pair]+phase(center),side=lot%2?1:-1;
+  const lane=organicLanePoint(center,ring,angle);
+  const p=organicLanePoint(center,ring,angle-.001),q=organicLanePoint(center,ring,angle+.001);
+  const rotation=Math.atan2(q.y-p.y,q.x-p.x),width=.045+.005*(1+Math.sin(lot*.9))/2;
+  const offset=.05+width/2;
+  return {ring,angle,lane,rotation,width,x:lane.x-Math.sin(rotation)*side*offset,y:lane.y+Math.cos(rotation)*side*offset};
 }
-export function organicStreetPath(from: Readonly<WorldPlace>, to: Readonly<WorldPlace>,
-  places: Readonly<Record<string, WorldPlace>>): WorldPoint2D[] | undefined {
-  const townId = (p: Readonly<WorldPlace>) => p.settlementId ?? (p.id === 'secret_library_v18' ? places.commons?.settlementId : undefined);
-  if (!townId(from) || townId(from) !== townId(to)) return undefined;
-  const centerPlace = Object.values(places).find(p => p.settlementId === townId(from) && ['commons','city','village'].includes(p.kind));
-  if (!centerPlace) return undefined;
-  const center = {x: centerPlace.mapX,y: centerPlace.mapY};
-  const approach = (p: Readonly<WorldPlace>): WorldPoint2D[] => {
-    const start = {x:p.mapX,y:p.mapY};
-    if (p.urbanLot === undefined || p.urbanLayoutVersion !== 2) {
-      const dx=center.x-start.x,dy=center.y-start.y;
-      const bend=Math.min(0.025, Math.hypot(dx,dy)*0.06), length=Math.max(1e-8,Math.hypot(dx,dy));
-      return [start,{x:start.x+dx*.33-dy/length*bend,y:start.y+dy*.33+dx/length*bend},
-        {x:start.x+dx*.67-dy/length*bend,y:start.y+dy*.67+dx/length*bend},center];
+export function organicHomeLot(center:WorldPoint2D,lot:number):WorldPoint2D {
+  const p=organicLotAddress(center,lot);return {x:p.x,y:p.y};
+}
+function arc(center:WorldPoint2D,ring:number,from:number,to:number):WorldPoint2D[] {
+  const steps=Math.max(1,Math.ceil(Math.abs(to-from)*radius(ring)/.06));
+  return Array.from({length:steps+1},(_,i)=>organicLanePoint(center,ring,from+(to-from)*i/steps));
+}
+function radial(center:WorldPoint2D,ring:number,angle:number):WorldPoint2D[] {
+  const points=[center];
+  for(let n=0;n<=ring;n++)points.push(organicLanePoint(center,n,angle));
+  return points;
+}
+export function organicStreetPath(from:Readonly<WorldPlace>,to:Readonly<WorldPlace>,
+  places:Readonly<Record<string,WorldPlace>>):WorldPoint2D[]|undefined {
+  const townId=(p:Readonly<WorldPlace>)=>p.settlementId??(p.id==='secret_library_v18'?places.commons?.settlementId:undefined);
+  const town=townId(from);if(!town||town!==townId(to))return undefined;
+  const cp=Object.values(places).find(p=>p.settlementId===town&&['commons','city','village'].includes(p.kind));if(!cp)return undefined;
+  const center={x:cp.mapX,y:cp.mapY};
+  const approach=(p:Readonly<WorldPlace>):WorldPoint2D[]=>{
+    const endpoint={x:p.mapX,y:p.mapY};
+    if(p.urbanLayoutVersion!==3||p.urbanLot===undefined) {
+      const dx=endpoint.x-center.x,dy=endpoint.y-center.y,len=Math.hypot(dx,dy),bend=Math.min(.025,len*.04);
+      return [center,{x:center.x+dx*.5-dy/Math.max(1e-8,len)*bend,y:center.y+dy*.5+dx/Math.max(1e-8,len)*bend},endpoint];
     }
-    const branch=branchOf(p.urbanLot), row=Math.floor((p.urbanLot%16)/2);
-    const points=[start];
-    for(let step=row+2;step>=0;step--) points.push(lanePoint(center,branch,step));
-    const x=branchX(branch), steps=Math.ceil(Math.abs(x)/0.095);
-    for(let n=steps-1;n>=0;n--) {
-      const offset=steps ? x*n/steps : 0;
-      points.push({x:center.x+offset,y:center.y+trunkY(offset)});
-    }
-    if (!steps) points.push(center);
-    return points;
+    const a=organicLotAddress(center,p.urbanLot);
+    const sector=Math.round((a.angle-phase(center))/(Math.PI/2));
+    const axis=axisAngle(center,sector);
+    return [...radial(center,a.ring,axis),...arc(center,a.ring,axis,a.angle).slice(1),endpoint];
   };
-  const a=approach(from),b=approach(to);
-  while(a.length>1&&b.length>1&&Math.hypot(a.at(-2)!.x-b.at(-2)!.x,a.at(-2)!.y-b.at(-2)!.y)<1e-8) {a.pop();b.pop();}
-  return [...a,...b.reverse().slice(1)].filter((p,i,all)=>!i||Math.hypot(p.x-all[i-1].x,p.y-all[i-1].y)>1e-8);
+  let a=approach(from),b=approach(to),shared=0;
+  while(shared<Math.min(a.length,b.length)-1&&Math.hypot(a[shared+1].x-b[shared+1].x,a[shared+1].y-b[shared+1].y)<1e-8)shared++;
+  a=a.slice(shared).reverse();b=b.slice(shared+1);
+  return [...a,...b].filter((p,i,all)=>!i||Math.hypot(p.x-all[i-1].x,p.y-all[i-1].y)>1e-8);
 }

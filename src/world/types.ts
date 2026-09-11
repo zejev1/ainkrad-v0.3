@@ -344,13 +344,21 @@ export interface WorldPlace {
   settlementId?: string;
   /** Stable metre-scale town plot; unrelated to world-map zoom or race spacing. */
   urbanLot?: number;
-  urbanLayoutVersion?: 1 | 2;
+  urbanLayoutVersion?: 1 | 2 | 3;
+  /** Shared physical footprint, never a camera-dependent size. */
+  rotation?: number;
+  geographyVersion?: 1;
+  /** Water body beside a reachable bank; the bank place remains walkable. */
+  waterPolygon?: WorldPoint2D[];
+  terrainPath?: WorldPoint2D[];
   /** A wilderness claim can change through settlement decisions or war. */
   claimedBySettlementId?: string;
   discoveredAt?: number;
 }
 
 export interface WorldRouteState {
+  geometryVersion?: 1;
+  widthMetres?: number;
   completedTraversals?: number;
   id: string;
   fromPlaceId: string;
@@ -361,7 +369,8 @@ export interface WorldRouteState {
 }
 
 export interface WorldSettlementState {
-  layoutVersion?: 2;
+  layoutVersion?: 2 | 3;
+  boundaryPolygon?: WorldPoint2D[];
   layoutSignature?: string;
   id: string;
   name: string;
@@ -830,6 +839,7 @@ export interface WorldDeterminismState {
 
 export interface WorldState {
   id: string;
+  geography?: { version: 1; revision: number; signature: string };
   /** Logical world epoch. Optional only for legacy fixtures before migration. */
   epoch?: number;
   /** Absolute logical tick at which the current epoch began. */

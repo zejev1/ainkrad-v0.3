@@ -1,69 +1,76 @@
 import { buildingRadius, dryBuildingPlot, nextUrbanHomeLot } from './SettlementStreets';
-import { compactLibraryPlot } from './SettlementLibraryLayout';
+import { buildingPolygon, buildingsHaveClearance, buildingSize, polygonsOverlap } from './BuildingFootprints';
+import { convexHull, fieldPolygon, geographySeed } from './WorldGeography';
 import type { WorldPlace, WorldPoint2D, WorldState } from './types';
 
-export const SETTLEMENT_LAYOUT_VERSION = 2;
-/** Called only by schema repair and construction, never by a render frame. */
-export function updateSettlementGeometry(world: WorldState,
-  move: (id: string, point: WorldPoint2D) => void): void {
-  const all=Object.values(world.places),water=all.filter(p=>p.surface==='water');
-  const safePlot=(place:WorldPlace,origin:WorldPoint2D,preferred:WorldPoint2D,minimumDistance=0):WorldPoint2D|undefined=>{
-    const radius=buildingRadius(place) || .05;
-    for(let i=0;i<256;i++) {
-      const r=i===0?0:.12*Math.sqrt(i),angle=i*2.3999632297;
-      const p={x:preferred.x+Math.cos(angle)*r,y:preferred.y+Math.sin(angle)*r};
-      if(!dryBuildingPlot(p,radius,radius,water))continue;
-      if(Math.hypot(p.x-origin.x,p.y-origin.y)<Math.max(radius+.08,minimumDistance))continue;
-      if(all.some(b=>b.id!==place.id && buildingRadius(b)>0 && b.urbanLayoutVersion===2 &&
-        Math.abs(b.mapX-p.x)<buildingRadius(b)+radius+.035 &&
-        Math.abs(b.mapY-p.y)<(b.kind==='home'?.05:buildingRadius(b))+radius+.035))continue;
-      return p;
-    }
-    return undefined;
-  };
+export const SETTLEMENT_LAYOUT_VERSION=3;
+/** Plan on migration/construction only. Daily work never repeats this survey. */
+export function updateSettlementGeometry(world:WorldState,move:(id:string,point:WorldPoint2D)=>void):void {
+  const all=Object.values(world.places),water=all.filter(p=>p.surface==='water'||p.waterPolygon);
   for(const town of Object.values(world.settlements)) {
     const center=world.places[town.centerPlaceId];if(!center)continue;
     const origin={x:center.mapX,y:center.mapY};
     const members=all.filter(p=>p.settlementId===town.id ||
-      (p.id===world.v18?.secretLibrary.placeId && world.v18.secretLibrary.anchorPlaceId===center.id));
+      (p.id===world.v18?.secretLibrary.placeId&&world.v18.secretLibrary.anchorPlaceId===center.id));
+    const managed=['home','workshop','library','quiet_space','resource_field','outskirts','cemetery'];
     const signature=members.map(p=>p.id+':'+p.kind).sort().join('|');
-    if(town.layoutVersion===2 && town.layoutSignature===signature && members.every(p =>
-      !['home','workshop','library','quiet_space','resource_field','outskirts'].includes(p.kind) || p.urbanLayoutVersion===2))continue;
-    for(const place of members.filter(p=>p.kind==='library')) {
-      if(place.urbanLayoutVersion===2)continue;
-      const plot=compactLibraryPlot(world.places,origin,place.id);
+    if(town.layoutVersion===3&&town.layoutSignature===signature&&members.every(p=>!managed.includes(p.kind)||p.urbanLayoutVersion===3))continue;
+    const safe=(place:WorldPlace,preferred:WorldPoint2D,minimum=0):WorldPoint2D|undefined=>{
+      const size=buildingSize(place),hx=size.width/2||.10,hy=size.height/2||.10;
+      for(let i=0;i<384;i++) {
+        const r=i?.10*Math.sqrt(i):0,a=i*2.3999632297;
+        const point={x:preferred.x+Math.cos(a)*r,y:preferred.y+Math.sin(a)*r};
+        if(Math.hypot(point.x-origin.x,point.y-origin.y)<minimum)continue;
+        if(!dryBuildingPlot(point,hx,hy,water,place.rotation))continue;
+        const candidate={...place,mapX:point.x,mapY:point.y};
+        if(all.some(p=>p.id!==place.id&&p.urbanLayoutVersion===3&&!buildingsHaveClearance(candidate,p)))continue;
+        if(size.width>0&&Math.abs(point.x-origin.x)<hx+.06&&Math.abs(point.y-origin.y)<hy+.06)continue;
+        return point;
+      }
+      return undefined;
+    };
+    let civic=0;
+    for(const place of members.filter(p=>['library','workshop','quiet_space','cemetery'].includes(p.kind))
+      .sort((a,b)=>Number(b.kind==='library')-Number(a.kind==='library')||a.id.localeCompare(b.id))) {
+      const n=civic++;if(place.urbanLayoutVersion===3)continue;
+      place.rotation=(geographySeed(town.id)-.5)*.16;
+      const sx=n%2?-1:1,sy=n%4<2?-1:1;
+      const plot=safe(place,{x:origin.x+sx*(.20+Math.floor(n/4)*.22),y:origin.y+sy*.19},.19);
       if(plot) {
         move(place.id,plot);
-        if(place.id===world.v18?.secretLibrary.placeId) {
-          world.v18.secretLibrary.anchorMapX=plot.x;world.v18.secretLibrary.anchorMapY=plot.y;
-        }
+        if(place.id===world.v18?.secretLibrary.placeId){world.v18.secretLibrary.anchorMapX=plot.x;world.v18.secretLibrary.anchorMapY=plot.y;}
       }
     }
-    let civic=0;
-    for(const place of members.filter(p=>p.kind==='workshop'||p.kind==='quiet_space').sort((a,b)=>a.id.localeCompare(b.id))) {
-      const index=civic++,side=index%2? -1:1;
-      if(place.urbanLayoutVersion===2)continue;
-      const plot=safePlot(place,origin,{x:origin.x+side*(.25+Math.floor(index/2)*.21),y:origin.y-.14-.012*Math.sin(index)});
-      if(plot)move(place.id,plot);
-    }
     for(const home of members.filter(p=>p.kind==='home').sort((a,b)=>a.id.localeCompare(b.id))) {
-      if(home.urbanLayoutVersion===2)continue;
+      if(home.urbanLayoutVersion===3)continue;
       const plot=nextUrbanHomeLot(world.places,origin,town.id);
-      if(plot) {move(home.id,plot);home.urbanLot=plot.lot;}
+      if(plot){home.rotation=plot.rotation;move(home.id,plot);home.urbanLot=plot.lot;}
     }
-    const built=members.filter(p=>['home','workshop','library','commons','city','village','quiet_space'].includes(p.kind));
-    const edge=Math.max(.2,...built.map(p=>Math.hypot(p.mapX-origin.x,p.mapY-origin.y)+(buildingRadius(p)||.08)));
-    town.radius=edge;
+    const buildings=members.filter(p=>buildingRadius(p)>0);
+    const corners=buildings.flatMap(p=>buildingPolygon(p,.04));
+    corners.push(...[{x:origin.x-.12,y:origin.y-.12},{x:origin.x+.12,y:origin.y+.12}]);
+    town.boundaryPolygon=convexHull(corners);
+    const edge=Math.max(.22,...corners.map(p=>Math.hypot(p.x-origin.x,p.y-origin.y)));
+    town.radius=edge;town.centerX=origin.x;town.centerY=origin.y;
     let field=0,fringe=0;
     for(const place of members.filter(p=>p.kind==='resource_field'||p.kind==='outskirts')) {
-      // Moving the agricultural perimeter after construction keeps it outside the enlarged town.
       const isField=place.kind==='resource_field',index=isField?field++:fringe++;
-      const angle=(isField?.3:1.1)+index*1.7;
-      const radius=edge+(isField?.28:.08);
-      const preferred={x:origin.x+Math.cos(angle)*radius,y:origin.y+Math.sin(angle)*radius};
-      const plot=safePlot(place,origin,preferred,edge+(isField?.12:0));
-      if(plot)move(place.id,plot);
+      const angle=(isField?.45:1.25)+index*1.8+geographySeed(town.id)*.25;
+      const r=edge+(isField?.40:.07);
+      let point=safe(place,{x:origin.x+Math.cos(angle)*r,y:origin.y+Math.sin(angle)*r},edge+(isField?.34:.04));
+      if(point&&isField) {
+        // Survey the whole agricultural plot, including its corners.
+        for(let n=0;n<32;n++) {
+          const candidate={...place,mapX:point.x,mapY:point.y,rotation:angle},polygon=fieldPolygon(candidate);
+          if(!polygonsOverlap(polygon,town.boundaryPolygon)&&!water.some(p=>polygonsOverlap(polygon,p.waterPolygon??p.boundaryPolygon??[]))) {
+            place.rotation=angle;break;
+          }
+          point={x:origin.x+Math.cos(angle)*(r+n*.08),y:origin.y+Math.sin(angle)*(r+n*.08)};
+          if(n===31)point=undefined;
+        }
+      }
+      if(point){move(place.id,point);if(isField)place.boundaryPolygon=fieldPolygon(place);}
     }
-    town.layoutVersion=2;town.layoutSignature=signature;
+    town.layoutVersion=3;town.layoutSignature=signature;
   }
 }
