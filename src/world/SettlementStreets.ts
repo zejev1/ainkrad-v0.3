@@ -35,6 +35,18 @@ export function routeAroundBuildings(
   const clear = (a: WorldPoint2D, b: WorldPoint2D) => !buildings.some(p => segmentEntersBuilding(a, b, p));
   if (path.slice(1).every((p, i) => clear(path[i], p))) return path;
 
+  // Keep every unblocked bend of the shared street. Solve only short blocked
+  // segments, so a route across town does not build one quadratic city graph.
+  if (path.length > 2) {
+    const result: WorldPoint2D[] = [path[0]];
+    for (let i=1;i<path.length;i++) {
+      const piece=routeAroundBuildings([path[i-1],path[i]],fromId,toId,places);
+      if(!piece)return undefined;
+      result.push(...piece.slice(1));
+    }
+    return result;
+  }
+
   // Visibility graph around the real plots. Only a blocked local route pays
   // for this search; existing unblocked terrain paths retain their shape.
   const nodes = [path[0], path.at(-1)!, ...buildings.flatMap(p => {

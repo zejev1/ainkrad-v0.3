@@ -1,3 +1,4 @@
+import { worldStorageDiagnostics } from '../persistence/WorldSaveSafety';
 import { CardinalAuditor } from '../cardinal/CardinalAuditor';
 import { buildCardinalAuditContext } from '../cardinal/CardinalAuditContext';
 import {
@@ -645,6 +646,10 @@ export class LiveWorldRuntime {
     this.liveMeasuredMilliseconds = 0;
     this.liveMeasuredWorldMinutes = 0;
     return clock;
+  }
+
+  storageDiagnostics(origin: string): string {
+    return worldStorageDiagnostics(this.world.runtimeStateView(), origin);
   }
 
   worldSnapshot(): WorldState {

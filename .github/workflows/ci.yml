@@ -17,6 +17,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -30,7 +34,20 @@ jobs:
         run: npm run typecheck
 
       - name: Tests
-        run: npm run test
+        run: npm run test -- --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/ainkrad-tests.json"
 
       - name: Production build
         run: npm run build
+      - name: Audit and prepare SPCK checkout
+        id: package
+        if: github.event_name == 'pull_request' && github.head_ref == 'work/ainkrad-v021-fix2'
+        run: node scripts/package-spck.mjs
+      - name: Upload SPCK ZIP
+        if: github.event_name == 'pull_request' && github.head_ref == 'work/ainkrad-v021-fix2'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ainkrad21Fix2
+          path: ${{ steps.package.outputs.directory }}
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30

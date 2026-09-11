@@ -3846,6 +3846,7 @@ async function repairCompatibleV18World(
     repairSecretLibraryPlacementV18(next);
     if (stableJsonStringify(next) === before) return current;
 
+    await store.checkpointWorld?.(current.id, current.revision, 'before-additive-schema-migration');
     next.revision = current.revision + 1;
     const migrationEvent: WorldEvent = {
       eventId: `migration:${next.id}:v18-additive-schema-repair-2026-09-07-cultural-agency:revision:${current.revision}`,
@@ -3999,6 +4000,7 @@ async function repairCompatibleV19World(
     next.routes = rebuildWorldRoutes(next.places, next.routes);
     if (stableJsonStringify(next) === before) return current;
 
+    await store.checkpointWorld?.(current.id, current.revision, 'before-additive-schema-migration');
     next.revision = current.revision + 1;
     const migrationEvent: WorldEvent = {
       eventId: `migration:${next.id}:v21-admissions-town-continuity-2026-09-11:revision:${current.revision}`,
@@ -4859,7 +4861,10 @@ export class WorldEngine {
   private beginSecretLibraryYearV18(livingAgents: readonly AgentState[], now: number): void {
     const minute = this.state.calendar.elapsedWorldMinutes;
     const year = Math.floor(minute / WORLD_MINUTES_PER_YEAR) + 1;
-    ensureElfLibraryV20(this.state);
+    if (ensureElfLibraryV20(this.state)) {
+      repairCompactSettlementLayout(this.state);
+      this.routePathCache?.clear();
+    }
     this.finishSecretLibraryAdmissions(minute, now);
     const library = ensureWorldV18State(this.state).secretLibrary;
     library.currentAccessYear = year;

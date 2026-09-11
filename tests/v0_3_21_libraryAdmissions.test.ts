@@ -6,6 +6,7 @@ import { LIBRARY_IDS, LIBRARY_YEAR, libraryAdmissions, reconcileLibraryAdmission
   noteLibraryArrival, enforceLibraryBoundary, LIBRARY_HISTORY_LIMIT } from '../src/v21/LibraryAdmissions';
 import { observeLocalPlacesV20, sharePlaceKnowledgeV20, mayKnowPlaceV20 } from '../src/v20/KnowledgeBoundariesV20';
 import { canReadLibraryV20 } from '../src/v20/DivineGiftsV20';
+import { ensureElfLibraryV20 } from '../src/v20/LibraryLearningV20';
 import { inspectPlaceV16 } from '../src/v16/TruthfulInspectorsV16';
 
 async function fresh() {
@@ -70,6 +71,26 @@ describe('bounded library admissions',()=>{
     expect(w.v18!.secretLibrary.visitors).toHaveLength(4);
     expect(w.v18!.secretLibrary.visitHistory!.length).toBeLessThanOrEqual(LIBRARY_HISTORY_LIMIT);
     expect(once.determinism).toEqual(w.determinism);
+  });
+  it('keeps five human and five elf admissions and inspector lists independently',async()=>{
+    const w=await fresh();grant(w,5);
+    const id='settlement_elf_homeland';
+    w.places[id]={...w.places.commons,id,kind:'village',settlementId:id,mapX:-10000,mapY:50,connectedPlaceIds:[]};
+    ensureElfLibraryV20(w);
+    for(const a of Object.values(w.agents).slice(5,10)) {
+      a.race='elf';
+      w.v18!.secretLibrary.visitors.push({agentId:a.id,libraryPlaceId:LIBRARY_IDS[1],
+        accessYear:1,status:'travelling',selectedWorldMinute:0,originalLocationId:a.homeId,
+        acceptedVoluntarily:true,studyQuanta:0,learnedKnowledgeIds:[]});
+    }
+    reconcileLibraryAdmissions(w);
+    expect(libraryAdmissions(w,LIBRARY_IDS[0])).toHaveLength(5);
+    expect(libraryAdmissions(w,LIBRARY_IDS[1])).toHaveLength(5);
+    const human=JSON.stringify(inspectPlaceV16(w,LIBRARY_IDS[0])),elf=JSON.stringify(inspectPlaceV16(w,LIBRARY_IDS[1]));
+    expect(human).toContain('5/5');expect(elf).toContain('5/5');
+    expect(Object.values(w.routes).some(r=>r.fromPlaceId===LIBRARY_IDS[1]||r.toPlaceId===LIBRARY_IDS[1])).toBe(true);
+    const reader=w.agents[w.v18!.secretLibrary.visitors.find(v=>v.libraryPlaceId===LIBRARY_IDS[1])!.agentId];
+    expect(human).not.toContain(reader.name+' —');expect(elf).toContain(reader.name+' —');
   });
   it('turns a denied incoming traveller along the walked road without teleport or traversal credit',async()=>{
     const w=await fresh(),a=w.agents.agent_1;
