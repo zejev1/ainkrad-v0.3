@@ -26,6 +26,20 @@ jobs:
         run: npm run test -- --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/ainkrad-tests.json"
       - name: Production build
         run: npm run build
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck && npm run build
       - name: Install browser audit
         run: |
           npm install --no-save --package-lock=false --no-audit --no-fund playwright@1.56.1

@@ -1,3 +1,4 @@
+import { assertPlaceGeography } from './WorldGeographyValidation';
 import type { WorldTimeExecution } from './WorldTimeExecution';
 import { createFoundingOcean, repairFoundingOcean } from './FoundingOcean';
 import { LIBRARY_IDS, LIBRARY_YEAR, admissionDeadline, isSecretLibrary, libraryIdOf, hasLibraryAdmission, reconcileLibraryAdmissions, enforceLibraryBoundary, noteLibraryArrival } from '../v21/LibraryAdmissions';
@@ -1104,26 +1105,7 @@ function assertWorldState(value: unknown): asserts value is WorldState {
     if (!['land', 'shore', 'water'].includes(place.surface as string)) {
       throw new Error(`World place ${placeId}.surface is invalid.`);
     }
-    if (place.boundaryPolygon !== undefined) {
-      if (
-        !Array.isArray(place.boundaryPolygon) ||
-        place.boundaryPolygon.length < 3 ||
-        place.boundaryPolygon.some((point, index) => {
-          const value = asRecord(
-            point,
-            `World place ${placeId}.boundaryPolygon[${index}]`,
-          );
-          return !Number.isFinite(value.x) || !Number.isFinite(value.y);
-        })
-      ) {
-        throw new Error(`World place ${placeId}.boundaryPolygon is invalid.`);
-      }
-      if (place.surface !== 'water') {
-        throw new Error(
-          `World place ${placeId} has an area boundary without a water surface.`,
-        );
-      }
-    }
+    assertPlaceGeography(place, placeId);
     if (place.settlementId !== undefined) {
       requiredString(place.settlementId, `World place ${placeId}.settlementId`);
     }

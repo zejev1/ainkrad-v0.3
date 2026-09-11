@@ -1,3 +1,4 @@
+import { pruneWorldTimeOperations, WORLD_TIME_RETENTION_INTERVAL, WORLD_TIME_OPERATION_RETENTION } from './WorldOperationRetention';
 import { readWorldCommitHead } from './IndexedDbCommitHead';
 import { validateWorldSave, missingWorldRecord } from './WorldSaveSafety';
 import { checkpointWorld, putWorldIdentity, RECOVERY_STORE, IDENTITY_STORE, type WorldIdentity } from './IndexedDbRecovery';
@@ -15,9 +16,6 @@ import type { AppendOnlyLog } from './AppendOnlyLog';
 import { AppendOnlyLogConflictError } from './AppendOnlyLog';
 
 const DATABASE_VERSION = 2;
-const TICK_OPERATION_RETENTION = 2_048;
-const TICK_OPERATION_PRUNE_INTERVAL = 300;
-const MAX_TICK_OPERATION_PRUNE_PER_PASS = 4_096;
 
 const STORES = {
   worlds: 'worlds',
@@ -294,6 +292,7 @@ function cursorValues<T>(
 }
 
 export class IndexedDbWorldStore implements WorldStore {
+  private readonly lastRetentionBucket=new Map<string,number>();
   constructor(private readonly database: Promise<IDBDatabase>) {}
 
   async initializeWorld(state: WorldState): Promise<void> {
@@ -511,12 +510,13 @@ export class IndexedDbWorldStore implements WorldStore {
       operations.add({ ...operation, key: opKey } satisfies StoredOperation);
       await completion;
 
-      if (batch.operationId.startsWith('tick:')) {
-        const tick = Number(batch.operationId.slice('tick:'.length));
+      const retentionBucket=Math.floor(nextState.revision/WORLD_TIME_RETENTION_INTERVAL);
+      if(nextState.revision>WORLD_TIME_OPERATION_RETENTION&&retentionBucket>(this.lastRetentionBucket.get(batch.worldId)??-1)) {
         try {
-          await this.pruneOldTickOperations(batch.worldId, tick);
+          await pruneWorldTimeOperations(database,batch.worldId,nextState.revision);
+          this.lastRetentionBucket.set(batch.worldId,retentionBucket);
         } catch {
-          // Retention maintenance must never turn a successful world commit into a failure.
+          // Maintenance failure cannot turn an already atomic commit into a failure.
         }
       }
 
@@ -532,37 +532,6 @@ export class IndexedDbWorldStore implements WorldStore {
     }
   }
 
-  private async pruneOldTickOperations(
-    worldId: string,
-    currentTick: number,
-  ): Promise<void> {
-    if (
-      !Number.isInteger(currentTick) ||
-      currentTick < TICK_OPERATION_RETENTION ||
-      currentTick % TICK_OPERATION_PRUNE_INTERVAL !== 0
-    ) return;
-
-    const database = await this.database;
-    const transaction = database.transaction(STORES.operations, 'readwrite');
-    const completion = transactionComplete(transaction);
-    const request = transaction.objectStore(STORES.operations).openCursor();
-    const cutoff = currentTick - TICK_OPERATION_RETENTION;
-    let deleted = 0;
-    request.addEventListener('success', () => {
-      const cursor = request.result;
-      if (!cursor || deleted >= MAX_TICK_OPERATION_PRUNE_PER_PASS) return;
-      const operation = cursor.value as StoredOperation;
-      if (operation.worldId === worldId && operation.operationId.startsWith('tick:')) {
-        const tick = Number(operation.operationId.slice('tick:'.length));
-        if (Number.isInteger(tick) && tick < cutoff) {
-          cursor.delete();
-          deleted += 1;
-        }
-      }
-      cursor.continue();
-    });
-    await completion;
-  }
 
   async get(
     worldId: string,
