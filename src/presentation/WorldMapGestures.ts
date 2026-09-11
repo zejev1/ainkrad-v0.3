@@ -5,6 +5,12 @@ export function installWorldMapGestures(element:HTMLElement,camera:WorldMapCamer
   const pointers=new Map<number,{x:number;y:number}>();
   let start:{x:number;y:number}|undefined,dragged=false;
   let pinch:{distance:number;scale:number;anchor:{x:number;y:number}}|undefined;
+  
+  // Переменные для сглаживания и троттлинга на мобильных телефонах
+  let ticking = false;
+  let lastEvent: PointerEvent | undefined = undefined;
+  const lastPrior = { x: 0, y: 0 };
+
   const local=(x:number,y:number)=>{const b=element.getBoundingClientRect();return {x:x-b.left,y:y-b.top};};
   const beginPinch=()=>{
     const [a,b]=[...pointers.values()];if(!a||!b)return;
@@ -18,22 +24,49 @@ export function installWorldMapGestures(element:HTMLElement,camera:WorldMapCamer
     if(pointers.size===1){start={x:event.clientX,y:event.clientY};dragged=false;}
     if(pointers.size===2){beginPinch();dragged=true;}
   });
+
+  // Оптимизированный обработчик перемещения
   element.addEventListener('pointermove',event=>{
     const prior=pointers.get(event.pointerId);if(!prior)return;
+    
+    // Сохраняем последнее состояние для рендеринга в следующем кадре
+    lastPrior.x = prior.x;
+    lastPrior.y = prior.y;
     pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
+    lastEvent = event;
+
     if(start&&Math.hypot(event.clientX-start.x,event.clientY-start.y)>5)dragged=true;
     if(!dragged)return;
     if(!element.hasPointerCapture(event.pointerId))element.setPointerCapture(event.pointerId);
-    if(pointers.size>=2&&pinch) {
-      const [a,b]=[...pointers.values()],center=local((a.x+b.x)/2,(a.y+b.y)/2);
-      camera.zoom(pinch.scale*Math.hypot(a.x-b.x,a.y-b.y)/pinch.distance,center.x,center.y);
-      camera.x=pinch.anchor.x-(center.x-camera.width/2)/camera.pixelsPerUnit;
-      camera.y=pinch.anchor.y-(center.y-camera.height/2)/camera.pixelsPerUnit;
-    } else camera.pan(event.clientX-prior.x,event.clientY-prior.y);
-    changed();
+
+    // Если кадр уже запланирован — пропускаем тяжелые расчеты до следующего тика экрана
+    if (!ticking) {
+      window.requestAnimationFrame(() => {
+        if (!lastEvent || !dragged) { ticking = false; return; }
+
+        if(pointers.size>=2&&pinch) {
+          const [a,b]=[...pointers.values()],center=local((a.x+b.x)/2,(a.y+b.y)/2);
+          camera.zoom(pinch.scale*Math.hypot(a.x-b.x,a.y-b.y)/pinch.distance,center.x,center.y);
+          camera.x=pinch.anchor.x-(center.x-camera.width/2)/camera.pixelsPerUnit;
+          camera.y=pinch.anchor.y-(center.y-camera.height/2)/camera.pixelsPerUnit;
+        } else {
+          camera.pan(lastEvent.clientX-lastPrior.x,lastEvent.clientY-lastPrior.y);
+        }
+        
+        changed();
+        ticking = false;
+      });
+      ticking = true;
+    }
   });
+
   for(const type of ['pointerup','pointercancel','lostpointercapture']as const)
-    element.addEventListener(type,event=>{pointers.delete(event.pointerId);pinch=undefined;if(pointers.size===2)beginPinch();});
+    element.addEventListener(type,event=>{
+      pointers.delete(event.pointerId);
+      pinch=undefined;
+      lastEvent=undefined;
+      if(pointers.size===2)beginPinch();
+    });
   element.addEventListener('click',event=>{if(dragged){event.preventDefault();event.stopPropagation();dragged=false;}},true);
   element.addEventListener('wheel',event=>{
     event.preventDefault();const p=local(event.clientX,event.clientY);
