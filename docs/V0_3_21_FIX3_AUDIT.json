@@ -1,0 +1,47 @@
+{
+  "release": "0.3.21-hotfix.3",
+  "status": "passed",
+  "base_commit": "68fdaabfc0ea4ae6cae1c6232141d2088dcc3684",
+  "tested_commit": "a8e7e486acdcd2dcd935d4b5a0798eb98ec8e6be",
+  "ci_run": "34615813273",
+  "environment": {
+    "node": "v22.23.2",
+    "execution_and_read_write": "passed"
+  },
+  "gates": {
+    "typecheck": "passed",
+    "tests": {
+      "passed": 250,
+      "failed": 0,
+      "total": 250
+    },
+    "production_build": "passed"
+  },
+  "review": "docs/V0_3_21_FIX3_REVIEW.md",
+  "baseline_reproduction": {
+    "message": "World place shore references missing connection ocean_ainkrad.",
+    "epoch": 2,
+    "revision": 116,
+    "worldMinutes": 1007400,
+    "growthStage": 2,
+    "lastCommittedStatePreserved": true
+  },
+  "protected": {
+    "main_unchanged": true,
+    "draft_pr_not_merged": true,
+    "no_deployment": true,
+    "cardinal_and_gateway_sources_unchanged": true
+  },
+  "delivery": {
+    "branch": "main",
+    "head": "68fdaabfc0ea4ae6cae1c6232141d2088dcc3684",
+    "changes": "uncommitted",
+    "git_email": "zejev1@users.noreply.github.com"
+  },
+  "limitations": [
+    "No real Android or Xbox run",
+    "Original device save was not supplied; the same error was reproduced on the published base after an epoch reset",
+    "Different origins retain separate worlds",
+    "Three same-database backups cannot survive deletion of all browser site data"
+  ]
+}
