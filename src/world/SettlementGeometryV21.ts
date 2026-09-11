@@ -7,13 +7,13 @@ export const SETTLEMENT_LAYOUT_VERSION = 2;
 export function updateSettlementGeometry(world: WorldState,
   move: (id: string, point: WorldPoint2D) => void): void {
   const all=Object.values(world.places),water=all.filter(p=>p.surface==='water');
-  const safePlot=(place:WorldPlace,origin:WorldPoint2D,preferred:WorldPoint2D):WorldPoint2D|undefined=>{
+  const safePlot=(place:WorldPlace,origin:WorldPoint2D,preferred:WorldPoint2D,minimumDistance=0):WorldPoint2D|undefined=>{
     const radius=buildingRadius(place) || .05;
     for(let i=0;i<256;i++) {
       const r=i===0?0:.12*Math.sqrt(i),angle=i*2.3999632297;
       const p={x:preferred.x+Math.cos(angle)*r,y:preferred.y+Math.sin(angle)*r};
       if(!dryBuildingPlot(p,radius,radius,water))continue;
-      if(Math.hypot(p.x-origin.x,p.y-origin.y)<radius+.08)continue;
+      if(Math.hypot(p.x-origin.x,p.y-origin.y)<Math.max(radius+.08,minimumDistance))continue;
       if(all.some(b=>b.id!==place.id && buildingRadius(b)>0 && b.urbanLayoutVersion===2 &&
         Math.abs(b.mapX-p.x)<buildingRadius(b)+radius+.035 &&
         Math.abs(b.mapY-p.y)<(b.kind==='home'?.05:buildingRadius(b))+radius+.035))continue;
@@ -61,7 +61,7 @@ export function updateSettlementGeometry(world: WorldState,
       const angle=(isField?.3:1.1)+index*1.7;
       const radius=edge+(isField?.28:.08);
       const preferred={x:origin.x+Math.cos(angle)*radius,y:origin.y+Math.sin(angle)*radius};
-      const plot=safePlot(place,origin,preferred);
+      const plot=safePlot(place,origin,preferred,edge+(isField?.12:0));
       if(plot)move(place.id,plot);
     }
     town.layoutVersion=2;town.layoutSignature=signature;

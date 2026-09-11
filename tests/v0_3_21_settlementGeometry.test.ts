@@ -86,6 +86,8 @@ describe('physical settlement geometry and observer navigation',()=>{
     expect(w.routes[routeIdBetween('commons','resource_field')]).toBeDefined();
     const lake={...w.places.commons,surface:'water',boundaryPolygon:[{x:0,y:0},{x:.01,y:0},{x:.01,y:.01},{x:0,y:.01}]} as WorldPlace;
     expect(dryBuildingPlot({x:0,y:0},.06,.05,[lake])).toBe(false);
+    const narrowRiver={...lake,boundaryPolygon:[{x:-.2,y:-.01},{x:.2,y:-.01},{x:.2,y:.01},{x:-.2,y:.01}]};
+    expect(dryBuildingPlot({x:0,y:0},.06,.05,[narrowRiver])).toBe(false);
   });
   it('reroutes a road whose old intermediate bend is covered by a new house',async()=>{
     const w=await fresh(),house={...w.places.home_agent_1,id:'obstacle',mapX:0,mapY:0};

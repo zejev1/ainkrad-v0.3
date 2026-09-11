@@ -117,7 +117,18 @@ export function dryBuildingPlot(point: WorldPoint2D, halfX: number, halfY: numbe
   const corners = [-halfX, halfX].flatMap(x => [-halfY, halfY].map(y => ({x: point.x+x,y: point.y+y})));
   if ([point,...corners].some(p => insideWater(p,water))) return false;
   // Also reject a small water polygon entirely contained by the building.
-  return !water.some(p => p.boundaryPolygon?.some(v => Math.abs(v.x-point.x)<=halfX && Math.abs(v.y-point.y)<=halfY));
+  return !water.some(p => p.boundaryPolygon?.some((a,index,polygon) => {
+    const b=polygon[(index+1)%polygon.length];let enter=0,leave=1;
+    for(const [start,delta,center,half] of [[a.x,b.x-a.x,point.x,halfX],[a.y,b.y-a.y,point.y,halfY]]) {
+      if(Math.abs(delta)<1e-12) {if(start<center-half||start>center+half)return false;}
+      else {
+        const t1=(center-half-start)/delta,t2=(center+half-start)/delta;
+        enter=Math.max(enter,Math.min(t1,t2));leave=Math.min(leave,Math.max(t1,t2));
+        if(enter>leave)return false;
+      }
+    }
+    return enter<=leave;
+  }));
 }
 export function nextUrbanHomeLot(places: Readonly<Record<string, WorldPlace>>, center: WorldPoint2D,
   settlementId: string): (WorldPoint2D & { lot: number }) | undefined {
