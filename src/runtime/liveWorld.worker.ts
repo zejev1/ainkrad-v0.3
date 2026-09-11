@@ -1,3 +1,5 @@
+import { ExternalClockCommands, type ExternalClockCommand } from './ExternalClockCommands';
+import { nextCatchUpBatchSize } from './LiveAccelerationBudget';
 import { LiveWallClock, liveLoopDelay } from './LiveWallClock';
 import {
   LiveWorldRuntime,
@@ -8,11 +10,6 @@ import {
 } from './LiveWorldRuntime';
 import { createIndexedDbPersistence } from '../persistence/IndexedDbPersistence';
 import { WorldRevisionConflictError } from '../world/persistence';
-import {
-  isWorldSpeedId,
-  isWorldSpeedMultiplier,
-  LIVE_TICK_DELAY_MS,
-} from '../world/WorldClock';
 import type {
   WorldSpeedId,
   WorldSpeedMultiplier,
@@ -33,14 +30,14 @@ const DIVINE_AUDIENCE_CHANNEL_NAME = 'ainkrad-v0-3-divine-audience';
 const STORAGE_CHECK_INTERVAL_TICKS = 300;
 const AINKRAD_STORAGE_SOFT_BUDGET_BYTES = 2 * 1024 * 1024 * 1024;
 const AINKRAD_STORAGE_CRITICAL_BUDGET_BYTES = 4 * 1024 * 1024 * 1024;
-const FRAME_PROTOCOL_VERSION = 'ainkrad-live-frame-0.3.21-hotfix.3';
+const FRAME_PROTOCOL_VERSION = 'ainkrad-live-frame-0.3.21-hotfix.4';
 const COMPATIBLE_FRAME_PROTOCOLS = new Set([FRAME_PROTOCOL_VERSION]);
 
 // Test disturbances never run automatically in the persistent live world.
 const disturbances: readonly LiveWorldDisturbance[] = [];
 const recurringDisturbances = [] as const;
 
-type LiveWorldWorkerMessage =
+type LiveWorldWorkerPayload =
   | {
       type: 'frame';
       protocolVersion: typeof FRAME_PROTOCOL_VERSION;
@@ -73,6 +70,15 @@ type LiveWorldWorkerMessage =
       abandoned: boolean;
     }
   | {
+      type: 'clock_applied';
+      protocolVersion: typeof FRAME_PROTOCOL_VERSION;
+      speedId: WorldSpeedId;
+      multiplier: WorldSpeedMultiplier;
+      worldEpoch: number;
+      currentWorldMinutes: number;
+      discarded: boolean;
+    }
+  | {
       type: 'fatal';
       protocolVersion: typeof FRAME_PROTOCOL_VERSION;
       message: string;
@@ -90,11 +96,8 @@ type LiveWorldWorkerMessage =
       reason: string;
     };
 
-interface LiveWorldClockMessage {
-  type: 'set_speed';
-  speedId: WorldSpeedId;
-  multiplier: WorldSpeedMultiplier;
-}
+type LiveWorldWorkerMessage = LiveWorldWorkerPayload & { clockRevision?: number };
+type LiveWorldClockMessage = ExternalClockCommand;
 
 interface CardinalConsoleRequest {
   type: 'request_cardinal_console';
@@ -103,6 +106,7 @@ interface CardinalConsoleRequest {
 
 interface OfflineClockCatchUpMessage {
   type: 'catch_up_world_time';
+  clockRevision: number;
   worldEpoch: number;
   targetWorldMinutes: number;
 }
@@ -150,11 +154,13 @@ const offlineClockChannel = new BroadcastChannel(OFFLINE_CLOCK_CHANNEL_NAME);
 const divineAudienceChannel = new BroadcastChannel(DIVINE_AUDIENCE_CHANNEL_NAME);
 let activeRuntime: LiveWorldRuntime | undefined;
 const liveWallClock = new LiveWallClock(performance.now());
-let pendingClockControl: LiveWorldClockMessage | undefined;
+const clockCommands = new ExternalClockCommands();
+let appliedClockRevision = 0;
 let pendingWorldReset = false;
 let pendingOfflineCatchUp: OfflineClockCatchUpMessage | undefined;
 let divineAudiencePaused = false;
-let catchUpBatchQuanta = 1;
+let catchUpBatchQuanta = 4;
+let catchUpBatchCeiling = 8;
 let lastCatchUpProgressPostedAt = 0;
 let catchUpFailureCount = 0;
 let catchUpTracker:
@@ -168,17 +174,7 @@ let catchUpTracker:
   | undefined;
 
 function applyClockControl(message: LiveWorldClockMessage): void {
-  if (
-    !isWorldSpeedId(message.speedId) ||
-    !isWorldSpeedMultiplier(message.multiplier)
-  ) {
-    throw new Error('Rejected malformed external clock control.');
-  }
-  if (activeRuntime && !divineAudiencePaused && !pendingOfflineCatchUp) {
-    activeRuntime.enqueueLiveElapsed(liveWallClock.sample(performance.now()));
-  } else liveWallClock.reset(performance.now());
-  pendingClockControl = message;
-  activeRuntime?.setWorldSpeed(message.speedId, message.multiplier);
+  clockCommands.enqueue(message);
 }
 
 function applyOfflineCatchUp(message: OfflineClockCatchUpMessage): void {
@@ -190,6 +186,7 @@ function applyOfflineCatchUp(message: OfflineClockCatchUpMessage): void {
   ) {
     throw new Error('Rejected malformed offline world-clock target.');
   }
+  if (!clockCommands.acceptsTarget(message.clockRevision)) return;
   if (
     !pendingOfflineCatchUp ||
     pendingOfflineCatchUp.worldEpoch !== message.worldEpoch ||
@@ -199,7 +196,8 @@ function applyOfflineCatchUp(message: OfflineClockCatchUpMessage): void {
       !pendingOfflineCatchUp ||
       pendingOfflineCatchUp.worldEpoch !== message.worldEpoch
     ) {
-      catchUpBatchQuanta = 1;
+      catchUpBatchQuanta = 4;
+      catchUpBatchCeiling = 8;
       catchUpFailureCount = 0;
     }
     activeRuntime?.coverLiveTimeThrough(message.targetWorldMinutes, message.worldEpoch);
@@ -219,7 +217,7 @@ function publishCatchUpRecovery(
 ): void {
   const recovery = {
     type: 'catch_up_recovery',
-    protocolVersion: FRAME_PROTOCOL_VERSION,
+    protocolVersion: FRAME_PROTOCOL_VERSION, clockRevision: appliedClockRevision,
     message,
     batchQuanta: catchUpBatchQuanta,
     abandoned,
@@ -268,7 +266,7 @@ async function grantPrivateDivineAudience(
   );
   const result = {
     type: 'divine_audience_result',
-    protocolVersion: FRAME_PROTOCOL_VERSION,
+    protocolVersion: FRAME_PROTOCOL_VERSION, clockRevision: appliedClockRevision,
     requestId: request.requestId,
     agentId: request.agentId,
     authorized: record.authorized,
@@ -292,7 +290,7 @@ async function grantPrivateDivineAudience(
   const frame = await activeRuntime.tick(0);
   const frameMessage = {
     type: 'frame',
-    protocolVersion: FRAME_PROTOCOL_VERSION,
+    protocolVersion: FRAME_PROTOCOL_VERSION, clockRevision: appliedClockRevision,
     frame,
   } as const;
   workerScope.postMessage(frameMessage);
@@ -360,7 +358,7 @@ async function sendCardinalConsole(
   if (!activeRuntime) return;
   const message = {
     type: 'cardinal_console',
-    protocolVersion: FRAME_PROTOCOL_VERSION,
+    protocolVersion: FRAME_PROTOCOL_VERSION, clockRevision: appliedClockRevision,
     requestId,
     snapshot: await activeRuntime.cardinalConsole(),
   } as const;
@@ -440,7 +438,7 @@ frameChannel.addEventListener(
       !COMPATIBLE_FRAME_PROTOCOLS.has(event.data.protocolVersion)
     ) {
       if (event.data.type === 'frame' && event.data.protocolVersion) workerScope.postMessage({
-        type: 'fatal', protocolVersion: FRAME_PROTOCOL_VERSION,
+        type: 'fatal', protocolVersion: FRAME_PROTOCOL_VERSION, clockRevision: appliedClockRevision,
         message: 'Мир открыт другой вкладкой старой версии. Закройте остальные вкладки Ainkrad: сохранённый мир продолжится здесь без сброса.',
       });
       return;
@@ -480,20 +478,40 @@ async function runForever(): Promise<void> {
     store: persistence.worldStore,
     controlLog: persistence.controlLog,
     durable: true,
+    boundedLiveAcceleration: true,
   });
   activeRuntime = runtime;
   liveWallClock.reset(performance.now());
   let lastFramePostedAt = -Infinity;
-  if (pendingClockControl) {
-    runtime.setWorldSpeed(
-      pendingClockControl.speedId,
-      pendingClockControl.multiplier,
-    );
-  }
+
 
   while (true) {
     const loopStartedAt = performance.now();
     try {
+      const command = clockCommands.take();
+      if (command) {
+        if (!command.discardPending && !divineAudiencePaused && !pendingOfflineCatchUp) {
+          runtime.enqueueLiveElapsed(liveWallClock.sample(performance.now()));
+        }
+        runtime.setWorldSpeed(command.speedId, command.multiplier);
+        if (command.discardPending) {
+          pendingOfflineCatchUp = undefined;
+          catchUpTracker = undefined;
+          catchUpBatchQuanta = 4;
+          catchUpBatchCeiling = 8;
+          catchUpFailureCount = 0;
+          runtime.discardPendingLiveTime();
+        }
+        appliedClockRevision = command.clockRevision;
+        liveWallClock.reset(performance.now());
+        const position = runtime.worldContinuityPosition();
+        const acknowledgement = { type: 'clock_applied', protocolVersion: FRAME_PROTOCOL_VERSION, clockRevision: appliedClockRevision, speedId: command.speedId, multiplier: command.multiplier,
+          worldEpoch: position.worldEpoch, currentWorldMinutes: position.elapsedWorldMinutes,
+          discarded: command.discardPending ?? false } as const;
+        workerScope.postMessage(acknowledgement);
+        frameChannel.postMessage(acknowledgement);
+        lastFramePostedAt = -Infinity;
+      }
       if (divineAudiencePaused) {
         liveWallClock.reset(performance.now());
         await sleep(100);
@@ -503,7 +521,8 @@ async function runForever(): Promise<void> {
         pendingWorldReset = false;
         pendingOfflineCatchUp = undefined;
         catchUpTracker = undefined;
-        catchUpBatchQuanta = 1;
+        catchUpBatchQuanta = 4;
+        catchUpBatchCeiling = 8;
         catchUpFailureCount = 0;
         await runtime.resetWorld();
         liveWallClock.reset(performance.now());
@@ -566,20 +585,24 @@ async function runForever(): Promise<void> {
                   1,
                   Math.floor(catchUpBatchQuanta / 2),
                 );
+                catchUpBatchCeiling = catchUpBatchQuanta;
                 publishCatchUpRecovery(message, false);
               } else {
                 pendingOfflineCatchUp = undefined;
                 catchUpTracker = undefined;
+                runtime.discardPendingLiveTime();
+                liveWallClock.reset(performance.now());
                 publishCatchUpRecovery(message, true);
-                catchUpBatchQuanta = 1;
+                catchUpBatchQuanta = 4;
+                catchUpBatchCeiling = 8;
                 catchUpFailureCount = 0;
               }
               await sleep(0);
               continue;
             }
             const batchWorkMs = Math.max(1, performance.now() - batchStartedAt);
-            catchUpBatchQuanta = Math.max(1, Math.min(8, OFFLINE_CATCH_UP_MAX_BATCH_QUANTA,
-              Math.ceil(catchUpBatchQuanta * 80 / batchWorkMs)));
+            catchUpBatchQuanta = Math.min(catchUpBatchCeiling, OFFLINE_CATCH_UP_MAX_BATCH_QUANTA,
+              nextCatchUpBatchSize(batch.semanticQuantaProcessed, batchWorkMs));
             catchUpTracker.semanticQuantaProcessed +=
               batch.semanticQuantaProcessed;
             const elapsedRealMs = Math.max(
@@ -602,7 +625,7 @@ async function runForever(): Promise<void> {
                 : Math.max(0, (elapsedRealMs / processed) * (total - processed));
             const progressMessage = {
               type: 'catch_up_progress',
-              protocolVersion: FRAME_PROTOCOL_VERSION,
+              protocolVersion: FRAME_PROTOCOL_VERSION, clockRevision: appliedClockRevision,
               worldEpoch: batch.worldEpoch,
               fromWorldMinutes: catchUpTracker.startWorldMinutes,
               currentWorldMinutes: batch.currentWorldMinutes,
@@ -625,7 +648,8 @@ async function runForever(): Promise<void> {
             }
             pendingOfflineCatchUp = undefined;
             catchUpTracker = undefined;
-            catchUpBatchQuanta = 1;
+            catchUpBatchQuanta = 4;
+            catchUpBatchCeiling = 8;
             catchUpFailureCount = 0;
             completedCatchUpThisLoop = true;
           }
@@ -640,7 +664,8 @@ async function runForever(): Promise<void> {
       const frame = completedCatchUpThisLoop ? await runtime.tick(0) :
         await runtime.advanceResponsive(elapsed, emitFrame);
       if (frame) {
-        const message = { type: 'frame', protocolVersion: FRAME_PROTOCOL_VERSION, frame } as const;
+        frame.liveTiming = runtime.liveTiming();
+        const message = { type: 'frame', protocolVersion: FRAME_PROTOCOL_VERSION, clockRevision: appliedClockRevision, frame } as const;
         workerScope.postMessage(message);
         frameChannel.postMessage(message);
         lastFramePostedAt = wallNow;
@@ -724,7 +749,7 @@ async function start(): Promise<void> {
 void start().catch((error: unknown) => {
   const message = {
     type: 'fatal',
-    protocolVersion: FRAME_PROTOCOL_VERSION,
+    protocolVersion: FRAME_PROTOCOL_VERSION, clockRevision: appliedClockRevision,
     message:
       error instanceof Error
         ? `${error.name}: ${error.message}\n` +

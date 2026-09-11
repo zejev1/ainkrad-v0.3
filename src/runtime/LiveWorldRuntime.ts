@@ -1,3 +1,4 @@
+import { LiveAccelerationBudget, MAX_LIVE_PENDING_MINUTES } from './LiveAccelerationBudget';
 import { worldStorageDiagnostics } from '../persistence/WorldSaveSafety';
 import { CardinalAuditor } from '../cardinal/CardinalAuditor';
 import { buildCardinalAuditContext } from '../cardinal/CardinalAuditContext';
@@ -130,6 +131,8 @@ export interface LiveWorldRuntimeOptions {
   store?: WorldStore;
   controlLog?: AppendOnlyLog;
   durable?: boolean;
+  /** Browser live rate is capacity-limited; explicit replay APIs keep exact targets. */
+  boundedLiveAcceleration?: boolean;
   worldSpeedId?: WorldSpeedId;
   worldSpeedMultiplier?: WorldSpeedMultiplier;
 }
@@ -142,7 +145,7 @@ export interface LiveWorldContinuity {
 }
 
 export interface LiveWorldFrame {
-  liveTiming?: { pendingWorldMinutes: number; actualWorldMinutesPerRealMinute?: number };
+  liveTiming?: { pendingWorldMinutes: number; actualWorldMinutesPerRealMinute?: number; capacityLimited?: boolean };
   tick: number;
   world: WorldState;
   metrics: CardinalMetrics;
@@ -486,10 +489,9 @@ export class LiveWorldRuntime {
   private currentTechnicalTick: number;
   private displayedEvaluation?: CardinalEvaluation;
   private responsiveQuanta = 1;
-  private pendingLiveMinutes = 0;
+  private readonly liveBudget: LiveAccelerationBudget;
   private liveMeasuredMilliseconds = 0;
   private liveMeasuredWorldMinutes = 0;
-  private liveCoveredThroughWorldMinutes = 0;
 
   private cardinalBurstUntilWorldMinutes = 0;
 
@@ -513,7 +515,9 @@ export class LiveWorldRuntime {
     private executedInterventionCount: number,
     private cardinalActivity: CardinalActivitySnapshot,
     private readonly continuity: LiveWorldContinuity,
+    boundedLiveAcceleration = false,
   ) {
+    this.liveBudget = new LiveAccelerationBudget(boundedLiveAcceleration ? MAX_LIVE_PENDING_MINUTES : Infinity);
     this.currentTechnicalTick = world.snapshot().now;
   }
 
@@ -601,6 +605,7 @@ export class LiveWorldRuntime {
         resumedFromWorldMinutes:
           existing?.calendar.elapsedWorldMinutes ?? 0,
       },
+      options.boundedLiveAcceleration,
     );
     runtime.displayedEvaluation = [...allEvaluations].sort((a,b) =>
       (b.experience?.totalExperience ?? 0) - (a.experience?.totalExperience ?? 0))[0];
@@ -713,8 +718,7 @@ export class LiveWorldRuntime {
     );
     await this.synchronize();
     this.continuity.resumed = false;
-    this.pendingLiveMinutes = 0;
-    this.liveCoveredThroughWorldMinutes = 0;
+    this.liveBudget.cancel(0);
     this.liveMeasuredMilliseconds = 0;
     this.liveMeasuredWorldMinutes = 0;
     this.continuity.resumedFromTick = this.world.snapshot().now;
@@ -849,9 +853,10 @@ export class LiveWorldRuntime {
     return (await this.advanceResponsive(realMilliseconds, true))!;
   }
 
-  liveTiming(): { pendingWorldMinutes: number; actualWorldMinutesPerRealMinute?: number } {
+  liveTiming(): { pendingWorldMinutes: number; actualWorldMinutesPerRealMinute?: number; capacityLimited?: boolean } {
     return {
-      pendingWorldMinutes: this.pendingLiveMinutes,
+      pendingWorldMinutes: this.liveBudget.pending,
+      capacityLimited: this.liveBudget.limited,
       ...(this.liveMeasuredMilliseconds > 0 ? {
         actualWorldMinutesPerRealMinute: this.liveMeasuredWorldMinutes * 60_000 / this.liveMeasuredMilliseconds,
       } : {}),
@@ -862,7 +867,7 @@ export class LiveWorldRuntime {
     if (!Number.isFinite(realMilliseconds) || realMilliseconds < 0) {
       throw new Error('Live elapsed milliseconds must be finite and non-negative.');
     }
-    this.pendingLiveMinutes += this.clockGateway.current().worldMinutesPerTick * realMilliseconds / 1000;
+    this.liveBudget.enqueue(this.clockGateway.current().worldMinutesPerTick * realMilliseconds / 1000);
     if (this.liveMeasuredMilliseconds >= 10_000) {
       this.liveMeasuredMilliseconds = 0;
       this.liveMeasuredWorldMinutes = 0;
@@ -873,19 +878,24 @@ export class LiveWorldRuntime {
   coverLiveTimeThrough(targetWorldMinutes: number, worldEpoch = this.world.runtimeStateView().epoch ?? 1): void {
     const world = this.world.runtimeStateView();
     if (worldEpoch !== (world.epoch ?? 1)) return;
-    const covered = Math.max(0, targetWorldMinutes - Math.max(
-      world.calendar.elapsedWorldMinutes, this.liveCoveredThroughWorldMinutes));
-    this.pendingLiveMinutes = Math.max(0, this.pendingLiveMinutes - covered);
-    this.liveCoveredThroughWorldMinutes = Math.max(this.liveCoveredThroughWorldMinutes, targetWorldMinutes);
+    this.liveBudget.cover(targetWorldMinutes, world.calendar.elapsedWorldMinutes);
+  }
+
+  /** Drop only uncomputed external requests; committed life and RNG are untouched. */
+  discardPendingLiveTime(): void {
+    this.liveBudget.cancel(this.world.runtimeStateView().calendar.elapsedWorldMinutes);
+    this.liveMeasuredMilliseconds = 0;
+    this.liveMeasuredWorldMinutes = 0;
   }
 
   async advanceResponsive(realMilliseconds: number, emitFrame = false): Promise<LiveWorldFrame | undefined> {
     this.enqueueLiveElapsed(realMilliseconds);
-    const minutes = Math.min(this.pendingLiveMinutes, this.responsiveQuanta * CANONICAL_WORLD_QUANTUM_MINUTES);
+    const minutes = Math.min(this.liveBudget.pending, this.responsiveQuanta * CANONICAL_WORLD_QUANTUM_MINUTES);
     const before = this.world.runtimeStateView().calendar.elapsedWorldMinutes;
     const started = performance.now();
+    const budgetToken = this.liveBudget.token;
     // Deduct only committed time, including recovery after a partially completed
-    // call. A speed change cannot erase elapsed time that is already owed.
+    // call. A cancellation never rolls back a committed world interval.
     let frame: LiveWorldFrame | undefined;
     try {
       frame = await this.runTick(minutes, emitFrame);
@@ -893,8 +903,7 @@ export class LiveWorldRuntime {
       const processed = Math.max(0, this.world.runtimeStateView().calendar.elapsedWorldMinutes - before);
       // A visibility/catch-up message may arrive during an awaited commit.
       // Its transferred interval is no longer part of the live queue.
-      const consumedLive = Math.max(0, before + processed - Math.max(before, this.liveCoveredThroughWorldMinutes));
-      this.pendingLiveMinutes = Math.max(0, this.pendingLiveMinutes - consumedLive);
+      this.liveBudget.consume(before, before + processed, budgetToken);
       this.liveMeasuredWorldMinutes += processed;
       const elapsed = performance.now() - started;
       if (processed > 0) this.responsiveQuanta = Math.max(1, Math.min(8,
@@ -1184,7 +1193,7 @@ export class LiveWorldRuntime {
     quantaInBatch = Math.min(quantaInBatch, maxBatchQuanta);
     const batchTarget = Math.min(
       targetWorldMinutes,
-      fromWorldMinutes + quantaInBatch * quantum,
+      fromWorldMinutes + quantaInBatch * quantum - (clock?.pendingWorldMinutes ?? 0),
     );
     await this.world.advanceCanonicalTimeTo(batchTarget);
     const after = this.world.runtimeStateView();
@@ -1205,6 +1214,7 @@ export class LiveWorldRuntime {
       after.calendar.elapsedWorldMinutes,
     );
     const opportunity = await this.processCardinalOpportunity(after);
+    if (opportunity.evaluation) this.displayedEvaluation = opportunity.evaluation;
     this.currentTechnicalTick = Math.max(this.currentTechnicalTick, after.now);
     const afterQuantumIndex =
       after.v15?.simulationClock.quantumIndex ?? after.now;
@@ -1367,7 +1377,7 @@ export class LiveWorldRuntime {
       intervention: InterventionRecord;
     }>
   > {
-    const worldSnapshot = this.world.snapshot();
+    const worldSnapshot = this.world.runtimeStateView();
     const worldId = worldSnapshot.id;
     const worldEpoch = worldSnapshot.epoch ?? 1;
     const currentWorldMinutes =

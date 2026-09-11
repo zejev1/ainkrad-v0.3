@@ -6,16 +6,21 @@ import assert from 'node:assert/strict';
 
 const root=process.cwd(),temp=process.env.RUNNER_TEMP;
 assert(temp,'Package generation requires a CI temporary directory.');
-const base='68fdaabfc0ea4ae6cae1c6232141d2088dcc3684';
+const base='d2a3463540e5b931847f2b09980ea6df6b16b884';
 const run=(args,cwd=root)=>execFileSync('git',args,{cwd,encoding:'utf8',maxBuffer:32*1024*1024}).trim();
 const head=run(['rev-parse','HEAD']);
 assert.equal(run(['rev-parse','refs/remotes/origin/main']),base,'Main advanced: integrate its new commits before packaging.');
 const report=JSON.parse(readFileSync(join(temp,'ainkrad-tests.json'),'utf8'));
-assert.equal(report.success,true);assert.equal(report.numFailedTests,0);assert(report.numPassedTests>=250);
+assert.equal(report.success,true);assert.equal(report.numFailedTests,0);assert(report.numPassedTests>=266);
 assert(statSync(join(root,'dist','index.html')).isFile(),'Production build is missing.');
-const reproduction=JSON.parse(readFileSync(join(temp,'ainkrad-shore-reproduction.json'),'utf8'));
-assert.equal(reproduction.message,'World place shore references missing connection ocean_ainkrad.');
-assert.equal(reproduction.epoch,2);assert.equal(reproduction.lastCommittedStatePreserved,true);
+const benchmark=JSON.parse(readFileSync(join(temp,'ainkrad-fix4-benchmark.json'),'utf8'));
+assert.equal(benchmark.baseline,base);
+assert.equal(benchmark.ioProbe,'passed');
+assert.equal(benchmark.worldHistoryEqualExceptRevision,true);
+assert.equal(benchmark.originalQueueYearsAfterSlowdown,100);
+assert.equal(benchmark.browserQueueBounded,true);
+assert(benchmark.fixedSeconds<benchmark.baselineSeconds);
+
 
 // Verify runtime execution, writing and reading using a disposable probe.
 const probe=join(temp,'ainkrad-io-probe.txt');writeFileSync(probe,head);assert.equal(readFileSync(probe,'utf8'),head);rmSync(probe);
@@ -46,17 +51,18 @@ assert(!/extraheader|authorization|x-access-token|oauth|password/i.test(config),
 const protectedPaths=run(['diff','--name-only',base,head]).split('\n');
 assert(!protectedPaths.some(p=>p.startsWith('src/cardinal/')||p.startsWith('src/boundary/')||p.startsWith('src/world/learning/')));
 const audit={
-  release:'0.3.21-hotfix.3',status:'passed',base_commit:base,tested_commit:head,
+  release:'0.3.21-hotfix.4',status:'passed',base_commit:base,tested_commit:head,
   ci_run:process.env.GITHUB_RUN_ID,environment:{node:process.version,execution_and_read_write:'passed'},
   gates:{typecheck:'passed',tests:{passed:report.numPassedTests,failed:report.numFailedTests,total:report.numTotalTests},production_build:'passed'},
-  review:'docs/V0_3_21_FIX3_REVIEW.md',
-  baseline_reproduction:reproduction,
+  review:'docs/V0_3_21_FIX4_REVIEW.md',
+  performance_comparison:benchmark,
   protected:{main_unchanged:true,draft_pr_not_merged:true,no_deployment:true,cardinal_and_gateway_sources_unchanged:true},
   delivery:{branch:'main',head:base,changes:'uncommitted',git_email:'zejev1@users.noreply.github.com'},
-  limitations:['No real Android or Xbox run','Original device save was not supplied; the same error was reproduced on the published base after an epoch reset',
+  limitations:['No real Android or Xbox run','Original device save was not supplied; clock cancellation and continuity use compatible synthetic saves',
+    '100 years per minute is a requested ceiling, not guaranteed throughput; acceleration while closed requires opt-in',
     'Different origins retain separate worlds','Three same-database backups cannot survive deletion of all browser site data'],
 };
-writeFileSync(join(target,'docs','V0_3_21_FIX3_AUDIT.json'),JSON.stringify(audit,null,2)+'\n');
+writeFileSync(join(target,'docs','V0_3_21_FIX4_AUDIT.json'),JSON.stringify(audit,null,2)+'\n');
 const hashes={};
 for(const path of paths) {
   if(['vercel.json','.github/workflows/ci.yml'].includes(path))continue;
@@ -64,7 +70,7 @@ for(const path of paths) {
   assert.deepEqual(bytes,readFileSync(join(root,path)),'Export differs from tested source: '+path);
   hashes[path]=createHash('sha256').update(bytes).digest('hex');
 }
-writeFileSync(join(target,'docs','V0_3_21_FIX3_FILES.json'),JSON.stringify({testedCommit:head,sha256:hashes},null,2)+'\n');
+writeFileSync(join(target,'docs','V0_3_21_FIX4_FILES.json'),JSON.stringify({testedCommit:head,sha256:hashes},null,2)+'\n');
 const changes=run(['status','--porcelain'],target);assert(changes.length>0);
 assert(!readdirSync(target).includes('node_modules'));assert(!readdirSync(target).includes('dist'));
 console.log('SPCK_PACKAGE_AUDIT='+JSON.stringify(audit));
