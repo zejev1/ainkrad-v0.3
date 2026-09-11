@@ -14064,6 +14064,11 @@ export class WorldEngine {
         movement.nextWaypointIndex += 1;
         if (movement.nextWaypointIndex >= movement.waypoints.length) {
           const place = this.state.places[movement.targetPlaceId];
+          const arrivalMinute = startMinute + (movementBudget - remaining) / (RESIDENT_WALK_MAP_UNITS_PER_WORLD_MINUTE * mobilityScale);
+          if (place && isSecretLibrary(place.id) && !hasLibraryAdmission(this.state, agent, place.id, arrivalMinute)) {
+            enforceLibraryBoundary(this.state, agent, arrivalMinute);
+            return true;
+          }
           if (place) {
             const priorLocationId = agent.locationId;
             agent.locationId = movement.targetPlaceId;
@@ -14080,7 +14085,6 @@ export class WorldEngine {
             if (route) route.completedTraversals = (route.completedTraversals ?? 0) + 1;
           }
           agent.movement = undefined;
-          const arrivalMinute = startMinute + (movementBudget - remaining) / (RESIDENT_WALK_MAP_UNITS_PER_WORLD_MINUTE * mobilityScale);
           noteLibraryArrival(this.state, agent, arrivalMinute);
           observeLocalPlacesV20(this.state, agent);
         }

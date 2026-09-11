@@ -336,7 +336,7 @@ app.innerHTML = `
   <div class="ainkrad-app">
     <header class="world-header">
       <div>
-        <p class="eyebrow">AINKRAD v0.3.21.1 · видимые жители · путь к Underworld</p>
+        <p class="eyebrow">AINKRAD v0.3.21.2 · видимые жители · путь к Underworld</p>
         <h1 id="world-title">Мир · уровень 1</h1>
         <p class="world-subtitle">Время регулируется снаружи. Жители сами расширяют карту и проживают поколения.</p>
       </div>
