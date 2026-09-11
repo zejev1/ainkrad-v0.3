@@ -36,6 +36,15 @@ function assertSame<T>(kind: string, id: string, existing: T, incoming: T): void
 }
 
 export class InMemoryWorldStore implements WorldStore {
+  readonly migrationBackups: WorldState[] = [];
+  async checkpointWorld(worldId:string, expectedRevision:number, _reason:string):Promise<void> {
+    const state=this.worlds.get(worldId);
+    if(!state)throw new Error('Cannot checkpoint missing world.');
+    if(state.revision!==expectedRevision)throw new WorldRevisionConflictError(worldId,expectedRevision,state.revision);
+    if(this.migrationBackups.some(s=>s.id===worldId&&s.revision===expectedRevision))return;
+    this.migrationBackups.push(structuredClone(state));
+    while(this.migrationBackups.filter(s=>s.id===worldId).length>3) this.migrationBackups.splice(this.migrationBackups.findIndex(s=>s.id===worldId),1);
+  }
   private readonly worlds = new Map<string, WorldState>();
   private readonly operations = new Map<string, CommittedWorldOperation>();
 

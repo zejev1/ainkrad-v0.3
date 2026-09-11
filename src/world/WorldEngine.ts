@@ -1,3 +1,4 @@
+import { LIBRARY_IDS, LIBRARY_YEAR, admissionDeadline, isSecretLibrary, libraryIdOf, hasLibraryAdmission, reconcileLibraryAdmissions, enforceLibraryBoundary, noteLibraryArrival } from '../v21/LibraryAdmissions';
 import { ensureElfLibraryV20, elfStudyMaterialV20, readingBudgetV20 } from '../v20/LibraryLearningV20';
 import type { WorldInterventionKind as InterventionKind, WorldInputEnvelope as InputEnvelope } from '../core/WorldContracts';
 import { observeLocalPlacesV20, sharePlaceKnowledgeV20, removeUnsurveyedHomelandLinksV20, frontierSiteV20, mayKnowPlaceV20 } from '../v20/KnowledgeBoundariesV20';
@@ -2880,9 +2881,12 @@ function rebuildSettlementProjection(
 ): Record<string, WorldSettlementState> {
   const main = mainSettlement(places, foundedAt);
   const priorMain = prior[main.id];
+  if (priorMain?.layoutVersion === 2) {
+    main.layoutVersion = 2; main.layoutSignature = priorMain.layoutSignature; main.radius = priorMain.radius;
+  }
   if (priorMain?.kind === 'city') {
     main.kind = 'city';
-    main.radius = Math.max(20, priorMain.radius);
+    main.radius = priorMain.layoutVersion === 2 ? priorMain.radius : Math.max(20, priorMain.radius);
   }
   const settlements: Record<string, WorldSettlementState> = {
     settlement_ainkrad: main,
@@ -2905,6 +2909,7 @@ function rebuildSettlementProjection(
       centerX: place.mapX,
       centerY: place.mapY,
       radius: existing?.radius ?? (place.kind === 'city' ? 20 : 11),
+      ...(existing?.layoutVersion === 2 ? {layoutVersion: 2 as const, layoutSignature: existing.layoutSignature} : {}),
       memberPlaceIds,
       foundedAt: existing?.foundedAt ?? place.discoveredAt ?? foundedAt,
     };
@@ -3694,6 +3699,7 @@ async function repairCompatibleV16World(
     );
     if (stableJsonStringify(next) === before) return current;
 
+    await store.checkpointWorld?.(current.id, current.revision, 'before-additive-schema-migration');
     next.revision = current.revision + 1;
     const migrationEvent: WorldEvent = {
       eventId: `migration:${next.id}:v16-additive-schema-repair-2026-08-26:revision:${current.revision}`,
@@ -3840,6 +3846,7 @@ async function repairCompatibleV18World(
     repairSecretLibraryPlacementV18(next);
     if (stableJsonStringify(next) === before) return current;
 
+    await store.checkpointWorld?.(current.id, current.revision, 'before-additive-schema-migration');
     next.revision = current.revision + 1;
     const migrationEvent: WorldEvent = {
       eventId: `migration:${next.id}:v18-additive-schema-repair-2026-09-07-cultural-agency:revision:${current.revision}`,
@@ -3963,7 +3970,7 @@ async function repairCompatibleV19World(
     from: WORLD_RULES_VERSION,
     to: WORLD_RULES_VERSION,
     mode: 'same_version_additive_schema_repair',
-    schemaRevision: '2026-09-09-knowledge-boundaries',
+    schemaRevision: '2026-09-11-admissions-town-continuity',
   });
   let current = persisted;
 
@@ -3987,14 +3994,16 @@ async function repairCompatibleV19World(
     removeUnsurveyedHomelandLinksV20(next);
     repairSecretLibraryPlacementV18(next);
     repairCompactSettlementLayout(next);
+    reconcileLibraryAdmissions(next, next.calendar.elapsedWorldMinutes, true);
     repairDeceasedActions(next);
     // Update physical walking lanes while retaining completed traversal history.
     next.routes = rebuildWorldRoutes(next.places, next.routes);
     if (stableJsonStringify(next) === before) return current;
 
+    await store.checkpointWorld?.(current.id, current.revision, 'before-additive-schema-migration');
     next.revision = current.revision + 1;
     const migrationEvent: WorldEvent = {
-      eventId: `migration:${next.id}:v20-knowledge-boundaries-2026-09-09:revision:${current.revision}`,
+      eventId: `migration:${next.id}:v21-admissions-town-continuity-2026-09-11:revision:${current.revision}`,
       worldId: next.id,
       kind: 'world.migrated',
       source: 'system',
@@ -4385,6 +4394,7 @@ export class WorldEngine {
     state.v19 = createWorldV19State(state, WORLD_RULES_VERSION);
     repairSecretLibraryPlacementV18(state);
     repairCompactSettlementLayout(state);
+    reconcileLibraryAdmissions(state, state.calendar.elapsedWorldMinutes, true);
 
     for (const resident of Object.values(state.agents)) observeLocalPlacesV20(state, resident);
     assertWorldState(state);
@@ -4396,6 +4406,9 @@ export class WorldEngine {
     let state = await options.store.loadWorld(options.worldId);
     if (!state) {
       throw new Error(`World ${options.worldId} does not exist in the store.`);
+    }
+    if (state.rulesVersion !== WORLD_RULES_VERSION) {
+      await options.store.checkpointWorld?.(state.id, state.revision, 'before-rules-migration');
     }
     if (LEGACY_WORLD_RULES_VERSIONS.has(state.rulesVersion)) {
       state = await migrateLegacyWorld(options.store, state);
@@ -4845,183 +4858,75 @@ export class WorldEngine {
    * influence the invitation, but each resident still accepts or declines
    * through their own personality state. Cardinal has no input or write path.
    */
-  private beginSecretLibraryYearV18(
-    livingAgents: readonly AgentState[],
-    now: number,
-  ): void {
-    const worldMinutes = this.state.calendar.elapsedWorldMinutes;
-    const year = Math.floor(worldMinutes / WORLD_MINUTES_PER_YEAR) + 1;
-    ensureElfLibraryV20(this.state);
-    const library = ensureWorldV18State(this.state).secretLibrary;
-    if (library.currentAccessYear >= year) return;
-
-    library.currentAccessYear = year;
-    // Selection happens on the first semantic boundary observed in the year.
-    // Its full month starts there instead of losing the days preceding that
-    // boundary (especially important when restoring a closed browser tab).
-    library.opensAtWorldMinute = worldMinutes;
-    library.closesAtWorldMinute =
-      library.opensAtWorldMinute + SECRET_LIBRARY_MONTH_WORLD_MINUTES_V18;
-    library.visitors = library.visitors.filter(v => ['studying', 'travelling', 'returning'].includes(v.status) && worldMinutes - v.selectedWorldMinute < 2 * WORLD_MINUTES_PER_YEAR);
-
-    const literacyByAgentId = Object.fromEntries(
-      Object.entries(ensureWorldV18State(this.state).languageByAgentId).map(
-        ([agentId, language]) => [agentId, language.cyrillicLiteracy],
-      ),
-    );
-    const ranked = rankedSecretLibraryCandidatesV18(
-      livingAgents,
-      year,
-      literacyByAgentId,
-      library.knowledgeByAgentId,
-    );
-    for (const agent of ranked) {
-      const libraryPlaceId = agent.race === 'elf' ? 'elf_library_v20' : SECRET_LIBRARY_PLACE_ID_V18;
-      if (!this.state.places[libraryPlaceId] || library.visitors.some(v => v.agentId === agent.id) ||
-          library.visitors.filter(v => v.accessYear === year && (v.libraryPlaceId ?? SECRET_LIBRARY_PLACE_ID_V18) === libraryPlaceId).length >= SECRET_LIBRARY_MAX_VISITORS_PER_YEAR_V18 ||
-          !this.pathBetween(agent.locationId, libraryPlaceId)) continue;
-      const literacy = literacyByAgentId[agent.id] ?? 0;
-      const voluntaryAcceptanceChance = clamp01(
-        0.16 +
-          agent.personality.curiosity * 0.28 +
-          agent.mind.values.knowledge * 0.22 +
-          agent.mind.autonomy * 0.13 +
-          literacy * 0.14 -
-          agent.stress * 0.12,
-      );
-      if (this.rng.next() >= voluntaryAcceptanceChance) continue;
-      library.visitors.push({
-        agentId: agent.id,
-        libraryPlaceId,
-        readingMinutes: 0,
-        wordsRead: 0,
-        lastStudyWorldMinute: 0,
-        accessYear: year,
-        status: 'travelling',
-        selectedWorldMinute: worldMinutes,
-        originalLocationId: this.state.places[agent.locationId]
-          ? agent.locationId
-          : agent.homeId,
-        acceptedVoluntarily: true,
-        studyQuanta: 0,
-        learnedKnowledgeIds: [],
-      });
+  private beginSecretLibraryYearV18(livingAgents: readonly AgentState[], now: number): void {
+    const minute = this.state.calendar.elapsedWorldMinutes;
+    const year = Math.floor(minute / WORLD_MINUTES_PER_YEAR) + 1;
+    if (ensureElfLibraryV20(this.state)) {
+      repairCompactSettlementLayout(this.state);
+      this.routePathCache?.clear();
     }
-    library.totalVisits += library.visitors.filter(v => v.accessYear === year).length;
-    library.status = library.visitors.length > 0 ? 'open' : 'closed';
+    this.finishSecretLibraryAdmissions(minute, now);
+    const library = ensureWorldV18State(this.state).secretLibrary;
+    library.currentAccessYear = year;
+    const literacyByAgentId = Object.fromEntries(Object.entries(ensureWorldV18State(this.state).languageByAgentId)
+      .map(([id, language]) => [id, language.cyrillicLiteracy]));
+    const eligibleLibraries = LIBRARY_IDS.filter(id => {
+      const count = library.visitors.filter(v => libraryIdOf(v) === id).length;
+      const receipt = library.annualSelections![id];
+      return this.state.places[id] && count < 5 && receipt.agentIds.length < 5 && receipt.attemptedAtActiveCount !== count;
+    });
+    if (!eligibleLibraries.length) return;
+    for (const agent of rankedSecretLibraryCandidatesV18(livingAgents, year, literacyByAgentId, library.knowledgeByAgentId)) {
+      const libraryPlaceId = agent.race === 'elf' ? LIBRARY_IDS[1] : LIBRARY_IDS[0];
+      const receipt = library.annualSelections![libraryPlaceId];
+      if (!eligibleLibraries.includes(libraryPlaceId) || library.visitors.some(v => v.agentId === agent.id) ||
+          receipt.agentIds.includes(agent.id) || receipt.agentIds.length >= 5 ||
+          library.visitors.filter(v => libraryIdOf(v) === libraryPlaceId).length >= 5 ||
+          !this.pathBetween(agent.locationId, libraryPlaceId)) continue;
+      const chance = clamp01(0.16 + agent.personality.curiosity * 0.28 + agent.mind.values.knowledge * 0.22 +
+        agent.mind.autonomy * 0.13 + (literacyByAgentId[agent.id] ?? 0) * 0.14 - agent.stress * 0.12);
+      if (this.rng.next() >= chance) continue;
+      library.visitors.push({agentId: agent.id, libraryPlaceId, readingMinutes: 0, wordsRead: 0, lastStudyWorldMinute: 0,
+        accessYear: year, status: 'travelling', selectedWorldMinute: minute,
+        originalLocationId: isSecretLibrary(agent.locationId) ? agent.homeId : agent.locationId,
+        acceptedVoluntarily: true, studyQuanta: 0, learnedKnowledgeIds: []});
+      receipt.agentIds.push(agent.id);
+      library.totalVisits += 1;
+      agent.knownPlaceIds = [...new Set([...(agent.knownPlaceIds ?? []), libraryPlaceId])];
+    }
+    for (const id of eligibleLibraries) library.annualSelections![id].attemptedAtActiveCount =
+      library.visitors.filter(v => libraryIdOf(v) === id).length;
+    library.opensAtWorldMinute = minute;
+    library.closesAtWorldMinute = Math.max(minute, ...library.visitors.map(admissionDeadline));
+    library.status = library.visitors.length ? 'open' : 'closed';
   }
 
-  /**
-   * At most five records are inspected here, independent of population size.
-   * The work shares the current world mutation: no extra snapshot, store load,
-   * IndexedDB commit, worker bridge or network request is performed.
-   */
+  private finishSecretLibraryAdmissions(minute: number, now: number): void {
+    for (const visitor of reconcileLibraryAdmissions(this.state, minute)) {
+      const agent = this.state.agents[visitor.agentId];
+      if (!agent?.life.alive || visitor.arrivedWorldMinute === undefined) continue;
+      this.recordAgentEvent(agent, now, 'agent.secret_library.completed', {
+        accessYear: visitor.accessYear, learnedCount: visitor.learnedKnowledgeIds.length, placeId: libraryIdOf(visitor),
+      });
+      this.stageMemory({ memoryId: this.nextId('memory'), worldId: this.state.id, agentId: agent.id,
+        createdAt: now, kind: 'reflection', summary: `${agent.name} completed a voluntary visit to the Secret Library.`,
+        importance: 0.76, valence: 0.58, relatedAgentIds: [] });
+    }
+  }
+
   private advanceSecretLibraryVisitorsV18(now: number): Set<string> {
     const studying = new Set<string>();
-    const worldMinutes = this.state.calendar.elapsedWorldMinutes;
-    const library = ensureWorldV18State(this.state).secretLibrary;
-    const windowClosed = worldMinutes >= library.closesAtWorldMinute;
-
-    for (const visitor of library.visitors) {
-      const agent = this.state.agents[visitor.agentId];
-      const libraryPlaceId = visitor.libraryPlaceId ?? SECRET_LIBRARY_PLACE_ID_V18;
-      if (!agent?.life.alive || !canReadLibraryV20(agent, libraryPlaceId)) {
-        visitor.status = 'missed';
-        continue;
-      }
-      if (
-        worldMinutes - (visitor.arrivedWorldMinute ?? visitor.selectedWorldMinute) >= WORLD_MINUTES_PER_YEAR &&
-        visitor.status !== 'completed' &&
-        visitor.status !== 'missed' &&
-        visitor.status !== 'returning'
-      ) {
-        visitor.status = 'returning';
-        if (agent.movement?.targetPlaceId === libraryPlaceId) {
-          agent.movement = undefined;
-        }
-      }
-
-      if (visitor.status === 'travelling') {
-        if (
-          agent.locationId === libraryPlaceId &&
-          !agent.movement
-        ) {
-          visitor.status = 'studying';
-          visitor.arrivedWorldMinute ??= worldMinutes;
-          visitor.lastStudyWorldMinute = worldMinutes;
-        } else if (agent.movement?.targetPlaceId !== libraryPlaceId) {
-          this.travelBeforeAction(
-            agent,
-            libraryPlaceId,
-            'reflect',
-            now,
-          );
-        }
-      }
-
-      if (visitor.status === 'studying') {
-        if (agent.locationId !== libraryPlaceId || agent.movement) {
-          visitor.status = 'travelling';
-          continue;
-        }
+    for (const visitor of ensureWorldV18State(this.state).secretLibrary.visitors) {
+      const agent = this.state.agents[visitor.agentId], id = libraryIdOf(visitor);
+      if (!agent || !hasLibraryAdmission(this.state, agent, id)) continue;
+      if (agent.locationId === id && !agent.movement) {
+        if (visitor.status !== 'studying') noteLibraryArrival(this.state, agent, this.state.calendar.elapsedWorldMinutes);
         this.performSecretLibraryStudyV18(agent, visitor, now);
         studying.add(agent.id);
-        if (worldMinutes - (visitor.arrivedWorldMinute ?? worldMinutes) >= WORLD_MINUTES_PER_YEAR) {
-          visitor.status = 'returning';
-          visitor.completedWorldMinute = worldMinutes;
-          this.recordAgentEvent(agent, now, 'agent.secret_library.completed', {
-            accessYear: visitor.accessYear,
-            learnedCount: visitor.learnedKnowledgeIds.length,
-            placeId: libraryPlaceId,
-          });
-          this.stageMemory({
-            memoryId: this.nextId('memory'),
-            worldId: this.state.id,
-            agentId: agent.id,
-            createdAt: now,
-            kind: 'reflection',
-            summary: `${agent.name} completed a voluntary year of reading in the Secret Library.`,
-            importance: 0.76,
-            valence: 0.58,
-            relatedAgentIds: [],
-          });
-          this.travelBeforeAction(
-            agent,
-            this.state.places[visitor.originalLocationId]
-              ? visitor.originalLocationId
-              : agent.homeId,
-            'reflect',
-            now,
-          );
-        }
-        continue;
+      } else {
+        visitor.status = 'travelling';
+        if (!agent.movement) this.travelBeforeAction(agent, id, 'reflect', now);
       }
-
-      if (visitor.status === 'returning') {
-        const destinationId = this.state.places[visitor.originalLocationId]
-          ? visitor.originalLocationId
-          : agent.homeId;
-        if (agent.locationId === destinationId && !agent.movement) {
-          visitor.status =
-            visitor.studyQuanta > 0
-              ? 'completed'
-              : 'missed';
-        } else if (agent.movement?.targetPlaceId !== destinationId) {
-          this.travelBeforeAction(agent, destinationId, 'reflect', now);
-        }
-      }
-    }
-
-    if (windowClosed) {
-      library.status = 'closed';
-    } else if (
-      library.visitors.some((visitor) =>
-        ['travelling', 'studying'].includes(visitor.status),
-      )
-    ) {
-      library.status = 'open';
-    } else {
-      library.status = 'closed';
     }
     return studying;
   }
@@ -5031,6 +4936,7 @@ export class WorldEngine {
     visitor: SecretLibraryVisitorV18,
     now: number,
   ): void {
+    if (!canReadLibraryV20(agent, libraryIdOf(visitor), this.state)) return;
     const library = ensureWorldV18State(this.state).secretLibrary;
     const existingRecords = library.knowledgeByAgentId[agent.id] ?? [];
     const priorKnowledgeIds = existingRecords.map((record) => record.knowledgeId);
@@ -8301,6 +8207,7 @@ export class WorldEngine {
     now: number,
     travelAction: AgentActionKind = 'walk',
   ): boolean {
+    if (!mayKnowPlaceV20(agent, destinationId, this.state)) return true;
     const destination = this.state.places[destinationId];
     const homeSettlementId = this.homeSettlementId(agent);
     const leavesHomeSettlement =
@@ -9779,7 +9686,7 @@ export class WorldEngine {
           },
         );
         this.state.places[homeId].urbanLot = plot.lot;
-        this.state.places[homeId].urbanLayoutVersion = 1;
+        this.state.places[homeId].urbanLayoutVersion = 2;
         makeConnectionsReciprocal(this.state.places);
         this.rebuildSpatialProjection();
         economy.constructionEvents += 1;
@@ -14066,7 +13973,7 @@ export class WorldEngine {
     if (!destination) {
       throw new Error(`Cannot move ${agent.id} to unknown place ${locationId}.`);
     }
-    if (!mayKnowPlaceV20(agent, locationId)) return;
+    if (!mayKnowPlaceV20(agent, locationId, this.state)) return;
     if (agent.movement && agent.movement.targetPlaceId !== locationId) {
       // Another resident's interaction cannot pull a traveller off a route.
       return;
@@ -14074,7 +13981,7 @@ export class WorldEngine {
     if (agent.locationId === locationId && !agent.movement) return;
 
     const path = this.pathBetween(agent.locationId, locationId);
-    if (!path) {
+    if (!path || path.slice(1).some(id => !mayKnowPlaceV20(agent, id, this.state))) {
       // Water and disconnected territory are physical boundaries. A resident
       // never receives an implicit teleport just because an action chose it.
       return;
@@ -14114,20 +14021,28 @@ export class WorldEngine {
     agent.movement = undefined;
   }
 
-  private advancePhysicalMovementForWorldMinutes(
-    elapsedWorldMinutes: number,
-  ): void {
+  private advancePhysicalMovementForWorldMinutes(elapsedWorldMinutes: number): void {
     if (elapsedWorldMinutes <= PHYSICAL_TIME_EPSILON) return;
-    for (const agent of Object.values(this.state.agents)) {
-      if (!canResidentAct(agent) || !agent.movement) continue;
-      this.advanceAgentMovement(agent, elapsedWorldMinutes);
+    let minute = this.state.calendar.elapsedWorldMinutes;
+    const end = minute + elapsedWorldMinutes;
+    this.finishSecretLibraryAdmissions(minute, this.state.now);
+    while (minute < end - PHYSICAL_TIME_EPSILON) {
+      const next = Math.min(end, ...ensureWorldV18State(this.state).secretLibrary.visitors.map(admissionDeadline).filter(t => t > minute));
+      for (const agent of Object.values(this.state.agents)) {
+        if (!canResidentAct(agent) || !agent.movement) continue;
+        this.advanceAgentMovement(agent, next - minute, minute);
+      }
+      minute = next;
+      this.finishSecretLibraryAdmissions(minute, this.state.now);
     }
   }
 
   private advanceAgentMovement(
     agent: AgentState,
     elapsedWorldMinutes: number,
+    startMinute = this.state.calendar.elapsedWorldMinutes,
   ): boolean {
+    enforceLibraryBoundary(this.state, agent, startMinute);
     const movement = agent.movement;
     if (!movement) return false;
 
@@ -14141,6 +14056,9 @@ export class WorldEngine {
     let remaining = movementBudget;
     while (remaining > 0 && agent.movement) {
       const target = movement.waypoints[movement.nextWaypointIndex];
+      if (!target || !Number.isFinite(target.x) || !Number.isFinite(target.y)) {
+        throw new Error(`Invalid saved route for ${agent.id}: waypoint ${movement.nextWaypointIndex}. World was not committed.`);
+      }
       const dx = target.x - agent.position.x;
       const dy = target.y - agent.position.y;
       const distance = Math.hypot(dx, dy);
@@ -14151,6 +14069,11 @@ export class WorldEngine {
         movement.nextWaypointIndex += 1;
         if (movement.nextWaypointIndex >= movement.waypoints.length) {
           const place = this.state.places[movement.targetPlaceId];
+          const arrivalMinute = startMinute + (movementBudget - remaining) / (RESIDENT_WALK_MAP_UNITS_PER_WORLD_MINUTE * mobilityScale);
+          if (place && isSecretLibrary(place.id) && !hasLibraryAdmission(this.state, agent, place.id, arrivalMinute)) {
+            enforceLibraryBoundary(this.state, agent, arrivalMinute);
+            return true;
+          }
           if (place) {
             const priorLocationId = agent.locationId;
             agent.locationId = movement.targetPlaceId;
@@ -14167,6 +14090,7 @@ export class WorldEngine {
             if (route) route.completedTraversals = (route.completedTraversals ?? 0) + 1;
           }
           agent.movement = undefined;
+          noteLibraryArrival(this.state, agent, arrivalMinute);
           observeLocalPlacesV20(this.state, agent);
         }
         continue;
@@ -14229,6 +14153,7 @@ export class WorldEngine {
     while (queueIndex < queue.length) {
       const currentId = queue[queueIndex++];
       const path = paths.get(currentId)!;
+      if (currentId !== fromId && isSecretLibrary(currentId)) continue;
       for (const connectedId of this.state.places[currentId].connectedPlaceIds) {
         const route = this.state.routes[routeIdBetween(currentId, connectedId)];
         if (

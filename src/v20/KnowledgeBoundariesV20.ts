@@ -1,25 +1,23 @@
+import { hasLibraryAdmission, isSecretLibrary } from '../v21/LibraryAdmissions';
 import type { AgentState, WorldPlace, WorldState } from '../world/types';
 import { routeIdBetween } from '../world/WorldNavigation';
 
 export const HUMAN_LIBRARY_ID_V20 = 'secret_library_v18';
 export const ELF_LIBRARY_ID_V20 = 'elf_library_v20';
 
-export function mayKnowPlaceV20(agent: Readonly<AgentState>, placeId: string): boolean {
-  const race = agent.race ?? 'human';
-  if (placeId === HUMAN_LIBRARY_ID_V20) return race === 'human';
-  if (placeId === ELF_LIBRARY_ID_V20) return race === 'elf';
-  return true;
+export function mayKnowPlaceV20(agent: Readonly<AgentState>, placeId: string, world?: Readonly<WorldState>): boolean {
+  return !isSecretLibrary(placeId) || (!!world && hasLibraryAdmission(world, agent, placeId));
 }
 
 export function observeLocalPlacesV20(world: Readonly<WorldState>, agent: AgentState): void {
-  const known = new Set((agent.knownPlaceIds ?? []).filter(id => world.places[id] && mayKnowPlaceV20(agent, id)));
+  const known = new Set((agent.knownPlaceIds ?? []).filter(id => world.places[id] && mayKnowPlaceV20(agent, id, world)));
   known.add(agent.homeId);
-  if (mayKnowPlaceV20(agent, agent.locationId)) known.add(agent.locationId);
+  if (mayKnowPlaceV20(agent, agent.locationId, world)) known.add(agent.locationId);
   for (const id of world.places[agent.locationId]?.connectedPlaceIds ?? []) {
     const place = world.places[id];
     // A local trail or a visible neighbour can be perceived, not a remote
     // continent merely because the observer has a global world-state object.
-    if (place && mayKnowPlaceV20(agent, id) &&
+    if (place && mayKnowPlaceV20(agent, id, world) &&
         Math.hypot(place.mapX - agent.position.x, place.mapY - agent.position.y) <= 30) known.add(id);
   }
   agent.knownPlaceIds = [...known];
@@ -29,9 +27,9 @@ export function observeLocalPlacesV20(world: Readonly<WorldState>, agent: AgentS
 
 export function sharePlaceKnowledgeV20(world: Readonly<WorldState>, speaker: Readonly<AgentState>, listener: AgentState): void {
   if (speaker.locationId !== listener.locationId || speaker.movement || listener.movement) return;
-  const known = new Set(listener.knownPlaceIds ?? []);
+  const known = new Set((listener.knownPlaceIds ?? []).filter(id => mayKnowPlaceV20(listener, id, world)));
   for (const id of speaker.knownPlaceIds ?? []) {
-    if (world.places[id] && mayKnowPlaceV20(listener, id)) known.add(id);
+    if (world.places[id] && mayKnowPlaceV20(listener, id, world)) known.add(id);
   }
   listener.knownPlaceIds = [...known];
   listener.knownDungeonIds = [...new Set([...(listener.knownDungeonIds ?? []), ...(speaker.knownDungeonIds ?? [])])];
@@ -52,7 +50,7 @@ export function removeUnsurveyedHomelandLinksV20(world: WorldState): void {
   }
   for (const agent of Object.values(world.agents)) {
     if (!agent.knownPlaceIds) observeLocalPlacesV20(world, agent);
-    else agent.knownPlaceIds = agent.knownPlaceIds.filter(id => world.places[id] && mayKnowPlaceV20(agent, id));
+    else agent.knownPlaceIds = agent.knownPlaceIds.filter(id => world.places[id] && mayKnowPlaceV20(agent, id, world));
   }
 }
 

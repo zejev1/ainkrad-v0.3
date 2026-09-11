@@ -1,3 +1,4 @@
+import { isSecretLibrary, libraryAdmissions } from '../v21/LibraryAdmissions';
 import type {
   AgentActionKind,
   AgentRace,
@@ -483,11 +484,12 @@ export function inspectPlaceV16(
   const place = world.places[placeId];
   if (!place) return undefined;
   const secretLibrary =
-    place.id === SECRET_LIBRARY_PLACE_ID_V18
+    isSecretLibrary(place.id)
       ? world.v18?.secretLibrary
       : undefined;
+  const activeVisitors = libraryAdmissions(world, place.id);
   const residents = Object.values(world.agents).filter(
-    (agent) => agent.life.alive && agent.locationId === place.id,
+    (agent) => agent.life.alive && !agent.movement && agent.locationId === place.id,
   );
   const wildlife = Object.values(world.wildlife).filter(
     (population) => population.habitatId === place.id && population.count > 0,
@@ -538,7 +540,7 @@ export function inspectPlaceV16(
     kind: 'place',
     title: place.name,
     subtitle: secretLibrary
-      ? 'независимое место рядом с Айнкрадом'
+      ? (place.id === SECRET_LIBRARY_PLACE_ID_V18 ? 'независимое место рядом с Айнкрадом' : 'тайная библиотека эльфов')
       : settlement
       ? `${settlement.kind === 'city' ? 'город' : 'поселение'} ${settlement.name}`
       : biomeLabels[place.biome],
@@ -573,20 +575,24 @@ export function inspectPlaceV16(
                 {
                   label: 'Состояние',
                   value:
-                    secretLibrary.status === 'open'
+                    activeVisitors.length > 0
                       ? 'открыта для выбранных посетителей'
                       : secretLibrary.status === 'waiting'
                         ? 'ожидает первого годового отбора'
                         : 'годовое окно закрыто',
                 },
                 {
-                  label: 'Год и лимит',
-                  value: `${secretLibrary.currentAccessYear || '—'} · ${secretLibrary.visitors.length}/${SECRET_LIBRARY_MAX_VISITORS_PER_YEAR_V18}`,
+                  label: 'Год и действующие допуски',
+                  value: `${secretLibrary.currentAccessYear || '—'} · ${activeVisitors.length}/${SECRET_LIBRARY_MAX_VISITORS_PER_YEAR_V18}`,
+                },
+                {
+                  label: 'Выбрано за год',
+                  value: `${secretLibrary.annualSelections?.[place.id]?.agentIds.length ?? 0}/5`,
                 },
                 {
                   label: 'Посетители',
                   value: secretLibrary.visitors.length > 0
-                    ? secretLibrary.visitors
+                    ? activeVisitors
                         .map((visitor) =>
                           `${agentName(world, visitor.agentId)} — ${visitor.status}`,
                         )
@@ -599,7 +605,7 @@ export function inspectPlaceV16(
                 },
                 {
                   label: 'Усвоено жителями',
-                  value: String(secretLibrary.totalKnowledgeRecords),
+                  value: String(Object.entries(secretLibrary.knowledgeByAgentId).filter(([id]) => (world.agents[id]?.race ?? 'human') === (place.id === 'elf_library_v20' ? 'elf' : 'human')).reduce((n, [, records]) => n + records.length, 0)),
                 },
                 {
                   label: 'Внешний источник',
@@ -607,7 +613,7 @@ export function inspectPlaceV16(
                 },
                 {
                   label: 'Якорь',
-                  value: `${world.places[secretLibrary.anchorPlaceId]?.name ?? secretLibrary.anchorPlaceId} · (${secretLibrary.anchorMapX.toFixed(1)}, ${secretLibrary.anchorMapY.toFixed(1)})`,
+                  value: `${place.name} · (${place.mapX.toFixed(2)}, ${place.mapY.toFixed(2)})`,
                 },
               ],
             },

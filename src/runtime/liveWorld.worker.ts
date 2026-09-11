@@ -33,7 +33,7 @@ const DIVINE_AUDIENCE_CHANNEL_NAME = 'ainkrad-v0-3-divine-audience';
 const STORAGE_CHECK_INTERVAL_TICKS = 300;
 const AINKRAD_STORAGE_SOFT_BUDGET_BYTES = 2 * 1024 * 1024 * 1024;
 const AINKRAD_STORAGE_CRITICAL_BUDGET_BYTES = 4 * 1024 * 1024 * 1024;
-const FRAME_PROTOCOL_VERSION = 'ainkrad-live-frame-0.3.21-hotfix.1';
+const FRAME_PROTOCOL_VERSION = 'ainkrad-live-frame-0.3.21-hotfix.2';
 const COMPATIBLE_FRAME_PROTOCOLS = new Set([FRAME_PROTOCOL_VERSION]);
 
 // Test disturbances never run automatically in the persistent live world.
@@ -727,7 +727,8 @@ void start().catch((error: unknown) => {
     protocolVersion: FRAME_PROTOCOL_VERSION,
     message:
       error instanceof Error
-        ? error.message
+        ? `${error.name}: ${error.message}\n` +
+          (activeRuntime?.storageDiagnostics(self.location.origin) ?? `Ошибка загрузки сохранения. Адрес: ${self.location.origin}`)
         : 'Unknown live-world error.',
   } as const;
   console.error('[Ainkrad live world] Worker stopped.', error);

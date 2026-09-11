@@ -1,0 +1,39 @@
+{
+  "release": "0.3.21-hotfix.2",
+  "status": "passed",
+  "base_commit": "cfbf8f7938efd373fd5b67db6645847f315420e3",
+  "tested_commit": "37ab21605e9131f5d04a11464cb6db054afe7ff4",
+  "ci_run": "34611144064",
+  "environment": {
+    "node": "v22.23.2",
+    "execution_and_read_write": "passed"
+  },
+  "gates": {
+    "typecheck": "passed",
+    "tests": {
+      "passed": 241,
+      "failed": 0,
+      "total": 241
+    },
+    "production_build": "passed"
+  },
+  "review": "docs/V0_3_21_FIX2_REVIEW.md",
+  "protected": {
+    "main_unchanged": true,
+    "draft_pr_not_merged": true,
+    "no_deployment": true,
+    "cardinal_and_gateway_sources_unchanged": true
+  },
+  "delivery": {
+    "branch": "main",
+    "head": "cfbf8f7938efd373fd5b67db6645847f315420e3",
+    "changes": "uncommitted",
+    "git_email": "zejev1@users.noreply.github.com"
+  },
+  "limitations": [
+    "No real Android or Xbox run",
+    "No reproduction of the supplied acceleration error without its stack/save",
+    "Different origins retain separate worlds",
+    "Three same-database backups cannot survive deletion of all browser site data"
+  ]
+}

@@ -1,7 +1,9 @@
+import { worldStorageDiagnostics } from './persistence/WorldSaveSafety';
+import { createSettlementPicker } from './presentation/SettlementPicker';
 import { WorldMapCamera, clipMapSegment, clipMapPolygon, MAX_VISIBLE_PLACES, MAX_VISIBLE_RESIDENTS } from './presentation/WorldMapCamera';
 import { mapDetail, mapScaleBar, mapEntityDepth, placeDrawing } from './presentation/WorldMapVisuals';
 import { residentLearningSummary } from './presentation/ResidentLearningView';
-import { townMapFocus, residentMapFocus } from './presentation/WorldMapFocus';
+import { townMapFocus, residentMapFocus, settlementMapFocus } from './presentation/WorldMapFocus';
 import { createWorldMapProjection } from './presentation/WorldMapProjection';
 import { GIFT_CATALOG_V20 } from './v20/DivineGiftsV20';
 import './browser.css';
@@ -334,7 +336,7 @@ app.innerHTML = `
   <div class="ainkrad-app">
     <header class="world-header">
       <div>
-        <p class="eyebrow">AINKRAD v0.3.21.1 · видимые жители · путь к Underworld</p>
+        <p class="eyebrow">AINKRAD v0.3.21.2 · видимые жители · путь к Underworld</p>
         <h1 id="world-title">Мир · уровень 1</h1>
         <p class="world-subtitle">Время регулируется снаружи. Жители сами расширяют карту и проживают поколения.</p>
       </div>
@@ -356,6 +358,7 @@ app.innerHTML = `
       <span>Монстры <strong id="monster-value">0</strong></span>
       <span>Ресурсы <strong id="resource-value">—</strong></span>
       <span class="save-state">Состояние <strong id="save-value">Загрузка…</strong></span>
+      <details><summary>Данные сохранения</summary><pre id="world-storage-details" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre></details>
     </div>
 
     <section class="external-clock" aria-label="Внешнее управление скоростью мира">
@@ -396,6 +399,7 @@ app.innerHTML = `
             <span id="map-time-value">Рассвет · Весна</span>
             <button id="map-zoom-out" type="button" aria-label="Уменьшить карту">−</button>
             <button id="map-zoom-fit" type="button" aria-label="Показать всю карту">100%</button>
+            <span id="settlement-picker"></span>
             <button id="map-city-focus" type="button">Город</button>
             <button id="map-resident-focus" type="button" aria-label="Найти выбранного жителя на карте">Житель</button>
           <button id="map-zoom-in" type="button" aria-label="Увеличить карту">+</button>
@@ -684,6 +688,11 @@ const requiredElement = <T extends Element>(id: string): T => {
   return element as unknown as T;
 };
 
+const settlementPicker = createSettlementPicker(requiredElement<HTMLElement>('settlement-picker'), id => {
+  if (!lastFrame) return;
+  const focus = settlementMapFocus(lastFrame.world, id, mapCamera.width, mapCamera.height);
+  if (focus) { mapCamera.x = focus.x; mapCamera.y = focus.y; setMapZoom(focus.pixelsPerUnit / 100); }
+});
 const worldMap = requiredElement<HTMLElement>('world-map');
 const worldMapStage = requiredElement<HTMLElement>('world-map-stage');
 const worldMapViewport = requiredElement<HTMLElement>('world-map-viewport');
@@ -2605,6 +2614,7 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
       .join(' · ');
   }
   updateWorldTime(frame);
+  settlementPicker.update(frame.world);
   if (frame.clock) {
     preferredSpeedId = frame.clock.speedId;
     preferredSpeedMultiplier = frame.clock.multiplier;
@@ -2621,10 +2631,10 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
   }
   updateOfflineClockContinuity(frame);
 
+  requiredElement<HTMLElement>('world-storage-details').textContent = worldStorageDiagnostics(frame.world, location.origin);
   if (frame.continuity.durable) {
-    saveValue.textContent = frame.continuity.resumed
-      ? `Продолжен: ${formatAinkradWorldTime(frame.continuity.resumedFromWorldMinutes)}`
-      : 'Сохраняется';
+    saveValue.textContent = `Сохранён: ${formatAinkradWorldTime(frame.world.calendar.elapsedWorldMinutes)}`;
+    saveValue.title = frame.continuity.resumed ? `Загружен с ${formatAinkradWorldTime(frame.continuity.resumedFromWorldMinutes)}` : 'Новый мир';
     saveValue.classList.add('is-saved');
   } else {
     saveValue.textContent = 'Только сеанс';

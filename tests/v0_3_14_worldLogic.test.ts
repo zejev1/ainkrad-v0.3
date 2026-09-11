@@ -37,7 +37,9 @@ describe('v0.3.14 Underworld-style substrate audit', () => {
     expect(d(workshop)).toBeLessThan(4);
     expect(d(field)).toBeGreaterThan(d(workshop));
     expect(d(field)).toBeLessThan(8);
-    expect(d(outskirts)).toBeGreaterThan(d(field));
+    expect(d(outskirts)).toBeLessThan(d(field));
+    expect(d(outskirts)).toBeGreaterThan(frame.world.settlements.settlement_ainkrad.radius);
+    expect(d(outskirts)).toBeLessThan(2);
   });
 
   it('migrates a critically small existing world without a hidden population rescue cohort', async () => {

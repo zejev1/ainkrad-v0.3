@@ -1,6 +1,6 @@
 {
   "name": "ainkrad-v0-3",
-  "version": "0.3.21-hotfix.1",
+  "version": "0.3.21-hotfix.2",
   "private": true,
   "description": "Experimental autonomous world for developing and testing Cardinal.",
   "type": "module",
@@ -21,6 +21,7 @@
     "vite": "7.0.4",
     "tsx": "4.19.3",
     "typescript": "5.8.3",
-    "vitest": "3.1.1"
+    "vitest": "3.1.1",
+    "fake-indexeddb": "6.2.2"
   }
 }

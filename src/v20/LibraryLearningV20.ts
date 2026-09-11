@@ -1,21 +1,24 @@
+import { rebuildWorldRoutes } from '../world/WorldNavigation';
 import type { WorldState, AgentState } from '../world/types';
 import type { SecretLibraryStudyMaterialV18 } from '../v18/SecretLibraryV18';
 import { ELF_LIBRARY_ID_V20 } from './KnowledgeBoundariesV20';
 import { compactLibraryPlot } from '../world/SettlementLibraryLayout';
 
-export function ensureElfLibraryV20(world: WorldState): void {
+export function ensureElfLibraryV20(world: WorldState): boolean {
   const center = world.places.settlement_elf_homeland;
   const model = world.places.secret_library_v18;
-  if (!center || !model || world.places[ELF_LIBRARY_ID_V20]) return;
+  if (!center || !model || world.places[ELF_LIBRARY_ID_V20]) return false;
   const plot = compactLibraryPlot(world.places, {x: center.mapX, y: center.mapY}, ELF_LIBRARY_ID_V20);
-  if (!plot) return;
+  if (!plot) return false;
   world.places[ELF_LIBRARY_ID_V20] = {
     ...structuredClone(model), id: ELF_LIBRARY_ID_V20, name: 'Дом памяти эльфов',
-    mapX: plot.x, mapY: plot.y, urbanLayoutVersion: 1,
+    mapX: plot.x, mapY: plot.y, urbanLayoutVersion: 2, capacity: 5,
     settlementId: center.id, connectedPlaceIds: [center.id],
     discoveredAt: world.now,
   };
   center.connectedPlaceIds.push(ELF_LIBRARY_ID_V20);
+  world.routes = rebuildWorldRoutes(world.places, world.routes);
+  return true;
 }
 
 const SAGES = [

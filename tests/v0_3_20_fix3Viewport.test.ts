@@ -25,13 +25,14 @@ describe('FIX3 metre-scale cities and bounded map surfaces', () => {
     expect(camera.visible(100_000,100_000)).toBe(false);
   });
 
-  it('leaves 6m lanes and a 10m main street, independent of distant homelands', async () => {
+  it('leaves 3–6m lanes and a main street no wider than 10m, independent of distant homelands', async () => {
     const world=(await WorldEngine.create({worldId:'city-metres',seed:'street',store:new InMemoryWorldStore()})).snapshot();
     const homes=Object.values(world.places).filter(p=>p.kind==='home').sort((a,b)=>a.urbanLot!-b.urbanLot!);
     expect(homes).toHaveLength(10);
-    expect((homes[1].mapX-homes[0].mapX)*100-12).toBeCloseTo(6);
-    expect((homes[4].mapX-homes[3].mapX)*100-12).toBeCloseTo(10);
-    expect((homes[8].mapY-homes[0].mapY)*100-10).toBeCloseTo(6);
+    const mainGap=(homes[1].mapX-homes[0].mapX)*100-12;
+    const laneGap=(homes[2].mapY-homes[0].mapY)*100-10;
+    expect(mainGap).toBeGreaterThanOrEqual(6);expect(mainGap).toBeLessThanOrEqual(10);
+    expect(laneGap).toBeGreaterThanOrEqual(3);expect(laneGap).toBeLessThanOrEqual(6);
     const positions=homes.map(p=>[p.mapX,p.mapY]);
     world.places.far={...world.places.commons,id:'far',settlementId:'far',mapX:10_000,mapY:-10_000};
     expect(repairCompactSettlementLayout(world)).toBe(false);

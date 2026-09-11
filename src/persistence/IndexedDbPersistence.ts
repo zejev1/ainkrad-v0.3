@@ -1,3 +1,5 @@
+import { validateWorldSave, missingWorldRecord } from './WorldSaveSafety';
+import { checkpointWorld, putWorldIdentity, RECOVERY_STORE, IDENTITY_STORE, type WorldIdentity } from './IndexedDbRecovery';
 import { stableJsonStringify } from '../core/stableJson';
 import type { WorldEvent } from '../world/events';
 import type { MemoryRecord, WorldState } from '../world/types';
@@ -11,7 +13,7 @@ import { WorldRevisionConflictError } from '../world/persistence';
 import type { AppendOnlyLog } from './AppendOnlyLog';
 import { AppendOnlyLogConflictError } from './AppendOnlyLog';
 
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 const TICK_OPERATION_RETENTION = 2_048;
 const TICK_OPERATION_PRUNE_INTERVAL = 300;
 const MAX_TICK_OPERATION_PRUNE_PER_PASS = 4_096;
@@ -105,7 +107,7 @@ function requestResult<T>(request: IDBRequest<T>): Promise<T> {
 }
 
 function transactionComplete(transaction: IDBTransaction): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
+  const completion = new Promise<void>((resolve, reject) => {
     transaction.addEventListener('complete', () => resolve(), { once: true });
     transaction.addEventListener(
       'abort',
@@ -118,6 +120,9 @@ function transactionComplete(transaction: IDBTransaction): Promise<void> {
       { once: true },
     );
   });
+  // A request can reject before the caller reaches its transaction await.
+  void completion.catch(() => undefined);
+  return completion;
 }
 
 async function abortTransaction(
@@ -149,6 +154,8 @@ function openDatabase(name: string): Promise<IDBDatabase> {
 
     request.addEventListener('upgradeneeded', () => {
       const database = request.result;
+      if (!database.objectStoreNames.contains(RECOVERY_STORE)) database.createObjectStore(RECOVERY_STORE, {keyPath:'key'});
+      if (!database.objectStoreNames.contains(IDENTITY_STORE)) database.createObjectStore(IDENTITY_STORE, {keyPath:'id'});
 
       if (!database.objectStoreNames.contains(STORES.worlds)) {
         database.createObjectStore(STORES.worlds, { keyPath: 'id' });
@@ -294,19 +301,22 @@ export class IndexedDbWorldStore implements WorldStore {
     }
 
     const database = await this.database;
-    const transaction = database.transaction(STORES.worlds, 'readwrite');
+    const transaction = database.transaction([STORES.worlds, IDENTITY_STORE, STORES.events], 'readwrite');
     const completion = transactionComplete(transaction);
     const worlds = transaction.objectStore(STORES.worlds);
 
     try {
-      const existing = (await requestResult(
-        worlds.get(state.id),
-      )) as WorldState | undefined;
-
-      if (existing) {
+      validateWorldSave(state, state.id);
+      const [existing, identity, evidence] = await Promise.all([requestResult(worlds.get(state.id)),
+        requestResult(transaction.objectStore(IDENTITY_STORE).get(state.id)),
+        requestResult(transaction.objectStore(STORES.events).index(INDEXES.eventWorldTime).getKey(worldTimeRange(state.id)))]);
+      if (existing !== undefined) {
+        validateWorldSave(existing, state.id);
         assertSame('World initialization', state.id, existing, state);
       } else {
+        if (identity !== undefined || evidence !== undefined) missingWorldRecord(state.id);
         worlds.add(structuredClone(state));
+        putWorldIdentity(transaction, state);
       }
 
       await completion;
@@ -318,13 +328,26 @@ export class IndexedDbWorldStore implements WorldStore {
 
   async loadWorld(worldId: string): Promise<WorldState | undefined> {
     const database = await this.database;
-    const transaction = database.transaction(STORES.worlds, 'readonly');
+    const transaction = database.transaction([STORES.worlds, IDENTITY_STORE, STORES.events], 'readonly');
     const completion = transactionComplete(transaction);
-    const state = (await requestResult(
-      transaction.objectStore(STORES.worlds).get(worldId),
-    )) as WorldState | undefined;
-    await completion;
-    return state ? structuredClone(state) : undefined;
+    try {
+      const [state,identity,evidence] = await Promise.all([
+        requestResult(transaction.objectStore(STORES.worlds).get(worldId)),
+        requestResult(transaction.objectStore(IDENTITY_STORE).get(worldId)),
+        requestResult(transaction.objectStore(STORES.events).index(INDEXES.eventWorldTime).getKey(worldTimeRange(worldId))),
+      ]);
+      await completion;
+      if (state === undefined) {
+        if (identity !== undefined || evidence !== undefined) missingWorldRecord(worldId);
+        return undefined;
+      }
+      validateWorldSave(state,worldId);
+      return structuredClone(state);
+    } catch(error) { await abortTransaction(transaction,completion);throw error; }
+  }
+
+  async checkpointWorld(worldId:string, expectedRevision:number, reason:string):Promise<void> {
+    await checkpointWorld(await this.database,worldId,expectedRevision,reason);
   }
 
   async committedOperation(
@@ -386,7 +409,7 @@ export class IndexedDbWorldStore implements WorldStore {
 
     const database = await this.database;
     const transaction = database.transaction(
-      [STORES.worlds, STORES.operations, STORES.events, STORES.memories],
+      [STORES.worlds, STORES.operations, STORES.events, STORES.memories, IDENTITY_STORE],
       'readwrite',
     );
     const completion = transactionComplete(transaction);
@@ -397,7 +420,7 @@ export class IndexedDbWorldStore implements WorldStore {
     const opKey = operationKey(batch.worldId, batch.operationId);
 
     try {
-      const [prior, current, existingEvents, existingMemories] =
+      const [prior, current, existingEvents, existingMemories, identity] =
         await Promise.all([
           requestResult(operations.get(opKey)) as Promise<
             StoredOperation | undefined
@@ -417,6 +440,7 @@ export class IndexedDbWorldStore implements WorldStore {
               ),
             ),
           ),
+          requestResult(transaction.objectStore(IDENTITY_STORE).get(batch.worldId)) as Promise<WorldIdentity|undefined>,
         ]);
 
       if (prior) {
@@ -480,7 +504,9 @@ export class IndexedDbWorldStore implements WorldStore {
         committedRevision: nextState.revision,
       };
 
+      validateWorldSave(nextState, batch.worldId);
       worlds.put(nextState);
+      putWorldIdentity(transaction, nextState, identity);
       operations.add({ ...operation, key: opKey } satisfies StoredOperation);
       await completion;
 

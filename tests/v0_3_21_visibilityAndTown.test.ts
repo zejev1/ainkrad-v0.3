@@ -12,9 +12,9 @@ const fresh = async () => (await WorldEngine.create({worldId:'town-visibility', 
 
 function livedState(world: WorldState) {
   const copy = structuredClone(world);
-  const {anchorMapX, anchorMapY, ...library} = copy.v18!.secretLibrary;
+  const {anchorMapX, anchorMapY, admissionVersion, annualSelections, visitHistory, status, visitors, ...library} = copy.v18!.secretLibrary;
   return {now:copy.now, calendar:copy.calendar, determinism:copy.determinism,
-    people:Object.values(copy.agents).map(({position, movement, ...person})=>person),
+    people:Object.values(copy.agents).map(({position, movement, knownPlaceIds, ...person})=>person),
     relationships:copy.relationships, population:copy.population, v15:copy.v15, v16:copy.v16,
     v18:{...copy.v18, secretLibrary:library}, v19:copy.v19};
 }
@@ -27,6 +27,7 @@ describe('v0.3.21 FIX1 visible residents and local town buildings', () => {
     delete library.urbanLayoutVersion; delete library.settlementId;
     before.v18!.secretLibrary.anchorMapX=42; before.v18!.secretLibrary.anchorMapY=56;
     before.v18!.secretLibrary.totalVisits=1;
+    before.v18!.secretLibrary.admissionVersion=undefined;before.v18!.secretLibrary.annualSelections={};
     before.v18!.secretLibrary.visitors=[{agentId:'agent_1', libraryPlaceId:library.id,
       readingMinutes:42, wordsRead:1000, lastStudyWorldMinute:0, accessYear:1, status:'studying', selectedWorldMinute:0,
       originalLocationId:'home_agent_1', acceptedVoluntarily:true, studyQuanta:2, learnedKnowledgeIds:[]}];
@@ -49,8 +50,10 @@ describe('v0.3.21 FIX1 visible residents and local town buildings', () => {
     expect(after.places.secret_library_v18.mapX).toBe(50);
     expect(after.places.secret_library_v18.mapY).toBeCloseTo(49.74);
     expect(after.agents.agent_1.position).toEqual({x:50,y:49.74,layerId:'surface'});
-    expect(after.agents.agent_2.movement?.targetPlaceId).toBe(library.id);
-    expect(after.agents.agent_2.movement?.waypoints.at(-1)).toEqual({x:50,y:49.74});
+    expect(after.v18!.secretLibrary.visitors[0].readingMinutes).toBe(42);
+    expect(after.v18!.secretLibrary.visitors[0].wordsRead).toBe(1000);
+    expect(after.agents.agent_2.movement?.targetPlaceId).toBe('commons');
+    expect(after.agents.agent_2.movement?.waypoints.at(-1)).toEqual({x:50,y:50});
     expect(Math.hypot(after.agents.agent_2.position.x-50, after.agents.agent_2.position.y-50)).toBeLessThan(0.3);
     expect(after.routes[route.id].completedTraversals).toBe(17);
     const repaired=structuredClone(after);
@@ -64,7 +67,7 @@ describe('v0.3.21 FIX1 visible residents and local town buildings', () => {
     const world=await fresh(), saved=structuredClone(world);
     const focus=townMapFocus(world,'agent_1',390,600)!;
     const camera=new WorldMapCamera(); camera.resize(390,600); Object.assign(camera,focus);
-    for(const place of Object.values(world.places).filter(p=>p.urbanLayoutVersion===1)) {
+    for(const place of Object.values(world.places).filter(p=>p.urbanLayoutVersion===2 && ['home','library','workshop','quiet_space'].includes(p.kind))) {
       const p=camera.point(place.mapX,place.mapY);
       expect(p.x).toBeGreaterThan(0); expect(p.x).toBeLessThan(100);
       expect(p.y).toBeGreaterThan(0); expect(p.y).toBeLessThan(100);

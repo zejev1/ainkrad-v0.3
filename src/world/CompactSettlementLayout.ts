@@ -1,5 +1,4 @@
-import { nextUrbanHomeLot } from './SettlementStreets';
-import { compactLibraryPlot } from './SettlementLibraryLayout';
+import { updateSettlementGeometry } from './SettlementGeometryV21';
 import { rebuildWorldRoutes } from './WorldNavigation';
 import type { WorldPoint2D, WorldState } from './types';
 
@@ -9,46 +8,9 @@ export function repairCompactSettlementLayout(world: WorldState): boolean {
   const move = (id: string, point: WorldPoint2D) => {
     const place = world.places[id];
     moved.set(id, { before: { x: place.mapX, y: place.mapY }, after: point });
-    place.mapX = point.x; place.mapY = point.y; place.urbanLayoutVersion = 1;
+    place.mapX = point.x; place.mapY = point.y; place.urbanLayoutVersion = 2;
   };
-  for (const settlement of Object.values(world.settlements)) {
-    const center = world.places[settlement.centerPlaceId];
-    if (!center) continue;
-    const origin = { x: center.mapX, y: center.mapY };
-    const members = Object.values(world.places).filter(p => p.settlementId === settlement.id);
-    let workshop = 0, garden = 0;
-    for (const place of members) {
-      if (place.kind === 'workshop') {
-        const index = workshop++;
-        if (place.urbanLayoutVersion !== 1) move(place.id, { x: origin.x + 0.26 + index * 0.22, y: origin.y - 0.16 });
-      }
-      if (place.kind === 'quiet_space') {
-        const index = garden++;
-        if (place.urbanLayoutVersion !== 1) move(place.id, { x: origin.x - 0.26 - index * 0.22, y: origin.y - 0.16 });
-      }
-    }
-    for (const home of members.filter(p => p.kind === 'home').sort((a,b) => a.id.localeCompare(b.id))) {
-      if (home.urbanLayoutVersion === 1) continue;
-      const plot = nextUrbanHomeLot(world.places, origin, settlement.id);
-      if (!plot) continue; // Keep an existing home if terrain has no safe vacant plot.
-      move(home.id, plot); home.urbanLot = plot.lot;
-    }
-  }
-  // Older metre-layout repairs omitted libraries, leaving them 360–1000m
-  // outside the town. Preserve their identities, books, visitors and access.
-  for (const place of Object.values(world.places)) {
-    if (place.kind !== 'library' || place.urbanLayoutVersion === 1) continue;
-    const library = world.v18?.secretLibrary;
-    const isHumanLibrary = place.id === library?.placeId;
-    const centerId = isHumanLibrary ? library!.anchorPlaceId :
-      world.settlements[place.settlementId ?? '']?.centerPlaceId;
-    const center = world.places[centerId ?? ''];
-    if (!center) continue;
-    const plot = compactLibraryPlot(world.places, {x: center.mapX, y: center.mapY}, place.id);
-    if (!plot) continue;
-    move(place.id, plot);
-    if (isHumanLibrary) { library!.anchorMapX = plot.x; library!.anchorMapY = plot.y; }
-  }
+  updateSettlementGeometry(world, move);
   if (!moved.size) return false;
   world.routes = rebuildWorldRoutes(world.places, world.routes);
   // Physical proximity does not transfer ownership of the secret library or
@@ -74,7 +36,11 @@ export function repairCompactSettlementLayout(world: WorldState): boolean {
       }
       continue;
     }
-    if (!moved.has(agent.locationId) && !moved.has(movement.targetPlaceId)) continue;
+    const affectedRoute = (movement.routeIds ?? []).some(id => {
+      const route = world.routes[id];
+      return !route || moved.has(route.fromPlaceId) || moved.has(route.toPlaceId);
+    });
+    if (!affectedRoute && !moved.has(agent.locationId) && !moved.has(movement.targetPlaceId)) continue;
     const from = world.places[agent.locationId], to = world.places[movement.targetPlaceId];
     const settlementId = from && localSettlement(from.id);
     if (settlementId && to && settlementId === localSettlement(to.id)) {

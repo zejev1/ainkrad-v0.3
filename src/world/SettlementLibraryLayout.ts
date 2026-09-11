@@ -1,4 +1,4 @@
-import { buildingRadius, insideWater } from './SettlementStreets';
+import { buildingRadius, insideWater, dryBuildingPlot } from './SettlementStreets';
 import type { WorldPlace, WorldPoint2D } from './types';
 
 /** A library is a 16m building in its own town, not a kilometre-wide map icon.
@@ -16,7 +16,7 @@ export function compactLibraryPlot(
     for (const column of [0, -1, 1, -2, 2, -3, 3, -4, 4]) {
       const point = { x: center.x + column * 0.22, y: center.y - 0.26 - row * 0.22 };
       const corners = [-0.08, 0.08].flatMap(x => [-0.08, 0.08].map(y => ({x: point.x + x, y: point.y + y})));
-      if ([point, ...corners].some(p => insideWater(p, water))) continue;
+      if (!dryBuildingPlot(point, 0.08, 0.08, water)) continue;
       if (buildings.some(p => Math.abs(p.mapX - point.x) < buildingRadius(p) + 0.08 + 0.06 - 1e-7 &&
         Math.abs(p.mapY - point.y) < (p.kind === 'home' ? 0.05 : buildingRadius(p)) + 0.08 + 0.06 - 1e-7)) continue;
       return point;
