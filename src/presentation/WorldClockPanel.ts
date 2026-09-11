@@ -79,6 +79,7 @@ export class WorldClockPanel {
     speedId: WorldSpeedId; multiplier: WorldSpeedMultiplier; discarded: boolean }): void {
     if (!this.continuity.acknowledge(message.clockRevision ?? 0, message, message.discarded)) return;
     this.speedId = message.speedId; this.multiplier = message.multiplier;
+    this.continuity.observeSpeed(message.speedId, message.multiplier);
     this.options.onPreference(message.speedId, message.multiplier);
     this.stop.disabled = false;
     if (message.discarded) this.options.overlay.hidden = true;
@@ -112,6 +113,7 @@ export class WorldClockPanel {
 
   update(frame: Readonly<LiveWorldFrame>): void {
     this.speedId = frame.clock.speedId; this.multiplier = frame.clock.multiplier;
+    this.continuity.observeSpeed(frame.clock.speedId, frame.clock.multiplier);
     this.continuity.observe({ worldEpoch: frame.world.epoch ?? 1,
       currentWorldMinutes: frame.world.calendar.elapsedWorldMinutes }, frame.liveTiming?.pendingWorldMinutes ?? 0);
     if (!this.checked) {

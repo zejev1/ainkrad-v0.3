@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LiveWorldRuntime } from '../src/runtime/LiveWorldRuntime';
 import { ClockContinuity } from '../src/runtime/ClockContinuity';
 import { ExternalClockCommands } from '../src/runtime/ExternalClockCommands';
@@ -12,6 +12,8 @@ import { LogBackedCardinalJournal } from '../src/cardinal/LogBackedCardinalJourn
 import { WorldEngine } from '../src/world/WorldEngine';
 import { WORLD_MINUTES_PER_YEAR as YEAR, type WorldSpeedId } from '../src/world/WorldClock';
 import { CANONICAL_WORLD_QUANTUM_MINUTES as Q } from '../src/v15/WorldTimeContract';
+
+afterEach(() => vi.restoreAllMocks());
 
 const create = (store = new InMemoryWorldStore(), controlLog = new InMemoryAppendOnlyLog()) =>
   LiveWorldRuntime.create({ worldId: 'fix4-clock', seed: 'ainkrad-browser-world', mode: 'observer',
@@ -133,7 +135,8 @@ describe('FIX4 offline continuity and cancellation', () => {
     reopened.observe(position);
     expect(reopened.restore(intent, 100_000)).toBeUndefined();
     expect(reopened.command('real_time', 1, 100_000, true).discardPending).toBe(true);
-    reopened.acknowledge(command.clockRevision, position, true);
+    expect(reopened.revision).toBeGreaterThan(command.clockRevision);
+    reopened.acknowledge(reopened.revision, position, true);
     const saved = reopened.anchor(100_000, 'real_time', 1)!;
     expect(offlineWorldMinuteTarget({ anchor: saved, currentWorldEpoch: 2,
       currentWorldMinutes: position.currentWorldMinutes, nowWallClockMs: 160_000 })).toBe(position.currentWorldMinutes + 1);
@@ -171,6 +174,17 @@ describe('FIX4 offline continuity and cancellation', () => {
     expect(target(normal)).toBe(YEAR * 27 + 1);
     clock.backgroundMode = 'selected';
     expect(target(clock.anchor(1000, 'century_per_minute', 1)!)).toBe(YEAR * 127);
+  });
+
+  it('cancels a local slowdown after the rate was raised in another tab', () => {
+    const clock = new ClockContinuity();
+    clock.observe(position);
+    clock.command('year_per_minute', 1, 1000, true);
+    clock.observeSpeed('century_per_minute', 1);
+    clock.targetWorldMinutes = YEAR * 86;
+    expect(clock.command('fifty_years_per_minute', 1, 2000).discardPending).toBe(true);
+    expect(clock.anchor(2000, 'fifty_years_per_minute', 1)!.cancelPending).toBe(true);
+    expect(clock.targetWorldMinutes).toBeUndefined();
   });
 
   it('rejects stale cross-tab requests and preserves stop when commands arrive rapidly', () => {

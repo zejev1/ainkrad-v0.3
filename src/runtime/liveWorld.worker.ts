@@ -590,6 +590,8 @@ async function runForever(): Promise<void> {
               } else {
                 pendingOfflineCatchUp = undefined;
                 catchUpTracker = undefined;
+                runtime.discardPendingLiveTime();
+                liveWallClock.reset(performance.now());
                 publishCatchUpRecovery(message, true);
                 catchUpBatchQuanta = 4;
                 catchUpBatchCeiling = 8;

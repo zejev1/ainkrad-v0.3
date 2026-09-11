@@ -22,6 +22,10 @@ export class ClockContinuity {
 
   get cancelling(): boolean { return this.cancellationPending; }
 
+  observeSpeed(speedId: WorldSpeedId, multiplier: WorldSpeedMultiplier): void {
+    this.speed = { speedId, multiplier };
+  }
+
   observe(position: ClockPosition, pending = 0): void {
     if (this.position && this.position.worldEpoch !== position.worldEpoch) {
       this.targetWorldMinutes = undefined;
@@ -48,7 +52,7 @@ export class ClockContinuity {
     const lower = this.speed && worldMinutesPerTick(speedId, multiplier) <
       worldMinutesPerTick(this.speed.speedId, this.speed.multiplier);
     const discardPending = this.cancellationPending || (!initial && (Boolean(lower) || speedId === 'real_time'));
-    if (!initial) this.revision = Math.max(Math.ceil(now), this.revision + 1);
+    if (!initial || this.cancellationPending) this.revision = Math.max(Math.ceil(now), this.revision + 1);
     this.speed = { speedId, multiplier };
     if (discardPending) {
       this.targetWorldMinutes = undefined;

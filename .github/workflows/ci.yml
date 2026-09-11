@@ -43,10 +43,16 @@ jobs:
           git worktree add --detach "$RUNNER_TEMP/ainkrad-base" d2a3463540e5b931847f2b09980ea6df6b16b884
           ln -s "$GITHUB_WORKSPACE/node_modules" "$RUNNER_TEMP/ainkrad-base/node_modules"
           npx --no-install tsx scripts/benchmark-catchup.ts "$RUNNER_TEMP/ainkrad-base" d2a3463540e5b931847f2b09980ea6df6b16b884
-      - name: Upload verification report
+      - name: Audit and prepare SPCK checkout
+        id: package
+        if: github.event_name == 'pull_request' && github.head_ref == 'work/ainkrad-v021-fix2'
+        run: node scripts/package-spck.mjs
+      - name: Upload SPCK ZIP
+        if: github.event_name == 'pull_request' && github.head_ref == 'work/ainkrad-v021-fix2'
         uses: actions/upload-artifact@v4
         with:
-          name: AinkradFix4Checks
-          path: ${{ runner.temp }}/ainkrad-fix4-benchmark.json
+          name: Ainkrad21Fix4
+          path: ${{ steps.package.outputs.directory }}
+          include-hidden-files: true
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30

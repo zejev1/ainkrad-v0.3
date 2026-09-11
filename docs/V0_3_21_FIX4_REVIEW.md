@@ -40,6 +40,7 @@ No deployment or actual-device verification is part of this audit.
 ## Limits
 100 world years per real minute is a requested ceiling. A device cannot guarantee it for an arbitrarily complex autonomous world.
 The browser cannot run a persistent server while closed. Accelerated offline progression is an explicit option that necessarily requires computation on return.
+The owner also supplied four settlement-map references during this work; their design direction is recorded separately in SETTLEMENT_VISUAL_REFERENCES.md. No additional layout migration is included in FIX4.
 A stop takes effect after the current atomic batch. A slow browser snapshot or transaction cannot be preempted midway without risking continuity.
 The original browser save was not supplied; synthetic compatible saves and the published code are tested.
 Different origins retain separate browser worlds. Data deleted from all browser storage cannot be reconstructed without a surviving backup.
