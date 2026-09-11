@@ -1,4 +1,9 @@
 {
   "buildCommand": "npm run check && npm run build",
-  "outputDirectory": "dist"
+  "outputDirectory": "dist",
+  "git": {
+    "deploymentEnabled": {
+      "work/ainkrad-v021-fix2": false
+    }
+  }
 }
