@@ -19,8 +19,8 @@ The CI regression runs the published base in a detached checkout, starts epoch 2
 - Migration retains the current ID, epoch, calendar, population, deaths, lineage, memories, RNG, relationships, personality, learning and cultural evidence. A pre-migration snapshot is required by the existing persistence path before the repaired revision can commit. Backup failure leaves the original record intact.
 - Existing ocean geometry and explicit boat routes are retained. No implicit walking connection to water is created. Route traversal counters remain intact.
 - A second open is idempotent: no repeated repair, clock advance or accumulating backups. The existing limit of three recovery snapshots remains unchanged.
-- Unrelated missing places still fail strict validation; the repair does not hide errors or create a replacement world.
-- The live x1/x10 clock and bounded offline catch-up continue across shoreline discovery, reload and further acceleration. IndexedDB regression retains nonzero Cardinal experience and append-only journal records.
+- The older unsurveyed-homeland cleanup used to drop every missing target, masking unrelated corruption during open. It now keeps unknown dangling edges for strict validation while still removing actual unsurveyed inter-homeland shortcuts. The repair does not hide errors or create a replacement world.
+- The live x1/x10 clock and bounded offline catch-up continue across shoreline discovery, reload and further acceleration. IndexedDB regression retains nonzero Cardinal experience and append-only journal records. It compares experience against the durable journal: a pre-reload display can lag behind completed catch-up evaluations.
 - Cardinal, Gateway, persistence algorithms, resident learning, library admissions, settlement geometry, settlement selection, viewport culling and canvas limits are unchanged. The full existing architecture and regression suite remains required.
 - WorldEngine contains only the necessary integration; its total size decreases. Browser and worker changes only identify this software version. The worker frame protocol is not a save key and is not blamed for this failure.
 

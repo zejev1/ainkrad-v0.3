@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { InMemoryAppendOnlyLog } from '../src/persistence/AppendOnlyLog';
+import { LogBackedCardinalJournal } from '../src/cardinal/LogBackedCardinalJournal';
 import { createIndexedDbPersistence } from '../src/persistence/IndexedDbPersistence';
 import { RECOVERY_STORE, type WorldRecovery } from '../src/persistence/IndexedDbRecovery';
 import { LiveWorldRuntime } from '../src/runtime/LiveWorldRuntime';
@@ -192,13 +193,17 @@ describe('FIX3 founding sea after a new epoch and accelerated continuation', () 
     await rows(dbName, 'worlds', s => s.put(old));
     const journal = await rows(dbName, 'stream_records');
     expect(journal.length).toBeGreaterThan(0);
+    const recordedEvaluations = await new LogBackedCardinalJournal(bundle.controlLog).evaluations(worldId);
+    const recordedExperience = Math.max(...recordedEvaluations.map(e => e.experience?.totalExperience ?? 0));
+    expect(recordedExperience).toBeGreaterThan(0);
     const restored = await LiveWorldRuntime.create(options);
     expect(life(restored.worldSnapshot())).toEqual(life(old));
     expect(await rows(dbName, 'stream_records')).toEqual(journal);
     const backups = await rows(dbName, RECOVERY_STORE) as WorldRecovery[];
     expect(backups.some(b => b.state.revision === old.revision && JSON.stringify(b.state) === JSON.stringify(old))).toBe(true);
     const resumed = await restored.tick(0);
-    expect(resumed.evaluation!.experience.totalExperience).toBe(frame.evaluation!.experience.totalExperience);
+    expect(resumed.evaluation!.experience.totalExperience).toBe(recordedExperience);
+    expect(await rows(dbName, 'stream_records')).toEqual(journal);
     await catchUp(restored, 3 * YEAR);
     expect(restored.worldSnapshot().places.shore).toBeDefined();
     expect(restored.worldSnapshot().epoch).toBe(2);

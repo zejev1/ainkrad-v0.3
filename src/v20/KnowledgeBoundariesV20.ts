@@ -39,7 +39,9 @@ export function removeUnsurveyedHomelandLinksV20(world: WorldState): void {
   for (const place of Object.values(world.places)) {
     place.connectedPlaceIds = place.connectedPlaceIds.filter(id => {
       const target = world.places[id];
-      if (!target) return false;
+      // An absent target is corruption, not evidence of an unsurveyed homeland.
+      // Keep the edge so strict world validation can report it without erasing history.
+      if (!target) return true;
       const distance = Math.hypot(place.mapX - target.mapX, place.mapY - target.mapY);
       const crossesHomeland = (place.id.endsWith('_homeland') || target.id.endsWith('_homeland')) && place.settlementId !== target.settlementId;
       return !crossesHomeland || distance <= 30;
