@@ -1,3 +1,4 @@
+import type { WorldTimeExecution } from '../world/WorldTimeExecution';
 import { LiveAccelerationBudget, MAX_LIVE_PENDING_MINUTES } from './LiveAccelerationBudget';
 import { worldStorageDiagnostics } from '../persistence/WorldSaveSafety';
 import { CardinalAuditor } from '../cardinal/CardinalAuditor';
@@ -488,7 +489,10 @@ function buildWorldHealthForConsole(
 export class LiveWorldRuntime {
   private currentTechnicalTick: number;
   private displayedEvaluation?: CardinalEvaluation;
-  private responsiveQuanta = 1;
+  private responsiveQuanta = 4;
+  private execution?: WorldTimeExecution;
+
+  setCooperativeExecution(execution: WorldTimeExecution): void { this.execution = execution; }
   private readonly liveBudget: LiveAccelerationBudget;
   private liveMeasuredMilliseconds = 0;
   private liveMeasuredWorldMinutes = 0;
@@ -906,8 +910,8 @@ export class LiveWorldRuntime {
       this.liveBudget.consume(before, before + processed, budgetToken);
       this.liveMeasuredWorldMinutes += processed;
       const elapsed = performance.now() - started;
-      if (processed > 0) this.responsiveQuanta = Math.max(1, Math.min(8,
-        Math.ceil(processed / CANONICAL_WORLD_QUANTUM_MINUTES * 80 / Math.max(1, elapsed))));
+      if (processed > 0) this.responsiveQuanta = Math.max(4, Math.min(8,
+        Math.ceil(processed / CANONICAL_WORLD_QUANTUM_MINUTES * 350 / Math.max(1, elapsed))));
     }
     if (frame) frame.liveTiming = this.liveTiming();
     return frame;
@@ -918,6 +922,7 @@ export class LiveWorldRuntime {
   }
 
   private async runTick(overrideWorldMinutes: number | undefined, emitFrame: boolean): Promise<LiveWorldFrame | undefined> {
+    const budgetToken = this.liveBudget.token;
     const tick = Math.max(
       this.currentTechnicalTick + 1,
       this.world.runtimeStateView().now + 1,
@@ -1033,17 +1038,17 @@ export class LiveWorldRuntime {
       const targetWorldMinutes =
         beforeQuantum.calendar.elapsedWorldMinutes + chunkWorldMinutes;
 
-      await this.world.advanceCanonicalTimeTo(targetWorldMinutes);
+      await this.world.advanceCanonicalTimeTo(targetWorldMinutes, this.execution);
       remainingWorldMinutes = Math.max(
         0,
-        remainingWorldMinutes - chunkWorldMinutes,
+        remainingWorldMinutes - (this.world.runtimeStateView().calendar.elapsedWorldMinutes - beforeQuantum.calendar.elapsedWorldMinutes),
       );
 
       const afterQuantum = this.world.runtimeStateView();
       const quantumAdvanced =
         (afterQuantum.v15?.simulationClock.quantumIndex ?? afterQuantum.now) >
         (beforeQuantum.v15?.simulationClock.quantumIndex ?? beforeQuantum.now);
-      if (!quantumAdvanced) continue;
+      if (!quantumAdvanced) { if (this.execution?.shouldStop()) break; continue; }
 
       const deathOccurred =
         afterQuantum.population.deaths > beforeQuantum.population.deaths;
@@ -1070,6 +1075,7 @@ export class LiveWorldRuntime {
       if (opportunity.worldAuthority) {
         worldAuthority = opportunity.worldAuthority;
       }
+      if (this.execution?.shouldStop() || budgetToken !== this.liveBudget.token) break;
     }
 
     this.currentTechnicalTick = tick;
@@ -1195,7 +1201,7 @@ export class LiveWorldRuntime {
       targetWorldMinutes,
       fromWorldMinutes + quantaInBatch * quantum - (clock?.pendingWorldMinutes ?? 0),
     );
-    await this.world.advanceCanonicalTimeTo(batchTarget);
+    await this.world.advanceCanonicalTimeTo(batchTarget, this.execution);
     const after = this.world.runtimeStateView();
     const populationChanged =
       after.population.births !== before.population.births ||

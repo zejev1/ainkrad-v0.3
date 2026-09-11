@@ -18,5 +18,5 @@ export function missingWorldRecord(worldId:string): never {
   throw new WorldPersistenceError('missing_record',`Запись мира ${worldId} отсутствует, но найдены следы предыдущего мира. Новый мир не создан; требуется проверка резервных копий.`);
 }
 export function worldStorageDiagnostics(world: Readonly<WorldState>, origin: string): string {
-  return `Адрес хранилища: ${origin}\nМир: ${world.id}\nЭпоха: ${world.epoch ?? 1}; ревизия: ${world.revision}\nИгровые минуты: ${world.calendar.elapsedWorldMinutes}\nВерсия правил: ${world.rulesVersion}\nСохранения разных адресов сайта хранятся раздельно.`;
+  return `Адрес хранилища: ${origin}\nМир: ${world.id}\nЭпоха: ${world.epoch ?? 1}; ревизия: ${world.revision}\nВремя мира (минуты): ${world.calendar.elapsedWorldMinutes}\nВерсия правил: ${world.rulesVersion}\nСохранения разных адресов сайта хранятся раздельно.`;
 }

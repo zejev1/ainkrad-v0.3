@@ -17,8 +17,8 @@ describe('v0.3.18 lightweight Secret Library', () => {
     const expanded = source.snapshot();
     const before = expanded.places[SECRET_LIBRARY_PLACE_ID_V18];
     const anchor = expanded.places.commons;
-    expect(before.mapX).toBe(anchor.mapX);
-    expect(before.mapY).toBeCloseTo(anchor.mapY - 0.26);
+    expect(Math.hypot(before.mapX-anchor.mapX,before.mapY-anchor.mapY)).toBeLessThan(.5);
+    expect([expanded.v18!.secretLibrary.anchorMapX,expanded.v18!.secretLibrary.anchorMapY]).toEqual([before.mapX,before.mapY]);
 
     expanded.places['far-frontier'] = {
       id: 'far-frontier',
@@ -86,8 +86,8 @@ describe('v0.3.18 lightweight Secret Library', () => {
     const state = repaired.snapshot();
     const libraryPlace = state.places[SECRET_LIBRARY_PLACE_ID_V18];
     expect(libraryPlace.kind).toBe('library');
-    expect(libraryPlace.mapX).toBe(state.places.commons.mapX);
-    expect(libraryPlace.mapY).toBeCloseTo(state.places.commons.mapY - 0.26);
+    expect(Math.hypot(libraryPlace.mapX-state.places.commons.mapX,libraryPlace.mapY-state.places.commons.mapY)).toBeLessThan(.5);
+    expect([state.v18!.secretLibrary.anchorMapX,state.v18!.secretLibrary.anchorMapY]).toEqual([libraryPlace.mapX,libraryPlace.mapY]);
     expect(state.v18!.secretLibrary.knowledgeByAgentId[resident.id]).toHaveLength(1);
     expect(state.v18!.secretLibrary.knowledgeByAgentId[resident.id][0].title)
       .toBe('Очистка ран');

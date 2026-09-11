@@ -1,3 +1,15 @@
+# Ainkrad 0.3.21-hotfix.5
+
+Responsive world-time calculation and a physical vector atlas. The observer header contains version and world level; diagnostics remain closed by default.
+
+This release continues main commit 339970d2b2ca0545415b11460bb58b7c164915f4. Keep the existing world and site address. Fields, streets, terrain and journeys migrate in place; people, memories, families and Cardinal evidence remain.
+
+See [FIX5 review](docs/V0_3_21_FIX5_REVIEW.md) and the generated [release audit](docs/V0_3_21_FIX5_AUDIT.json). The ZIP contains a Git checkout at the stated main base with these changes uncommitted for SPCK. Use Git email `zejev1@users.noreply.github.com`.
+
+The browser tests and measured performance are documented in the audit. A physical phone or Xbox has not been tested. A century still requires computation; stop cancels only unprocessed requests.
+
+The sections below are historical release notes.
+
 # Ainkrad v0.3.21 FIX1 — visible residents and local town view
 
 Built on the owner's published v0.3.21 commit acee3afcf9a8c4109776b54a6cdfb593fb9d3ba3.

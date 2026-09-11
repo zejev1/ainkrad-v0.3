@@ -1,3 +1,5 @@
+import { pruneWorldTimeOperations, WORLD_TIME_RETENTION_INTERVAL, WORLD_TIME_OPERATION_RETENTION } from './WorldOperationRetention';
+import { readWorldCommitHead } from './IndexedDbCommitHead';
 import { validateWorldSave, missingWorldRecord } from './WorldSaveSafety';
 import { checkpointWorld, putWorldIdentity, RECOVERY_STORE, IDENTITY_STORE, type WorldIdentity } from './IndexedDbRecovery';
 import { stableJsonStringify } from '../core/stableJson';
@@ -14,9 +16,6 @@ import type { AppendOnlyLog } from './AppendOnlyLog';
 import { AppendOnlyLogConflictError } from './AppendOnlyLog';
 
 const DATABASE_VERSION = 2;
-const TICK_OPERATION_RETENTION = 2_048;
-const TICK_OPERATION_PRUNE_INTERVAL = 300;
-const MAX_TICK_OPERATION_PRUNE_PER_PASS = 4_096;
 
 const STORES = {
   worlds: 'worlds',
@@ -240,19 +239,19 @@ function assertSame<T>(kind: string, id: string, a: T, b: T): void {
 
 function toStoredEvent(event: WorldEvent): StoredWorldEvent {
   return {
-    ...structuredClone(event),
+    ...event,
     key: eventKey(event.worldId, event.eventId),
   };
 }
 
 function fromStoredEvent(stored: StoredWorldEvent): WorldEvent {
   const { key: _key, ...event } = stored;
-  return structuredClone(event);
+  return event;
 }
 
 function toStoredMemory(memory: MemoryRecord): StoredMemory {
   return {
-    ...structuredClone(memory),
+    ...memory,
     key: memoryKey(memory.worldId, memory.memoryId),
     pairKeys: memory.relatedAgentIds.map((otherAgentId) =>
       pairKey(memory.worldId, memory.agentId, otherAgentId),
@@ -262,7 +261,7 @@ function toStoredMemory(memory: MemoryRecord): StoredMemory {
 
 function fromStoredMemory(stored: StoredMemory): MemoryRecord {
   const { key: _key, pairKeys: _pairKeys, ...memory } = stored;
-  return structuredClone(memory);
+  return memory;
 }
 
 function validateLimit(limit: number, label: string): void {
@@ -283,7 +282,7 @@ function cursorValues<T>(
         resolve(values);
         return;
       }
-      values.push(structuredClone(cursor.value as T));
+      values.push(cursor.value as T);
       cursor.continue();
     });
     request.addEventListener('error', () => {
@@ -293,6 +292,7 @@ function cursorValues<T>(
 }
 
 export class IndexedDbWorldStore implements WorldStore {
+  private readonly lastRetentionBucket=new Map<string,number>();
   constructor(private readonly database: Promise<IDBDatabase>) {}
 
   async initializeWorld(state: WorldState): Promise<void> {
@@ -315,7 +315,7 @@ export class IndexedDbWorldStore implements WorldStore {
         assertSame('World initialization', state.id, existing, state);
       } else {
         if (identity !== undefined || evidence !== undefined) missingWorldRecord(state.id);
-        worlds.add(structuredClone(state));
+        worlds.add(state);
         putWorldIdentity(transaction, state);
       }
 
@@ -342,7 +342,7 @@ export class IndexedDbWorldStore implements WorldStore {
         return undefined;
       }
       validateWorldSave(state,worldId);
-      return structuredClone(state);
+      return state;
     } catch(error) { await abortTransaction(transaction,completion);throw error; }
   }
 
@@ -420,29 +420,27 @@ export class IndexedDbWorldStore implements WorldStore {
     const opKey = operationKey(batch.worldId, batch.operationId);
 
     try {
-      const [prior, current, existingEvents, existingMemories, identity] =
+      const [prior, head, existingEvents, existingMemories] =
         await Promise.all([
           requestResult(operations.get(opKey)) as Promise<
             StoredOperation | undefined
           >,
-          requestResult(worlds.get(batch.worldId)) as Promise<
-            WorldState | undefined
-          >,
+          readWorldCommitHead(transaction, batch.worldId),
           Promise.all(
             batch.events.map((event) =>
-              requestResult(events.get(eventKey(event.worldId, event.eventId))),
+              requestResult(events.getKey(eventKey(event.worldId, event.eventId))),
             ),
           ),
           Promise.all(
             batch.memories.map((memory) =>
               requestResult(
-                memories.get(memoryKey(memory.worldId, memory.memoryId)),
+                memories.getKey(memoryKey(memory.worldId, memory.memoryId)),
               ),
             ),
           ),
-          requestResult(transaction.objectStore(IDENTITY_STORE).get(batch.worldId)) as Promise<WorldIdentity|undefined>,
         ]);
 
+      const { current, identity } = head;
       if (prior) {
         if (prior.operationFingerprint !== batch.operationFingerprint) {
           throw new Error(
@@ -455,12 +453,14 @@ export class IndexedDbWorldStore implements WorldStore {
           );
         }
 
+        const storedState = await requestResult(worlds.get(batch.worldId));
+        validateWorldSave(storedState, batch.worldId);
         await completion;
         const { key: _key, ...operation } = prior;
         return {
           committed: false,
           duplicate: true,
-          state: structuredClone(current),
+          state: storedState,
           operation: structuredClone(operation),
         };
       }
@@ -510,12 +510,13 @@ export class IndexedDbWorldStore implements WorldStore {
       operations.add({ ...operation, key: opKey } satisfies StoredOperation);
       await completion;
 
-      if (batch.operationId.startsWith('tick:')) {
-        const tick = Number(batch.operationId.slice('tick:'.length));
+      const retentionBucket=Math.floor(nextState.revision/WORLD_TIME_RETENTION_INTERVAL);
+      if(nextState.revision>WORLD_TIME_OPERATION_RETENTION&&retentionBucket>(this.lastRetentionBucket.get(batch.worldId)??-1)) {
         try {
-          await this.pruneOldTickOperations(batch.worldId, tick);
+          await pruneWorldTimeOperations(database,batch.worldId,nextState.revision);
+          this.lastRetentionBucket.set(batch.worldId,retentionBucket);
         } catch {
-          // Retention maintenance must never turn a successful world commit into a failure.
+          // Maintenance failure cannot turn an already atomic commit into a failure.
         }
       }
 
@@ -531,37 +532,6 @@ export class IndexedDbWorldStore implements WorldStore {
     }
   }
 
-  private async pruneOldTickOperations(
-    worldId: string,
-    currentTick: number,
-  ): Promise<void> {
-    if (
-      !Number.isInteger(currentTick) ||
-      currentTick < TICK_OPERATION_RETENTION ||
-      currentTick % TICK_OPERATION_PRUNE_INTERVAL !== 0
-    ) return;
-
-    const database = await this.database;
-    const transaction = database.transaction(STORES.operations, 'readwrite');
-    const completion = transactionComplete(transaction);
-    const request = transaction.objectStore(STORES.operations).openCursor();
-    const cutoff = currentTick - TICK_OPERATION_RETENTION;
-    let deleted = 0;
-    request.addEventListener('success', () => {
-      const cursor = request.result;
-      if (!cursor || deleted >= MAX_TICK_OPERATION_PRUNE_PER_PASS) return;
-      const operation = cursor.value as StoredOperation;
-      if (operation.worldId === worldId && operation.operationId.startsWith('tick:')) {
-        const tick = Number(operation.operationId.slice('tick:'.length));
-        if (Number.isInteger(tick) && tick < cutoff) {
-          cursor.delete();
-          deleted += 1;
-        }
-      }
-      cursor.continue();
-    });
-    await completion;
-  }
 
   async get(
     worldId: string,

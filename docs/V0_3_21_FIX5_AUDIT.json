@@ -1,0 +1,167 @@
+{
+  "release": "0.3.21-hotfix.5",
+  "status": "passed",
+  "base_commit": "339970d2b2ca0545415b11460bb58b7c164915f4",
+  "tested_commit": "e693f2e7fdba2b5846eb5058bee684b581110e80",
+  "ci_run": "34627354654",
+  "environment": {
+    "node": "v22.23.2",
+    "execution_and_read_write": "passed"
+  },
+  "gates": {
+    "typecheck": "passed",
+    "tests": {
+      "passed": 274,
+      "failed": 0,
+      "total": 274
+    },
+    "production_build": "passed"
+  },
+  "review": "docs/V0_3_21_FIX5_REVIEW.md",
+  "browser_audit": {
+    "environment": "Production bundle in Chromium; mobile viewport 390x844; not physical Android or Xbox",
+    "checks": [
+      "old main world loaded and migrated; observer header and hidden diagnostics",
+      "migration preserves resident records, world identity, RNG and lived calendar",
+      "settlement selection leaves residents, RNG and physical world unchanged",
+      "touch pinch and keyboard camera controls; bounded map surfaces and visible nodes",
+      "100-year speed stop acknowledged; reload does not resurrect queue; no browser exception"
+    ],
+    "screenshots": [
+      "header",
+      "city",
+      "other_town",
+      "close",
+      "world"
+    ],
+    "stopAcknowledgementMs": 156.54177600000003,
+    "towns": [
+      {
+        "value": "settlement_ainkrad",
+        "label": "Айнкрад · 44 жителей"
+      },
+      {
+        "value": "settlement_ogre_homeland",
+        "label": "Долина Великанов · 38 жителей"
+      },
+      {
+        "value": "settlement_goblin_homeland",
+        "label": "Зелёные Кланы · 52 жителей"
+      },
+      {
+        "value": "settlement_dwarf_homeland",
+        "label": "Каменные Залы · 43 жителей"
+      },
+      {
+        "value": "settlement_orc_homeland",
+        "label": "Каменный Клан · 44 жителей"
+      },
+      {
+        "value": "settlement_elf_homeland",
+        "label": "Лесной Совет · 29 жителей"
+      }
+    ],
+    "maxSurfacePixels": 203862,
+    "maxVisiblePlaces": 17,
+    "maxVisibleResidents": 43,
+    "status": "passed"
+  },
+  "performance_comparison": {
+    "status": "passed",
+    "environment": "Chromium native IndexedDB, 4x CPU slowdown; three fresh-profile samples per version; not Android/Xbox",
+    "base": "339970d2b2ca0545415b11460bb58b7c164915f4",
+    "fixtureYears": 27,
+    "living": 250,
+    "intervalYears": 0.25,
+    "baselineMs": 3369.3000000000466,
+    "fix5Ms": 2432.4000000000233,
+    "ratio": 1.3851751356684814,
+    "caveat": "FIX5 migrates physical geography before timing; future life outcomes may consequently differ. Exact resident history across scheduling partitions is checked separately.",
+    "samples": {
+      "baseline": [
+        {
+          "milliseconds": 3389.8000000000466,
+          "cloneCount": 357,
+          "cloneMs": 511.5000000001164,
+          "batches": 4,
+          "maxBatchMs": 1106.9000000000233,
+          "heap": 103000000,
+          "actualMinutes": 14322600,
+          "target": 14322600
+        },
+        {
+          "milliseconds": 3364,
+          "cloneCount": 357,
+          "cloneMs": 513.6000000000931,
+          "batches": 4,
+          "maxBatchMs": 1068.6000000000931,
+          "heap": 103000000,
+          "actualMinutes": 14322600,
+          "target": 14322600
+        },
+        {
+          "milliseconds": 3369.3000000000466,
+          "cloneCount": 357,
+          "cloneMs": 508.699999999837,
+          "batches": 4,
+          "maxBatchMs": 1048.8000000000466,
+          "heap": 103000000,
+          "actualMinutes": 14322600,
+          "target": 14322600
+        }
+      ],
+      "fix5": [
+        {
+          "milliseconds": 2454.0999999999767,
+          "cloneCount": 15,
+          "cloneMs": 408.39999999979045,
+          "batches": 2,
+          "maxBatchMs": 1250.3000000000466,
+          "heap": 81400000,
+          "actualMinutes": 14322600,
+          "target": 14322600
+        },
+        {
+          "milliseconds": 2432.4000000000233,
+          "cloneCount": 15,
+          "cloneMs": 406.60000000009313,
+          "batches": 2,
+          "maxBatchMs": 1219.9000000000233,
+          "heap": 81400000,
+          "actualMinutes": 14322600,
+          "target": 14322600
+        },
+        {
+          "milliseconds": 2412.79999999993,
+          "cloneCount": 15,
+          "cloneMs": 400.4999999998836,
+          "batches": 2,
+          "maxBatchMs": 1206.5,
+          "heap": 81400000,
+          "actualMinutes": 14322600,
+          "target": 14322600
+        }
+      ]
+    }
+  },
+  "protected": {
+    "main_unchanged": true,
+    "draft_pr_not_merged": true,
+    "no_deployment": true,
+    "cardinal_and_gateway_sources_unchanged": true
+  },
+  "delivery": {
+    "branch": "main",
+    "head": "339970d2b2ca0545415b11460bb58b7c164915f4",
+    "changes": "uncommitted",
+    "git_email": "zejev1@users.noreply.github.com"
+  },
+  "limitations": [
+    "No real Android or Xbox run",
+    "Original device save was not supplied; native browser migration uses an evolved main-version fixture",
+    "100 years per minute remains a requested ceiling; a mature century may still require substantial calculation",
+    "Different origins retain separate worlds",
+    "Three same-database backups cannot survive deletion of all browser site data",
+    "Vector atlas of modelled sites, not satellite maps or an ungenerated planet elevation model"
+  ]
+}

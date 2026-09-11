@@ -1,3 +1,5 @@
+import { assertPlaceGeography } from './WorldGeographyValidation';
+import type { WorldTimeExecution } from './WorldTimeExecution';
 import { createFoundingOcean, repairFoundingOcean } from './FoundingOcean';
 import { LIBRARY_IDS, LIBRARY_YEAR, admissionDeadline, isSecretLibrary, libraryIdOf, hasLibraryAdmission, reconcileLibraryAdmissions, enforceLibraryBoundary, noteLibraryArrival } from '../v21/LibraryAdmissions';
 import { ensureElfLibraryV20, elfStudyMaterialV20, readingBudgetV20 } from '../v20/LibraryLearningV20';
@@ -1103,26 +1105,7 @@ function assertWorldState(value: unknown): asserts value is WorldState {
     if (!['land', 'shore', 'water'].includes(place.surface as string)) {
       throw new Error(`World place ${placeId}.surface is invalid.`);
     }
-    if (place.boundaryPolygon !== undefined) {
-      if (
-        !Array.isArray(place.boundaryPolygon) ||
-        place.boundaryPolygon.length < 3 ||
-        place.boundaryPolygon.some((point, index) => {
-          const value = asRecord(
-            point,
-            `World place ${placeId}.boundaryPolygon[${index}]`,
-          );
-          return !Number.isFinite(value.x) || !Number.isFinite(value.y);
-        })
-      ) {
-        throw new Error(`World place ${placeId}.boundaryPolygon is invalid.`);
-      }
-      if (place.surface !== 'water') {
-        throw new Error(
-          `World place ${placeId} has an area boundary without a water surface.`,
-        );
-      }
-    }
+    assertPlaceGeography(place, placeId);
     if (place.settlementId !== undefined) {
       requiredString(place.settlementId, `World place ${placeId}.settlementId`);
     }
@@ -2882,12 +2865,12 @@ function rebuildSettlementProjection(
 ): Record<string, WorldSettlementState> {
   const main = mainSettlement(places, foundedAt);
   const priorMain = prior[main.id];
-  if (priorMain?.layoutVersion === 2) {
-    main.layoutVersion = 2; main.layoutSignature = priorMain.layoutSignature; main.radius = priorMain.radius;
+  if (priorMain?.layoutVersion === 3) {
+    main.layoutVersion = 3; main.layoutSignature = priorMain.layoutSignature; main.radius = priorMain.radius; main.boundaryPolygon = priorMain.boundaryPolygon;
   }
   if (priorMain?.kind === 'city') {
     main.kind = 'city';
-    main.radius = priorMain.layoutVersion === 2 ? priorMain.radius : Math.max(20, priorMain.radius);
+    main.radius = priorMain.layoutVersion === 3 ? priorMain.radius : Math.max(20, priorMain.radius);
   }
   const settlements: Record<string, WorldSettlementState> = {
     settlement_ainkrad: main,
@@ -2910,7 +2893,7 @@ function rebuildSettlementProjection(
       centerX: place.mapX,
       centerY: place.mapY,
       radius: existing?.radius ?? (place.kind === 'city' ? 20 : 11),
-      ...(existing?.layoutVersion === 2 ? {layoutVersion: 2 as const, layoutSignature: existing.layoutSignature} : {}),
+      ...(existing?.layoutVersion === 3 ? {layoutVersion: 3 as const, layoutSignature: existing.layoutSignature, boundaryPolygon: existing.boundaryPolygon} : {}),
       memberPlaceIds,
       foundedAt: existing?.foundedAt ?? place.discoveredAt ?? foundedAt,
     };
@@ -3965,7 +3948,7 @@ async function migrateV18WorldToV19(
 }
 
 const V19_ADDITIVE_SCHEMA_REPAIR_OPERATION_ID =
-  'migration:v20-continuity-knowledge-boundaries-2026-09-09';
+  'migration:v21-world-geography-fix5-2026-09-11';
 
 async function repairCompatibleV19World(
   store: WorldStore,
@@ -3976,7 +3959,7 @@ async function repairCompatibleV19World(
     from: WORLD_RULES_VERSION,
     to: WORLD_RULES_VERSION,
     mode: 'same_version_additive_schema_repair',
-    schemaRevision: '2026-09-11-founding-ocean-continuity',
+    schemaRevision: '2026-09-11-world-geography-fix5',
   });
   let current = persisted;
 
@@ -4011,7 +3994,7 @@ async function repairCompatibleV19World(
     await store.checkpointWorld?.(current.id, current.revision, 'before-additive-schema-migration');
     next.revision = current.revision + 1;
     const migrationEvent: WorldEvent = {
-      eventId: `migration:${next.id}:v21-admissions-town-continuity-2026-09-11:revision:${current.revision}`,
+      eventId: `migration:${next.id}:v21-geography-fix5-2026-09-11:revision:${current.revision}`,
       worldId: next.id,
       kind: 'world.migrated',
       source: 'system',
@@ -4656,15 +4639,17 @@ export class WorldEngine {
    * the canonical target itself, so browser restarts and x1/x10/x100 partition
    * changes cannot manufacture or skip semantic world time.
    */
-  async advanceCanonicalTimeTo(targetWorldMinutes: number): Promise<boolean> {
+  async advanceCanonicalTimeTo(targetWorldMinutes: number, execution?: WorldTimeExecution): Promise<boolean> {
     if (!Number.isFinite(targetWorldMinutes) || targetWorldMinutes < 0) {
       throw new Error(
         'Canonical targetWorldMinutes must be finite and non-negative.',
       );
     }
     const worldEpoch = this.committedState.epoch ?? 1;
-    const operationId =
-      `canonical-world-time:${worldEpoch}:${targetWorldMinutes}`;
+    const fromWorldMinutes = this.committedState.calendar.elapsedWorldMinutes;
+    const operationId = execution
+      ? `canonical-world-slice:${worldEpoch}:${fromWorldMinutes}:${targetWorldMinutes}`
+      : `canonical-world-time:${worldEpoch}:${targetWorldMinutes}`;
     const fingerprint = stableJsonStringify({
       kind: 'canonical_world_time_target',
       worldEpoch,
@@ -4679,13 +4664,14 @@ export class WorldEngine {
         );
       }
       await this.consumeCanonicalWorldMinutes(
-        Math.max(0, targetWorldMinutes - currentWorldMinutes),
+        Math.max(0, targetWorldMinutes - currentWorldMinutes), execution,
       );
     });
   }
 
   private async consumeCanonicalWorldMinutes(
     addedWorldMinutes: number,
+    execution?: WorldTimeExecution,
   ): Promise<void> {
     const clock = this.v15World().simulationClock;
     const quantum = clock.quantumWorldMinutes;
@@ -4735,6 +4721,10 @@ export class WorldEngine {
         await this.advanceSimulationDynamics(semanticTick, quantum);
       } finally {
         this.activeSimulationQuantumIndex = undefined;
+      }
+      if (execution) {
+        await execution.afterQuantum();
+        if (execution.shouldStop()) break;
       }
     }
 
@@ -6007,7 +5997,7 @@ export class WorldEngine {
           memories: this.stagedMemories,
         });
 
-        this.adopt(result.state);
+        this.adopt(result.state, result.committed && result.state === this.state);
         return {
           committed: result.committed,
           committedRevision: result.operation.committedRevision,
@@ -9674,7 +9664,8 @@ export class WorldEngine {
           },
         );
         this.state.places[homeId].urbanLot = plot.lot;
-        this.state.places[homeId].urbanLayoutVersion = 2;
+        this.state.places[homeId].urbanLayoutVersion = 3;
+        this.state.places[homeId].rotation = plot.rotation;
         makeConnectionsReciprocal(this.state.places);
         this.rebuildSpatialProjection();
         economy.constructionEvents += 1;
@@ -14423,8 +14414,8 @@ export class WorldEngine {
     this.state.determinism.rngState = this.rng.snapshot();
   }
 
-  private adopt(state: WorldState): void {
-    assertWorldState(state);
+  private adopt(state: WorldState, alreadyValidated = false): void {
+    if (!alreadyValidated) assertWorldState(state);
     if (state.rulesVersion !== WORLD_RULES_VERSION) {
       throw new Error(
         `World ${state.id} uses rules ${state.rulesVersion}; runtime expects ${WORLD_RULES_VERSION}. Explicit migration is required.`,

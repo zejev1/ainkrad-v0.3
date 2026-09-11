@@ -1,0 +1,30 @@
+.world-header { margin-bottom:16px; }
+.world-header .eyebrow { letter-spacing:.08em; margin-bottom:6px; }
+.developer-diagnostics { margin:16px 0; color:#9db7af; font-size:.8rem; }
+.developer-diagnostics > summary { cursor:pointer; padding:10px 0; }
+.developer-diagnostics > span { display:block; margin:10px 0; }
+.developer-diagnostics pre { max-height:240px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; }
+.world-notice { display:flex; gap:12px; align-items:center; padding:14px; color:#efdba3; }
+.world-notice[hidden] { display:none; }
+.world-notice button { padding:8px; color:inherit; background:#152e2c; border:1px solid #657867; border-radius:8px; }
+.world-map { background:#97a486; }
+.map-sky { display:none; }
+.biomes-layer { position:absolute; inset:0; z-index:1; pointer-events:none; }
+.atlas-terrain { position:absolute; inset:0; width:100%; height:100%; }
+.roads { z-index:3; }
+.roads path { fill:none; }
+.settlements-layer { pointer-events:none; }
+.world-map .map-place { width:max(22px,var(--physical-width)); height:max(22px,var(--physical-height)); transform:translate(-50%,-50%); padding:0; border:0; background:none; }
+.world-map .map-place .place-building { position:absolute; left:50%; top:50%; display:block; width:var(--physical-width); height:var(--physical-height); transform:translate(-50%,-50%) rotate(var(--building-angle)); margin:0; padding:0; }
+.world-map .map-place .place-art { width:100%; height:100%; overflow:visible; }
+.world-map .is-town-pin .place-building { transform:translate(-50%,-50%); border-radius:50%; border:2px solid #faf0ca; background:#76604a; }
+.world-map .is-town-pin .place-art { display:none; }
+.world-map .map-place .place-label { display:none; left:50%; top:50%; transform:translate(calc(-50% + var(--label-offset-x, 0px)), var(--label-offset-y, 16px)); margin:0; width:var(--map-label-width, 100px); max-width:180px; text-align:center; font-size:12px; line-height:18px; padding:1px 5px; color:#f4f0d7; background:#354738df; }
+.world-map .map-place.has-map-label .place-label { display:block !important; opacity:1; }
+.world-map .map-place .place-count { top:auto; right:0; bottom:100%; min-width:15px; height:16px; font-size:10px; }
+.world-map[data-atlas-level="world"] .place-count,
+.world-map[data-atlas-level="region"] .place-count,
+.world-map[data-atlas-level="settlement"] .place-count { display:none; }
+.world-map .is-natural-marker:not(:hover):not(:focus-visible):not(.is-highlighted) .place-building { opacity:.65; }
+.world-map[data-atlas-level="world"] .resident-avatar,
+.world-map[data-atlas-level="region"] .resident-avatar { display:none; }

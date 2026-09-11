@@ -11,7 +11,7 @@ export function compactLibraryPlot(
 ): WorldPoint2D | undefined {
   const all = Object.values(places);
   const buildings = all.filter(p => p.id !== libraryId && buildingRadius(p) > 0);
-  const water = all.filter(p => p.surface === 'water');
+  const water = all.filter(p => p.surface === 'water' || p.waterPolygon);
   for (let row = 0; row < 9; row++) {
     for (const column of [0, -1, 1, -2, 2, -3, 3, -4, 4]) {
       const point = { x: center.x + column * 0.22, y: center.y - 0.26 - row * 0.22 };

@@ -1,3 +1,4 @@
+import { buildingPolygon, polygonGap } from '../src/world/BuildingFootprints';
 import { describe, it, expect } from 'vitest';
 import { WorldEngine } from '../src/world/WorldEngine';
 import { InMemoryWorldStore } from '../src/world/InMemoryWorldStore';
@@ -37,8 +38,7 @@ describe('physical settlement geometry and observer navigation',()=>{
       for(const field of Object.values(w.places).filter(p=>p.settlementId===town.id && p.kind==='resource_field'))
         expect(Math.hypot(field.mapX-town.centerX,field.mapY-town.centerY)).toBeGreaterThan(edge);
       for(const p of built) for(const q of built) if(p.id!==q.id) {
-        expect(Math.abs(p.mapX-q.mapX)>=buildingRadius(p)+buildingRadius(q)+.029 ||
-          Math.abs(p.mapY-q.mapY)>=(p.kind==='home'?.05:buildingRadius(p))+(q.kind==='home'?.05:buildingRadius(q))+.029).toBe(true);
+        expect(polygonGap(buildingPolygon(p),buildingPolygon(q))).toBeGreaterThanOrEqual(.03-1e-7);
       }
     }
     expect(Math.abs(w.places.settlement_elf.mapX-w.places.commons.mapX)).toBeGreaterThanOrEqual(10000);
@@ -66,7 +66,7 @@ describe('physical settlement geometry and observer navigation',()=>{
     const w=await fresh(),center={x:50,y:50};
     for(let i=0;i<22;i++) {
       const p=nextUrbanHomeLot(w.places,center,'settlement_ainkrad')!;expect(p).toBeDefined();
-      const id='future_'+i;w.places[id]={...w.places.home_agent_1,id,mapX:p.x,mapY:p.y,urbanLot:p.lot,urbanLayoutVersion:2,connectedPlaceIds:['commons']};
+      const id='future_'+i;w.places[id]={...w.places.home_agent_1,id,mapX:p.x,mapY:p.y,urbanLot:p.lot,urbanLayoutVersion:3,rotation:p.rotation,connectedPlaceIds:['commons']};
       w.places.commons.connectedPlaceIds.push(id);
     }
     repairCompactSettlementLayout(w);
@@ -74,8 +74,8 @@ describe('physical settlement geometry and observer navigation',()=>{
     for(const home of homes) {
       const pair=homes.find(p=>p.urbanLot===(home.urbanLot!^1));
       if(pair) {
-        const gap=(Math.abs(pair.mapX-home.mapX)-.12)*100;
-        expect(gap).toBeGreaterThanOrEqual(3);expect(gap).toBeLessThanOrEqual(home.urbanLot!<16?10:6);
+        const gap=polygonGap(buildingPolygon(pair),buildingPolygon(home))*100;
+        expect(gap).toBeGreaterThanOrEqual(3);expect(gap).toBeLessThanOrEqual(6);
       }
     }
     for(const route of Object.values(w.routes)) if(route.distance<4) {

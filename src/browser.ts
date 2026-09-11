@@ -1,14 +1,20 @@
+import { installWorldMapGestures } from './presentation/WorldMapGestures';
+import { installObserverChrome } from './presentation/ObserverChrome';
+import { WorldAtlasRenderer } from './presentation/WorldAtlasRenderer';
+import { atlasLevel } from './presentation/WorldAtlasIndex';
+import { physicalPlaceDrawing, applyPhysicalPlaceStyle, visibleMapLabels } from './presentation/MapPlacePresentation';
 import { WorldClockPanel } from './presentation/WorldClockPanel';
 import { worldStorageDiagnostics } from './persistence/WorldSaveSafety';
 import { createSettlementPicker } from './presentation/SettlementPicker';
-import { WorldMapCamera, clipMapSegment, clipMapPolygon, MAX_VISIBLE_PLACES, MAX_VISIBLE_RESIDENTS } from './presentation/WorldMapCamera';
-import { mapDetail, mapScaleBar, mapEntityDepth, placeDrawing } from './presentation/WorldMapVisuals';
+import { WorldMapCamera, MAX_VISIBLE_RESIDENTS } from './presentation/WorldMapCamera';
+import { mapDetail, mapScaleBar, mapEntityDepth } from './presentation/WorldMapVisuals';
 import { residentLearningSummary } from './presentation/ResidentLearningView';
 import { townMapFocus, residentMapFocus, settlementMapFocus } from './presentation/WorldMapFocus';
 import { createWorldMapProjection } from './presentation/WorldMapProjection';
 import { GIFT_CATALOG_V20 } from './v20/DivineGiftsV20';
 import './browser.css';
 import './presentation/world-map-visuals.css';
+import './presentation/world-atlas.css';
 import type {
   AuditRecord,
   CardinalCapability,
@@ -335,9 +341,8 @@ app.innerHTML = `
   <div class="ainkrad-app">
     <header class="world-header">
       <div>
-        <p class="eyebrow">AINKRAD v0.3.21.4 · видимые жители · путь к Underworld</p>
+        <p class="eyebrow">v0.3.21.5</p>
         <h1 id="world-title">Мир · уровень 1</h1>
-        <p class="world-subtitle">Время регулируется снаружи. Жители сами расширяют карту и проживают поколения.</p>
       </div>
 
       <div class="live-indicator" id="live-indicator">
@@ -362,7 +367,7 @@ app.innerHTML = `
 
     <section class="external-clock" aria-label="Внешнее управление скоростью мира">
       <div>
-        <span class="external-clock__label">ВНЕШНИЙ FLA-КОНТУР</span>
+        <span class="external-clock__label">СКОРОСТЬ ВРЕМЕНИ</span>
         <strong id="clock-rate-value">1 мин = 1 год</strong>
       </div>
       <label>
@@ -375,19 +380,19 @@ app.innerHTML = `
         </select>
       </label>
       <small id="live-clock-throughput" aria-live="polite">Измеряем скорость мира…</small>
-      <small id="offline-clock-status">После закрытия мир продолжит время при следующем открытии · Cardinal не имеет доступа</small>
+      <small id="offline-clock-status">Загрузка времени мира…</small>
     </section>
 
     <section class="catch-up-overlay" id="catch-up-overlay" aria-live="assertive" hidden>
       <div class="catch-up-overlay__heading">
         <div>
-          <span>ВОССТАНОВЛЕНИЕ ЖИВОГО МИРА</span>
+          <span>ПРОДОЛЖЕНИЕ МИРА</span>
           <strong id="catch-up-title">Подготавливаем быстрый догон…</strong>
         </div>
         <b id="catch-up-percent">0%</b>
       </div>
       <div class="catch-up-track"><span id="catch-up-bar"></span></div>
-      <p id="catch-up-detail">Жители, поколения и события будут рассчитаны; календарь не перепрыгивается.</p>
+      <p id="catch-up-detail">Продолжаем с сохранённого момента.</p>
     </section>
 
     <main class="world-layout">
@@ -634,7 +639,7 @@ app.innerHTML = `
       <section class="divine-audience__sheet" role="dialog" aria-modal="true" aria-labelledby="divine-audience-title">
         <header>
           <div>
-            <p class="divine-audience__badge">ВНЕ ВЕДЕНИЯ CARDINAL</p>
+            <p class="divine-audience__badge">ЛИЧНАЯ АУДИЕНЦИЯ</p>
             <h2 id="divine-audience-title">Закрытая аудиенция</h2>
             <p id="divine-audience-subtitle">Мир и возраст выбранного жителя остановлены.</p>
           </div>
@@ -681,6 +686,8 @@ app.innerHTML = `
   </div>
 `;
 
+const observerChrome = installObserverChrome(app);
+
 const requiredElement = <T extends Element>(id: string): T => {
   const element = document.getElementById(id);
   if (!element) throw new Error(`Missing browser element #${id}.`);
@@ -711,6 +718,7 @@ const placesLayer = requiredElement<HTMLDivElement>('places-layer');
 const biomesLayer = requiredElement<HTMLDivElement>('biomes-layer');
 const wildlifeLayer = requiredElement<HTMLDivElement>('wildlife-layer');
 const agentsLayer = requiredElement<HTMLDivElement>('agents-layer');
+const atlas = new WorldAtlasRenderer(biomesLayer, roadsLayer, settlementsLayer);
 const tickValue = requiredElement<HTMLElement>('tick-value');
 const timeValue = requiredElement<HTMLElement>('time-value');
 const populationValue = requiredElement<HTMLElement>('population-value');
@@ -1010,6 +1018,7 @@ function applyMapZoom(): void {
   worldMap.style.setProperty('--road-width', String(Math.max(0.5, Math.min(12,mapCamera.pixelsPerUnit * 0.04))));
   mapZoomFit.textContent = mapCamera.pixelsPerUnit < 0.5 ? 'Мир' : `${Math.round(mapZoom*100)}%`;
   worldMap.dataset.detail = mapDetail(mapCamera.pixelsPerUnit);
+  worldMap.dataset.atlasLevel = atlasLevel(mapCamera.pixelsPerUnit);
   const scale = mapScaleBar(mapCamera.pixelsPerUnit);
   mapDistance.querySelector<HTMLElement>('span')!.style.width = `${scale.pixels}px`;
   mapDistance.querySelector<HTMLElement>('b')!.textContent = scale.label;
@@ -1055,7 +1064,9 @@ function updateWorldMapScale(world: Readonly<WorldState>): void {
   applyMapZoom();
   worldTitle.textContent=`Мир · уровень ${worldLevel}`;
   worldLevelValue.textContent=`ур. ${worldLevel}`;
-  mapScaleValue.textContent=`Уровень мира ${worldLevel} · ${places.length} локаций · вся открытая территория ~${((maxX-minX)/10).toFixed(1)}×${((maxY-minY)/10).toFixed(1)} км`;
+  const level=atlasLevel(mapCamera.pixelsPerUnit);
+  const nearest=Object.values(world.settlements).sort((a,b)=>Math.hypot(a.centerX-mapCamera.x,a.centerY-mapCamera.y)-Math.hypot(b.centerX-mapCamera.x,b.centerY-mapCamera.y))[0];
+  mapScaleValue.textContent=level==='world'?'Обзор мира':nearest&&Math.hypot(nearest.centerX-mapCamera.x,nearest.centerY-mapCamera.y)<Math.max(2,nearest.radius*2)?localizedPlaceName(nearest.name):'Открытая территория';
   if (renderedGrowthStage<0) {
     const center=world.places.commons;
     if(center){mapCamera.x=center.mapX;mapCamera.y=center.mapY;}
@@ -1452,103 +1463,13 @@ function closePrayerInbox(): void {
   document.body.classList.remove('has-modal');
 }
 
-function renderRoads(world: Readonly<WorldState>): void {
-  roadsLayer.replaceChildren();
-  const seen=new Set<string>();
-  const strokes: string[]=[];
-  for (const route of Object.values(world.routes)) {
-    if (!(route.completedTraversals ?? 0)) continue;
-    for(let i=1;i<route.waypoints.length;i++) {
-      const a=route.waypoints[i-1],b=route.waypoints[i];
-      const segment=clipMapSegment(mapCamera.point(a.x,a.y),mapCamera.point(b.x,b.y));
-      if (!segment) continue;
-      const ends=segment.map(p=>`${p.x.toFixed(3)} ${p.y.toFixed(3)}`);
-      const key=[...ends].sort().join('|');
-      if(seen.has(key))continue;
-      seen.add(key);strokes.push(`M${ends[0]} L${ends[1]}`);
-      if(strokes.length>=1600)break;
-    }
-    if(strokes.length>=1600)break;
-  }
-  if(!strokes.length)return;
-  const path=document.createElementNS('http://www.w3.org/2000/svg','path');
-  path.setAttribute('d',strokes.join(' '));roadsLayer.append(path);
-}
-
-function renderBiomes(world: Readonly<WorldState>): void {
-  const visiblePlaces = Object.values(world.places).filter(place => place.boundaryPolygon
-    ? clipMapPolygon(place.boundaryPolygon.map(p=>mapCamera.point(p.x,p.y))).length>0
-    : mapCamera.visible(place.mapX,place.mapY,90)).slice(0,80);
-  const liveIds = new Set(visiblePlaces.map(p=>p.id));
-  for (const [placeId, element] of biomeElements) {
-    if (liveIds.has(placeId)) continue;
-    element.remove();
-    biomeElements.delete(placeId);
-  }
-  for (const place of visiblePlaces) {
-    const point = normalizeWorldCoordinates(world, place.mapX, place.mapY);
-    let element = biomeElements.get(place.id);
-    if (!element) {
-      element = document.createElement('div');
-      biomesLayer.append(element);
-      biomeElements.set(place.id, element);
-    }
-    const scale =
-      place.biome === 'settlement'
-        ? 0.72
-        : place.kind === 'forest' || place.kind === 'mountains'
-          ? 1.18
-          : 1;
-    element.className = `biome-patch biome-patch--${place.biome}`;
-    if (place.boundaryPolygon && place.boundaryPolygon.length >= 3) {
-      const polygon = clipMapPolygon(place.boundaryPolygon.map(p=>mapCamera.point(p.x,p.y)));
-      element.classList.add('biome-patch--area');
-      element.style.left = '0';
-      element.style.top = '0';
-      element.style.width = '100%';
-      element.style.height = '100%';
-      element.style.transform = 'none';
-      element.style.borderRadius = '0';
-      element.style.clipPath = `polygon(${polygon
-        .map((boundaryPoint) => `${boundaryPoint.x}% ${boundaryPoint.y}%`)
-        .join(', ')})`;
-    } else {
-      element.classList.remove('biome-patch--area');
-      element.style.left = `${point.x}%`;
-      element.style.top = `${point.y}%`;
-      element.style.width = '';
-      element.style.height = '';
-      element.style.transform = '';
-      element.style.borderRadius = '';
-      element.style.clipPath = '';
-      element.style.setProperty('--biome-scale', String(scale));
-    }
-  }
-}
-
-function renderSettlements(world: Readonly<WorldState>): void {
-  settlementsLayer.replaceChildren();settlementElements.clear();
-  for(const settlement of Object.values(world.settlements)) {
-    if(!mapCamera.visible(settlement.centerX,settlement.centerY, Math.min(100,settlement.radius*mapCamera.pixelsPerUnit)))continue;
-    const size=mapCamera.size(settlement.radius*2);
-    const center=mapCamera.point(settlement.centerX,settlement.centerY);
-    const left=Math.max(0,center.x-size.width/2),top=Math.max(0,center.y-size.height/2);
-    const right=Math.min(100,center.x+size.width/2),bottom=Math.min(100,center.y+size.height/2);
-    if(right<=left||bottom<=top)continue;
-    const element=document.createElement('div');element.className='settlement-boundary';
-    Object.assign(element.style,{left:`${left}%`,top:`${top}%`,width:`${right-left}%`,height:`${bottom-top}%`,transform:'none'});
-    settlementsLayer.append(element);
-    if(settlementsLayer.childElementCount>=24)break;
-  }
-}
 
 function renderPlaces(world: Readonly<WorldState>): void {
-  const regional = mapDetail(mapCamera.pixelsPerUnit) === 'region';
-  const visiblePlaces=Object.values(world.places).filter(p=>mapCamera.visible(p.mapX,p.mapY,110) &&
-      (!regional || p.kind!=='home' || highlightedPlaceIds.has(p.id)))
-    .sort((a,b)=>Number(highlightedPlaceIds.has(b.id))-Number(highlightedPlaceIds.has(a.id)) ||
-      Number(a.kind==='home')-Number(b.kind==='home'))
-    .slice(0,MAX_VISIBLE_PLACES);
+  atlas.index.update(world);
+  const close=atlasLevel(mapCamera.pixelsPerUnit)==='building';
+  const visiblePlaces=atlas.index.visiblePlaces(world,mapCamera,highlightedPlaceIds);
+  const townNames=new Map(Object.values(world.settlements).map(t=>[t.centerPlaceId,localizedPlaceName(t.name)]));
+  const labelIds=visibleMapLabels(visiblePlaces,mapCamera,highlightedPlaceIds,townNames);
   const liveIds = new Set(visiblePlaces.map(p=>p.id));
   for (const [placeId, element] of placeElements) {
     if (liveIds.has(placeId)) continue;
@@ -1570,7 +1491,7 @@ function renderPlaces(world: Readonly<WorldState>): void {
       placeElement.className = `map-place map-place--${place.kind}`;
       placeElement.innerHTML = `
         <span class="place-building" aria-hidden="true">
-          ${placeDrawing(place.kind)}
+          ${physicalPlaceDrawing(place,close)}
         </span>
         <span class="place-label"></span>
         <span class="place-count">0</span>
@@ -1580,13 +1501,21 @@ function renderPlaces(world: Readonly<WorldState>): void {
       });
       placesLayer.append(placeElement);
       placeElements.set(placeId, placeElement);
-      placeElement.dataset.artKind = place.kind;
+      placeElement.dataset.artKind = place.kind+':'+close;
     }
-    if (placeElement.dataset.artKind !== place.kind) {
-      placeElement.querySelector('.place-building')!.innerHTML = placeDrawing(place.kind);
-      placeElement.dataset.artKind = place.kind;
+    if (placeElement.dataset.artKind !== place.kind+':'+close) {
+      placeElement.querySelector('.place-building')!.innerHTML = physicalPlaceDrawing(place,close);
+      placeElement.dataset.artKind = place.kind+':'+close;
     }
     placeElement.className = `map-place map-place--${place.kind} map-place--surface-${place.surface}`;
+    applyPhysicalPlaceStyle(placeElement,place,mapCamera);
+    const mapLabel=labelIds.get(placeId);
+    placeElement.classList.toggle('has-map-label',Boolean(mapLabel));
+    if(mapLabel) {
+      placeElement.style.setProperty('--label-offset-x',mapLabel.offsetX+'px');
+      placeElement.style.setProperty('--label-offset-y',mapLabel.offsetY+'px');
+      placeElement.style.setProperty('--map-label-width',mapLabel.width+'px');
+    }
     placeElement.classList.toggle(
       'is-territory-claimed',
       place.claimedBySettlementId !== undefined,
@@ -1604,7 +1533,7 @@ function renderPlaces(world: Readonly<WorldState>): void {
       dungeon ? `${point.label}; вход в подземелье ранга ${dungeon.rank}` : point.label,
     );
     const label = placeElement.querySelector<HTMLElement>('.place-label');
-    if (label) label.textContent = point.label;
+    if (label) label.textContent = townNames.get(placeId)??point.label;
   }
 }
 
@@ -1654,6 +1583,7 @@ function renderAdventurePanel(world: Readonly<WorldState>): void {
 
 function renderWildlife(world: Readonly<WorldState>): void {
   const visibleWildlife=Object.values(world.wildlife).filter(p=>{
+    if(mapCamera.pixelsPerUnit<90)return false;
     const habitat=world.places[p.habitatId];return habitat&&mapCamera.visible(habitat.mapX,habitat.mapY,70);
   }).slice(0,50);
   const liveIds = new Set(visibleWildlife.map(p=>p.id));
@@ -2352,16 +2282,15 @@ function updateOfflineClockContinuity(frame: Readonly<LiveWorldFrame>): void {
 function renderMap(frame: Readonly<LiveWorldFrame>): void {
   updateWorldMapScale(frame.world);
   worldMap.dataset.growth = String(Math.min(3, frame.world.growth.stage));
-  renderBiomes(frame.world);
-  renderSettlements(frame.world);
+  atlas.render(frame.world,mapCamera);
   renderPlaces(frame.world);
-  renderRoads(frame.world);
   renderWildlife(frame.world);
 
   const agents = Object.values(frame.world.agents).filter(
     (agent) => agent.life.alive,
   );
-  const visibleAgents = agents.filter(agent => mapCamera.visible(agent.position.x,agent.position.y));
+  const showResidents=mapCamera.pixelsPerUnit>=90;
+  const visibleAgents = agents.filter(agent => (showResidents||agent.id===selectedAgentId)&&mapCamera.visible(agent.position.x,agent.position.y));
   const renderedAgents = visibleAgents.slice(0, MAX_VISIBLE_RESIDENTS);
   const selected = visibleAgents.find(agent => agent.id === selectedAgentId);
   if (selected && !renderedAgents.includes(selected)) {
@@ -2468,6 +2397,7 @@ function renderMap(frame: Readonly<LiveWorldFrame>): void {
 }
 
 function updateWorld(frame: Readonly<LiveWorldFrame>): void {
+  observerChrome.clear();
   lastFrame = frame;
   const agents=Object.values(frame.world.agents).filter(agent=>agent.life.alive);
   syncResidentPicker(frame.world,agents);
@@ -2762,7 +2692,7 @@ function showPlacesOnMap(placeIds: readonly string[]): void {
   highlightedPlaceIds = new Set(placeIds);
   if (!lastFrame) return;
   renderPlaces(lastFrame.world);
-  renderRoads(lastFrame.world);
+  atlas.render(lastFrame.world,mapCamera);
   const first = placeIds.find((id) => lastFrame?.world.places[id]);
   if (!first) return;
   const place=lastFrame.world.places[first];
@@ -3064,7 +2994,7 @@ function closeCardinalConsole(): void {
   highlightedPlaceIds.clear();
   if (lastFrame) {
     renderPlaces(lastFrame.world);
-    renderRoads(lastFrame.world);
+    atlas.render(lastFrame.world,mapCamera);
   }
 }
 
@@ -3169,53 +3099,10 @@ requiredElement<HTMLButtonElement>('map-city-focus').addEventListener('click', (
   if (focus) { mapCamera.x=focus.x;mapCamera.y=focus.y;setMapZoom(focus.pixelsPerUnit/100); }
 });
 requiredElement<HTMLButtonElement>('map-resident-focus').addEventListener('click', focusSelectedResident);
-const mapPointers=new Map<number,{x:number;y:number}>();
-worldMapViewport.addEventListener('pointerdown', event=>{
-  mapPointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
-  if(!(event.target as Element).closest('button'))worldMapViewport.setPointerCapture(event.pointerId);
+installWorldMapGestures(worldMapViewport,mapCamera,()=>{
+  mapZoom=mapCamera.pixelsPerUnit/100;scheduleMapPaint();
 });
-worldMapViewport.addEventListener('pointermove',event=>{
-  const previous=mapPointers.get(event.pointerId);
-  if(!previous)return;
-  if(mapPointers.size===1){mapCamera.pan(event.clientX-previous.x,event.clientY-previous.y);scheduleMapPaint();}
-  mapPointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
-});
-for(const kind of ['pointerup','pointercancel','lostpointercapture'] as const)
-  worldMapViewport.addEventListener(kind,event=>mapPointers.delete(event.pointerId));
 new ResizeObserver(scheduleMapPaint).observe(worldMapViewport);
-
-let pinchStartDistance = 0;
-let pinchStartZoom = 1;
-worldMapViewport.addEventListener(
-  'touchstart',
-  (event) => {
-    if (event.touches.length !== 2) return;
-    pinchStartDistance = Math.hypot(
-      event.touches[1].clientX - event.touches[0].clientX,
-      event.touches[1].clientY - event.touches[0].clientY,
-    );
-    pinchStartZoom = mapZoom;
-  },
-  { passive: true },
-);
-worldMapViewport.addEventListener(
-  'touchmove',
-  (event) => {
-    if (event.touches.length !== 2 || pinchStartDistance <= 0) return;
-    event.preventDefault();
-    const distance = Math.hypot(
-      event.touches[1].clientX - event.touches[0].clientX,
-      event.touches[1].clientY - event.touches[0].clientY,
-    );
-    const bounds = worldMapViewport.getBoundingClientRect();
-    const focalX =
-      (event.touches[0].clientX + event.touches[1].clientX) / 2 - bounds.left;
-    const focalY =
-      (event.touches[0].clientY + event.touches[1].clientY) / 2 - bounds.top;
-    setMapZoom(pinchStartZoom * (distance / pinchStartDistance), focalX, focalY);
-  },
-  { passive: false },
-);
 
 cardinalOpen.addEventListener('click', () => requestCardinalConsole('laws'));
 document.querySelectorAll<HTMLButtonElement>('[data-cardinal-tab]').forEach((button) => {
@@ -3276,7 +3163,7 @@ divineAudienceForm.addEventListener('submit', (event) => {
   ) return;
   divineAudienceRequestPending = true;
   divineAudienceGrant.disabled = true;
-  divineAudienceStatus.textContent = 'Божественное действие проходит через независимый gateway…';
+  divineAudienceStatus.textContent = 'Передаём обращение…';
   divineAudienceRequestId =
     `audience:${lastFrame.world.epoch ?? 1}:${selectedAgentId}:${Date.now()}`;
   liveWorldWorker.postMessage({
@@ -3318,20 +3205,6 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && !divineAudience.hidden) closePrivateDivineAudience();
   if (event.key === 'Escape' && !prayerInbox.hidden) closePrayerInbox();
 });
-worldMapViewport.addEventListener(
-  'wheel',
-  (event) => {
-    if (!event.ctrlKey && !event.metaKey) return;
-    event.preventDefault();
-    const bounds = worldMapViewport.getBoundingClientRect();
-    setMapZoom(
-      mapZoom * (event.deltaY > 0 ? 0.9 : 1.1),
-      event.clientX - bounds.left,
-      event.clientY - bounds.top,
-    );
-  },
-  { passive: false },
-);
 
 function publishClockControl(initial = false): void {
   clockPanel.publish(preferredSpeedId, preferredSpeedMultiplier, initial);
@@ -3410,12 +3283,12 @@ liveWorldWorker.addEventListener(
           'Сохранённый мир не удалён и продолжает жить с последней подтверждённой точки.';
       } else {
         catchUpOverlay.hidden = false;
-        catchUpTitle.textContent = 'Уменьшаем пакет и продолжаем';
+        catchUpTitle.textContent = 'Продолжаем расчёт';
         catchUpDetail.textContent =
-          `Мобильный браузер отклонил крупную запись. Повторяем безопаснее: ` +
-          `${event.data.batchQuanta} смысловых шагов в пакете.`;
+          `Браузеру требуется больше времени. ` +
+          'Сохраняем уже прожитую историю.';
         offlineClockStatus.textContent =
-          `Догон продолжается меньшими пакетами · сохранение не повреждено`;
+          `Продолжаем с сохранённого момента`;
         offlineClockStatus.classList.add('is-catching-up');
       }
       return;
@@ -3430,6 +3303,7 @@ liveWorldWorker.addEventListener(
       return;
     }
 
+    observerChrome.error(event.data.message);
     liveLabel.textContent = 'ОШИБКА МИРА';
     liveLabel.title = event.data.message;
     saveValue.textContent = event.data.message;
@@ -3437,12 +3311,13 @@ liveWorldWorker.addEventListener(
     cardinalMessage.textContent = event.data.message;
     if (clockPanel.continuity.targetWorldMinutes !== undefined) {
       catchUpTitle.textContent = 'Догон остановлен';
-      catchUpDetail.textContent = event.data.message;
+      catchUpDetail.textContent = 'Подробности доступны в диагностике.';
     }
   },
 );
 
 liveWorldWorker.addEventListener('error', () => {
+  observerChrome.error('Фоновый цикл мира остановился.');
   liveLabel.textContent = 'ОШИБКА МИРА';
   liveLabel.title = 'Фоновый цикл мира остановился.';
   liveIndicator.classList.remove('is-live');
