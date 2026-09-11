@@ -1468,7 +1468,8 @@ function renderPlaces(world: Readonly<WorldState>): void {
   atlas.index.update(world);
   const close=atlasLevel(mapCamera.pixelsPerUnit)==='building';
   const visiblePlaces=atlas.index.visiblePlaces(world,mapCamera,highlightedPlaceIds);
-  const labelIds=visibleMapLabels(visiblePlaces,mapCamera,highlightedPlaceIds);
+  const townNames=new Map(Object.values(world.settlements).map(t=>[t.centerPlaceId,localizedPlaceName(t.name)]));
+  const labelIds=visibleMapLabels(visiblePlaces,mapCamera,highlightedPlaceIds,townNames);
   const liveIds = new Set(visiblePlaces.map(p=>p.id));
   for (const [placeId, element] of placeElements) {
     if (liveIds.has(placeId)) continue;
@@ -1508,7 +1509,13 @@ function renderPlaces(world: Readonly<WorldState>): void {
     }
     placeElement.className = `map-place map-place--${place.kind} map-place--surface-${place.surface}`;
     applyPhysicalPlaceStyle(placeElement,place,mapCamera);
-    placeElement.classList.toggle('has-map-label',labelIds.has(placeId));
+    const mapLabel=labelIds.get(placeId);
+    placeElement.classList.toggle('has-map-label',Boolean(mapLabel));
+    if(mapLabel) {
+      placeElement.style.setProperty('--label-offset-x',mapLabel.offsetX+'px');
+      placeElement.style.setProperty('--label-offset-y',mapLabel.offsetY+'px');
+      placeElement.style.setProperty('--map-label-width',mapLabel.width+'px');
+    }
     placeElement.classList.toggle(
       'is-territory-claimed',
       place.claimedBySettlementId !== undefined,
@@ -1526,7 +1533,7 @@ function renderPlaces(world: Readonly<WorldState>): void {
       dungeon ? `${point.label}; вход в подземелье ранга ${dungeon.rank}` : point.label,
     );
     const label = placeElement.querySelector<HTMLElement>('.place-label');
-    if (label) label.textContent = point.label;
+    if (label) label.textContent = townNames.get(placeId)??point.label;
   }
 }
 

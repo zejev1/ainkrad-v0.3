@@ -36,6 +36,7 @@ try {
  report.checks.push('old main world loaded and migrated; observer header and hidden diagnostics');
  async function snapshot(){return page.evaluate(async()=>{const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('ainkrad-v0-3-browser-world-v1');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});const state=await new Promise((resolve,reject)=>{const r=db.transaction('worlds').objectStore('worlds').get('ainkrad_live_world');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});db.close();return state;});}
  const loaded=await snapshot();
+ console.log('FIX5_GEOMETRY='+JSON.stringify(Object.values(loaded.settlements).map(t=>({id:t.id,version:t.layoutVersion,radius:t.radius,boundary:t.boundaryPolygon?.length}))));
  assert.equal(loaded.id,fixture.id);assert.equal(loaded.epoch,fixture.epoch);
  assert(loaded.calendar.elapsedWorldMinutes>=fixture.calendar.elapsedWorldMinutes);
  assert.deepEqual(Object.keys(loaded.agents).sort(),Object.keys(fixture.agents).sort());
@@ -65,6 +66,7 @@ try {
  for(let i=0;i<7;i++)await page.locator('#map-zoom-in').click();
  await map.scrollIntoViewIfNeeded();await page.waitForTimeout(150);await shot('close',map);
  await page.locator('#map-zoom-fit').click();await map.scrollIntoViewIfNeeded();await page.waitForTimeout(150);await shot('world',map);
+ assert((await page.locator('.has-map-label .place-label:visible').count())>=3,'World settlement labels must be visible.');
  let maxSurface=0,maxPlaces=0,maxResidents=0;
  for(let i=0;i<12;i++){
   await page.locator(i%2?'#map-city-focus':'#map-zoom-fit').click();

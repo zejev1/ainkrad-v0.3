@@ -23,23 +23,9 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
       - name: World, persistence and geography tests
-        run: npm run test -- tests/v0_3_18_secretLibrary.test.ts tests/v0_3_20_fix2Clock.test.ts tests/v0_3_21_foundingOcean.test.ts tests/v0_3_21_visibilityAndTown.test.ts tests/v0_3_21_atlasGeography.test.ts tests/v0_3_21_timeReceiptRetention.test.ts --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/ainkrad-tests.json"
+        run: npm run test -- --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/ainkrad-tests.json"
       - name: Production build
         run: npm run build
-  browser:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - run: npm ci --no-audit --no-fund
-      - run: npm run typecheck && npm run build
       - name: Install browser audit
         run: |
           npm install --no-save --package-lock=false --no-audit --no-fund playwright@1.56.1
@@ -50,10 +36,14 @@ jobs:
         run: node scripts/fix5-browser-smoke.mjs
       - name: Native IndexedDB performance comparison
         run: node scripts/fix5-browser-performance.mjs
-      - name: Retain audit evidence
-        if: always()
+      - name: Prepare audited SPCK checkout
+        id: package
+        run: node scripts/package-spck.mjs
+      - name: SPCK archive
         uses: actions/upload-artifact@v4
         with:
-          name: FIX5-browser-evidence
-          path: ${{ runner.temp }}/fix5-browser
-          retention-days: 7
+          name: Ainkrad21Fix5
+          path: ${{ steps.package.outputs.directory }}
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30

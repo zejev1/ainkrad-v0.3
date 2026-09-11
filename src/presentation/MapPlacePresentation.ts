@@ -20,18 +20,23 @@ export function applyPhysicalPlaceStyle(element:HTMLElement,place:Readonly<World
   element.style.setProperty('--building-angle',(place.rotation??0)+'rad');
   element.classList.toggle('is-town-pin',pin);element.classList.toggle('is-natural-marker',!size.width&&!town);
 }
-/** Declutter labels in screen space, without changing resident place knowledge. */
-export function visibleMapLabels(places:readonly WorldPlace[],camera:Readonly<WorldMapCamera>,highlighted:ReadonlySet<string>):Set<string> {
-  const occupied:{x:number;y:number;width:number;height:number}[]=[],result=new Set<string>();
+export interface MapLabelPlacement { offsetX:number;offsetY:number;width:number }
+/** Declutter and keep names within the visible map, including edge settlements. */
+export function visibleMapLabels(places:readonly WorldPlace[],camera:Readonly<WorldMapCamera>,highlighted:ReadonlySet<string>,
+  names:ReadonlyMap<string,string>=new Map()):Map<string,MapLabelPlacement> {
+  const occupied:{x:number;y:number;width:number;height:number}[]=[],result=new Map<string,MapLabelPlacement>();
   const sorted=[...places].sort((a,b)=>Number(highlighted.has(b.id))-Number(highlighted.has(a.id))||
     Number(['commons','village','city'].includes(b.kind))-Number(['commons','village','city'].includes(a.kind)));
   for(const p of sorted) {
     if(p.kind==='home'&&!highlighted.has(p.id))continue;
-    const center=camera.point(p.mapX,p.mapY),width=Math.min(180,Math.max(60,p.name.length*6.3)),height=20;
-    const x=center.x*camera.width/100-width/2,y=center.y*camera.height/100+12;
-    if(x<0||x+width>camera.width||y<0||y+height>camera.height)continue;
+    const point=camera.point(p.mapX,p.mapY),cx=point.x*camera.width/100,cy=point.y*camera.height/100;
+    if(cx<0||cx>camera.width||cy<0||cy>camera.height)continue;
+    const width=Math.min(180,Math.max(60,(names.get(p.id)??p.name).length*7.2)),height=23;
+    const size=buildingSize(p),offset=Math.max(16,size.height*camera.pixelsPerUnit/2+4);
+    const x=Math.max(4,Math.min(camera.width-width-4,cx-width/2)),y=Math.max(4,Math.min(camera.height-height-4,cy+offset));
     if(occupied.some(r=>x<r.x+r.width+8&&x+width+8>r.x&&y<r.y+r.height+5&&y+height+5>r.y))continue;
-    result.add(p.id);occupied.push({x,y,width,height});if(result.size>=24)break;
+    result.set(p.id,{offsetX:x+width/2-cx,offsetY:y-cy,width});occupied.push({x,y,width,height});
+    if(result.size>=24)break;
   }
   return result;
 }
