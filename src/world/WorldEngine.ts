@@ -1,3 +1,4 @@
+import { createFoundingOcean, repairFoundingOcean } from './FoundingOcean';
 import { LIBRARY_IDS, LIBRARY_YEAR, admissionDeadline, isSecretLibrary, libraryIdOf, hasLibraryAdmission, reconcileLibraryAdmissions, enforceLibraryBoundary, noteLibraryArrival } from '../v21/LibraryAdmissions';
 import { ensureElfLibraryV20, elfStudyMaterialV20, readingBudgetV20 } from '../v20/LibraryLearningV20';
 import type { WorldInterventionKind as InterventionKind, WorldInputEnvelope as InputEnvelope } from '../core/WorldContracts';
@@ -3222,6 +3223,7 @@ async function migrateLegacyWorld(
   for (const [placeId, placeName] of Object.entries(coreNames)) {
     if (next.places[placeId]) next.places[placeId].name = placeName;
   }
+  repairFoundingOcean(next);
   makeConnectionsReciprocal(next.places);
   next.settlements = rebuildSettlementProjection(
     next.places,
@@ -3693,6 +3695,8 @@ async function repairCompatibleV16World(
     if (current.rulesVersion !== WORLD_RULES_VERSION_V16) return current;
     const next = structuredClone(current);
     const before = stableJsonStringify(next);
+    const repairedFoundingOcean = repairFoundingOcean(next);
+    if (repairedFoundingOcean) next.routes = rebuildWorldRoutes(next.places, next.routes);
     repairWorldV16AdditiveSchema(
       next,
       next.v16?.migratedFromRulesVersion ?? WORLD_RULES_VERSION_V16,
@@ -3830,6 +3834,8 @@ async function repairCompatibleV18World(
     if (current.rulesVersion !== WORLD_RULES_VERSION_V18) return current;
     const next = structuredClone(current);
     const before = stableJsonStringify(next);
+    const repairedFoundingOcean = repairFoundingOcean(next);
+    if (repairedFoundingOcean) next.routes = rebuildWorldRoutes(next.places, next.routes);
     // v18 deliberately carries the authoritative v16 economy/evidence
     // projection forward. Some recovery packages already wrote the v18
     // marker while an older nested v16 additive field was still absent. A
@@ -3970,7 +3976,7 @@ async function repairCompatibleV19World(
     from: WORLD_RULES_VERSION,
     to: WORLD_RULES_VERSION,
     mode: 'same_version_additive_schema_repair',
-    schemaRevision: '2026-09-11-admissions-town-continuity',
+    schemaRevision: '2026-09-11-founding-ocean-continuity',
   });
   let current = persisted;
 
@@ -3978,6 +3984,8 @@ async function repairCompatibleV19World(
     if (current.rulesVersion !== WORLD_RULES_VERSION) return current;
     const next = structuredClone(current);
     const before = stableJsonStringify(next);
+    const repairedFoundingOcean = repairFoundingOcean(next);
+    if (repairedFoundingOcean) next.routes = rebuildWorldRoutes(next.places, next.routes);
     repairWorldV16AdditiveSchema(
       next,
       next.v16?.migratedFromRulesVersion ?? WORLD_RULES_VERSION_V16,
@@ -4206,28 +4214,7 @@ export class WorldEngine {
         Math.max(8, names.length * 2),
         placeMigrationDefaults({ id: 'outskirts', kind: 'outskirts' }, 0),
       ),
-      ocean_ainkrad: createPlace(
-        'ocean_ainkrad',
-        'Великое море Айнкрада',
-        'ocean',
-        100_000,
-        {
-          biome: 'ocean',
-          mapX: 98,
-          mapY: 88,
-          connectedPlaceIds: [],
-          fertility: 0.66,
-          danger: 0.34,
-          surface: 'water',
-          boundaryPolygon: [
-            { x: 96, y: -100_075 },
-            { x: 200_375, y: -100_075 },
-            { x: 200_375, y: 100_075 },
-            { x: 96, y: 100_075 },
-          ],
-          discoveredAt: now,
-        },
-      ),
+      ocean_ainkrad: createFoundingOcean(now),
     };
     const agents: Record<string, AgentState> = {};
 
@@ -4483,6 +4470,7 @@ export class WorldEngine {
           workshop: createPlace('workshop', 'Мастерская Айнкрада', 'workshop', Math.max(10, names.length), placeMigrationDefaults({ id: 'workshop', kind: 'workshop' }, 0)),
           quiet_space: createPlace('quiet_space', 'Тихий сад Айнкрада', 'quiet_space', Math.max(8, names.length), placeMigrationDefaults({ id: 'quiet_space', kind: 'quiet_space' }, 0)),
           outskirts: createPlace('outskirts', 'Окраина Айнкрада', 'outskirts', Math.max(16, names.length * 2), placeMigrationDefaults({ id: 'outskirts', kind: 'outskirts' }, 0)),
+          ocean_ainkrad: createFoundingOcean(resetAt),
         };
         const agents: Record<string, AgentState> = {};
         names.forEach((name, index) => {
