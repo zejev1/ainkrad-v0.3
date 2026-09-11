@@ -89,6 +89,9 @@ export interface SecretLibraryStateV18 {
   opensAtWorldMinute: number;
   closesAtWorldMinute: number;
   visitors: SecretLibraryVisitorV18[];
+  admissionVersion?: 1;
+  visitHistory?: SecretLibraryVisitorV18[];
+  annualSelections?: Record<string, { year: number; agentIds: string[]; attemptedAtActiveCount?: number }>;
   knowledgeByAgentId: Record<string, SecretLibraryKnowledgeRecordV18[]>;
   totalVisits: number;
   totalKnowledgeRecords: number;
@@ -327,7 +330,7 @@ export function repairSecretLibraryStateV18(
     .filter((visitor, index, all) =>
       all.findIndex((candidate) => candidate.agentId === visitor.agentId) === index,
     )
-    .slice(0, SECRET_LIBRARY_MAX_VISITORS_PER_YEAR_V18 * 4);
+    ;
   const knowledgeByAgentId: Record<string, SecretLibraryKnowledgeRecordV18[]> = {};
   const rawKnowledge = asRecord(value.knowledgeByAgentId) ?? {};
   for (const [agentId, records] of Object.entries(rawKnowledge)) {
@@ -362,6 +365,14 @@ export function repairSecretLibraryStateV18(
       fallback.closesAtWorldMinute,
     ),
     visitors,
+    ...(value.admissionVersion === 1 ? { admissionVersion: 1 as const } : {}),
+    visitHistory: (Array.isArray(value.visitHistory) ? value.visitHistory : [])
+      .map(v => repairedVisitor(v, Math.max(1, year))).filter((v): v is SecretLibraryVisitorV18 => !!v).slice(-100),
+    annualSelections: Object.fromEntries(Object.entries(asRecord(value.annualSelections) ?? {}).flatMap(([id, raw]) => {
+      const receipt = asRecord(raw);
+      return receipt ? [[id, { year: nonNegativeInteger(receipt.year), agentIds: stringArray(receipt.agentIds, 5),
+        ...(typeof receipt.attemptedAtActiveCount === 'number' ? {attemptedAtActiveCount: nonNegativeInteger(receipt.attemptedAtActiveCount)} : {}) }]] : [];
+    })),
     knowledgeByAgentId,
     totalVisits: Math.max(visitors.length, nonNegativeInteger(value.totalVisits)),
     totalKnowledgeRecords: Math.max(
@@ -422,7 +433,7 @@ export function repairSecretLibraryPlacementV18(world: WorldState): boolean {
     id: SECRET_LIBRARY_PLACE_ID_V18,
     name: SECRET_LIBRARY_PLACE_NAME_V18,
     kind: 'library',
-    capacity: 6,
+    capacity: 5,
     biome: 'ancient_ruins',
     mapX,
     mapY,
@@ -786,7 +797,9 @@ export function assertSecretLibraryStateV18(world: Readonly<WorldState>): void {
     throw new Error('Secret Library physical anchor is invalid.');
   }
   if (
-    library.visitors.length > SECRET_LIBRARY_MAX_VISITORS_PER_YEAR_V18 * 4 ||
+    library.visitors.length > SECRET_LIBRARY_MAX_VISITORS_PER_YEAR_V18 * 2 ||
+    ['secret_library_v18', 'elf_library_v20'].some(id => library.visitors.filter(v => (v.libraryPlaceId ?? SECRET_LIBRARY_PLACE_ID_V18) === id).length > 5) ||
+    (library.visitHistory?.length ?? 0) > 100 ||
     new Set(library.visitors.map((visitor) => visitor.agentId)).size !==
       library.visitors.length
   ) {

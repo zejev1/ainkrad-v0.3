@@ -1,3 +1,4 @@
+import { hasLibraryAdmission } from '../v21/LibraryAdmissions';
 import type { AgentState, WorldState } from '../world/types';
 
 /** Capabilities only: these grants never assign a vocation, belief or action. */
@@ -74,6 +75,6 @@ export function applyLivedGiftLearningV20(world: WorldState, agent: AgentState, 
   }
 }
 
-export function canReadLibraryV20(agent: Readonly<AgentState>, libraryId: string): boolean {
-  return (agent.race ?? 'human') === (libraryId === 'elf_library_v20' ? 'elf' : 'human');
+export function canReadLibraryV20(agent: Readonly<AgentState>, libraryId: string, world?: Readonly<WorldState>): boolean {
+  return !!world && agent.locationId === libraryId && !agent.movement && hasLibraryAdmission(world, agent, libraryId);
 }
