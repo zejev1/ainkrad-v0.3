@@ -15,7 +15,7 @@ export function installObserverChrome(root:HTMLElement) {
   button.addEventListener('click',()=>{diagnostics.open=true;diagnostics.scrollIntoView({block:'center'});});
   notice.append(text,button);root.querySelector('.world-header')?.insertAdjacentElement('afterend',notice);
   return {
-    error(message:string){error.textContent=message;notice.hidden=false;text.textContent='Расчёт мира остановлен. Сохранённая история остаётся на месте.';},
+    error(message:string){error.textContent=message;notice.hidden=false;text.textContent='Расчёт мира остановлен. Откройте подробности.';},
     clear(){notice.hidden=true;},
   };
 }
