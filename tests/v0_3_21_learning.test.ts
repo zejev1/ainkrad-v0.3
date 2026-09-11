@@ -107,7 +107,7 @@ describe('Personal observation → attempt → real receipt → changed advice',
 
   it('runs in the real world without Cardinal and reopens with exactly the same experience and time',async()=>{
     const store=new InMemoryWorldStore();
-    const engine=await WorldEngine.create({worldId:'integration-learning',seed:'learning-life',agentNames:['A','B','C','D'],store,startTime:0});
+    const engine=await WorldEngine.create({worldId:'integration-learning',seed:'learning-life',agentNames:Array.from({length:10},(_,i)=>'Learner'+i),store,startTime:0});
     expect(Object.values(engine.snapshot().agents).every(a=>a.learning===undefined)).toBe(true);
     await engine.advanceCanonicalTimeTo(WORLD_MINUTES_PER_YEAR);
     const before=engine.snapshot();

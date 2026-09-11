@@ -1,0 +1,101 @@
+import { describe, it, expect } from 'vitest';
+import { WorldEngine } from '../src/world/WorldEngine';
+import { InMemoryWorldStore } from '../src/world/InMemoryWorldStore';
+import { repairCompactSettlementLayout } from '../src/world/CompactSettlementLayout';
+import { buildingRadius, nextUrbanHomeLot, segmentEntersBuilding, dryBuildingPlot } from '../src/world/SettlementStreets';
+import { settlementOptions } from '../src/presentation/SettlementPicker';
+import { settlementMapFocus, residentMapFocus } from '../src/presentation/WorldMapFocus';
+import { rebuildWorldRoutes, routeIdBetween } from '../src/world/WorldNavigation';
+import type { WorldPlace } from '../src/world/types';
+
+const fresh=async()=> (await WorldEngine.create({worldId:'geometry',seed:'streets',store:new InMemoryWorldStore()})).snapshot();
+describe('physical settlement geometry and observer navigation',()=>{
+  it('migrates different homelands internally, preserving IDs and long geographical separation',async()=>{
+    const w=await fresh(),model=w.places.home_agent_1;
+    for(const [i,race] of ['elf','orc','dwarf'].entries()) {
+      const id='settlement_'+race,x=-10000-i*10000,y=50;
+      w.places[id]={...w.places.commons,id,name:race,kind:'village',settlementId:id,mapX:x,mapY:y,connectedPlaceIds:[]};
+      w.settlements[id]={id,name:race,kind:'village',centerPlaceId:id,centerX:x,centerY:y,radius:17,memberPlaceIds:[],foundedAt:0};
+      for(let j=0;j<10;j++) {
+        const home=id+'_home_'+j;
+        w.places[home]={...model,id:home,settlementId:id,mapX:x+j,mapY:y+8,urbanLayoutVersion:1,urbanLot:j,connectedPlaceIds:[id]};
+        w.places[id].connectedPlaceIds.push(home);
+      }
+      for(const kind of ['workshop','resource_field','outskirts'] as const) {
+        const p=id+'_'+kind;w.places[p]={...w.places[kind],id:p,kind,settlementId:id,mapX:x+12,mapY:y+5,urbanLayoutVersion:undefined,connectedPlaceIds:[id]};
+        w.places[id].connectedPlaceIds.push(p);
+      }
+    }
+    const protectedState=structuredClone({agents:w.agents,calendar:w.calendar,rng:w.determinism,v15:w.v15,v18:w.v18!.secretLibrary.knowledgeByAgentId});
+    const ids=Object.keys(w.places);repairCompactSettlementLayout(w);
+    expect(Object.keys(w.places)).toEqual(ids);
+    expect({agents:w.agents,calendar:w.calendar,rng:w.determinism,v15:w.v15,v18:w.v18!.secretLibrary.knowledgeByAgentId}).toEqual(protectedState);
+    for(const town of Object.values(w.settlements)) {
+      const built=Object.values(w.places).filter(p=>p.settlementId===town.id && buildingRadius(p)>0);
+      const edge=Math.max(...built.map(p=>Math.hypot(p.mapX-town.centerX,p.mapY-town.centerY)+buildingRadius(p)));
+      expect(edge).toBeLessThan(2);
+      for(const field of Object.values(w.places).filter(p=>p.settlementId===town.id && p.kind==='resource_field'))
+        expect(Math.hypot(field.mapX-town.centerX,field.mapY-town.centerY)).toBeGreaterThan(edge);
+      for(const p of built) for(const q of built) if(p.id!==q.id) {
+        expect(Math.abs(p.mapX-q.mapX)>=buildingRadius(p)+buildingRadius(q)+.029 ||
+          Math.abs(p.mapY-q.mapY)>=(p.kind==='home'?.05:buildingRadius(p))+(q.kind==='home'?.05:buildingRadius(q))+.029).toBe(true);
+      }
+    }
+    expect(Math.abs(w.places.settlement_elf.mapX-w.places.commons.mapX)).toBeGreaterThanOrEqual(10000);
+    const once=structuredClone(w);expect(repairCompactSettlementLayout(w)).toBe(false);expect(w).toEqual(once);
+  });
+  it('reprojects an old field journey onto its displayed road and retains road use history',async()=>{
+    const w=await fresh();w.places.resource_field.mapX=56;w.places.resource_field.mapY=52;
+    w.places.outskirts.mapX=62;w.places.outskirts.mapY=55;
+    delete w.places.resource_field.urbanLayoutVersion;delete w.places.outskirts.urbanLayoutVersion;
+    w.routes=rebuildWorldRoutes(w.places,w.routes);
+    const id=routeIdBetween('commons','resource_field'),route=w.routes[id];route.completedTraversals=123;
+    const path=route.fromPlaceId==='commons'?route.waypoints:[...route.waypoints].reverse();
+    const a=w.agents.agent_1;a.locationId='commons';a.position={...path[1],layerId:'surface'};
+    a.movement={targetPlaceId:'resource_field',purpose:'gather',waypoints:path,nextWaypointIndex:2,startedAt:0,worldStageAtStart:0,routeIds:[id]};
+    repairCompactSettlementLayout(w);
+    expect(w.routes[id].completedTraversals).toBe(123);
+    const expected=w.routes[id].fromPlaceId==='commons'?w.routes[id].waypoints:[...w.routes[id].waypoints].reverse();
+    expect(a.movement!.waypoints).toEqual(expected);
+    const n=a.movement!.nextWaypointIndex,prev=expected[n-1],next=expected[n];
+    expect(Math.abs((a.position.x-prev.x)*(next.y-prev.y)-(a.position.y-prev.y)*(next.x-prev.x))).toBeLessThan(1e-8);
+    expect(Math.hypot(w.places.resource_field.mapX-50,w.places.resource_field.mapY-50)).toBeLessThan(2);
+    expect(Math.hypot(w.places.outskirts.mapX-50,w.places.outskirts.mapY-50)).toBeLessThan(2);
+  });
+  it('extends curved lanes without crossing buildings, with bounded metre-scale widths',async()=>{
+    const w=await fresh(),center={x:50,y:50};
+    for(let i=0;i<22;i++) {
+      const p=nextUrbanHomeLot(w.places,center,'settlement_ainkrad')!;expect(p).toBeDefined();
+      const id='future_'+i;w.places[id]={...w.places.home_agent_1,id,mapX:p.x,mapY:p.y,urbanLot:p.lot,urbanLayoutVersion:2,connectedPlaceIds:['commons']};
+      w.places.commons.connectedPlaceIds.push(id);
+    }
+    repairCompactSettlementLayout(w);
+    const homes=Object.values(w.places).filter(p=>p.kind==='home');
+    for(const home of homes) {
+      const pair=homes.find(p=>p.urbanLot===(home.urbanLot!^1));
+      if(pair) {
+        const gap=(Math.abs(pair.mapX-home.mapX)-.12)*100;
+        expect(gap).toBeGreaterThanOrEqual(3);expect(gap).toBeLessThanOrEqual(home.urbanLot!<16?10:6);
+      }
+    }
+    for(const route of Object.values(w.routes)) if(route.distance<4) {
+      for(const b of Object.values(w.places).filter(p=>buildingRadius(p)>0&&p.id!==route.fromPlaceId&&p.id!==route.toPlaceId))
+        expect(route.waypoints.slice(1).some((p,i)=>segmentEntersBuilding(route.waypoints[i],p,b))).toBe(false);
+    }
+    expect(w.routes[routeIdBetween('commons','future_21')].waypoints.length).toBeGreaterThan(4);
+    const lake={...w.places.commons,surface:'water',boundaryPolygon:[{x:0,y:0},{x:.01,y:0},{x:.01,y:.01},{x:0,y:.01}]} as WorldPlace;
+    expect(dryBuildingPlot({x:0,y:0},.06,.05,[lake])).toBe(false);
+  });
+  it('lists all settlements and focuses their camera without changing the world or selected resident',async()=>{
+    const w=await fresh();
+    w.places.remote={...w.places.commons,id:'remote',kind:'village',settlementId:'remote',mapX:-10000,mapY:4000};
+    w.settlements.remote={id:'remote',name:'Эльфийский город',kind:'village',centerPlaceId:'remote',centerX:-10000,centerY:4000,radius:1,memberPlaceIds:['remote'],foundedAt:0};
+    const saved=structuredClone(w),options=settlementOptions(w);
+    expect(options.find(x=>x.id==='remote')).toEqual({id:'remote',name:'Эльфийский город',population:0});
+    expect(options.find(x=>x.id==='settlement_ainkrad')!.population).toBe(10);
+    expect(settlementMapFocus(w,'remote',390,600)!.x).toBe(-10000);
+    expect(residentMapFocus(w,'agent_1',400)).toBeDefined();
+    expect(settlementMapFocus(w,'missing',390,600)).toBeUndefined();
+    expect(w).toEqual(saved);
+  });
+});

@@ -2881,9 +2881,12 @@ function rebuildSettlementProjection(
 ): Record<string, WorldSettlementState> {
   const main = mainSettlement(places, foundedAt);
   const priorMain = prior[main.id];
+  if (priorMain?.layoutVersion === 2) {
+    main.layoutVersion = 2; main.layoutSignature = priorMain.layoutSignature; main.radius = priorMain.radius;
+  }
   if (priorMain?.kind === 'city') {
     main.kind = 'city';
-    main.radius = Math.max(20, priorMain.radius);
+    main.radius = priorMain.layoutVersion === 2 ? priorMain.radius : Math.max(20, priorMain.radius);
   }
   const settlements: Record<string, WorldSettlementState> = {
     settlement_ainkrad: main,
@@ -2906,6 +2909,7 @@ function rebuildSettlementProjection(
       centerX: place.mapX,
       centerY: place.mapY,
       radius: existing?.radius ?? (place.kind === 'city' ? 20 : 11),
+      ...(existing?.layoutVersion === 2 ? {layoutVersion: 2 as const, layoutSignature: existing.layoutSignature} : {}),
       memberPlaceIds,
       foundedAt: existing?.foundedAt ?? place.discoveredAt ?? foundedAt,
     };
@@ -3695,6 +3699,7 @@ async function repairCompatibleV16World(
     );
     if (stableJsonStringify(next) === before) return current;
 
+    await store.checkpointWorld?.(current.id, current.revision, 'before-additive-schema-migration');
     next.revision = current.revision + 1;
     const migrationEvent: WorldEvent = {
       eventId: `migration:${next.id}:v16-additive-schema-repair-2026-08-26:revision:${current.revision}`,
@@ -3996,7 +4001,7 @@ async function repairCompatibleV19World(
 
     next.revision = current.revision + 1;
     const migrationEvent: WorldEvent = {
-      eventId: `migration:${next.id}:v20-knowledge-boundaries-2026-09-09:revision:${current.revision}`,
+      eventId: `migration:${next.id}:v21-admissions-town-continuity-2026-09-11:revision:${current.revision}`,
       worldId: next.id,
       kind: 'world.migrated',
       source: 'system',
@@ -4399,6 +4404,9 @@ export class WorldEngine {
     let state = await options.store.loadWorld(options.worldId);
     if (!state) {
       throw new Error(`World ${options.worldId} does not exist in the store.`);
+    }
+    if (state.rulesVersion !== WORLD_RULES_VERSION) {
+      await options.store.checkpointWorld?.(state.id, state.revision, 'before-rules-migration');
     }
     if (LEGACY_WORLD_RULES_VERSIONS.has(state.rulesVersion)) {
       state = await migrateLegacyWorld(options.store, state);
@@ -9673,7 +9681,7 @@ export class WorldEngine {
           },
         );
         this.state.places[homeId].urbanLot = plot.lot;
-        this.state.places[homeId].urbanLayoutVersion = 1;
+        this.state.places[homeId].urbanLayoutVersion = 2;
         makeConnectionsReciprocal(this.state.places);
         this.rebuildSpatialProjection();
         economy.constructionEvents += 1;

@@ -727,7 +727,8 @@ void start().catch((error: unknown) => {
     protocolVersion: FRAME_PROTOCOL_VERSION,
     message:
       error instanceof Error
-        ? error.message
+        ? `${error.name}: ${error.message}\nАдрес: ${workerScope.location.origin}\n` +
+          (activeRuntime ? `Мир ${activeRuntime.worldSnapshot().id}, эпоха ${activeRuntime.worldSnapshot().epoch ?? 1}, ревизия ${activeRuntime.worldSnapshot().revision}.` : 'Ошибка загрузки сохранения.')
         : 'Unknown live-world error.',
   } as const;
   console.error('[Ainkrad live world] Worker stopped.', error);

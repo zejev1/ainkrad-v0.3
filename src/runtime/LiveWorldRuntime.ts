@@ -522,7 +522,8 @@ export class LiveWorldRuntime {
     const worldId = options.worldId ?? 'live_world';
     const store = options.store ?? new InMemoryWorldStore();
     const existing = await store.loadWorld(worldId);
-    const world = existing
+    // Read and migration failures propagate; only an explicit absent record may create a world.
+    const world = existing !== undefined
       ? await WorldEngine.open({ worldId, store })
       : await WorldEngine.create({
           worldId,

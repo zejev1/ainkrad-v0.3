@@ -39,6 +39,8 @@ export interface WorldCommitResult {
 export interface WorldStore extends EventReader, MemoryReader {
   initializeWorld(state: WorldState): Promise<void>;
   loadWorld(worldId: string): Promise<WorldState | undefined>;
+  /** Durable stores must protect the existing snapshot before a schema migration. */
+  checkpointWorld?(worldId: string, expectedRevision: number, reason: string): Promise<void>;
   committedOperation(
     worldId: string,
     operationId: string,

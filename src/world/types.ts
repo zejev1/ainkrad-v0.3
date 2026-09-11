@@ -344,7 +344,7 @@ export interface WorldPlace {
   settlementId?: string;
   /** Stable metre-scale town plot; unrelated to world-map zoom or race spacing. */
   urbanLot?: number;
-  urbanLayoutVersion?: 1;
+  urbanLayoutVersion?: 1 | 2;
   /** A wilderness claim can change through settlement decisions or war. */
   claimedBySettlementId?: string;
   discoveredAt?: number;
@@ -361,6 +361,8 @@ export interface WorldRouteState {
 }
 
 export interface WorldSettlementState {
+  layoutVersion?: 2;
+  layoutSignature?: string;
   id: string;
   name: string;
   kind: 'village' | 'city';

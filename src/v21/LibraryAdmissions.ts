@@ -74,14 +74,15 @@ export function reconcileLibraryAdmissions(world: WorldState, minute = world.cal
   for (const id of LIBRARY_IDS) {
     const prior = library.annualSelections[id];
     if (!prior || prior.year !== year) {
-      const records = [...library.visitHistory, ...library.visitors].filter(v => libraryIdOf(v) === id && v.accessYear === year);
+      const records = [...library.visitHistory, ...library.visitors].filter(v => libraryIdOf(v) === id && v.accessYear === year)
+        .sort((a,b) => a.selectedWorldMinute-b.selectedWorldMinute || a.agentId.localeCompare(b.agentId));
       library.annualSelections[id] = { year, agentIds: [...new Set(records.map(v => v.agentId))].slice(0, LIBRARY_LIMIT) };
     }
     if (world.places[id]) world.places[id].capacity = LIBRARY_LIMIT;
   }
   const active: SecretLibraryVisitorV18[] = [], ended: SecretLibraryVisitorV18[] = [];
   // Stable oldest admissions win when repairing an overfilled old save.
-  const ordered = [...library.visitors].sort((a,b) => a.selectedWorldMinute-b.selectedWorldMinute || a.agentId.localeCompare(b.agentId));
+  const ordered = legacy ? [...library.visitors].sort((a,b) => a.selectedWorldMinute-b.selectedWorldMinute || a.agentId.localeCompare(b.agentId)) : library.visitors;
   for (const visitor of ordered) {
     const agent = world.agents[visitor.agentId], id = libraryIdOf(visitor);
     if (legacy && agent?.locationId === id && !agent.movement && visitor.arrivedWorldMinute === undefined &&

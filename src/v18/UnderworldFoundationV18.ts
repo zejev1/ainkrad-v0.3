@@ -311,7 +311,7 @@ export function repairWorldV18AdditiveSchema(
     if (!state.agents[agentId]) delete v18.lifeRhythmByAgentId[agentId];
   }
   for (const settlementId of Object.keys(state.settlements)) {
-    v18.settlementLifecycleById[settlementId] = deriveSettlementLifecycleV18(
+    v18.settlementLifecycleById[settlementId] ??= deriveSettlementLifecycleV18(
       state,
       settlementId,
       v18.settlementLifecycleById[settlementId],

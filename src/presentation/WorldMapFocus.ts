@@ -8,7 +8,14 @@ export function townMapFocus(world: Readonly<WorldState>, residentId: string | u
   const resident = world.agents[residentId ?? ''];
   const home = world.places[resident?.homeId ?? ''];
   const town = world.settlements[home?.settlementId ?? 'settlement_ainkrad'];
-  const center = world.places[town?.centerPlaceId ?? 'commons'];
+  return settlementMapFocus(world, town?.id ?? 'settlement_ainkrad', width, height);
+}
+
+export function settlementMapFocus(world: Readonly<WorldState>, settlementId: string,
+  width: number, height: number): MapFocus | undefined {
+  const town = world.settlements[settlementId];
+  if (!town) return undefined;
+  const center = world.places[town.centerPlaceId];
   if (!center) return undefined;
   const buildings = Object.values(world.places).filter(p =>
     (p.settlementId === center.settlementId ||

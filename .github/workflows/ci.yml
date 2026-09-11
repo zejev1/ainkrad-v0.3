@@ -23,6 +23,10 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Resolve IndexedDB test dependency
+        run: |
+          npm install --package-lock-only --save-dev --save-exact fake-indexeddb@6.2.2 --no-audit --no-fund
+          node -e "console.log('AINKRAD_LOCK_ENTRY='+JSON.stringify(require('./package-lock.json').packages['node_modules/fake-indexeddb']))"
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
