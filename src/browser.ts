@@ -1,3 +1,4 @@
+import { WorldClockPanel } from './presentation/WorldClockPanel';
 import { worldStorageDiagnostics } from './persistence/WorldSaveSafety';
 import { createSettlementPicker } from './presentation/SettlementPicker';
 import { WorldMapCamera, clipMapSegment, clipMapPolygon, MAX_VISIBLE_PLACES, MAX_VISIBLE_RESIDENTS } from './presentation/WorldMapCamera';
@@ -24,8 +25,6 @@ import type {
   LiveWorldFrame,
 } from './runtime/LiveWorldRuntime';
 import {
-  makeOfflineWorldClockAnchor,
-  offlineWorldMinuteTarget,
   parseOfflineWorldClockAnchor,
   type OfflineWorldClockAnchor,
 } from './runtime/OfflineWorldClock';
@@ -336,7 +335,7 @@ app.innerHTML = `
   <div class="ainkrad-app">
     <header class="world-header">
       <div>
-        <p class="eyebrow">AINKRAD v0.3.21.3 · видимые жители · путь к Underworld</p>
+        <p class="eyebrow">AINKRAD v0.3.21.4 · видимые жители · путь к Underworld</p>
         <h1 id="world-title">Мир · уровень 1</h1>
         <p class="world-subtitle">Время регулируется снаружи. Жители сами расширяют карту и проживают поколения.</p>
       </div>
@@ -863,8 +862,6 @@ let preferredSpeedId: WorldSpeedId = DEFAULT_WORLD_SPEED_ID;
 let preferredSpeedMultiplier: WorldSpeedMultiplier =
   DEFAULT_WORLD_SPEED_MULTIPLIER;
 let pendingOfflineClockAnchor: OfflineWorldClockAnchor | undefined;
-let offlineClockAnchorChecked = false;
-let offlineCatchUpTargetWorldMinutes: number | undefined;
 let offlineClockStorageAvailable = true;
 let textScale: (typeof TEXT_SCALE_STEPS)[number] = 1.15;
 
@@ -927,7 +924,7 @@ function clockRateLabel(
     worldSpeedPreset(speedId).worldMinutesPerRealMinute * multiplier;
   if (minutes >= WORLD_MINUTES_PER_YEAR) {
     const years = minutes / WORLD_MINUTES_PER_YEAR;
-    return `1 мин = ${Number.isInteger(years) ? years : years.toFixed(1)} ${years === 1 ? 'год' : 'лет'}`;
+    return `Цель: 1 мин ≈ ${Number.isInteger(years) ? years : years.toFixed(1)} ${years === 1 ? 'год' : 'лет'}`;
   }
   if (minutes >= 43_200) return `1 мин = ${Math.round(minutes / 43_200)} мес`;
   if (minutes >= 1_440) return `1 мин = ${Math.round(minutes / 1_440)} дн`;
@@ -1228,7 +1225,7 @@ function updateDivineContactRequirements(): void {
 }
 
 function openPrivateDivineAudience(prayerId?: string): void {
-  if (!lastFrame || !selectedAgentId || offlineCatchUpTargetWorldMinutes !== undefined) return;
+  if (!lastFrame || !selectedAgentId || clockPanel.continuity.targetWorldMinutes !== undefined) return;
   const agent = lastFrame.world.agents[selectedAgentId];
   if (!agent?.life.alive) return;
   activePrayerId = prayerId;
@@ -1257,7 +1254,7 @@ function closePrivateDivineAudience(): void {
   divineAudience.hidden = true;
   activePrayerId = undefined;
   document.body.classList.remove('has-modal');
-  offlineCatchUpTargetWorldMinutes = undefined;
+  clockPanel.continuity.targetWorldMinutes = undefined;
   pendingOfflineClockAnchor = undefined;
   if (lastFrame) persistOfflineClockAnchor(lastFrame, Date.now());
   liveWorldWorker.postMessage({
@@ -1907,8 +1904,8 @@ function updateSelection(): void {
   const giftCount = divineProfile?.gifts.length ?? 0;
   const contactCount = divineProfile?.contacts.length ?? 0;
   privateAudienceOpen.disabled =
-    offlineCatchUpTargetWorldMinutes !== undefined;
-  privateAudienceOpen.textContent = offlineCatchUpTargetWorldMinutes !== undefined
+    clockPanel.continuity.targetWorldMinutes !== undefined;
+  privateAudienceOpen.textContent = clockPanel.continuity.targetWorldMinutes !== undefined
       ? 'Аудиенция доступна после догона мира'
       : giftCount + contactCount > 0
         ? `Божественные действия · даров ${giftCount}, контактов ${contactCount}`
@@ -2340,108 +2337,16 @@ function updateWorldTime(frame: Readonly<LiveWorldFrame>): void {
 }
 
 function persistOfflineClockAnchor(
-  frame: Readonly<LiveWorldFrame>,
-  wallClockMs = Date.now(),
-  speedId = frame.clock.speedId,
-  multiplier = frame.clock.multiplier,
-): void {
-  if (!offlineClockStorageAvailable) return;
-  const worldMinutes = Math.max(
-    frame.world.calendar.elapsedWorldMinutes + (frame.liveTiming?.pendingWorldMinutes ?? 0),
-    offlineCatchUpTargetWorldMinutes ?? 0,
-  );
-  try {
-    localStorage.setItem(
-      OFFLINE_CLOCK_ANCHOR_KEY,
-      JSON.stringify(
-        makeOfflineWorldClockAnchor({
-          worldEpoch: frame.world.epoch ?? 1,
-          worldMinutes,
-          wallClockMs,
-          speedId,
-          multiplier,
-        }),
-      ),
-    );
-  } catch {
-    offlineClockStorageAvailable = false;
-  }
-}
+  frame: Readonly<LiveWorldFrame>, wallClockMs = Date.now(),
+  speedId = preferredSpeedId, multiplier = preferredSpeedMultiplier,
+): void { clockPanel.persist(frame, wallClockMs, speedId, multiplier); }
 
-function requestOfflineCatchUp(
-  frame: Readonly<LiveWorldFrame>,
-  anchor: Readonly<OfflineWorldClockAnchor> | undefined,
-  nowWallClockMs = Date.now(),
-): void {
-  if (!anchor) return;
-  const currentWorldMinutes = frame.world.calendar.elapsedWorldMinutes;
-  const target = offlineWorldMinuteTarget({
-    anchor,
-    currentWorldEpoch: frame.world.epoch ?? 1,
-    currentWorldMinutes,
-    nowWallClockMs,
-  });
-  if (target === undefined || target <= currentWorldMinutes + 1e-7) return;
-
-  const previousTarget = offlineCatchUpTargetWorldMinutes ?? currentWorldMinutes;
-  offlineCatchUpTargetWorldMinutes = Math.max(previousTarget, target);
-  if (offlineCatchUpTargetWorldMinutes <= previousTarget + 1e-7) return;
-  catchUpOverlay.hidden = false;
-  catchUpTitle.textContent = `Догоняем ${worldDurationDescription(
-    offlineCatchUpTargetWorldMinutes - currentWorldMinutes,
-  )}`;
-  catchUpPercent.textContent = '0%';
-  catchUpBar.style.width = '0%';
-  catchUpDetail.textContent =
-    'Запущен быстрый пакетный расчёт. Карта временно не перерисовывается, но мир продолжает жить.';
-  liveWorldWorker.postMessage({
-    type: 'catch_up_world_time',
-    worldEpoch: frame.world.epoch ?? 1,
-    targetWorldMinutes: offlineCatchUpTargetWorldMinutes,
-  });
-}
-
-function resumeOfflineClockFromStoredAnchor(
-  frame: Readonly<LiveWorldFrame>,
-): void {
-  if (!offlineClockStorageAvailable) return;
-  try {
-    requestOfflineCatchUp(
-      frame,
-      parseOfflineWorldClockAnchor(
-        localStorage.getItem(OFFLINE_CLOCK_ANCHOR_KEY),
-      ),
-    );
-  } catch {
-    offlineClockStorageAvailable = false;
-  }
+function resumeOfflineClockFromStoredAnchor(frame: Readonly<LiveWorldFrame>): void {
+  clockPanel.restore(frame);
 }
 
 function updateOfflineClockContinuity(frame: Readonly<LiveWorldFrame>): void {
-  const currentWorldMinutes = frame.world.calendar.elapsedWorldMinutes;
-  if (!offlineClockAnchorChecked) {
-    offlineClockAnchorChecked = true;
-    requestOfflineCatchUp(frame, pendingOfflineClockAnchor);
-    pendingOfflineClockAnchor = undefined;
-  }
-
-  const remaining = Math.max(
-    0,
-    (offlineCatchUpTargetWorldMinutes ?? currentWorldMinutes) -
-      currentWorldMinutes,
-  );
-  if (remaining > 1e-7) {
-    offlineClockStatus.textContent =
-      `Мир догоняет ${worldDurationDescription(remaining)} после закрытой вкладки · Cardinal не управляет временем`;
-    offlineClockStatus.classList.add('is-catching-up');
-  } else {
-    offlineCatchUpTargetWorldMinutes = undefined;
-    offlineClockStatus.textContent = offlineClockStorageAvailable
-      ? 'После закрытия мир продолжит время при следующем открытии · Cardinal не имеет доступа'
-      : 'Браузер запретил сохранение фонового времени · Cardinal не имеет доступа';
-    offlineClockStatus.classList.remove('is-catching-up');
-  }
-  persistOfflineClockAnchor(frame);
+  clockPanel.update(frame);
 }
 
 function renderMap(frame: Readonly<LiveWorldFrame>): void {
@@ -2626,6 +2531,7 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
     const tempo = rate >= WORLD_MINUTES_PER_YEAR ? `${(rate / WORLD_MINUTES_PER_YEAR).toFixed(1)} г.` :
       rate >= 1440 ? `${(rate / 1440).toFixed(1)} дн.` : `${rate.toFixed(1)} мин.`;
     liveClockThroughput.textContent = `Фактически за минуту: ${tempo}` +
+      (timing.capacityLimited ? ' · предел расчёта устройства, очередь ограничена' : '') +
       (timing.pendingWorldMinutes > frame.clock.worldMinutesPerTick * 2
         ? ` · осталось рассчитать ${worldDurationDescription(timing.pendingWorldMinutes)}` : '');
   }
@@ -3162,7 +3068,7 @@ function closeCardinalConsole(): void {
   }
 }
 
-type LiveWorldWorkerMessage =
+type LiveWorldWorkerPayload =
   | {
       type: 'frame';
       protocolVersion: string;
@@ -3195,6 +3101,10 @@ type LiveWorldWorkerMessage =
       abandoned: boolean;
     }
   | {
+      type: 'clock_applied'; protocolVersion: string; worldEpoch: number; currentWorldMinutes: number;
+      speedId: WorldSpeedId; multiplier: WorldSpeedMultiplier; discarded: boolean;
+    }
+  | {
       type: 'fatal';
       protocolVersion: string;
       message: string;
@@ -3211,6 +3121,8 @@ type LiveWorldWorkerMessage =
       residentResponse?: string;
       reason: string;
     };
+
+type LiveWorldWorkerMessage = LiveWorldWorkerPayload & { clockRevision?: number };
 
 async function requestPersistentAinkradStorage(): Promise<void> {
   if (!navigator.storage?.persist) return;
@@ -3234,6 +3146,19 @@ const liveWorldWorker = new Worker(
   new URL('./runtime/liveWorld.worker.ts', import.meta.url),
   { type: 'module' },
 );
+const clockPanel = new WorldClockPanel({
+  root: requiredElement<HTMLElement>('world-speed-select').closest<HTMLElement>('.external-clock')!,
+  overlay: catchUpOverlay, status: offlineClockStatus, title: catchUpTitle, percent: catchUpPercent,
+  bar: catchUpBar, detail: catchUpDetail, initialAnchor: pendingOfflineClockAnchor,
+  storageAvailable: offlineClockStorageAvailable, anchorKey: OFFLINE_CLOCK_ANCHOR_KEY,
+  preferenceKey: CLOCK_PREFERENCE_KEY, speedId: preferredSpeedId, multiplier: preferredSpeedMultiplier,
+  post: message => liveWorldWorker.postMessage(message),
+  onPreference: (speedId, multiplier) => {
+    preferredSpeedId = speedId; preferredSpeedMultiplier = multiplier;
+    showClockControl(speedId, multiplier);
+  },
+});
+
 
 mapZoomOut.addEventListener('click', () => setMapZoom(mapZoom / 1.22));
 mapZoomIn.addEventListener('click', () => setMapZoom(mapZoom * 1.22));
@@ -3408,32 +3333,8 @@ worldMapViewport.addEventListener(
   { passive: false },
 );
 
-function publishClockControl(): void {
-  showClockControl(preferredSpeedId, preferredSpeedMultiplier);
-  try {
-    localStorage.setItem(
-      CLOCK_PREFERENCE_KEY,
-      JSON.stringify({
-        speedId: preferredSpeedId,
-        multiplier: preferredSpeedMultiplier,
-      }),
-    );
-  } catch {
-    // The running worker still receives the choice when storage is blocked.
-  }
-  liveWorldWorker.postMessage({
-    type: 'set_speed',
-    speedId: preferredSpeedId,
-    multiplier: preferredSpeedMultiplier,
-  });
-  if (lastFrame) {
-    persistOfflineClockAnchor(
-      lastFrame,
-      Date.now(),
-      preferredSpeedId,
-      preferredSpeedMultiplier,
-    );
-  }
+function publishClockControl(initial = false): void {
+  clockPanel.publish(preferredSpeedId, preferredSpeedMultiplier, initial);
 }
 
 worldSpeedSelect.addEventListener('change', () => {
@@ -3450,7 +3351,7 @@ resetWorldButton.addEventListener('click', () => {
   );
   if (!accepted || window.prompt('Чтобы завершить текущую эпоху, введите НОВЫЙ МИР') !== 'НОВЫЙ МИР') return;
   pendingOfflineClockAnchor = undefined;
-  offlineCatchUpTargetWorldMinutes = undefined;
+  clockPanel.reset();
   liveWorldWorker.postMessage({ type: 'reset_world' });
 });
 
@@ -3474,13 +3375,13 @@ window.addEventListener('pageshow', () => {
   updateOfflineClockContinuity(lastFrame);
 });
 
-publishClockControl();
+publishClockControl(true);
 
 liveWorldWorker.addEventListener(
   'message',
   (event: MessageEvent<LiveWorldWorkerMessage>) => {
     if (event.data.type === 'frame') {
-      updateWorld(event.data.frame);
+      if (clockPanel.accepts(event.data.clockRevision ?? 0)) updateWorld(event.data.frame);
       return;
     }
     if (event.data.type === 'cardinal_console') {
@@ -3489,43 +3390,17 @@ liveWorldWorker.addEventListener(
       return;
     }
     if (event.data.type === 'catch_up_progress') {
-      const percent = Math.max(0, Math.min(100, Math.round(event.data.percent * 100)));
-      catchUpOverlay.hidden = false;
-      catchUpPercent.textContent = `${percent}%`;
-      catchUpBar.style.width = `${percent}%`;
-      const processed = Math.max(
-        0,
-        event.data.currentWorldMinutes - event.data.fromWorldMinutes,
-      );
-      const remaining = Math.max(
-        0,
-        event.data.targetWorldMinutes - event.data.currentWorldMinutes,
-      );
-      const eta = event.data.estimatedRemainingMs === null
-        ? 'оцениваем оставшееся время'
-        : event.data.estimatedRemainingMs < 1_000
-          ? 'меньше секунды'
-          : `ещё примерно ${Math.max(1, Math.ceil(event.data.estimatedRemainingMs / 1_000))} сек.`;
-      catchUpTitle.textContent = event.data.completed
-        ? 'Мир догнан — показываем результат'
-        : `Просчитано ${worldDurationDescription(processed)}`;
-      catchUpDetail.textContent = event.data.completed
-        ? `Готово за ${(event.data.elapsedRealMs / 1_000).toFixed(1)} сек. Все смысловые шаги мира обработаны.`
-        : `Осталось ${worldDurationDescription(remaining)} · ${eta} · обработано шагов: ${event.data.semanticQuantaProcessed}`;
-      offlineClockStatus.textContent = event.data.completed
-        ? 'Догон завершён · Cardinal не управлял временем'
-        : `Быстрый догон: ${percent}% · ${eta}`;
-      offlineClockStatus.classList.toggle('is-catching-up', !event.data.completed);
-      if (event.data.completed) {
-        window.setTimeout(() => {
-          catchUpOverlay.hidden = true;
-        }, 850);
-      }
+      if (clockPanel.accepts(event.data.clockRevision ?? 0)) clockPanel.progress(event.data);
+      return;
+    }
+    if (event.data.type === 'clock_applied') {
+      clockPanel.acknowledge(event.data);
       return;
     }
     if (event.data.type === 'catch_up_recovery') {
+      if (!clockPanel.accepts(event.data.clockRevision ?? 0)) return;
       if (event.data.abandoned) {
-        offlineCatchUpTargetWorldMinutes = undefined;
+        clockPanel.continuity.targetWorldMinutes = undefined;
         catchUpOverlay.hidden = true;
         offlineClockStatus.textContent =
           'Догон остановлен, мир продолжает жить с последнего сохранённого момента';
@@ -3560,7 +3435,7 @@ liveWorldWorker.addEventListener(
     saveValue.textContent = event.data.message;
     liveIndicator.classList.remove('is-live');
     cardinalMessage.textContent = event.data.message;
-    if (offlineCatchUpTargetWorldMinutes !== undefined) {
+    if (clockPanel.continuity.targetWorldMinutes !== undefined) {
       catchUpTitle.textContent = 'Догон остановлен';
       catchUpDetail.textContent = event.data.message;
     }
@@ -3572,7 +3447,7 @@ liveWorldWorker.addEventListener('error', () => {
   liveLabel.title = 'Фоновый цикл мира остановился.';
   liveIndicator.classList.remove('is-live');
   cardinalMessage.textContent = 'Фоновый цикл мира остановился.';
-  if (offlineCatchUpTargetWorldMinutes !== undefined) {
+  if (clockPanel.continuity.targetWorldMinutes !== undefined) {
     catchUpTitle.textContent = 'Догон остановлен';
     catchUpDetail.textContent =
       'Фоновый цикл мира остановился. Перезагрузка продолжит с последней сохранённой точки.';

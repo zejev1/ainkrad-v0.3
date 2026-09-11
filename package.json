@@ -1,6 +1,6 @@
 {
   "name": "ainkrad-v0-3",
-  "version": "0.3.21-hotfix.3",
+  "version": "0.3.21-hotfix.4",
   "private": true,
   "description": "Experimental autonomous world for developing and testing Cardinal.",
   "type": "module",
