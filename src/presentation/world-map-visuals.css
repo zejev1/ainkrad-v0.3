@@ -1,5 +1,13 @@
-/* Shared depth ordering, without full-map textures or extra compositor layers. */
-.places-layer, .agents-layer { display: contents; }
+/* Separate stacking contexts: even a highlighted roof stays below residents.
+   These are viewport-sized DOM layers, not additional GPU textures. */
+.places-layer, .agents-layer { display: block; pointer-events: none; }
+.places-layer { z-index: 5; }
+.agents-layer { z-index: 7; }
+.resident-avatar { pointer-events: auto; }
+.resident-avatar:is(:hover, :focus-visible, .is-selected) {
+  z-index: 2000 !important;
+  outline: 3px solid #fff0ad; outline-offset: 2px; border-radius: 6px;
+}
 .map-place .place-building {
   padding: 0; background: transparent; border: 0; border-radius: 0;
 }

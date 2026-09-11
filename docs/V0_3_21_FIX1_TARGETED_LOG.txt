@@ -1,0 +1,13 @@
+
+ RUN  v3.1.1 /workspace/scratch/f1f71aca20c3/Ainkrad-v0.3.21-visibility-stage
+
+ ✓ tests/v0_3_21_visibilityAndTown.test.ts (3 tests) 246ms
+ ✓ tests/v0_3_18_secretLibrary.test.ts (3 tests) 330ms
+ ✓ tests/v0_3_20_fix3Viewport.test.ts (3 tests) 233ms
+ ✓ tests/v0_3_20_fix2Map.test.ts (3 tests) 246ms
+
+ Test Files  4 passed (4)
+      Tests  12 passed (12)
+   Start at  12:07:18
+   Duration  6.90s (transform 2.03s, setup 0ms, collect 3.16s, tests 1.05s, environment 1ms, prepare 644ms)
+

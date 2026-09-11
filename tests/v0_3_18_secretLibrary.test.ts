@@ -17,8 +17,8 @@ describe('v0.3.18 lightweight Secret Library', () => {
     const expanded = source.snapshot();
     const before = expanded.places[SECRET_LIBRARY_PLACE_ID_V18];
     const anchor = expanded.places.commons;
-    expect(before.mapX).toBe(anchor.mapX - 8);
-    expect(before.mapY).toBe(anchor.mapY + 6);
+    expect(before.mapX).toBe(anchor.mapX);
+    expect(before.mapY).toBeCloseTo(anchor.mapY - 0.26);
 
     expanded.places['far-frontier'] = {
       id: 'far-frontier',
@@ -86,8 +86,8 @@ describe('v0.3.18 lightweight Secret Library', () => {
     const state = repaired.snapshot();
     const libraryPlace = state.places[SECRET_LIBRARY_PLACE_ID_V18];
     expect(libraryPlace.kind).toBe('library');
-    expect(libraryPlace.mapX).toBe(state.places.commons.mapX - 8);
-    expect(libraryPlace.mapY).toBe(state.places.commons.mapY + 6);
+    expect(libraryPlace.mapX).toBe(state.places.commons.mapX);
+    expect(libraryPlace.mapY).toBeCloseTo(state.places.commons.mapY - 0.26);
     expect(state.v18!.secretLibrary.knowledgeByAgentId[resident.id]).toHaveLength(1);
     expect(state.v18!.secretLibrary.knowledgeByAgentId[resident.id][0].title)
       .toBe('Очистка ран');

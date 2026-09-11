@@ -1,6 +1,7 @@
 import { WorldMapCamera, clipMapSegment, clipMapPolygon, MAX_VISIBLE_PLACES, MAX_VISIBLE_RESIDENTS } from './presentation/WorldMapCamera';
 import { mapDetail, mapScaleBar, mapEntityDepth, placeDrawing } from './presentation/WorldMapVisuals';
 import { residentLearningSummary } from './presentation/ResidentLearningView';
+import { townMapFocus, residentMapFocus } from './presentation/WorldMapFocus';
 import { createWorldMapProjection } from './presentation/WorldMapProjection';
 import { GIFT_CATALOG_V20 } from './v20/DivineGiftsV20';
 import './browser.css';
@@ -333,7 +334,7 @@ app.innerHTML = `
   <div class="ainkrad-app">
     <header class="world-header">
       <div>
-        <p class="eyebrow">AINKRAD v0.3.21 · опыт и решения · путь к Underworld</p>
+        <p class="eyebrow">AINKRAD v0.3.21.1 · видимые жители · путь к Underworld</p>
         <h1 id="world-title">Мир · уровень 1</h1>
         <p class="world-subtitle">Время регулируется снаружи. Жители сами расширяют карту и проживают поколения.</p>
       </div>
@@ -396,6 +397,7 @@ app.innerHTML = `
             <button id="map-zoom-out" type="button" aria-label="Уменьшить карту">−</button>
             <button id="map-zoom-fit" type="button" aria-label="Показать всю карту">100%</button>
             <button id="map-city-focus" type="button">Город</button>
+            <button id="map-resident-focus" type="button" aria-label="Найти выбранного жителя на карте">Житель</button>
           <button id="map-zoom-in" type="button" aria-label="Увеличить карту">+</button>
             <button id="text-scale" type="button" aria-label="Увеличить размер текста">Текст 115%</button>
           </div>
@@ -1026,6 +1028,14 @@ function focusMapPoint(x: number,y: number): void {
   mapCamera.x=x;mapCamera.y=y;
   scheduleMapPaint();
 }
+function focusSelectedResident(): void {
+  if (!lastFrame) return;
+  const focus = residentMapFocus(lastFrame.world, selectedAgentId, mapCamera.pixelsPerUnit);
+  if (!focus) return;
+  mapCamera.x = focus.x; mapCamera.y = focus.y;
+  setMapZoom(focus.pixelsPerUnit / 100);
+  worldMapViewport.scrollIntoView({block: 'center', behavior: 'auto'});
+}
 function fitMapToViewport(): void {
   if (!lastFrame) return;
   const {minX,maxX,minY,maxY}=extentForWorld(lastFrame.world);
@@ -1039,7 +1049,7 @@ function updateWorldMapScale(world: Readonly<WorldState>): void {
   applyMapZoom();
   worldTitle.textContent=`Мир · уровень ${worldLevel}`;
   worldLevelValue.textContent=`ур. ${worldLevel}`;
-  mapScaleValue.textContent=`Уровень мира ${worldLevel} · ${places.length} локаций · протяжённость ~${((maxX-minX)/10).toFixed(1)}×${((maxY-minY)/10).toFixed(1)} км`;
+  mapScaleValue.textContent=`Уровень мира ${worldLevel} · ${places.length} локаций · вся открытая территория ~${((maxX-minX)/10).toFixed(1)}×${((maxY-minY)/10).toFixed(1)} км`;
   if (renderedGrowthStage<0) {
     const center=world.places.commons;
     if(center){mapCamera.x=center.mapX;mapCamera.y=center.mapY;}
@@ -2487,6 +2497,8 @@ function renderMap(frame: Readonly<LiveWorldFrame>): void {
     avatar.style.left = `${x}%`;
     avatar.style.top = `${y}%`;
     avatar.style.zIndex = String(mapEntityDepth(y, 0, mapCamera.height));
+    avatar.classList.toggle('is-selected', agent.id === selectedAgentId);
+    avatar.setAttribute('aria-pressed', String(agent.id === selectedAgentId));
     avatar.classList.toggle('is-moving', isMoving);
     avatar.classList.toggle(
       'is-ambient',
@@ -3218,9 +3230,10 @@ mapZoomIn.addEventListener('click', () => setMapZoom(mapZoom * 1.22));
 mapZoomFit.addEventListener('click', fitMapToViewport);
 requiredElement<HTMLButtonElement>('map-city-focus').addEventListener('click', () => {
   if(!lastFrame)return;
-  const center=lastFrame.world.places.commons;
-  mapCamera.x=center.mapX;mapCamera.y=center.mapY;setMapZoom(3);
+  const focus = townMapFocus(lastFrame.world, selectedAgentId, mapCamera.width, mapCamera.height);
+  if (focus) { mapCamera.x=focus.x;mapCamera.y=focus.y;setMapZoom(focus.pixelsPerUnit/100); }
 });
+requiredElement<HTMLButtonElement>('map-resident-focus').addEventListener('click', focusSelectedResident);
 const mapPointers=new Map<number,{x:number;y:number}>();
 worldMapViewport.addEventListener('pointerdown', event=>{
   mapPointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
@@ -3348,6 +3361,7 @@ divineAudienceForm.addEventListener('submit', (event) => {
 residentPicker.addEventListener('change', () => {
   selectedAgentId = residentPicker.value || undefined;
   updateSelection();
+  focusSelectedResident();
 });
 textScaleButton.addEventListener('click', () => {
   const currentIndex = TEXT_SCALE_STEPS.indexOf(textScale);

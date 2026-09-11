@@ -1,4 +1,5 @@
 import { nextUrbanHomeLot } from './SettlementStreets';
+import { compactLibraryPlot } from './SettlementLibraryLayout';
 import { rebuildWorldRoutes } from './WorldNavigation';
 import type { WorldPoint2D, WorldState } from './types';
 
@@ -33,8 +34,28 @@ export function repairCompactSettlementLayout(world: WorldState): boolean {
       move(home.id, plot); home.urbanLot = plot.lot;
     }
   }
+  // Older metre-layout repairs omitted libraries, leaving them 360–1000m
+  // outside the town. Preserve their identities, books, visitors and access.
+  for (const place of Object.values(world.places)) {
+    if (place.kind !== 'library' || place.urbanLayoutVersion === 1) continue;
+    const library = world.v18?.secretLibrary;
+    const isHumanLibrary = place.id === library?.placeId;
+    const centerId = isHumanLibrary ? library!.anchorPlaceId :
+      world.settlements[place.settlementId ?? '']?.centerPlaceId;
+    const center = world.places[centerId ?? ''];
+    if (!center) continue;
+    const plot = compactLibraryPlot(world.places, {x: center.mapX, y: center.mapY}, place.id);
+    if (!plot) continue;
+    move(place.id, plot);
+    if (isHumanLibrary) { library!.anchorMapX = plot.x; library!.anchorMapY = plot.y; }
+  }
   if (!moved.size) return false;
   world.routes = rebuildWorldRoutes(world.places, world.routes);
+  // Physical proximity does not transfer ownership of the secret library or
+  // alter a town's social/economic membership during a geometry repair.
+  const localSettlement = (id: string) => world.places[id]?.settlementId ??
+    (id === world.v18?.secretLibrary.placeId
+      ? world.places[world.v18.secretLibrary.anchorPlaceId]?.settlementId : undefined);
   const shiftedPoint = (point: WorldPoint2D) => {
     for (const { before, after } of moved.values()) {
       if (Math.hypot(point.x - before.x, point.y - before.y) < 1e-7) return { ...after };
@@ -55,13 +76,14 @@ export function repairCompactSettlementLayout(world: WorldState): boolean {
     }
     if (!moved.has(agent.locationId) && !moved.has(movement.targetPlaceId)) continue;
     const from = world.places[agent.locationId], to = world.places[movement.targetPlaceId];
-    if (from?.settlementId && from.settlementId === to?.settlementId) {
+    const settlementId = from && localSettlement(from.id);
+    if (settlementId && to && settlementId === localSettlement(to.id)) {
       const queue = [from.id], prior = new Map<string,string>();
       const seen = new Set([from.id]);
       for (let i = 0; i < queue.length && !seen.has(to.id); i++) {
         const id = queue[i];
         for (const next of world.places[id].connectedPlaceIds) {
-          if (seen.has(next) || world.places[next]?.settlementId !== from.settlementId) continue;
+          if (seen.has(next) || localSettlement(next) !== settlementId) continue;
           const route = Object.values(world.routes).find(r =>
             (r.fromPlaceId === id && r.toPlaceId === next) || (r.toPlaceId === id && r.fromPlaceId === next));
           if (route) { seen.add(next); prior.set(next,id); queue.push(next); }

@@ -1,6 +1,7 @@
 import { hasGiftV20 } from '../v20/DivineGiftsV20';
 import type { GenesisDomain } from '../v15/GenesisBootstrap';
 import { rebuildWorldRoutes } from '../world/WorldNavigation';
+import { compactLibraryPlot } from '../world/SettlementLibraryLayout';
 import type {
   AgentActionKind,
   AgentState,
@@ -404,8 +405,10 @@ export function repairSecretLibraryPlacementV18(world: WorldState): boolean {
   const anchor = ainkradAnchor(world);
   if (!anchor) return false;
   const planet = v18.planetaryGeography;
-  const mapX = Math.max(planet.minMapX, Math.min(planet.maxMapX, anchor.mapX - 8));
-  const mapY = Math.max(planet.minMapY, Math.min(planet.maxMapY, anchor.mapY + 6));
+  const plot = compactLibraryPlot(world.places, { x: anchor.mapX, y: anchor.mapY }, SECRET_LIBRARY_PLACE_ID_V18);
+  if (!plot) return false;
+  const mapX = Math.max(planet.minMapX, Math.min(planet.maxMapX, plot.x));
+  const mapY = Math.max(planet.minMapY, Math.min(planet.maxMapY, plot.y));
 
   for (const place of Object.values(world.places)) {
     place.connectedPlaceIds = place.connectedPlaceIds.filter(

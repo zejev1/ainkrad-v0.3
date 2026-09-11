@@ -1,3 +1,12 @@
+# Ainkrad v0.3.21 FIX1 — visible residents and local town view
+
+Built on the owner's published v0.3.21 commit acee3afcf9a8c4109776b54a6cdfb593fb9d3ba3.
+Residents render above buildings; resident selection can locate them on the map.
+Libraries use local vacant town plots, with migration preserving life and study.
+See [release notes](RELEASE_NOTES_v0.3.21_FIX1.md) and
+[release audit](docs/V0_3_21_FIX1_AUDIT.json). Continue the existing saved world.
+The following sections describe earlier releases.
+
 # Ainkrad v0.3.21 — personal experience and physical execution
 
 Built on the owner's published FIX3 commit e486a14aebee49b6ffcffe9c077965ee3188caf1.

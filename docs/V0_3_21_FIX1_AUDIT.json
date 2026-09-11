@@ -1,0 +1,74 @@
+{
+  "release": "0.3.21-hotfix.1",
+  "display_version": "0.3.21.1",
+  "base_commit": "acee3afcf9a8c4109776b54a6cdfb593fb9d3ba3",
+  "status": "passed",
+  "assistant_commit_push_or_deploy": false,
+  "verification": {
+    "typecheck": "PASS",
+    "build": "PASS",
+    "tests": {
+      "passed": 225,
+      "failed": 0,
+      "files": 52,
+      "duration_seconds": 280.43
+    },
+    "targeted": "12/12 passed; 4 files",
+    "migration": "old library and physical anchor moved once; study, identity, needs, time, RNG, decisions and history preserved; three exact reopens",
+    "navigation": "reader stays in library; local walker keeps intent, progress and traversal history",
+    "map_focus": "phone viewport fits town; countryside has no effect; traveller and deceased selection do not alter world",
+    "terrain": "library survey rejects occupied and water-covered plots",
+    "existing_gates": [
+      "Cardinal experience continuity",
+      "OFF/OBSERVER equivalence",
+      "Gateway authority",
+      "bounded personal memory",
+      "death and body boundary",
+      "human/elf library access",
+      "families and gifts"
+    ]
+  },
+  "geometry": {
+    "world_unit_metres": 100,
+    "home_width_metres": 12,
+    "home_height_metres": 10,
+    "ordinary_lane_metres": 6,
+    "main_street_metres": 10,
+    "initial_library_center_distance_metres": 26,
+    "terrain_relocated": false,
+    "homes_relocated_by_this_patch": false,
+    "library_membership_changed": false
+  },
+  "presentation": {
+    "roof_occlusion_reproduced_on_public_v021": true,
+    "evidence": "elementFromPoint at resident centres returned their house button, including resting residents",
+    "fix": "building and resident containers are separate stacking contexts; residents are above every building including hover; selected resident above other residents",
+    "population_cap_added": false,
+    "visible_resident_limit_unchanged": 120,
+    "visible_place_limit_unchanged": 180,
+    "map_viewport_limit_unchanged": [
+      1280,
+      800
+    ],
+    "new_persistent_per_resident_data": false,
+    "new_network_dependencies": false
+  },
+  "not_verified": [
+    "interactive rendering of patched build in browser",
+    "actual Android/Xbox performance or thermal behaviour",
+    "new 1000/2000-year soak"
+  ],
+  "unchanged_protected_paths": [
+    "src/cardinal",
+    "src/boundary",
+    "src/world/WorldEngine.ts",
+    "src/world/learning",
+    "src/world/SettlementStreets.ts",
+    "src/presentation/WorldMapCamera.ts"
+  ],
+  "new_small_modules": [
+    "src/presentation/WorldMapFocus.ts",
+    "src/world/SettlementLibraryLayout.ts"
+  ],
+  "notes": "Existing secret-library coordinate tests updated from the obsolete 1000m offset to the requested local plot; existing behavioural expectations retained."
+}
