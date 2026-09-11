@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { WorldEngine } from '../src/world/WorldEngine';
 import { InMemoryWorldStore } from '../src/world/InMemoryWorldStore';
 import { repairCompactSettlementLayout } from '../src/world/CompactSettlementLayout';
-import { buildingRadius, nextUrbanHomeLot, segmentEntersBuilding, dryBuildingPlot } from '../src/world/SettlementStreets';
+import { buildingRadius, nextUrbanHomeLot, segmentEntersBuilding, dryBuildingPlot, routeAroundBuildings } from '../src/world/SettlementStreets';
 import { settlementOptions } from '../src/presentation/SettlementPicker';
 import { settlementMapFocus, residentMapFocus } from '../src/presentation/WorldMapFocus';
 import { rebuildWorldRoutes, routeIdBetween } from '../src/world/WorldNavigation';
@@ -83,8 +83,15 @@ describe('physical settlement geometry and observer navigation',()=>{
         expect(route.waypoints.slice(1).some((p,i)=>segmentEntersBuilding(route.waypoints[i],p,b))).toBe(false);
     }
     expect(w.routes[routeIdBetween('commons','future_21')].waypoints.length).toBeGreaterThan(4);
+    expect(w.routes[routeIdBetween('commons','resource_field')]).toBeDefined();
     const lake={...w.places.commons,surface:'water',boundaryPolygon:[{x:0,y:0},{x:.01,y:0},{x:.01,y:.01},{x:0,y:.01}]} as WorldPlace;
     expect(dryBuildingPlot({x:0,y:0},.06,.05,[lake])).toBe(false);
+  });
+  it('reroutes a road whose old intermediate bend is covered by a new house',async()=>{
+    const w=await fresh(),house={...w.places.home_agent_1,id:'obstacle',mapX:0,mapY:0};
+    const path=routeAroundBuildings([{x:-.4,y:-.2},{x:0,y:0},{x:.4,y:.2}],'from','to',{obstacle:house});
+    expect(path).toBeDefined();expect(path!.length).toBeGreaterThan(2);
+    expect(path!.slice(1).some((p,i)=>segmentEntersBuilding(path![i],p,house))).toBe(false);
   });
   it('lists all settlements and focuses their camera without changing the world or selected resident',async()=>{
     const w=await fresh();

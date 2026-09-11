@@ -35,6 +35,12 @@ export function routeAroundBuildings(
   const clear = (a: WorldPoint2D, b: WorldPoint2D) => !buildings.some(p => segmentEntersBuilding(a, b, p));
   if (path.slice(1).every((p, i) => clear(path[i], p))) return path;
 
+  // A pre-existing bend may now lie inside a new building. Such a point is
+  // not a mandatory street junction: remove it before detouring the segment.
+  const outside=path.filter((point,index)=>index===0 || index===path.length-1 ||
+    !buildings.some(place=>segmentEntersBuilding(point,point,place)));
+  if(outside.length!==path.length)return routeAroundBuildings(outside,fromId,toId,places);
+
   // Keep every unblocked bend of the shared street. Solve only short blocked
   // segments, so a route across town does not build one quadratic city graph.
   if (path.length > 2) {

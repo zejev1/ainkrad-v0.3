@@ -13,6 +13,7 @@ The final archive is produced only after typecheck, the complete test suite and 
 - IndexedDB retains its database name and world ID. Database schema version 2 adds identity markers and three rotating pre-migration snapshots with append-only control-stream head references. World/events/memories/operation/identity writes remain one transaction. Read errors, malformed records and missing known worlds stop startup. Failed checkpoint or migration cannot overwrite the current world. Cardinal streams, family records, death evidence and RNG are not reset.
 - Reload no longer fabricates a new settlement-appraisal timestamp or reorders valid admissions. Visible storage diagnostics show origin, world ID, epoch, revision and calendar; loading time and current saved time are distinguished.
 - Cardinal, external boundary gateways, personality and learning algorithms are unchanged. Existing OFF/OBSERVER, gateway causality, autonomy, families, mortality, learning, journal and viewport tests remain required.
+- The nature regression checks actual hunting or an evidenced voluntary refusal, plus reachable nature roads. A fixed seed is not required to produce a kill after physical route lengths change. A separate regression covers a road bend engulfed by new construction.
 - Existing map culling, resident-over-building layers and viewport pixel limits are retained. New cold-path geometry modules do not allocate textures or canvas surfaces at world-map scale.
 
 ## Practical limits
