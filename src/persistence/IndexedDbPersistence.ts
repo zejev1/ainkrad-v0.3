@@ -1,3 +1,4 @@
+import { readWorldCommitHead } from './IndexedDbCommitHead';
 import { validateWorldSave, missingWorldRecord } from './WorldSaveSafety';
 import { checkpointWorld, putWorldIdentity, RECOVERY_STORE, IDENTITY_STORE, type WorldIdentity } from './IndexedDbRecovery';
 import { stableJsonStringify } from '../core/stableJson';
@@ -240,19 +241,19 @@ function assertSame<T>(kind: string, id: string, a: T, b: T): void {
 
 function toStoredEvent(event: WorldEvent): StoredWorldEvent {
   return {
-    ...structuredClone(event),
+    ...event,
     key: eventKey(event.worldId, event.eventId),
   };
 }
 
 function fromStoredEvent(stored: StoredWorldEvent): WorldEvent {
   const { key: _key, ...event } = stored;
-  return structuredClone(event);
+  return event;
 }
 
 function toStoredMemory(memory: MemoryRecord): StoredMemory {
   return {
-    ...structuredClone(memory),
+    ...memory,
     key: memoryKey(memory.worldId, memory.memoryId),
     pairKeys: memory.relatedAgentIds.map((otherAgentId) =>
       pairKey(memory.worldId, memory.agentId, otherAgentId),
@@ -262,7 +263,7 @@ function toStoredMemory(memory: MemoryRecord): StoredMemory {
 
 function fromStoredMemory(stored: StoredMemory): MemoryRecord {
   const { key: _key, pairKeys: _pairKeys, ...memory } = stored;
-  return structuredClone(memory);
+  return memory;
 }
 
 function validateLimit(limit: number, label: string): void {
@@ -283,7 +284,7 @@ function cursorValues<T>(
         resolve(values);
         return;
       }
-      values.push(structuredClone(cursor.value as T));
+      values.push(cursor.value as T);
       cursor.continue();
     });
     request.addEventListener('error', () => {
@@ -315,7 +316,7 @@ export class IndexedDbWorldStore implements WorldStore {
         assertSame('World initialization', state.id, existing, state);
       } else {
         if (identity !== undefined || evidence !== undefined) missingWorldRecord(state.id);
-        worlds.add(structuredClone(state));
+        worlds.add(state);
         putWorldIdentity(transaction, state);
       }
 
@@ -342,7 +343,7 @@ export class IndexedDbWorldStore implements WorldStore {
         return undefined;
       }
       validateWorldSave(state,worldId);
-      return structuredClone(state);
+      return state;
     } catch(error) { await abortTransaction(transaction,completion);throw error; }
   }
 
@@ -420,29 +421,27 @@ export class IndexedDbWorldStore implements WorldStore {
     const opKey = operationKey(batch.worldId, batch.operationId);
 
     try {
-      const [prior, current, existingEvents, existingMemories, identity] =
+      const [prior, head, existingEvents, existingMemories] =
         await Promise.all([
           requestResult(operations.get(opKey)) as Promise<
             StoredOperation | undefined
           >,
-          requestResult(worlds.get(batch.worldId)) as Promise<
-            WorldState | undefined
-          >,
+          readWorldCommitHead(transaction, batch.worldId),
           Promise.all(
             batch.events.map((event) =>
-              requestResult(events.get(eventKey(event.worldId, event.eventId))),
+              requestResult(events.getKey(eventKey(event.worldId, event.eventId))),
             ),
           ),
           Promise.all(
             batch.memories.map((memory) =>
               requestResult(
-                memories.get(memoryKey(memory.worldId, memory.memoryId)),
+                memories.getKey(memoryKey(memory.worldId, memory.memoryId)),
               ),
             ),
           ),
-          requestResult(transaction.objectStore(IDENTITY_STORE).get(batch.worldId)) as Promise<WorldIdentity|undefined>,
         ]);
 
+      const { current, identity } = head;
       if (prior) {
         if (prior.operationFingerprint !== batch.operationFingerprint) {
           throw new Error(
@@ -455,12 +454,14 @@ export class IndexedDbWorldStore implements WorldStore {
           );
         }
 
+        const storedState = await requestResult(worlds.get(batch.worldId));
+        validateWorldSave(storedState, batch.worldId);
         await completion;
         const { key: _key, ...operation } = prior;
         return {
           committed: false,
           duplicate: true,
-          state: structuredClone(current),
+          state: storedState,
           operation: structuredClone(operation),
         };
       }

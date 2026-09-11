@@ -43,8 +43,8 @@ export class LiveAccelerationBudget {
 
 /** Avoid the old feedback trap: snapshot I/O made every slow batch shrink to
  * one quantum, which multiplied the same full-world serialization cost.
- * Four to eight ordered quanta amortize that cost; failure recovery may still
+ * Eight to sixteen ordered quanta amortize that cost; failure recovery may still
  * explicitly retry a single quantum. No quantum is skipped. */
 export function nextCatchUpBatchSize(processedQuanta: number, workMs: number): number {
-  return Math.max(4, Math.min(8, Math.ceil(Math.max(1, processedQuanta) * 250 / Math.max(1, workMs))));
+  return Math.max(8, Math.min(16, Math.ceil(Math.max(1, processedQuanta) * 600 / Math.max(1, workMs))));
 }

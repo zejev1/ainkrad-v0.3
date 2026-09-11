@@ -26,7 +26,8 @@ jobs:
         run: |
           npx --no-install tsx scripts/profile-fix5.ts
           node scripts/profile-fix5-browser.mjs
-          rg -n -i 'игров.{0,15}минут|игровое время|видимые жители|путь к Underworld' src
+      - run: npm run typecheck
+      - run: npx --no-install vitest run tests/v0_3_21_responsiveClock.test.ts tests/v0_3_21_indexedDbContinuity.test.ts tests/persistence.test.ts --minWorkers=1 --maxWorkers=1 --testTimeout=60000
       - uses: actions/upload-artifact@v4
         with:
           name: AinkradFix5Diagnosis

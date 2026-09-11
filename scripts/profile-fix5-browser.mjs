@@ -15,9 +15,11 @@ try{
  await page.evaluate(async snapshot=>{
   const {createIndexedDbPersistence}=await import('/src/persistence/IndexedDbPersistence.ts');
   const {LiveWorldRuntime}=await import('/src/runtime/LiveWorldRuntime.ts');
+  const {cooperativeWorldTimeExecution}=await import('/src/world/WorldTimeExecution.ts');
   const p=createIndexedDbPersistence('ainkrad-disposable-fix5-profile');
   await p.worldStore.initializeWorld(snapshot);
   window.profileRuntime=await LiveWorldRuntime.create({worldId:snapshot.id,seed:'ainkrad-browser-world',mode:'intervene',store:p.worldStore,controlLog:p.controlLog,durable:true,boundedLiveAcceleration:true});
+  window.profileRuntime.setCooperativeExecution(cooperativeWorldTimeExecution(()=>false));
  },fixture);
  const cdp=await page.context().newCDPSession(page);
  await cdp.send('Emulation.setCPUThrottlingRate',{rate:4});
@@ -27,7 +29,7 @@ try{
   let cloneMs=0,cloneCount=0;const clone=window.structuredClone;
   window.structuredClone=function(...args){const t=performance.now();try{return clone(...args)}finally{cloneMs+=performance.now()-t;cloneCount++}};
   const target=runtime.worldSnapshot().calendar.elapsedWorldMinutes+525600/4;
-  while(true){const t=performance.now(),b=await runtime.catchUpBatchTo(target,4);maxMs=Math.max(maxMs,performance.now()-t);count++;if(b.completed)break;}
+  while(true){const t=performance.now(),b=await runtime.catchUpBatchTo(target,8);maxMs=Math.max(maxMs,performance.now()-t);count++;if(b.completed)break;}
   window.structuredClone=clone;
   return {milliseconds:performance.now()-started,batches:count,maxBatchMs:maxMs,cloneMs,cloneCount,heap:performance.memory?.usedJSHeapSize};
  });

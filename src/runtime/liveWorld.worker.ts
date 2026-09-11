@@ -1,3 +1,4 @@
+import { cooperativeWorldTimeExecution } from '../world/WorldTimeExecution';
 import { ExternalClockCommands, type ExternalClockCommand } from './ExternalClockCommands';
 import { nextCatchUpBatchSize } from './LiveAccelerationBudget';
 import { LiveWallClock, liveLoopDelay } from './LiveWallClock';
@@ -30,7 +31,7 @@ const DIVINE_AUDIENCE_CHANNEL_NAME = 'ainkrad-v0-3-divine-audience';
 const STORAGE_CHECK_INTERVAL_TICKS = 300;
 const AINKRAD_STORAGE_SOFT_BUDGET_BYTES = 2 * 1024 * 1024 * 1024;
 const AINKRAD_STORAGE_CRITICAL_BUDGET_BYTES = 4 * 1024 * 1024 * 1024;
-const FRAME_PROTOCOL_VERSION = 'ainkrad-live-frame-0.3.21-hotfix.4';
+const FRAME_PROTOCOL_VERSION = 'ainkrad-live-frame-0.3.21-hotfix.5';
 const COMPATIBLE_FRAME_PROTOCOLS = new Set([FRAME_PROTOCOL_VERSION]);
 
 // Test disturbances never run automatically in the persistent live world.
@@ -159,8 +160,8 @@ let appliedClockRevision = 0;
 let pendingWorldReset = false;
 let pendingOfflineCatchUp: OfflineClockCatchUpMessage | undefined;
 let divineAudiencePaused = false;
-let catchUpBatchQuanta = 4;
-let catchUpBatchCeiling = 8;
+let catchUpBatchQuanta = 8;
+let catchUpBatchCeiling = 16;
 let lastCatchUpProgressPostedAt = 0;
 let catchUpFailureCount = 0;
 let catchUpTracker:
@@ -196,8 +197,8 @@ function applyOfflineCatchUp(message: OfflineClockCatchUpMessage): void {
       !pendingOfflineCatchUp ||
       pendingOfflineCatchUp.worldEpoch !== message.worldEpoch
     ) {
-      catchUpBatchQuanta = 4;
-      catchUpBatchCeiling = 8;
+      catchUpBatchQuanta = 8;
+      catchUpBatchCeiling = 16;
       catchUpFailureCount = 0;
     }
     activeRuntime?.coverLiveTimeThrough(message.targetWorldMinutes, message.worldEpoch);
@@ -481,6 +482,8 @@ async function runForever(): Promise<void> {
     boundedLiveAcceleration: true,
   });
   activeRuntime = runtime;
+  runtime.setCooperativeExecution(cooperativeWorldTimeExecution(() =>
+    clockCommands.revision !== appliedClockRevision || pendingWorldReset || divineAudiencePaused));
   liveWallClock.reset(performance.now());
   let lastFramePostedAt = -Infinity;
 
@@ -497,8 +500,8 @@ async function runForever(): Promise<void> {
         if (command.discardPending) {
           pendingOfflineCatchUp = undefined;
           catchUpTracker = undefined;
-          catchUpBatchQuanta = 4;
-          catchUpBatchCeiling = 8;
+          catchUpBatchQuanta = 8;
+          catchUpBatchCeiling = 16;
           catchUpFailureCount = 0;
           runtime.discardPendingLiveTime();
         }
@@ -521,8 +524,8 @@ async function runForever(): Promise<void> {
         pendingWorldReset = false;
         pendingOfflineCatchUp = undefined;
         catchUpTracker = undefined;
-        catchUpBatchQuanta = 4;
-        catchUpBatchCeiling = 8;
+        catchUpBatchQuanta = 8;
+        catchUpBatchCeiling = 16;
         catchUpFailureCount = 0;
         await runtime.resetWorld();
         liveWallClock.reset(performance.now());
@@ -593,8 +596,8 @@ async function runForever(): Promise<void> {
                 runtime.discardPendingLiveTime();
                 liveWallClock.reset(performance.now());
                 publishCatchUpRecovery(message, true);
-                catchUpBatchQuanta = 4;
-                catchUpBatchCeiling = 8;
+                catchUpBatchQuanta = 8;
+                catchUpBatchCeiling = 16;
                 catchUpFailureCount = 0;
               }
               await sleep(0);
@@ -643,13 +646,13 @@ async function runForever(): Promise<void> {
             }
             if (!batch.completed) {
               // Keep UI/clock controls responsive and avoid a continuous hot loop.
-              await sleep(liveLoopDelay(batchWorkMs, 1));
+              await sleep(clockCommands.revision !== appliedClockRevision ? 0 : liveLoopDelay(batchWorkMs, 1));
               continue;
             }
             pendingOfflineCatchUp = undefined;
             catchUpTracker = undefined;
-            catchUpBatchQuanta = 4;
-            catchUpBatchCeiling = 8;
+            catchUpBatchQuanta = 8;
+            catchUpBatchCeiling = 16;
             catchUpFailureCount = 0;
             completedCatchUpThisLoop = true;
           }
@@ -709,7 +712,7 @@ async function runForever(): Promise<void> {
         throw error;
       }
     }
-    await sleep(liveLoopDelay(performance.now() - loopStartedAt, runtime.liveTiming().pendingWorldMinutes));
+    await sleep(clockCommands.revision !== appliedClockRevision ? 0 : liveLoopDelay(performance.now() - loopStartedAt, runtime.liveTiming().pendingWorldMinutes));
   }
 }
 

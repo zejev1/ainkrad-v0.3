@@ -90,9 +90,9 @@ describe('FIX4 responsive external acceleration', () => {
   });
 
   it('avoids the snapshot-I/O feedback trap while keeping normal batches bounded', () => {
-    expect(nextCatchUpBatchSize(1, 400)).toBe(4);
-    expect(nextCatchUpBatchSize(4, 100)).toBe(8);
-    expect(nextCatchUpBatchSize(8, 2000)).toBe(4);
+    expect(nextCatchUpBatchSize(1, 400)).toBe(8);
+    expect(nextCatchUpBatchSize(4, 100)).toBe(16);
+    expect(nextCatchUpBatchSize(8, 2000)).toBe(8);
   });
 
   it('checks outcome metadata without making a public full-world snapshot', async () => {
