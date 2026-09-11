@@ -1,7 +1,10 @@
 import { WorldMapCamera, clipMapSegment, clipMapPolygon, MAX_VISIBLE_PLACES, MAX_VISIBLE_RESIDENTS } from './presentation/WorldMapCamera';
+import { mapDetail, mapScaleBar, mapEntityDepth, placeDrawing } from './presentation/WorldMapVisuals';
+import { residentLearningSummary } from './presentation/ResidentLearningView';
 import { createWorldMapProjection } from './presentation/WorldMapProjection';
 import { GIFT_CATALOG_V20 } from './v20/DivineGiftsV20';
 import './browser.css';
+import './presentation/world-map-visuals.css';
 import type {
   AuditRecord,
   CardinalCapability,
@@ -330,7 +333,7 @@ app.innerHTML = `
   <div class="ainkrad-app">
     <header class="world-header">
       <div>
-        <p class="eyebrow">AINKRAD v0.3.20 · исправление 3 · путь к Underworld</p>
+        <p class="eyebrow">AINKRAD v0.3.21 · опыт и решения · путь к Underworld</p>
         <h1 id="world-title">Мир · уровень 1</h1>
         <p class="world-subtitle">Время регулируется снаружи. Жители сами расширяют карту и проживают поколения.</p>
       </div>
@@ -421,6 +424,7 @@ app.innerHTML = `
             <div id="agents-layer" class="agents-layer"></div>
 
             <div class="map-hint" id="map-hint">Проведите по карте</div>
+            <div class="map-distance" id="map-distance" aria-label="Линейка масштаба"><span></span><b></b></div>
 
             <div
               class="disturbance-banner"
@@ -463,6 +467,7 @@ app.innerHTML = `
             <div><dt>Приключения</dt><dd id="resident-adventure">—</dd></div>
             <div><dt>Сильный навык</dt><dd id="resident-skill">—</dd></div>
             <div><dt>Выбор</dt><dd id="resident-choice">—</dd></div>
+            <div><dt>Личный опыт</dt><dd id="resident-learning">—</dd></div>
           </dl>
 
           <div class="need-row">
@@ -738,6 +743,8 @@ const residentProfession = requiredElement<HTMLElement>('resident-profession');
 const residentAdventure = requiredElement<HTMLElement>('resident-adventure');
 const residentSkill = requiredElement<HTMLElement>('resident-skill');
 const residentChoice = requiredElement<HTMLElement>('resident-choice');
+const residentLearning = requiredElement<HTMLElement>('resident-learning');
+const mapDistance = requiredElement<HTMLElement>('map-distance');
 const relationshipNote = requiredElement<HTMLElement>('relationship-note');
 const residentDetailsOpen = requiredElement<HTMLButtonElement>('resident-details-open');
 const privateAudienceOpen = requiredElement<HTMLButtonElement>('private-audience-open');
@@ -990,10 +997,14 @@ function applyMapZoom(): void {
   worldMap.style.transform = 'none';
   worldMapStage.style.width = '100%';
   worldMapStage.style.height = '100%';
-  worldMap.style.setProperty('--place-scale', String(Math.min(1.25, Math.max(0.10, mapCamera.pixelsPerUnit * 0.12 / 42))));
+  worldMap.style.setProperty('--place-scale', String(Math.max(0.10, mapCamera.pixelsPerUnit * 0.12 / 42)));
   worldMap.style.setProperty('--resident-scale', String(Math.min(0.8, Math.max(0.18, mapCamera.pixelsPerUnit * 0.025 / 32))));
   worldMap.style.setProperty('--road-width', String(Math.max(0.5, Math.min(12,mapCamera.pixelsPerUnit * 0.04))));
   mapZoomFit.textContent = mapCamera.pixelsPerUnit < 0.5 ? 'Мир' : `${Math.round(mapZoom*100)}%`;
+  worldMap.dataset.detail = mapDetail(mapCamera.pixelsPerUnit);
+  const scale = mapScaleBar(mapCamera.pixelsPerUnit);
+  mapDistance.querySelector<HTMLElement>('span')!.style.width = `${scale.pixels}px`;
+  mapDistance.querySelector<HTMLElement>('b')!.textContent = scale.label;
 }
 function scheduleMapPaint(): void {
   if (mapPaintScheduled) return;
@@ -1516,8 +1527,11 @@ function renderSettlements(world: Readonly<WorldState>): void {
 }
 
 function renderPlaces(world: Readonly<WorldState>): void {
-  const visiblePlaces=Object.values(world.places).filter(p=>mapCamera.visible(p.mapX,p.mapY,32))
-    .sort((a,b)=>Number(highlightedPlaceIds.has(b.id))-Number(highlightedPlaceIds.has(a.id)))
+  const regional = mapDetail(mapCamera.pixelsPerUnit) === 'region';
+  const visiblePlaces=Object.values(world.places).filter(p=>mapCamera.visible(p.mapX,p.mapY,110) &&
+      (!regional || p.kind!=='home' || highlightedPlaceIds.has(p.id)))
+    .sort((a,b)=>Number(highlightedPlaceIds.has(b.id))-Number(highlightedPlaceIds.has(a.id)) ||
+      Number(a.kind==='home')-Number(b.kind==='home'))
     .slice(0,MAX_VISIBLE_PLACES);
   const liveIds = new Set(visiblePlaces.map(p=>p.id));
   for (const [placeId, element] of placeElements) {
@@ -1540,7 +1554,7 @@ function renderPlaces(world: Readonly<WorldState>): void {
       placeElement.className = `map-place map-place--${place.kind}`;
       placeElement.innerHTML = `
         <span class="place-building" aria-hidden="true">
-          <span class="place-symbol"></span>
+          ${placeDrawing(place.kind)}
         </span>
         <span class="place-label"></span>
         <span class="place-count">0</span>
@@ -1550,6 +1564,11 @@ function renderPlaces(world: Readonly<WorldState>): void {
       });
       placesLayer.append(placeElement);
       placeElements.set(placeId, placeElement);
+      placeElement.dataset.artKind = place.kind;
+    }
+    if (placeElement.dataset.artKind !== place.kind) {
+      placeElement.querySelector('.place-building')!.innerHTML = placeDrawing(place.kind);
+      placeElement.dataset.artKind = place.kind;
     }
     placeElement.className = `map-place map-place--${place.kind} map-place--surface-${place.surface}`;
     placeElement.classList.toggle(
@@ -1563,13 +1582,12 @@ function renderPlaces(world: Readonly<WorldState>): void {
     placeElement.dataset.dungeonRank = dungeon?.rank ?? '';
     placeElement.style.left = `${point.x}%`;
     placeElement.style.top = `${point.y}%`;
+    placeElement.style.zIndex = String(mapEntityDepth(point.y, mapCamera.pixelsPerUnit*0.10, mapCamera.height));
     placeElement.setAttribute(
       'aria-label',
       dungeon ? `${point.label}; вход в подземелье ранга ${dungeon.rank}` : point.label,
     );
-    const symbol = placeElement.querySelector<HTMLElement>('.place-symbol');
     const label = placeElement.querySelector<HTMLElement>('.place-label');
-    if (symbol) symbol.textContent = point.symbol;
     if (label) label.textContent = point.label;
   }
 }
@@ -1889,6 +1907,7 @@ function updateSelection(): void {
     residentChoice.removeAttribute('title');
   }
 
+  residentLearning.textContent = residentLearningSummary(selected);
   const relationship = closestRelationship(lastFrame.world, selected.id);
   if (relationship) {
     const otherId =
@@ -2467,6 +2486,7 @@ function renderMap(frame: Readonly<LiveWorldFrame>): void {
 
     avatar.style.left = `${x}%`;
     avatar.style.top = `${y}%`;
+    avatar.style.zIndex = String(mapEntityDepth(y, 0, mapCamera.height));
     avatar.classList.toggle('is-moving', isMoving);
     avatar.classList.toggle(
       'is-ambient',

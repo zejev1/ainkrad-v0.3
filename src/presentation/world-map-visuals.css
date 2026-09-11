@@ -1,0 +1,24 @@
+/* Shared depth ordering, without full-map textures or extra compositor layers. */
+.places-layer, .agents-layer { display: contents; }
+.map-place .place-building {
+  padding: 0; background: transparent; border: 0; border-radius: 0;
+}
+.map-place .place-building::before { display: none; }
+.place-art { display: block; width: 100%; height: 100%; overflow: hidden; }
+.map-place::after, .biome-patch--settlement { display: none; }
+.map-place:is(:focus-visible, .is-highlighted) .place-art {
+  outline: 2px solid #ffe0a1; outline-offset: 1px;
+}
+.map-place:is(:hover, :focus-visible, .is-highlighted) { z-index: 1900 !important; }
+.world-map[data-detail="region"] .place-count,
+.world-map[data-detail="region"] .action-bubble { display: none; }
+.world-map[data-detail="town"] .place-count { font-size: 10px; }
+.map-hint { z-index: 2100; }
+.disturbance-banner { z-index: 2200; }
+.map-distance {
+  position: absolute; left: 16px; bottom: 14px; z-index: 2100;
+  color: #fff6d8; background: #163630df; padding: 6px 9px;
+  border-radius: 5px; font-size: 12px; line-height: 1.2; pointer-events: none;
+}
+.map-distance span { display: block; height: 5px; border: 1px solid currentColor; border-top: 0; }
+.map-distance b { display: block; margin-top: 4px; font-weight: 500; }

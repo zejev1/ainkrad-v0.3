@@ -3,6 +3,9 @@ import type { WorldInterventionKind as InterventionKind, WorldInputEnvelope as I
 import { observeLocalPlacesV20, sharePlaceKnowledgeV20, removeUnsurveyedHomelandLinksV20, frontierSiteV20, mayKnowPlaceV20 } from '../v20/KnowledgeBoundariesV20';
 import { nextUrbanHomeLot } from './SettlementStreets';
 import { repairCompactSettlementLayout } from './CompactSettlementLayout';
+import { assertResidentLearning, beginLearningAttempt, finishLearningAttempt, learnedActionAdjustment, learnedSiteAdjustment, noteLearningHelp, noteLearningMaterial } from './learning/index';
+import { canResidentAct, stopDeceasedActions, repairDeceasedActions, assertDeceasedBody } from './ResidentBodyBoundary';
+import { knownMeetingPlace } from './ResidentNavigationKnowledge';
 import { hasGiftV20, learningFactorV20, canReadLibraryV20, giftLearningSnapshotV20, applyLivedGiftLearningV20 } from '../v20/DivineGiftsV20';
 import { stableJsonStringify } from '../core/stableJson';
 import { SeededRng } from '../utils/rng';
@@ -1410,6 +1413,7 @@ function assertWorldState(value: unknown): asserts value is WorldState {
       `Agent ${agentId}`,
     );
     finiteNumber(agent.lastMeaningfulEventAt, `Agent ${agentId}.lastMeaningfulEventAt`);
+    assertResidentLearning(agent.learning, elapsedWorldMinutes);
 
     const personality = asRecord(agent.personality, `Agent ${agentId}.personality`);
     assertUnitFields(
@@ -1496,6 +1500,7 @@ function assertWorldState(value: unknown): asserts value is WorldState {
     if (!life.alive && life.diedAt === undefined) {
       throw new Error(`Dead agent ${agentId} must retain diedAt.`);
     }
+    assertDeceasedBody(agent as unknown as AgentState);
 
     const mind = asRecord(agent.mind, `Agent ${agentId}.mind`);
     requiredString(mind.identityId, `Agent ${agentId}.mind.identityId`);
@@ -3982,6 +3987,7 @@ async function repairCompatibleV19World(
     removeUnsurveyedHomelandLinksV20(next);
     repairSecretLibraryPlacementV18(next);
     repairCompactSettlementLayout(next);
+    repairDeceasedActions(next);
     // Update physical walking lanes while retaining completed traversal history.
     next.routes = rebuildWorldRoutes(next.places, next.routes);
     if (stableJsonStringify(next) === before) return current;
@@ -7040,6 +7046,7 @@ export class WorldEngine {
     environment: WorldEnvironment,
     now: number,
   ): void {
+    if (!canResidentAct(agent)) return;
     // Territorial danger is evaluated while the resident is physically
     // present, before a new route can make that presence disappear. A person
     // travelling between places is not treated as having reached the target;
@@ -7112,6 +7119,7 @@ export class WorldEngine {
       chosenAt: now,
     };
     const action = decision.action;
+    beginLearningAttempt(this.state, agent, action);
     switch (action) {
       case 'rest':
         this.performRest(agent, now);
@@ -7200,6 +7208,9 @@ export class WorldEngine {
         this.performPray(agent, now);
         break;
     }
+    if (!agent.life.alive) return;
+    // Private recollections stay with this resident. Cardinal observes the ordinary physical action events.
+    finishLearningAttempt(this.state, agent);
     const livedAction = agent.lastAction ?? action;
     recordLifeRhythmActionV18(this.state, agent, livedAction);
     if (!agent.movement || livedAction === 'explore' || livedAction === 'walk') {
@@ -7704,6 +7715,14 @@ export class WorldEngine {
       }
       const rest = scores.find((item) => item.action === 'rest');
       if (rest) rest.score += 0.36;
+    }
+
+    // The resident recalls outcomes of their own attempts, including failures.
+    // Invalid age/body actions remain excluded even if an old method succeeded.
+    for (const item of scores) {
+      if (item.score > -0.25 && allowedActions.has(item.action)) {
+        item.score += learnedActionAdjustment(this.state, agent, item.action);
+      }
     }
 
     // Repetition remains possible, but curiosity makes an unchanged routine
@@ -8952,9 +8971,7 @@ export class WorldEngine {
         place.kind === 'swamp' || place.kind === 'forest' || place.biome === 'forest',
     };
     let gatheredMaterial: V16MaterialKind = 'food';
-    let gatheringPlace = this.state.places[
-      this.localPlace(agent, ['resource_field'], 'resource_field')
-    ];
+    let gatheringPlace: WorldPlace | undefined;
     for (const material of materialOrder) {
       if (material === 'metal' && !this.v15HasMetalSource()) continue;
       const candidate = Object.values(this.state.places)
@@ -8962,6 +8979,7 @@ export class WorldEngine {
           (place) =>
             place.surface !== 'water' &&
             sourceKinds[material](place) &&
+            (place.id === agent.locationId || (agent.knownPlaceIds ?? []).includes(place.id)) &&
             this.pathBetween(agent.locationId, place.id) !== undefined,
         )
         .sort((left, right) => {
@@ -8974,12 +8992,24 @@ export class WorldEngine {
             this.pathBetween(agent.locationId, left.id)?.length ?? Number.MAX_SAFE_INTEGER;
           const rightDistance =
             this.pathBetween(agent.locationId, right.id)?.length ?? Number.MAX_SAFE_INTEGER;
-          return leftDistance - rightDistance || left.id.localeCompare(right.id);
+          const recalledDifference = learnedSiteAdjustment(agent, 'gather', right.id) -
+            learnedSiteAdjustment(agent, 'gather', left.id);
+          return leftDistance - rightDistance + recalledDifference * 1.5 || left.id.localeCompare(right.id);
         })[0];
-      if (!candidate) continue;
+      if (!candidate) {
+        if (material === 'food' && criticalFoodReserve) break;
+        continue;
+      }
       gatheredMaterial = material;
       gatheringPlace = candidate;
       break;
+    }
+    if (!gatheringPlace) {
+      // Look from a familiar junction first. Do not silently replace urgently needed food with fuel.
+      const meetingPlace = knownMeetingPlace(this.state, agent);
+      if (meetingPlace && this.travelBeforeAction(agent, meetingPlace, 'gather', now)) return;
+      this.performReflect(agent, now);
+      return;
     }
     if (this.travelBeforeAction(agent, gatheringPlace.id, 'gather', now)) {
       return;
@@ -9025,6 +9055,7 @@ export class WorldEngine {
       fuel: 0.55,
     };
     const materialYield = harvest.harvested * materialMultiplier[gatheredMaterial];
+    noteLearningMaterial(agent, gatheredMaterial, materialYield);
     let materialStored = materialYield;
     let materialOverflow = 0;
     if (economy) {
@@ -11974,6 +12005,7 @@ export class WorldEngine {
     agent.lastDecision = undefined;
     agent.plan = undefined;
     this.state.population.deaths += 1;
+    stopDeceasedActions(this.state, agent);
     this.state.population.lastDeathAt = now;
 
     this.stageEvent({
@@ -13550,6 +13582,7 @@ export class WorldEngine {
     const healed = accepted && canHeal
       ? Math.min(0.1, 1 - b.life.health)
       : 0;
+    const beneficiaryBefore = b.resources + b.life.health;
 
     if (accepted) {
       a.resources = clamp01(a.resources - offered);
@@ -13576,6 +13609,7 @@ export class WorldEngine {
       };
     }
 
+    noteLearningHelp(a, b.id, beneficiaryBefore, b.resources + b.life.health);
     a.energy = clamp01(a.energy - 0.018 - healed * 0.22);
     a.lastAction = 'help';
     a.lastMeaningfulEventAt = now;
@@ -14085,7 +14119,7 @@ export class WorldEngine {
   ): void {
     if (elapsedWorldMinutes <= PHYSICAL_TIME_EPSILON) return;
     for (const agent of Object.values(this.state.agents)) {
-      if (!agent.life.alive || !agent.movement) continue;
+      if (!canResidentAct(agent) || !agent.movement) continue;
       this.advanceAgentMovement(agent, elapsedWorldMinutes);
     }
   }

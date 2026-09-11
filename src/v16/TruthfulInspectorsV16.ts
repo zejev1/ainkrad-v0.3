@@ -17,6 +17,7 @@ import {
   SECRET_LIBRARY_PLACE_ID_V18,
 } from '../v18/SecretLibraryV18';
 import { SAPIENT_PEOPLE_FOUNDATIONS } from '../world/SapientPeoples';
+import { residentLearningRows } from '../presentation/ResidentLearningView';
 
 export interface TruthfulInspectorRowV16 {
   label: string;
@@ -254,6 +255,7 @@ export function inspectResidentV16(
     subtitle: `${raceLabels[race]} · ${agent.life.ageYears.toFixed(1)} года · поколение ${agent.life.generation}`,
     badge: agent.life.alive ? 'ЖИВОЙ РАЗУМНЫЙ ЖИТЕЛЬ' : 'ИСТОРИЯ ЖИТЕЛЯ',
     sections: [
+      { title: 'Опыт и решения', rows: residentLearningRows(world, agent) },
       {
         title: 'Сейчас',
         rows: [

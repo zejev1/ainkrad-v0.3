@@ -221,6 +221,8 @@ export interface AgentMovementState {
 }
 
 export interface AgentState {
+  /** Lived attempts, predictions and revisable methods; absent in legacy saves. */
+  learning?: import('./learning/index').ResidentLearningState;
   knownPlaceIds?: string[];
   knownDungeonIds?: string[];
   id: string;

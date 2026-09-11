@@ -1,0 +1,105 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> ainkrad-v0-3@0.3.21 check
+> npm run typecheck && npm run test
+
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> ainkrad-v0-3@0.3.21 typecheck
+> tsc -p tsconfig.json
+
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> ainkrad-v0-3@0.3.21 test
+> vitest run --minWorkers=1 --maxWorkers=1 --testTimeout=60000
+
+
+ RUN  v3.1.1 /workspace/scratch/f1f71aca20c3/Ainkrad-v0.3.21-stage
+
+ ✓ tests/v0_3_16_societyFoundation.test.ts (14 tests) 12136ms
+   ✓ v0.3.16 race-neutral family opportunities > lets a non-human people make voluntary family choices and continue a lineage  2997ms
+   ✓ v0.3.17 physically grounded hostile ecology > keeps territorial monsters active without attacking a destination remotely  461ms
+   ✓ v0.3.16 material settlements and death aftermath > reserves local materials and builds a real home when housing is full  446ms
+   ✓ v0.3.16 material settlements and death aftermath > allows voluntary settlement war over real resources or claimed land  7568ms
+ ✓ tests/worldAutonomy.test.ts (16 tests) 17614ms
+   ✓ World rules version > migrates the live 0.3.9 ecology without resetting its frontier or RNG future  789ms
+   ✓ Autonomous society depth > produces several autonomous action families instead of one fixed routine  1624ms
+   ✓ Autonomous society depth > lets resident exploration grow the world in stages and supports nature activity  2144ms
+   ✓ Autonomous society depth > can choose a reasonable alternative instead of always obeying the top score  601ms
+   ✓ Autonomous society depth > is deterministic for the same seed while different seeds can diverge  1939ms
+   ✓ Autonomous society depth > preserves the exact autonomous future across an engine restart  1863ms
+   ✓ Autonomous society depth > does not guarantee control-world collapse merely because agents keep living  8305ms
+ ✓ tests/sensors.test.ts (6 tests) 8ms
+ ✓ tests/worldAuthority.test.ts (6 tests) 270ms
+ ✓ tests/cardinalCore.test.ts (8 tests) 8ms
+ ✓ tests/v0_3_14_worldLogic.test.ts (7 tests) 5443ms
+   ✓ v0.3.14 Underworld-style substrate audit > keeps generation-zero founders rooted while allowing travel and later-generation resettlement logic  5222ms
+ ✓ tests/v0_3_19_divineAgency.test.ts (7 tests) 94ms
+ ✓ tests/browserUiSmoke.test.ts (5 tests) 104ms
+ ✓ tests/v0_3_13_releaseAudit.test.ts (5 tests) 7085ms
+   ✓ v0.3.13 release audit > migrates a stopped v0.3.12 world with only three survivors without replacing their minds  629ms
+   ✓ v0.3.13 release audit > does not count other intelligent races as humans and allows lived progression  6375ms
+ ✓ tests/v0_3_20_regressions.test.ts (8 tests) 236ms
+ ✓ tests/v0_3_21_learning.test.ts (7 tests) 128ms
+ ✓ tests/v0_3_19_adventureEconomy.test.ts (4 tests) 48ms
+ ✓ tests/liveWorldRuntime.test.ts (5 tests) 3004ms
+   ✓ Cardinal semantic speed equivalence > gives Cardinal identical opportunities at ×1, ×10 and ×100 for equal Ainkrad time  2419ms
+ ✓ tests/v0_3_18_culturalAgency.test.ts (5 tests) 89ms
+ ✓ tests/persistence.test.ts (7 tests) 94ms
+ ✓ tests/cardinalResearch.test.ts (3 tests) 14ms
+ ✓ tests/gatewayRecovery.test.ts (4 tests) 54ms
+ ✓ tests/v0_3_20_startupRepair.test.ts (6 tests) 236ms
+ ✓ tests/v0_3_18_underworldFoundation.test.ts (4 tests) 83ms
+ ✓ tests/v0_3_19_sapientPeoples.test.ts (3 tests) 4881ms
+   ✓ v0.3.19 distinct sapient peoples and continental homelands > creates six mechanically distinct peoples and evidence-based diplomatic priors  2515ms
+   ✓ v0.3.19 distinct sapient peoples and continental homelands > repairs old close homelands once without rewriting resident identity or history  2363ms
+ ✓ tests/personhoodLifecycle.test.ts (4 tests) 577ms
+   ✓ Fluctlight-inspired persistent personhood > keeps identity continuity while choices, emotions and values evolve  390ms
+ ✓ tests/interventionGateway.test.ts (5 tests) 48ms
+ ✓ tests/v0_3_18_secretLibrary.test.ts (3 tests) 122ms
+ ✓ tests/v0_3_21_bodyBoundary.test.ts (4 tests) 83ms
+ ✓ tests/v0_3_20_fix3Viewport.test.ts (3 tests) 78ms
+ ✓ tests/auditor.test.ts (3 tests) 5ms
+stdout | tests/v0_3_20_fix2Clock.test.ts > FIX2 elapsed time and bounded live work > retains work across speed changes, counts ten years for one minute, and exposes real backlog
+{"benchmark":"10 requested world years","realSeconds":5.3008003079999995,"simulatedYears":10,"living":44}
+
+ ✓ tests/v0_3_20_fix2Clock.test.ts (5 tests) 6269ms
+   ✓ FIX2 elapsed time and bounded live work > simulates the same year and Cardinal observations with or without presentation frames  920ms
+   ✓ FIX2 elapsed time and bounded live work > retains work across speed changes, counts ten years for one minute, and exposes real backlog  5308ms
+ ✓ tests/worldClockCivilization.test.ts (4 tests) 7749ms
+   ✓ Human-like bodies and growing civilization > opens remote monster habitats and grows villages into cities  7659ms
+ ✓ tests/v15FamilyAgency.test.ts (7 tests) 4ms
+ ✓ tests/inputBus.test.ts (8 tests) 8ms
+ ✓ tests/v0_3_20_fix2Map.test.ts (3 tests) 64ms
+ ✓ tests/v0_3_18_offlineCatchUp.test.ts (3 tests) 11447ms
+   ✓ v0.3.18 closed-browser catch-up > executes every semantic quantum while bounding durable commits  11029ms
+   ✓ v0.3.18 closed-browser catch-up > splits the reported day-300 mobile restoration into safe commits  342ms
+ ✓ tests/portableCardinal.test.ts (2 tests) 6ms
+ ✓ tests/history.test.ts (7 tests) 7ms
+ ✓ tests/worldSpatial.test.ts (3 tests) 67ms
+ ✓ tests/cardinalJournalScaling.test.ts (1 test) 167ms
+ ✓ tests/cardinalExperience.test.ts (1 test) 6ms
+ ✓ tests/logBackedJournal.test.ts (3 tests) 8ms
+ ✓ tests/v0_3_18_livelihoodAndPlace.test.ts (2 tests) 2437ms
+   ✓ v0.3.18 truthful livelihoods and workplaces > records production only after arrival at a compatible physical place  2435ms
+ ✓ tests/cardinalJournal.test.ts (4 tests) 7ms
+ ✓ tests/generationalKnowledgeAudit.test.ts (2 tests) 3ms
+ ✓ tests/worldRuntime.test.ts (1 test) 21ms
+ ✓ tests/memoryStore.test.ts (2 tests) 178ms
+ ✓ tests/v0_3_14_habitatIntegrity.test.ts (1 test) 30636ms
+   ✓ v0.3.14 habitat integrity long-run audit > never recovers wildlife or monsters in incompatible city/water habitats  30635ms
+ ✓ tests/experimentIntegrity.test.ts (1 test) 27326ms
+   ✓ Controlled Cardinal experiment integrity > keeps OFF/OBSERVER equivalent and records outcomes for executed interventions  27325ms
+ ✓ tests/offlineWorldClock.test.ts (2 tests) 3ms
+ ✓ tests/scheduler.test.ts (2 tests) 4ms
+ ✓ tests/observer.test.ts (1 test) 57ms
+ ✓ tests/modes.test.ts (3 tests) 878ms
+   ✓ Cardinal modes > OFF and OBSERVER produce identical autonomous world state  603ms
+ ✓ tests/worldModuleBoundary.test.ts (1 test) 94ms
+ ✓ tests/externalGateway.test.ts (1 test) 2ms
+
+ Test Files  51 passed (51)
+      Tests  222 passed (222)
+   Start at  21:16:35
+   Duration  153.67s (transform 1.21s, setup 0ms, collect 4.80s, tests 139.99s, environment 9ms, prepare 2.66s)
+

@@ -1,36 +1,41 @@
-AINKRAD v0.3.20 FIX3 — bounded map and metre-scale streets
-Date: 2026-09-11 UTC
-Package version: 0.3.20-hotfix.3
-Source HEAD/main: 308305d0e0059a56312d159156a55c94d3a956d6
+AINKRAD v0.3.21 — личный опыт и физическое исполнение
+Дата: 2026-09-11 UTC
+Пакет: 0.3.21
+HEAD/main: e486a14aebee49b6ffcffe9c077965ee3188caf1
 Remote: https://github.com/zejev1/ainkrad-v0.3.git
-Index empty; user commits and pushes through SPCK.
-No assistant commit, push, deployment, Convex or edits to original Ainkrad.
+Новых коммитов помощника нет; пользователь делает Commit и Push в SPCK.
 
-FINISHED
-Screen-sized map camera, clipped geometry, bounded visible marker DOM.
-12x10m homes, 6m lanes, 10m main street, stable lots, shared pedestrian streets.
-Idempotent same-world layout repair; preserve people, families, knowledge and XP.
-Construction attempts require actual work with persisted 24-quantum cooldown.
-Adaptive work batches targeting 80ms, positive idle intervals, bounded UI cadence.
-World contracts independent of Cardinal/runtime implementation.
-No competitor code/assets/AI added. Cardinal implementation still in browser bundle.
+ГОТОВО
+Новые небольшие модули: личное наблюдение, память способов, ожидания,
+попытки, квитанции результата, пересмотр поведения, ограниченный контекст.
+Сохранены прежние знания, навыки, семьи, профессии, молитвы, дары и Cardinal.
+Личный опыт виден в инспекторе; внутренние ожидания не добавлены в поток Cardinal.
+Движение/планы/обучение после смерти прекращаются; прошлый опыт и личность остаются.
+Старые действия умерших исправляются без повтора смерти и потери времени/RNG.
+Поиск неизвестного источника еды через знакомое место встречи вместо добычи топлива.
+Собственные векторные рисунки, физический масштаб домов, линейка метров/километров.
+Окно и число рисуемых объектов ограничены как в FIX3; мир не урезан до окна.
+Анализ Alicization Town и таблица плюсов, минусов и решений включены в docs.
+Код/графика конкурента и внешние AI не подключены. Cardinal никому не передавался.
 
-VALIDATION
-Full suite 211/211 tests, 49 files, 136.88s; typecheck and Vite build PASS.
-Audit: docs/V0_3_20_FIX3_AUDIT.json. Device test and new millennium run NOT performed.
-10yr runtime fixture: 60000ms input processed in 3.775s in-memory; NOT device pace.
+ПРОВЕРКА
+222/222 тестов в 51 файле PASS, 153.67s. TypeScript и итоговая Vite сборка PASS.
+11 новых сценариев включают 1500 попыток, смертность и повторные открытия сохранений.
+После полного прогона изменялись только дополнительные векторные glyphs; сборка перепроверена.
+Документы и журналы: docs/V0_3_21_AUDIT.json и docs/V0_3_21_*_LOG.txt.
+Настоящий телефон/Xbox, локальный браузер и новый тысячелетний прогон здесь не проверены.
 
-HANDOFF
-Ainkrad-v0.3.20-FIX3-SPCK-READY.zip, flat root, Git history included.
+ПЕРЕДАЧА
+Ainkrad_v021.zip — плоский корень, история Git включена, индекс без подготовленного коммита.
 Git email: zejev1@users.noreply.github.com
-Commit suggestion: fix: bound map memory and use metre-scale city streets
-Continue existing world at same URL; do not clear browser data or reset.
+Commit: feat: personal learning, body boundaries and map visuals
+Продолжать прежнее сохранение по прежнему URL. Данные браузера не очищать.
 
-NEXT — after ZIP handoff, as requested
-Compare ceresOPA/Alicization-Town primary source code, world only.
-Review body/perception/mind boundary, persistence, navigation, NPC knowledge,
-plugin contracts, dungeons/economy, real memory, client/server costs and licences.
-Do not share Cardinal code, internals, experiment journals or privileged controls.
-Do not contact other developers without explicit instruction to send a message.
-No merge, dependency or external AI connection approved by a comparison alone.
-Two user discussion files are context, not a forced architecture rewrite.
+ДАЛЕЕ
+Развивать наш мозг/тело/обучение небольшими модулями, не заменять прежнее ядро.
+Наблюдения и происхождение сведений; материальные многошаговые планы и понятия;
+видимость/слух и локальная геометрия; потоковая география и автономная экономика.
+Планы обмена с конкурентом касаются только ограниченного World-интерфейса и тестов.
+Кардинал сейчас по-прежнему входит в браузерный bundle: физическая секретность
+требует отдельного закрытого процесса, а не переименования файлов.
+Без явного поручения не писать авторам, не открывать репозиторий и не публиковать.

@@ -1,0 +1,87 @@
+{
+  "release": "0.3.21",
+  "date": "2026-09-11",
+  "status": "passed",
+  "base_commit": "e486a14aebee49b6ffcffe9c077965ee3188caf1",
+  "upstream_matches_delivered_fix3_changed_files": 35,
+  "assistant_commit_push_or_deploy": false,
+  "continued_existing_project": true,
+  "verification": {
+    "typecheck": "PASS",
+    "vite_build": "PASS",
+    "suite": {
+      "tests_passed": 222,
+      "tests_failed": 0,
+      "files": 51,
+      "duration_seconds": 153.67
+    },
+    "new_scenarios": [
+      "personal success and failure change advice",
+      "incidental effects transfer to a new problem",
+      "personal reading suggests a trial without yield or skills",
+      "travel does not count as completed work",
+      "accepted/refused help uses target outcome",
+      "1500 attempts stay within memory budget",
+      "one-year autonomous world and exact reopen",
+      "death stops execution across four more ticks/reloads",
+      "legacy deceased walker repaired without a new death",
+      "zero-health body cannot act",
+      "metre scale through regional and city zoom"
+    ],
+    "existing_gates": [
+      "OFF equals OBSERVER",
+      "Cardinal experience retained",
+      "world/module boundary",
+      "Gateway authority",
+      "mortality and burial",
+      "age/body capability",
+      "family and gifts",
+      "human/elf library boundaries",
+      "local dungeon discovery",
+      "material production and construction",
+      "time/catch-up equivalence",
+      "habitat integrity"
+    ],
+    "finding_fixed_during_audit": "When food was urgently needed but not known, gathering could fall through to fuel. The resident now looks via a known meeting place before finding food.",
+    "private_learning": "No new public learning-outcome event; ordinary physical action events remain unchanged.",
+    "art_only_changes_after_full_suite": "Additional original water/ruin/settlement glyphs; final typecheck and production rebuild passed."
+  },
+  "memory_budget": {
+    "new_working_methods_per_resident": 12,
+    "new_recent_attempts_per_resident": 4,
+    "pending_attempts_per_resident": 1,
+    "representative_1500_attempt_serialization_test_max_bytes": 12000,
+    "population_cap_added": false,
+    "existing_knowledge_store_removed": false
+  },
+  "module_lines": {
+    "src/world/learning/LearningContracts.ts": 51,
+    "src/world/learning/ResidentLearningAdapter.ts": 26,
+    "src/world/learning/types.ts": 87,
+    "src/world/learning/ResidentLearning.ts": 113,
+    "src/world/learning/LifeObservation.ts": 34,
+    "src/world/learning/MethodMemory.ts": 68,
+    "src/world/learning/index.ts": 6
+  },
+  "world_rules_schema": "Existing rules schema retained; optional personal learning state and additive cleanup of deceased actions.",
+  "competitor": {
+    "repository": "ceresOPA/Alicization-Town",
+    "reviewed_commit": "1a33ba65d0af2134b369b1eb4eb68f45d2c817c4",
+    "source_assets_or_dependencies_imported": false,
+    "contacted": false,
+    "cardinal_shared": false
+  },
+  "not_verified": [
+    "actual Android/Xbox browser performance and heat",
+    "local browser UI interaction",
+    "new 1000/2000-year soak",
+    "competitor deployment/runtime"
+  ],
+  "not_implemented": [
+    "universal language/technology invention",
+    "anatomical physics",
+    "wall-aware sight/hearing",
+    "new planetary or space geometry",
+    "private server isolation of Cardinal"
+  ]
+}

@@ -1,18 +1,19 @@
-# Ainkrad v0.3.20 — viewport and metre-scale streets fix 3
+# Ainkrad v0.3.21 — personal experience and physical execution
 
-Built on published main 308305d0e0059a56312d159156a55c94d3a956d6.
-FIX3 bounds map drawing to the screen, uses 12 × 10 m homes with 6 m lanes
-and a 10 m central street, and migrates the existing settlement layout.
-The worker uses small adaptive batches with idle intervals. All inhabitants
-remain in the simulation, including those outside the visible map.
+Built on the owner's published FIX3 commit e486a14aebee49b6ffcffe9c077965ee3188caf1.
+NPCs now notice needs, recall their own methods, try actions, measure outcomes and
+revise behaviour. New learning modules preserve the existing knowledge, skills,
+family, gifts and Cardinal systems. Death stops execution and leaves a person's
+identity and past experience intact. Local vector art and a physical scale bar
+retain the bounded FIX3 viewport.
 
 Continue the existing world at its existing site address. Do not reset it.
-Full regression: **211 tests in 49 files PASS**, TypeScript and Vite build PASS.
-Actual Xbox/Android memory and thermal behaviour have not been measured.
-See [RELEASE_NOTES_v0.3.20_FIX3.md](RELEASE_NOTES_v0.3.20_FIX3.md),
-[docs/V0_3_20_FIX3_AUDIT.json](docs/V0_3_20_FIX3_AUDIT.json), and
-[docs/CARDINAL_WORLD_BOUNDARIES.md](docs/CARDINAL_WORLD_BOUNDARIES.md).
-Earlier versioned reports below are historical and retain their original limits.
+See [RELEASE_NOTES_v0.3.21.md](RELEASE_NOTES_v0.3.21.md),
+[learning and body contract](docs/V0_3_21_LEARNING_CONTRACT.md),
+[competitor adoption matrix](docs/V0_3_21_ADOPTION_MATRIX.md), and
+[release audit](docs/V0_3_21_AUDIT.json).
+Actual Xbox/Android thermal behaviour and a new millennium run are not measured.
+Earlier versioned reports below are historical.
 
 An experimental autonomous world for developing and testing a self-checking AI governance layer.
 
