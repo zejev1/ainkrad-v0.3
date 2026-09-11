@@ -19,7 +19,7 @@
 .world-map .map-place .place-art { width:100%; height:100%; overflow:visible; }
 .world-map .is-town-pin .place-building { transform:translate(-50%,-50%); border-radius:50%; border:2px solid #faf0ca; background:#76604a; }
 .world-map .is-town-pin .place-art { display:none; }
-.world-map .map-place .place-label { left:50%; top:100%; transform:translateX(-50%); margin:2px 0 0; max-width:180px; font-size:12px; line-height:18px; padding:1px 5px; color:#f4f0d7; background:#354738df; }
+.world-map .map-place .place-label { display:none; left:50%; top:100%; transform:translateX(-50%); margin:2px 0 0; max-width:180px; font-size:12px; line-height:18px; padding:1px 5px; color:#f4f0d7; background:#354738df; }
 .world-map .map-place.has-map-label .place-label { display:block; }
 .world-map .map-place .place-count { top:auto; right:0; bottom:100%; min-width:15px; height:16px; font-size:10px; }
 .world-map[data-atlas-level="world"] .place-count,

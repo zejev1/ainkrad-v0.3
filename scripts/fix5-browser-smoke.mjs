@@ -29,7 +29,7 @@ try {
  await page.goto('http://127.0.0.1:4173/');
  await page.waitForFunction(()=>/^МИР (ЖИВ|ПРОД)/.test(document.getElementById('live-label')?.textContent??''),{},{timeout:30000});
  await page.waitForFunction(()=>document.querySelectorAll('#settlement-picker option').length>2);
- assert.equal(await page.locator('.eyebrow').first().innerText(),'v0.3.21.5');
+ assert.equal((await page.locator('.eyebrow').first().textContent()).trim(),'v0.3.21.5');
  assert.equal(await page.locator('.developer-diagnostics').getAttribute('open'),null);
  assert(!/игровые минуты|видимые жители|путь к underworld/i.test(await page.locator('body').innerText()));
  assert.equal(await page.locator('.world-notice').isVisible(),false);
@@ -50,6 +50,8 @@ try {
  await shot('city',map);
  assert((await page.locator('.map-place[data-place-id]').count())<=180);
  const townOptions=await page.locator('#settlement-picker option').evaluateAll(options=>options.filter(o=>o.value).map(o=>({value:o.value,label:o.textContent})));
+ await page.evaluate(()=>{const channel=new BroadcastChannel('ainkrad-v0-3-divine-audience');channel.postMessage({type:'set_divine_audience_pause',paused:true});channel.close();});
+ await page.waitForTimeout(500);
  const beforeSelect=await snapshot();
  await page.locator('#settlement-picker select').selectOption(townOptions.at(-1).value);
  await page.waitForTimeout(150);await shot('other_town',map);
@@ -57,6 +59,7 @@ try {
  assert.equal(afterSelect.determinism.rngState,beforeSelect.determinism.rngState);
  assert.deepEqual(afterSelect.agents,beforeSelect.agents);
  assert.deepEqual(afterSelect.places,beforeSelect.places);
+ assert.deepEqual(afterSelect,beforeSelect);
  report.checks.push('settlement selection leaves residents, RNG and physical world unchanged');
  await page.locator('#map-city-focus').click();
  for(let i=0;i<7;i++)await page.locator('#map-zoom-in').click();
@@ -80,6 +83,7 @@ try {
  await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await page.waitForTimeout(100);
  const zoomAfter=await page.locator('#map-zoom-fit').innerText();assert.notEqual(zoomAfter,zoomBefore);
  report.checks.push('touch pinch and keyboard camera controls; bounded map surfaces and visible nodes');
+ await page.evaluate(()=>{const channel=new BroadcastChannel('ainkrad-v0-3-divine-audience');channel.postMessage({type:'set_divine_audience_pause',paused:false});channel.close();});
  const stop=page.getByRole('button',{name:'Остановить догон',exact:true});
  await page.locator('#world-speed-select').selectOption('century_per_minute');await page.waitForTimeout(2000);
  const start=performance.now();await stop.click();await page.waitForFunction(()=>{const b=[...document.querySelectorAll('button')].find(b=>b.textContent==='Остановить догон');return b&&!b.disabled&&document.getElementById('world-speed-select').value==='real_time';},{},{timeout:10000});

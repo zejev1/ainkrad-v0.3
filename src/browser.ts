@@ -6,7 +6,7 @@ import { physicalPlaceDrawing, applyPhysicalPlaceStyle, visibleMapLabels } from 
 import { WorldClockPanel } from './presentation/WorldClockPanel';
 import { worldStorageDiagnostics } from './persistence/WorldSaveSafety';
 import { createSettlementPicker } from './presentation/SettlementPicker';
-import { WorldMapCamera, clipMapSegment, clipMapPolygon, MAX_VISIBLE_PLACES, MAX_VISIBLE_RESIDENTS } from './presentation/WorldMapCamera';
+import { WorldMapCamera, MAX_VISIBLE_RESIDENTS } from './presentation/WorldMapCamera';
 import { mapDetail, mapScaleBar, mapEntityDepth } from './presentation/WorldMapVisuals';
 import { residentLearningSummary } from './presentation/ResidentLearningView';
 import { townMapFocus, residentMapFocus, settlementMapFocus } from './presentation/WorldMapFocus';
@@ -1463,7 +1463,6 @@ function closePrayerInbox(): void {
   document.body.classList.remove('has-modal');
 }
 
-function renderRoads(world:Readonly<WorldState>):void { atlas.render(world,mapCamera); }
 
 function renderPlaces(world: Readonly<WorldState>): void {
   atlas.index.update(world);
@@ -1505,7 +1504,7 @@ function renderPlaces(world: Readonly<WorldState>): void {
     }
     if (placeElement.dataset.artKind !== place.kind+':'+close) {
       placeElement.querySelector('.place-building')!.innerHTML = physicalPlaceDrawing(place,close);
-      placeElement.dataset.artKind = place.kind;
+      placeElement.dataset.artKind = place.kind+':'+close;
     }
     placeElement.className = `map-place map-place--${place.kind} map-place--surface-${place.surface}`;
     applyPhysicalPlaceStyle(placeElement,place,mapCamera);
@@ -2278,7 +2277,6 @@ function renderMap(frame: Readonly<LiveWorldFrame>): void {
   worldMap.dataset.growth = String(Math.min(3, frame.world.growth.stage));
   atlas.render(frame.world,mapCamera);
   renderPlaces(frame.world);
-  renderRoads(frame.world);
   renderWildlife(frame.world);
 
   const agents = Object.values(frame.world.agents).filter(
@@ -2687,7 +2685,7 @@ function showPlacesOnMap(placeIds: readonly string[]): void {
   highlightedPlaceIds = new Set(placeIds);
   if (!lastFrame) return;
   renderPlaces(lastFrame.world);
-  renderRoads(lastFrame.world);
+  atlas.render(lastFrame.world,mapCamera);
   const first = placeIds.find((id) => lastFrame?.world.places[id]);
   if (!first) return;
   const place=lastFrame.world.places[first];
@@ -2989,7 +2987,7 @@ function closeCardinalConsole(): void {
   highlightedPlaceIds.clear();
   if (lastFrame) {
     renderPlaces(lastFrame.world);
-    renderRoads(lastFrame.world);
+    atlas.render(lastFrame.world,mapCamera);
   }
 }
 

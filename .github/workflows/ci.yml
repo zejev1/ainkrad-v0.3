@@ -23,7 +23,7 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
       - name: World, persistence and geography tests
-        run: npm run test -- --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/ainkrad-tests.json"
+        run: npm run test -- --bail=1 --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/ainkrad-tests.json"
       - name: Production build
         run: npm run build
   browser:
@@ -48,6 +48,8 @@ jobs:
         run: npx tsx scripts/fix5-browser-fixture.ts
       - name: Native browser and map audit
         run: node scripts/fix5-browser-smoke.mjs
+      - name: Native IndexedDB performance comparison
+        run: node scripts/fix5-browser-performance.mjs
       - name: Retain audit evidence
         if: always()
         uses: actions/upload-artifact@v4
