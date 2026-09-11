@@ -15,5 +15,6 @@ export class LiveWallClock {
 }
 
 export function liveLoopDelay(workMilliseconds: number, pendingWorldMinutes: number): number {
-  return pendingWorldMinutes > 1e-7 ? 0 : Math.max(0, 1000 - workMilliseconds);
+  // Leave the browser and CPU idle between committed chunks, including catch-up.
+  return pendingWorldMinutes > 1e-7 ? Math.max(16, Math.min(1000, workMilliseconds * 0.6)) : Math.max(0, 1000 - workMilliseconds);
 }

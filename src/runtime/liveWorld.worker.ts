@@ -33,7 +33,7 @@ const DIVINE_AUDIENCE_CHANNEL_NAME = 'ainkrad-v0-3-divine-audience';
 const STORAGE_CHECK_INTERVAL_TICKS = 300;
 const AINKRAD_STORAGE_SOFT_BUDGET_BYTES = 2 * 1024 * 1024 * 1024;
 const AINKRAD_STORAGE_CRITICAL_BUDGET_BYTES = 4 * 1024 * 1024 * 1024;
-const FRAME_PROTOCOL_VERSION = 'ainkrad-live-frame-0.3.20-fix2';
+const FRAME_PROTOCOL_VERSION = 'ainkrad-live-frame-0.3.20-fix3';
 const COMPATIBLE_FRAME_PROTOCOLS = new Set([FRAME_PROTOCOL_VERSION]);
 
 // Test disturbances never run automatically in the persistent live world.
@@ -154,7 +154,8 @@ let pendingClockControl: LiveWorldClockMessage | undefined;
 let pendingWorldReset = false;
 let pendingOfflineCatchUp: OfflineClockCatchUpMessage | undefined;
 let divineAudiencePaused = false;
-let catchUpBatchQuanta = OFFLINE_CATCH_UP_MAX_BATCH_QUANTA;
+let catchUpBatchQuanta = 1;
+let lastCatchUpProgressPostedAt = 0;
 let catchUpFailureCount = 0;
 let catchUpTracker:
   | {
@@ -198,7 +199,7 @@ function applyOfflineCatchUp(message: OfflineClockCatchUpMessage): void {
       !pendingOfflineCatchUp ||
       pendingOfflineCatchUp.worldEpoch !== message.worldEpoch
     ) {
-      catchUpBatchQuanta = OFFLINE_CATCH_UP_MAX_BATCH_QUANTA;
+      catchUpBatchQuanta = 1;
       catchUpFailureCount = 0;
     }
     activeRuntime?.coverLiveTimeThrough(message.targetWorldMinutes, message.worldEpoch);
@@ -502,7 +503,7 @@ async function runForever(): Promise<void> {
         pendingWorldReset = false;
         pendingOfflineCatchUp = undefined;
         catchUpTracker = undefined;
-        catchUpBatchQuanta = OFFLINE_CATCH_UP_MAX_BATCH_QUANTA;
+        catchUpBatchQuanta = 1;
         catchUpFailureCount = 0;
         await runtime.resetWorld();
         liveWallClock.reset(performance.now());
@@ -540,6 +541,7 @@ async function runForever(): Promise<void> {
               );
             }
             let batch;
+            const batchStartedAt = performance.now();
             try {
               batch = await runtime.catchUpBatchTo(
                 catchUpTracker.targetWorldMinutes,
@@ -569,12 +571,15 @@ async function runForever(): Promise<void> {
                 pendingOfflineCatchUp = undefined;
                 catchUpTracker = undefined;
                 publishCatchUpRecovery(message, true);
-                catchUpBatchQuanta = OFFLINE_CATCH_UP_MAX_BATCH_QUANTA;
+                catchUpBatchQuanta = 1;
                 catchUpFailureCount = 0;
               }
               await sleep(0);
               continue;
             }
+            const batchWorkMs = Math.max(1, performance.now() - batchStartedAt);
+            catchUpBatchQuanta = Math.max(1, Math.min(8, OFFLINE_CATCH_UP_MAX_BATCH_QUANTA,
+              Math.ceil(catchUpBatchQuanta * 80 / batchWorkMs)));
             catchUpTracker.semanticQuantaProcessed +=
               batch.semanticQuantaProcessed;
             const elapsedRealMs = Math.max(
@@ -608,17 +613,19 @@ async function runForever(): Promise<void> {
               semanticQuantaProcessed: catchUpTracker.semanticQuantaProcessed,
               completed: batch.completed,
             } as const;
-            workerScope.postMessage(progressMessage);
-            frameChannel.postMessage(progressMessage);
+            if (batch.completed || performance.now() - lastCatchUpProgressPostedAt >= 500) {
+              workerScope.postMessage(progressMessage);
+              frameChannel.postMessage(progressMessage);
+              lastCatchUpProgressPostedAt = performance.now();
+            }
             if (!batch.completed) {
-              // Yield to clock/reset requests without paying the old 25 ms
-              // delay after every small chunk.
-              await sleep(0);
+              // Keep UI/clock controls responsive and avoid a continuous hot loop.
+              await sleep(liveLoopDelay(batchWorkMs, 1));
               continue;
             }
             pendingOfflineCatchUp = undefined;
             catchUpTracker = undefined;
-            catchUpBatchQuanta = OFFLINE_CATCH_UP_MAX_BATCH_QUANTA;
+            catchUpBatchQuanta = 1;
             catchUpFailureCount = 0;
             completedCatchUpThisLoop = true;
           }

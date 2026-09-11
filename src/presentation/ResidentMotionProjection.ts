@@ -19,8 +19,9 @@ function restingFootprintRadius(
 ): number {
   const place = world.places[agent.locationId];
   if (!place) return 0.8;
-  if (place.kind === 'home') return 0.14;
-  if (place.kind === 'workshop' || place.kind === 'library') return 0.24;
+  if (place.kind === 'home') return 0.025;
+  if (place.kind === 'workshop' || place.kind === 'library') return 0.04;
+  if (['commons', 'city', 'village', 'quiet_space'].includes(place.kind)) return 0.08;
 
   const settlement = place.settlementId
     ? world.settlements[place.settlementId]
@@ -109,7 +110,7 @@ export function projectedResidentPosition(
   // A small display-only gait makes the walking state legible while CSS
   // interpolates between consecutive authoritative physical coordinates.
   const stridePhase = phase + safeFrameSequence * 1.6;
-  const strideRadius = 0.06 + mobility * 0.05;
+  const strideRadius = 0.002 + mobility * 0.003;
 
   return {
     x: agent.position.x + Math.cos(stridePhase) * strideRadius,

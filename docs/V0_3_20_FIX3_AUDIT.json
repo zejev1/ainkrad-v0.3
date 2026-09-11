@@ -1,0 +1,73 @@
+{
+  "version": "0.3.20-hotfix.3",
+  "dateUtc": "2026-09-11",
+  "baseHead": "308305d0e0059a56312d159156a55c94d3a956d6",
+  "branch": "main",
+  "remote": "https://github.com/zejev1/ainkrad-v0.3.git",
+  "status": "PASS_WITH_DOCUMENTED_DEVICE_LIMIT",
+  "verification": {
+    "typecheck": "PASS",
+    "productionBuild": {
+      "status": "PASS",
+      "seconds": 2.31
+    },
+    "fullRegression": {
+      "status": "PASS",
+      "files": 49,
+      "tests": 211,
+      "seconds": 136.88
+    },
+    "migrationAndContinuity": "PASS: preserved identities, families, time, knowledge, RNG and Cardinal experience; layout repair idempotent",
+    "residentAutonomy": "PASS: protected personhood, world autonomy and local knowledge regressions",
+    "cardinalGatewayCausality": "PASS: OFF/OBSERVER equivalence, intervention/effect audit, external and intervention gateways",
+    "cardinalExperience": "PASS: existing persistence, restart and experience regression tests",
+    "boundedStorage": "PASS: journal scaling, persistence and bounded history regressions; no resident cap added",
+    "viewport": "PASS: clipping and world/screen coordinates; screen viewport bounded independently of continental extent; visible DOM budgets",
+    "metreScaleStreets": "PASS: 12x10m homes, 6m gaps, 10m main street, same-world migration including moving resident",
+    "worldModuleBoundary": "PASS: standalone WorldEngine bundle without Cardinal or runtime value dependencies",
+    "actualAndroidXbox": "NOT_RUN: local browser fixture blocked by environment browser policy; no device thermal/memory guarantee",
+    "thousandYearStability": "NOT_RUN: no new millennium benchmark for this patch"
+  },
+  "renderBudgets": {
+    "maxViewportWidthPx": 1280,
+    "maxViewportHeightPx": 800,
+    "places": 180,
+    "residents": 120,
+    "wildlife": 50,
+    "roadSegments": 1600,
+    "scope": "Presentation only. All living residents remain simulated. This is not a total world heap-memory cap."
+  },
+  "clockPacing": {
+    "targetBatchMs": 80,
+    "maxAdaptiveQuanta": 8,
+    "idle": "positive interval while work remains",
+    "caveat": "Target duration, not a hard deadline for an indivisible semantic step. Requested pace remains hardware dependent."
+  },
+  "buildAssets": [
+    {
+      "path": "dist/assets/index-BOAGFgCQ.js",
+      "bytes": 161519,
+      "sha256": "0645ea3f3fccb610d371f47389c187652ac25f68d3ca9229a0b3a09dcd1f4c2a"
+    },
+    {
+      "path": "dist/assets/index-DeeY4GwT.css",
+      "bytes": 47007,
+      "sha256": "9dc0b87dd9b624d4a75bb5f5b126118d7e33eb984acd24103574d4f463c3cb29"
+    },
+    {
+      "path": "dist/assets/liveWorld.worker-Cr7-BcK0.js",
+      "bytes": 592380,
+      "sha256": "7df97c4e787d42e78a05fe810ab8d57471eba78d74a6317248e2f30cd8ab53e4"
+    },
+    {
+      "path": "dist/index.html",
+      "bytes": 399,
+      "sha256": "f1decdb5a28cbba90827f6c8ec3b5b27ec0859bf02d2041de53ec5417874ab89"
+    }
+  ],
+  "assistantCommit": false,
+  "assistantPush": false,
+  "assistantDeploy": false,
+  "securityIntent": "Public world contracts moved to core; no external sharing. Cardinal implementation still present in browser worker; secrecy is not established by this release.",
+  "handoff": "Flat SPCK ZIP with existing Git history. Continue same browser world at same URL."
+}

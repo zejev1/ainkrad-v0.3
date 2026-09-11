@@ -33,8 +33,8 @@ describe('Persisted 2D world physics', () => {
     }
 
     const route = state.routes[routeIdBetween('commons', homes[0].id)];
-    expect(route.waypoints).toHaveLength(3);
-    const [start, middle, end] = route.waypoints;
+    expect(route.waypoints.length).toBeGreaterThanOrEqual(3);
+    const start = route.waypoints[0], middle = route.waypoints[1], end = route.waypoints.at(-1)!;
     const cross =
       (middle.x - start.x) * (end.y - start.y) -
       (middle.y - start.y) * (end.x - start.x);

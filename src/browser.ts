@@ -1,3 +1,4 @@
+import { WorldMapCamera, clipMapSegment, clipMapPolygon, MAX_VISIBLE_PLACES, MAX_VISIBLE_RESIDENTS } from './presentation/WorldMapCamera';
 import { createWorldMapProjection } from './presentation/WorldMapProjection';
 import { GIFT_CATALOG_V20 } from './v20/DivineGiftsV20';
 import './browser.css';
@@ -329,7 +330,7 @@ app.innerHTML = `
   <div class="ainkrad-app">
     <header class="world-header">
       <div>
-        <p class="eyebrow">AINKRAD v0.3.20 · исправление 2 · путь к Underworld</p>
+        <p class="eyebrow">AINKRAD v0.3.20 · исправление 3 · путь к Underworld</p>
         <h1 id="world-title">Мир · уровень 1</h1>
         <p class="world-subtitle">Время регулируется снаружи. Жители сами расширяют карту и проживают поколения.</p>
       </div>
@@ -813,9 +814,10 @@ let residentPickerSignature = '';
 let lastFrame: LiveWorldFrame | undefined;
 let continuityAnnounced = false;
 let renderedGrowthStage = -1;
-let mapZoom = 1;
-let mapBaseWidth = 820;
-let mapBaseHeight = 650;
+const mapCamera = new WorldMapCamera();
+let mapZoom = mapCamera.pixelsPerUnit / 100;
+let mapPaintScheduled = false;
+let lastMapPaintAt = 0;
 let activeConsoleTab: CardinalConsoleTab = 'laws';
 let cardinalConsoleSnapshot: CardinalConsoleSnapshot | undefined;
 let highlightedPlaceIds = new Set<string>();
@@ -968,111 +970,71 @@ function localizedPlaceName(name: string): string {
     .join(' ');
 }
 
-let mapProjection: ReturnType<typeof createWorldMapProjection> | undefined;
-let projectedWorld: Readonly<WorldState> | undefined;
-function projectionForWorld(world: Readonly<WorldState>) {
-  if (projectedWorld !== world || !mapProjection) {
-    projectedWorld = world;
-    mapProjection = createWorldMapProjection(world);
+let mapExtentWorld: Readonly<WorldState> | undefined;
+let mapExtent: ReturnType<typeof createWorldMapProjection> | undefined;
+function extentForWorld(world: Readonly<WorldState>) {
+  if (mapExtentWorld !== world || !mapExtent) {
+    mapExtentWorld = world;
+    mapExtent = createWorldMapProjection(world);
   }
-  return mapProjection;
+  return mapExtent;
 }
-
-function normalizeWorldCoordinates(
-  world: Readonly<WorldState>, mapX: number, mapY: number,
-): Pick<MapPoint, 'x' | 'y'> {
-  return projectionForWorld(world).point(mapX, mapY);
+function normalizeWorldCoordinates(_world: Readonly<WorldState>, x: number, y: number): Pick<MapPoint,'x'|'y'> {
+  return mapCamera.point(x,y);
 }
-
-// The player may inspect the whole planetary frontier or a single resident.
-const clampMapZoom = (value: number) => Math.max(0.001, Math.min(24, value));
-
 function applyMapZoom(): void {
-  worldMap.style.width = `${mapBaseWidth}px`;
-  worldMap.style.height = `${mapBaseHeight}px`;
-  worldMap.style.minHeight = `${mapBaseHeight}px`;
-  worldMap.style.transform = `scale(${mapZoom})`;
-  worldMapStage.style.width = `${Math.round(mapBaseWidth * mapZoom)}px`;
-  worldMapStage.style.height = `${Math.round(mapBaseHeight * mapZoom)}px`;
-  mapZoomFit.textContent = `${Math.round(mapZoom * 100)}%`;
+  mapCamera.resize(worldMapViewport.clientWidth || 390, worldMapViewport.clientHeight || 600);
+  worldMap.style.width = `${mapCamera.width}px`;
+  worldMap.style.height = `${mapCamera.height}px`;
+  worldMap.style.minHeight = '0';
+  worldMap.style.transform = 'none';
+  worldMapStage.style.width = '100%';
+  worldMapStage.style.height = '100%';
+  worldMap.style.setProperty('--place-scale', String(Math.min(1.25, Math.max(0.10, mapCamera.pixelsPerUnit * 0.12 / 42))));
+  worldMap.style.setProperty('--resident-scale', String(Math.min(0.8, Math.max(0.18, mapCamera.pixelsPerUnit * 0.025 / 32))));
+  worldMap.style.setProperty('--road-width', String(Math.max(0.5, Math.min(12,mapCamera.pixelsPerUnit * 0.04))));
+  mapZoomFit.textContent = mapCamera.pixelsPerUnit < 0.5 ? 'Мир' : `${Math.round(mapZoom*100)}%`;
 }
-
-function setMapZoom(
-  nextZoom: number,
-  focalX = worldMapViewport.clientWidth / 2,
-  focalY = worldMapViewport.clientHeight / 2,
-): void {
-  const previousZoom = mapZoom;
-  const worldX = (worldMapViewport.scrollLeft + focalX) / previousZoom;
-  const worldY = (worldMapViewport.scrollTop + focalY) / previousZoom;
-  mapZoom = clampMapZoom(nextZoom);
-  applyMapZoom();
-  worldMapViewport.scrollLeft = worldX * mapZoom - focalX;
-  worldMapViewport.scrollTop = worldY * mapZoom - focalY;
-}
-
-function fitMapToViewport(): void {
-  const widthZoom = worldMapViewport.clientWidth / mapBaseWidth;
-  const heightZoom = worldMapViewport.clientHeight / mapBaseHeight;
-  setMapZoom(Math.min(widthZoom, heightZoom) * 0.96, 0, 0);
-  worldMapViewport.scrollTo({ left: 0, top: 0, behavior: 'smooth' });
-}
-
-function updateWorldMapScale(world: Readonly<WorldState>): void {
-  const places = Object.values(world.places);
-  const projection = projectionForWorld(world);
-  const { minX, maxX, minY, maxY } = projection;
-  // Persisted map coordinates are compact spatial units. Treating every unit
-  // as a whole kilometre made the founding village appear 100 km wide and
-  // contradicted its physical travel time. One unit is 100 metres on the
-  // readable map; canvas pixels remain independent from that honest scale.
-  const physicalSpanUnitsX = Math.max(12, maxX - minX + 8);
-  const physicalSpanUnitsY = Math.max(12, maxY - minY + 8);
-  const canvasSpanX = Math.max(100, physicalSpanUnitsX + 16);
-  const canvasSpanY = Math.max(100, physicalSpanUnitsY + 16);
-  const growthScale = Math.sqrt(Math.max(0, world.growth.stage));
-  const width = Math.round(Math.max(820 + growthScale * 360, canvasSpanX * 8.2));
-  const height = Math.round(Math.max(650 + growthScale * 260, canvasSpanY * 6.5));
-  const worldLevel = world.growth.stage + 1;
-
-  mapBaseWidth = width;
-  mapBaseHeight = height;
-  const pixelsPerUnit = Math.min(projection.scaleX * width, projection.scaleY * height) / 100;
-  // Physical plot sizes stay fixed when distant homelands enlarge the map.
-  worldMap.style.setProperty('--place-scale', String(Math.min(1, pixelsPerUnit * 0.72 / 58)));
-  worldMap.style.setProperty('--resident-scale', String(Math.min(1, pixelsPerUnit * 0.22 / 32)));
-  worldMap.style.setProperty('--road-width', String(Math.min(5, pixelsPerUnit * 0.09)));
-  applyMapZoom();
-  worldTitle.textContent = `Мир · уровень ${worldLevel}`;
-  worldLevelValue.textContent = `ур. ${worldLevel}`;
-  mapScaleValue.textContent =
-    `Уровень мира ${worldLevel} · ${places.length} локаций · открыто ~${(physicalSpanUnitsX / 10).toFixed(1)}×${(physicalSpanUnitsY / 10).toFixed(1)} км · планета радиусом 6371 км`;
-
-  if (renderedGrowthStage === world.growth.stage) return;
-  const previousStage = renderedGrowthStage;
-  renderedGrowthStage = world.growth.stage;
-  mapHint.textContent =
-    previousStage < 0
-      ? 'Проведите по карте · она больше экрана'
-      : `Открыта новая область · уровень мира ${worldLevel}`;
-
-  const newestRegionId = world.growth.discoveredRegionIds.at(-1) ?? 'commons';
-  const target = pointForPlace(newestRegionId, 0, world);
+function scheduleMapPaint(): void {
+  if (mapPaintScheduled) return;
+  mapPaintScheduled = true;
   requestAnimationFrame(() => {
-    worldMapViewport.scrollTo({
-      left: Math.max(
-        0,
-        (target.x / 100) * worldMapStage.scrollWidth -
-          worldMapViewport.clientWidth / 2,
-      ),
-      top: Math.max(
-        0,
-        (target.y / 100) * worldMapStage.scrollHeight -
-          worldMapViewport.clientHeight / 2,
-      ),
-      behavior: previousStage < 0 ? 'auto' : 'smooth',
-    });
+    mapPaintScheduled = false;
+    if (performance.now() - lastMapPaintAt < 50) { scheduleMapPaint(); return; }
+    lastMapPaintAt = performance.now();
+    applyMapZoom();
+    if (lastFrame) renderMap(lastFrame);
   });
+}
+function setMapZoom(nextZoom: number, focalX=mapCamera.width/2, focalY=mapCamera.height/2): void {
+  mapCamera.zoom(nextZoom*100,focalX,focalY);
+  mapZoom = mapCamera.pixelsPerUnit/100;
+  scheduleMapPaint();
+}
+function focusMapPoint(x: number,y: number): void {
+  mapCamera.x=x;mapCamera.y=y;
+  scheduleMapPaint();
+}
+function fitMapToViewport(): void {
+  if (!lastFrame) return;
+  const {minX,maxX,minY,maxY}=extentForWorld(lastFrame.world);
+  mapCamera.x=(minX+maxX)/2;mapCamera.y=(minY+maxY)/2;
+  setMapZoom(Math.min(mapCamera.width/Math.max(1,maxX-minX),mapCamera.height/Math.max(1,maxY-minY))*0.85/100);
+}
+function updateWorldMapScale(world: Readonly<WorldState>): void {
+  const places=Object.values(world.places);
+  const {minX,maxX,minY,maxY}=extentForWorld(world);
+  const worldLevel=world.growth.stage+1;
+  applyMapZoom();
+  worldTitle.textContent=`Мир · уровень ${worldLevel}`;
+  worldLevelValue.textContent=`ур. ${worldLevel}`;
+  mapScaleValue.textContent=`Уровень мира ${worldLevel} · ${places.length} локаций · протяжённость ~${((maxX-minX)/10).toFixed(1)}×${((maxY-minY)/10).toFixed(1)} км`;
+  if (renderedGrowthStage<0) {
+    const center=world.places.commons;
+    if(center){mapCamera.x=center.mapX;mapCamera.y=center.mapY;}
+  }
+  renderedGrowthStage=world.growth.stage;
+  mapHint.textContent='Потяните карту · колёсико или два пальца — масштаб';
 }
 
 function pointForPlace(
@@ -1465,38 +1427,38 @@ function closePrayerInbox(): void {
 
 function renderRoads(world: Readonly<WorldState>): void {
   roadsLayer.replaceChildren();
-
+  const seen=new Set<string>();
+  const strokes: string[]=[];
   for (const route of Object.values(world.routes)) {
     if (!(route.completedTraversals ?? 0)) continue;
-    const points = route.waypoints.map((point) =>
-      normalizeWorldCoordinates(world, point.x, point.y),
-    );
-    if (points.length < 2) continue;
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    const drawing = `M${points.map((point) => `${point.x} ${point.y}`).join(' L')}`;
-    path.setAttribute('d', drawing);
-    path.classList.toggle(
-      'road-main',
-      route.fromPlaceId === 'commons' || route.toPlaceId === 'commons',
-    );
-    path.classList.toggle('road-bridge', route.traversal === 'bridge');
-    path.classList.toggle(
-      'is-highlighted',
-      highlightedPlaceIds.has(route.fromPlaceId) ||
-        highlightedPlaceIds.has(route.toPlaceId),
-    );
-    roadsLayer.append(path);
+    for(let i=1;i<route.waypoints.length;i++) {
+      const a=route.waypoints[i-1],b=route.waypoints[i];
+      const segment=clipMapSegment(mapCamera.point(a.x,a.y),mapCamera.point(b.x,b.y));
+      if (!segment) continue;
+      const ends=segment.map(p=>`${p.x.toFixed(3)} ${p.y.toFixed(3)}`);
+      const key=[...ends].sort().join('|');
+      if(seen.has(key))continue;
+      seen.add(key);strokes.push(`M${ends[0]} L${ends[1]}`);
+      if(strokes.length>=1600)break;
+    }
+    if(strokes.length>=1600)break;
   }
+  if(!strokes.length)return;
+  const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+  path.setAttribute('d',strokes.join(' '));roadsLayer.append(path);
 }
 
 function renderBiomes(world: Readonly<WorldState>): void {
-  const liveIds = new Set(Object.keys(world.places));
+  const visiblePlaces = Object.values(world.places).filter(place => place.boundaryPolygon
+    ? clipMapPolygon(place.boundaryPolygon.map(p=>mapCamera.point(p.x,p.y))).length>0
+    : mapCamera.visible(place.mapX,place.mapY,90)).slice(0,80);
+  const liveIds = new Set(visiblePlaces.map(p=>p.id));
   for (const [placeId, element] of biomeElements) {
     if (liveIds.has(placeId)) continue;
     element.remove();
     biomeElements.delete(placeId);
   }
-  for (const place of Object.values(world.places)) {
+  for (const place of visiblePlaces) {
     const point = normalizeWorldCoordinates(world, place.mapX, place.mapY);
     let element = biomeElements.get(place.id);
     if (!element) {
@@ -1512,9 +1474,7 @@ function renderBiomes(world: Readonly<WorldState>): void {
           : 1;
     element.className = `biome-patch biome-patch--${place.biome}`;
     if (place.boundaryPolygon && place.boundaryPolygon.length >= 3) {
-      const polygon = place.boundaryPolygon.map((boundaryPoint) =>
-        normalizeWorldCoordinates(world, boundaryPoint.x, boundaryPoint.y),
-      );
+      const polygon = clipMapPolygon(place.boundaryPolygon.map(p=>mapCamera.point(p.x,p.y)));
       element.classList.add('biome-patch--area');
       element.style.left = '0';
       element.style.top = '0';
@@ -1540,40 +1500,26 @@ function renderBiomes(world: Readonly<WorldState>): void {
 }
 
 function renderSettlements(world: Readonly<WorldState>): void {
-  const liveIds = new Set(Object.keys(world.settlements));
-  for (const [id, element] of settlementElements) {
-    if (liveIds.has(id)) continue;
-    element.remove();
-    settlementElements.delete(id);
-  }
-  for (const settlement of Object.values(world.settlements)) {
-    const center = normalizeWorldCoordinates(
-      world,
-      settlement.centerX,
-      settlement.centerY,
-    );
-    const footprint = projectionForWorld(world).size(settlement.radius * 2);
-    let element = settlementElements.get(settlement.id);
-    if (!element) {
-      element = document.createElement('div');
-      element.innerHTML = `<span></span>`;
-      settlementsLayer.append(element);
-      settlementElements.set(settlement.id, element);
-    }
-    element.className = `settlement-boundary settlement-boundary--${settlement.kind}`;
-    element.style.left = `${center.x}%`;
-    element.style.top = `${center.y}%`;
-    element.style.width = `${footprint.width}%`;
-    element.style.height = `${footprint.height}%`;
-    const label = element.querySelector<HTMLElement>('span');
-    if (label) {
-      label.textContent = `${settlement.kind === 'city' ? 'Город' : 'Поселение'} ${settlement.name}`;
-    }
+  settlementsLayer.replaceChildren();settlementElements.clear();
+  for(const settlement of Object.values(world.settlements)) {
+    if(!mapCamera.visible(settlement.centerX,settlement.centerY, Math.min(100,settlement.radius*mapCamera.pixelsPerUnit)))continue;
+    const size=mapCamera.size(settlement.radius*2);
+    const center=mapCamera.point(settlement.centerX,settlement.centerY);
+    const left=Math.max(0,center.x-size.width/2),top=Math.max(0,center.y-size.height/2);
+    const right=Math.min(100,center.x+size.width/2),bottom=Math.min(100,center.y+size.height/2);
+    if(right<=left||bottom<=top)continue;
+    const element=document.createElement('div');element.className='settlement-boundary';
+    Object.assign(element.style,{left:`${left}%`,top:`${top}%`,width:`${right-left}%`,height:`${bottom-top}%`,transform:'none'});
+    settlementsLayer.append(element);
+    if(settlementsLayer.childElementCount>=24)break;
   }
 }
 
 function renderPlaces(world: Readonly<WorldState>): void {
-  const liveIds = new Set(Object.keys(world.places));
+  const visiblePlaces=Object.values(world.places).filter(p=>mapCamera.visible(p.mapX,p.mapY,32))
+    .sort((a,b)=>Number(highlightedPlaceIds.has(b.id))-Number(highlightedPlaceIds.has(a.id)))
+    .slice(0,MAX_VISIBLE_PLACES);
+  const liveIds = new Set(visiblePlaces.map(p=>p.id));
   for (const [placeId, element] of placeElements) {
     if (liveIds.has(placeId)) continue;
     element.remove();
@@ -1584,7 +1530,8 @@ function renderPlaces(world: Readonly<WorldState>): void {
       (dungeon) => [dungeon.entrancePlaceId, dungeon] as const,
     ),
   );
-  for (const [placeId, place] of Object.entries(world.places)) {
+  for (const place of visiblePlaces) {
+    const placeId=place.id;
     const point = pointForPlace(placeId, 0, world);
     let placeElement = placeElements.get(placeId);
     if (!placeElement) {
@@ -1672,13 +1619,17 @@ function renderAdventurePanel(world: Readonly<WorldState>): void {
 }
 
 function renderWildlife(world: Readonly<WorldState>): void {
-  const liveIds = new Set(Object.keys(world.wildlife));
+  const visibleWildlife=Object.values(world.wildlife).filter(p=>{
+    const habitat=world.places[p.habitatId];return habitat&&mapCamera.visible(habitat.mapX,habitat.mapY,70);
+  }).slice(0,50);
+  const liveIds = new Set(visibleWildlife.map(p=>p.id));
   for (const [populationId, element] of wildlifeElements) {
     if (liveIds.has(populationId)) continue;
     element.remove();
     wildlifeElements.delete(populationId);
   }
-  for (const [populationId, population] of Object.entries(world.wildlife)) {
+  for (const population of visibleWildlife) {
+    const populationId=population.id;
     const habitat = world.places[population.habitatId];
     if (!habitat) continue;
     const offsets: Record<WildlifeSpecies, { x: number; y: number }> = {
@@ -1709,7 +1660,7 @@ function renderWildlife(world: Readonly<WorldState>): void {
       wildlifeElements.set(populationId, element);
     }
 
-    const point = normalizeWorldCoordinates(world, habitat.mapX + offset.x, habitat.mapY + offset.y);
+    const point = normalizeWorldCoordinates(world, habitat.mapX + offset.x * 0.005, habitat.mapY + offset.y * 0.005);
     element.style.left = `${point.x}%`;
     element.style.top = `${point.y}%`;
 
@@ -2455,8 +2406,7 @@ function updateOfflineClockContinuity(frame: Readonly<LiveWorldFrame>): void {
   persistOfflineClockAnchor(frame);
 }
 
-function updateWorld(frame: Readonly<LiveWorldFrame>): void {
-  lastFrame = structuredClone(frame);
+function renderMap(frame: Readonly<LiveWorldFrame>): void {
   updateWorldMapScale(frame.world);
   worldMap.dataset.growth = String(Math.min(3, frame.world.growth.stage));
   renderBiomes(frame.world);
@@ -2468,27 +2418,11 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
   const agents = Object.values(frame.world.agents).filter(
     (agent) => agent.life.alive,
   );
-  syncResidentPicker(frame.world, agents);
-  // Thousands of residents remain fully simulated and selectable, but a
-  // mobile browser cannot animate thousands of DOM nodes every frame. Keep a
-  // stable representative map sample and always include the selected person.
-  const maximumRenderedResidents = 320;
-  const renderedAgents =
-    agents.length <= maximumRenderedResidents
-      ? agents
-      : agents.filter(
-          (_agent, index) =>
-            index % Math.ceil(agents.length / maximumRenderedResidents) === 0,
-        ).slice(0, maximumRenderedResidents);
-  if (
-    selectedAgentId &&
-    !renderedAgents.some((agent) => agent.id === selectedAgentId)
-  ) {
-    const selectedAgent = agents.find((agent) => agent.id === selectedAgentId);
-    if (selectedAgent) {
-      if (renderedAgents.length >= maximumRenderedResidents) renderedAgents.pop();
-      renderedAgents.push(selectedAgent);
-    }
+  const visibleAgents = agents.filter(agent => mapCamera.visible(agent.position.x,agent.position.y));
+  const renderedAgents = visibleAgents.slice(0, MAX_VISIBLE_RESIDENTS);
+  const selected = visibleAgents.find(agent => agent.id === selectedAgentId);
+  if (selected && !renderedAgents.includes(selected)) {
+    renderedAgents.pop();renderedAgents.push(selected);
   }
   const renderedAgentIds = new Set(renderedAgents.map((agent) => agent.id));
   for (const [agentId, avatar] of avatarElements) {
@@ -2512,6 +2446,8 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
     element.classList.toggle('is-active', count > 0);
   }
 
+  worldMap.dataset.visibleResidents = String(renderedAgents.length);
+  worldMap.dataset.visiblePlaces = String(placeElements.size);
   renderedAgents.forEach((agent, index) => {
     const avatar = ensureAvatar(agent, index);
     const persistedPosition = projectedResidentPosition(
@@ -2583,6 +2519,13 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
     );
   });
 
+}
+
+function updateWorld(frame: Readonly<LiveWorldFrame>): void {
+  lastFrame = frame;
+  const agents=Object.values(frame.world.agents).filter(agent=>agent.life.alive);
+  syncResidentPicker(frame.world,agents);
+  renderMap(frame);
   const humanPopulation = agents.filter(
     (agent) => (agent.race ?? 'human') === 'human',
   ).length;
@@ -2874,12 +2817,8 @@ function showPlacesOnMap(placeIds: readonly string[]): void {
   renderRoads(lastFrame.world);
   const first = placeIds.find((id) => lastFrame?.world.places[id]);
   if (!first) return;
-  const point = pointForPlace(first, 0, lastFrame.world);
-  worldMapViewport.scrollTo({
-    left: Math.max(0, (point.x / 100) * worldMapStage.scrollWidth - worldMapViewport.clientWidth / 2),
-    top: Math.max(0, (point.y / 100) * worldMapStage.scrollHeight - worldMapViewport.clientHeight / 2),
-    behavior: 'smooth',
-  });
+  const place=lastFrame.world.places[first];
+  focusMapPoint(place.mapX,place.mapY);
 }
 
 function consoleRecord(
@@ -3258,13 +3197,24 @@ mapZoomOut.addEventListener('click', () => setMapZoom(mapZoom / 1.22));
 mapZoomIn.addEventListener('click', () => setMapZoom(mapZoom * 1.22));
 mapZoomFit.addEventListener('click', fitMapToViewport);
 requiredElement<HTMLButtonElement>('map-city-focus').addEventListener('click', () => {
-  if (!lastFrame) return;
-  const center = lastFrame.world.places.commons;
-  const point = normalizeWorldCoordinates(lastFrame.world, center.mapX, center.mapY);
-  setMapZoom(12);
-  worldMapViewport.scrollTo({left: point.x / 100 * mapBaseWidth * mapZoom - worldMapViewport.clientWidth / 2,
-    top: point.y / 100 * mapBaseHeight * mapZoom - worldMapViewport.clientHeight / 2, behavior: 'smooth'});
+  if(!lastFrame)return;
+  const center=lastFrame.world.places.commons;
+  mapCamera.x=center.mapX;mapCamera.y=center.mapY;setMapZoom(3);
 });
+const mapPointers=new Map<number,{x:number;y:number}>();
+worldMapViewport.addEventListener('pointerdown', event=>{
+  mapPointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
+  if(!(event.target as Element).closest('button'))worldMapViewport.setPointerCapture(event.pointerId);
+});
+worldMapViewport.addEventListener('pointermove',event=>{
+  const previous=mapPointers.get(event.pointerId);
+  if(!previous)return;
+  if(mapPointers.size===1){mapCamera.pan(event.clientX-previous.x,event.clientY-previous.y);scheduleMapPaint();}
+  mapPointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
+});
+for(const kind of ['pointerup','pointercancel','lostpointercapture'] as const)
+  worldMapViewport.addEventListener(kind,event=>mapPointers.delete(event.pointerId));
+new ResizeObserver(scheduleMapPaint).observe(worldMapViewport);
 
 let pinchStartDistance = 0;
 let pinchStartZoom = 1;

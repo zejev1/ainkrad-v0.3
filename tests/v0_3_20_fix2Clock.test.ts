@@ -21,7 +21,7 @@ describe('FIX2 elapsed time and bounded live work', () => {
     clock.reset(100_000);
     expect(clock.sample(100_200)).toBe(200);
     expect(liveLoopDelay(250, 0)).toBe(750);
-    expect(liveLoopDelay(250, 100)).toBe(0);
+    expect(liveLoopDelay(250, 100)).toBe(150);
   });
 
   it('simulates the same year and Cardinal observations with or without presentation frames', async () => {

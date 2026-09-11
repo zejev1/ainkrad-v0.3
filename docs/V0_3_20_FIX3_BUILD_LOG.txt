@@ -1,0 +1,15 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> ainkrad-v0-3@0.3.20-hotfix.3 build
+> vite build
+
+vite v7.0.4 building for production...
+transforming...
+✓ 19 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                             0.40 kB │ gzip:  0.30 kB
+dist/assets/liveWorld.worker-Cr7-BcK0.js  592.38 kB
+dist/assets/index-DeeY4GwT.css             47.01 kB │ gzip: 11.82 kB
+dist/assets/index-BOAGFgCQ.js             161.52 kB │ gzip: 50.51 kB
+✓ built in 2.31s

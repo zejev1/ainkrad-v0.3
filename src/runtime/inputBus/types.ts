@@ -1,24 +1,9 @@
-import type { JsonObject, JsonValue } from '../../core/json';
+import type { JsonValue } from '../../core/json';
+import type { WorldInputEnvelope, WorldInputSource } from '../../core/WorldContracts';
 
-export type InputSource =
-  | 'agent'
-  | 'world'
-  | 'player'
-  | 'system'
-  | 'cardinal';
-
-export type InputPayload = JsonObject;
-
-export interface InputEnvelope {
-  eventId: string;
-  worldId: string;
-  source: InputSource;
-  type: string;
-  createdAt: number;
-  payload: InputPayload;
-  deduplicationKey?: string;
-  correlationId?: string;
-}
+export type InputSource = WorldInputSource;
+export type InputPayload = WorldInputEnvelope['payload'];
+export type InputEnvelope = WorldInputEnvelope;
 
 // Transport messages should carry identifiers and small command/event data, not
 // serialized worlds, memory histories or NPC arrays.

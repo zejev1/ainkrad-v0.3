@@ -1,3 +1,4 @@
+import type { WorldInterventionKind } from '../core/WorldContracts';
 import type { CardinalMetrics } from '../sensors/types';
 
 export type CardinalMode = 'off' | 'observer' | 'intervene';
@@ -10,11 +11,7 @@ export type CardinalProblemKind =
   | 'conflict_overload'
   | 'ecosystem_fragility';
 
-export type InterventionKind =
-  | 'resource_relief'
-  | 'open_shared_space'
-  | 'safety_support'
-  | 'habitat_support';
+export type InterventionKind = WorldInterventionKind;
 
 export type CardinalPredictionMetric =
   | 'civilizationCriticality'

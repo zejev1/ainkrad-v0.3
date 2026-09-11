@@ -1,0 +1,88 @@
+
+ RUN  v3.1.1 /workspace/scratch/f1f71aca20c3/Ainkrad-v0.3.20-FIX3-stage
+
+ ✓ tests/v0_3_16_societyFoundation.test.ts (14 tests) 9861ms
+   ✓ v0.3.16 race-neutral family opportunities > lets a non-human people make voluntary family choices and continue a lineage  2652ms
+   ✓ v0.3.17 physically grounded hostile ecology > keeps territorial monsters active without attacking a destination remotely  593ms
+   ✓ v0.3.16 material settlements and death aftermath > reserves local materials and builds a real home when housing is full  340ms
+   ✓ v0.3.16 material settlements and death aftermath > allows voluntary settlement war over real resources or claimed land  5585ms
+ ✓ tests/worldAutonomy.test.ts (16 tests) 13756ms
+   ✓ World rules version > migrates the live 0.3.9 ecology without resetting its frontier or RNG future  548ms
+   ✓ Autonomous society depth > produces several autonomous action families instead of one fixed routine  1067ms
+   ✓ Autonomous society depth > lets resident exploration grow the world in stages and supports nature activity  1502ms
+   ✓ Autonomous society depth > can choose a reasonable alternative instead of always obeying the top score  444ms
+   ✓ Autonomous society depth > is deterministic for the same seed while different seeds can diverge  1636ms
+   ✓ Autonomous society depth > preserves the exact autonomous future across an engine restart  1585ms
+   ✓ Autonomous society depth > does not guarantee control-world collapse merely because agents keep living  6692ms
+ ✓ tests/sensors.test.ts (6 tests) 9ms
+ ✓ tests/worldAuthority.test.ts (6 tests) 241ms
+ ✓ tests/cardinalCore.test.ts (8 tests) 12ms
+ ✓ tests/v0_3_14_worldLogic.test.ts (7 tests) 4342ms
+   ✓ v0.3.14 Underworld-style substrate audit > keeps generation-zero founders rooted while allowing travel and later-generation resettlement logic  4113ms
+ ✓ tests/v0_3_19_divineAgency.test.ts (7 tests) 131ms
+ ✓ tests/browserUiSmoke.test.ts (5 tests) 160ms
+ ✓ tests/v0_3_13_releaseAudit.test.ts (5 tests) 6478ms
+   ✓ v0.3.13 release audit > migrates a stopped v0.3.12 world with only three survivors without replacing their minds  723ms
+   ✓ v0.3.13 release audit > does not count other intelligent races as humans and allows lived progression  5679ms
+ ✓ tests/v0_3_20_regressions.test.ts (8 tests) 287ms
+ ✓ tests/v0_3_19_adventureEconomy.test.ts (4 tests) 57ms
+ ✓ tests/liveWorldRuntime.test.ts (5 tests) 2939ms
+   ✓ Cardinal semantic speed equivalence > gives Cardinal identical opportunities at ×1, ×10 and ×100 for equal Ainkrad time  2426ms
+ ✓ tests/v0_3_18_culturalAgency.test.ts (5 tests) 88ms
+ ✓ tests/persistence.test.ts (7 tests) 92ms
+ ✓ tests/cardinalResearch.test.ts (3 tests) 14ms
+ ✓ tests/gatewayRecovery.test.ts (4 tests) 57ms
+ ✓ tests/v0_3_20_startupRepair.test.ts (6 tests) 253ms
+ ✓ tests/v0_3_18_underworldFoundation.test.ts (4 tests) 93ms
+ ✓ tests/v0_3_19_sapientPeoples.test.ts (3 tests) 4647ms
+   ✓ v0.3.19 distinct sapient peoples and continental homelands > creates six mechanically distinct peoples and evidence-based diplomatic priors  2706ms
+   ✓ v0.3.19 distinct sapient peoples and continental homelands > repairs old close homelands once without rewriting resident identity or history  1938ms
+ ✓ tests/personhoodLifecycle.test.ts (4 tests) 726ms
+   ✓ Fluctlight-inspired persistent personhood > keeps identity continuity while choices, emotions and values evolve  322ms
+ ✓ tests/interventionGateway.test.ts (5 tests) 56ms
+ ✓ tests/v0_3_18_secretLibrary.test.ts (3 tests) 137ms
+ ✓ tests/v0_3_20_fix3Viewport.test.ts (3 tests) 81ms
+ ✓ tests/auditor.test.ts (3 tests) 5ms
+stdout | tests/v0_3_20_fix2Clock.test.ts > FIX2 elapsed time and bounded live work > retains work across speed changes, counts ten years for one minute, and exposes real backlog
+{"benchmark":"10 requested world years","realSeconds":3.7748629179999997,"simulatedYears":10,"living":39}
+
+ ✓ tests/v0_3_20_fix2Clock.test.ts (5 tests) 4615ms
+   ✓ FIX2 elapsed time and bounded live work > simulates the same year and Cardinal observations with or without presentation frames  789ms
+   ✓ FIX2 elapsed time and bounded live work > retains work across speed changes, counts ten years for one minute, and exposes real backlog  3781ms
+ ✓ tests/worldClockCivilization.test.ts (4 tests) 6526ms
+   ✓ Human-like bodies and growing civilization > opens remote monster habitats and grows villages into cities  6434ms
+ ✓ tests/v15FamilyAgency.test.ts (7 tests) 8ms
+ ✓ tests/inputBus.test.ts (8 tests) 9ms
+ ✓ tests/v0_3_20_fix2Map.test.ts (3 tests) 76ms
+ ✓ tests/v0_3_18_offlineCatchUp.test.ts (3 tests) 9411ms
+   ✓ v0.3.18 closed-browser catch-up > executes every semantic quantum while bounding durable commits  9038ms
+   ✓ v0.3.18 closed-browser catch-up > splits the reported day-300 mobile restoration into safe commits  307ms
+ ✓ tests/portableCardinal.test.ts (2 tests) 7ms
+ ✓ tests/history.test.ts (7 tests) 7ms
+ ✓ tests/worldSpatial.test.ts (3 tests) 67ms
+ ✓ tests/cardinalJournalScaling.test.ts (1 test) 165ms
+ ✓ tests/cardinalExperience.test.ts (1 test) 7ms
+ ✓ tests/logBackedJournal.test.ts (3 tests) 11ms
+ ✓ tests/v0_3_18_livelihoodAndPlace.test.ts (2 tests) 2248ms
+   ✓ v0.3.18 truthful livelihoods and workplaces > records production only after arrival at a compatible physical place  2246ms
+ ✓ tests/cardinalJournal.test.ts (4 tests) 9ms
+ ✓ tests/generationalKnowledgeAudit.test.ts (2 tests) 3ms
+ ✓ tests/worldRuntime.test.ts (1 test) 32ms
+ ✓ tests/memoryStore.test.ts (2 tests) 150ms
+ ✓ tests/v0_3_14_habitatIntegrity.test.ts (1 test) 23637ms
+   ✓ v0.3.14 habitat integrity long-run audit > never recovers wildlife or monsters in incompatible city/water habitats  23636ms
+ ✓ tests/experimentIntegrity.test.ts (1 test) 29139ms
+   ✓ Controlled Cardinal experiment integrity > keeps OFF/OBSERVER equivalent and records outcomes for executed interventions  29138ms
+ ✓ tests/offlineWorldClock.test.ts (2 tests) 3ms
+ ✓ tests/scheduler.test.ts (2 tests) 3ms
+ ✓ tests/observer.test.ts (1 test) 64ms
+ ✓ tests/modes.test.ts (3 tests) 1082ms
+   ✓ Cardinal modes > OFF and OBSERVER produce identical autonomous world state  741ms
+ ✓ tests/worldModuleBoundary.test.ts (1 test) 79ms
+ ✓ tests/externalGateway.test.ts (1 test) 2ms
+
+ Test Files  49 passed (49)
+      Tests  211 passed (211)
+   Start at  20:06:49
+   Duration  136.88s (transform 1.42s, setup 0ms, collect 5.14s, tests 121.88s, environment 8ms, prepare 2.83s)
+

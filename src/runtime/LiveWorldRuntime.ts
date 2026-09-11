@@ -891,8 +891,8 @@ export class LiveWorldRuntime {
       this.pendingLiveMinutes = Math.max(0, this.pendingLiveMinutes - consumedLive);
       this.liveMeasuredWorldMinutes += processed;
       const elapsed = performance.now() - started;
-      if (processed > 0) this.responsiveQuanta = Math.max(1, Math.min(24,
-        Math.ceil(processed / CANONICAL_WORLD_QUANTUM_MINUTES * 200 / Math.max(1, elapsed))));
+      if (processed > 0) this.responsiveQuanta = Math.max(1, Math.min(8,
+        Math.ceil(processed / CANONICAL_WORLD_QUANTUM_MINUTES * 80 / Math.max(1, elapsed))));
     }
     if (frame) frame.liveTiming = this.liveTiming();
     return frame;

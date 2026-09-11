@@ -2782,3 +2782,23 @@ body.has-modal {
 #live-clock-throughput { white-space: normal; }
 
 .external-clock small { grid-column: 1 / -1; white-space: normal; }
+
+/* FIX3: viewport-bounded painting. Zoom cannot allocate a planetary texture. */
+.world-map-viewport { height: min(72vh, 700px); max-width: 1280px; overflow: hidden; touch-action: none; contain: layout paint; }
+.world-map-stage, .world-map { min-height: 0; width: 100%; height: 100%; }
+.world-map { transform: none; box-shadow: none; isolation: auto; transition: none; }
+.map-grid, .growth-terrain { display: none; }
+.biome-patch, .settlement-boundary, .place-building { box-shadow: none; filter: none; }
+.world-map *, .world-map *::before, .world-map *::after { animation: none !important; }
+.resident-avatar { transition: none; }
+.settlement-boundary { border: 1px solid rgba(219,190,121,.25); background: rgba(150,145,76,.08); clip-path: none; }
+.place-label { position: absolute; top: 100%; margin-top: 3px; }
+.map-place:not(:hover):not(:focus-visible):not(.is-highlighted) .place-label { display:none; }
+.map-toolbar, .map-toolbar__controls { flex-wrap: wrap; }
+
+/* Keep all map effects on the small viewport, and marker dimensions in metres. */
+.world-map *, .world-map *::before, .world-map *::after { filter: none !important; box-shadow: none !important; transition: none !important; }
+.map-place { width: 58px; height: 48px; min-width: 0; min-height: 0; }
+.map-place--home { width: 42px; height: 35px; }
+.map-place--home .place-building { width: 42px; height: 35px; }
+.place-count { position: absolute; right: -4px; top: -8px; }

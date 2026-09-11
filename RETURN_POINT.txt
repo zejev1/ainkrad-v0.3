@@ -1,31 +1,36 @@
-AINKRAD v0.3.20 FIX 2 — live time and city streets
-Date: 2026-09-09 UTC
-Package version: 0.3.20-hotfix.2
-Source HEAD/main: ba1735146bd4bf3593cc1d4c366a984a32dbff4b
+AINKRAD v0.3.20 FIX3 — bounded map and metre-scale streets
+Date: 2026-09-11 UTC
+Package version: 0.3.20-hotfix.3
+Source HEAD/main: 308305d0e0059a56312d159156a55c94d3a956d6
 Remote: https://github.com/zejev1/ainkrad-v0.3.git
 Index empty; user commits and pushes through SPCK.
-No assistant commit, push, deployment, Convex or changes to original Ainkrad.
+No assistant commit, push, deployment, Convex or edits to original Ainkrad.
 
 FINISHED
-Count awaited work/persistence time; preserve requested time across speed changes.
-Make live UI frames at display cadence, read immutable committed state internally.
-Protect queued time through overlapping catch-up targets and in-flight commits.
-Display achieved pace and remaining work.
-One physical map projection; no planet-percent resident/animal displacement.
-Physical settlement bounds; remove fictitious cross roads; scale local markers.
-Walk around occupied buildings, reserve separated dry plots for new homes.
-Migrate routes without moving residents, erasing route history or resetting the world.
-Button "Город" returns from planetary overview to Ainkrad streets.
+Screen-sized map camera, clipped geometry, bounded visible marker DOM.
+12x10m homes, 6m lanes, 10m main street, stable lots, shared pedestrian streets.
+Idempotent same-world layout repair; preserve people, families, knowledge and XP.
+Construction attempts require actual work with persisted 24-quantum cooldown.
+Adaptive work batches targeting 80ms, positive idle intervals, bounded UI cadence.
+World contracts independent of Cardinal/runtime implementation.
+No competitor code/assets/AI added. Cardinal implementation still in browser bundle.
 
 VALIDATION
-Full suite: 206/206 tests, 47 files, 110.56s.
-Final clock refinement: 13/13 affected tests, 3 files, 16.51s; 207 unique tests in tree.
-Final TypeScript and Vite build PASS. Current audit: docs/V0_3_20_FIX2_AUDIT.json.
-10 years from 60000ms input processed in 3.217s in-memory; not an Android measurement.
-No new millennium benchmark or mobile-Chrome visual pass claimed.
+Full suite 211/211 tests, 49 files, 136.88s; typecheck and Vite build PASS.
+Audit: docs/V0_3_20_FIX3_AUDIT.json. Device test and new millennium run NOT performed.
+10yr runtime fixture: 60000ms input processed in 3.775s in-memory; NOT device pace.
 
 HANDOFF
-Ainkrad-v0.3.20-FIX2-SPCK-READY.zip, flat root, .git included.
+Ainkrad-v0.3.20-FIX3-SPCK-READY.zip, flat root, Git history included.
 Git email: zejev1@users.noreply.github.com
-Commit suggestion: fix: account for live time and align city streets
-Continue the existing world at the same URL; do not clear browser site data.
+Commit suggestion: fix: bound map memory and use metre-scale city streets
+Continue existing world at same URL; do not clear browser data or reset.
+
+NEXT — after ZIP handoff, as requested
+Compare ceresOPA/Alicization-Town primary source code, world only.
+Review body/perception/mind boundary, persistence, navigation, NPC knowledge,
+plugin contracts, dungeons/economy, real memory, client/server costs and licences.
+Do not share Cardinal code, internals, experiment journals or privileged controls.
+Do not contact other developers without explicit instruction to send a message.
+No merge, dependency or external AI connection approved by a comparison alone.
+Two user discussion files are context, not a forced architecture rewrite.

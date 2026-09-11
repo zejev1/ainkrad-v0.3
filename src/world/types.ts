@@ -340,6 +340,9 @@ export interface WorldPlace {
    */
   boundaryPolygon?: WorldPoint2D[];
   settlementId?: string;
+  /** Stable metre-scale town plot; unrelated to world-map zoom or race spacing. */
+  urbanLot?: number;
+  urbanLayoutVersion?: 1;
   /** A wilderness claim can change through settlement decisions or war. */
   claimedBySettlementId?: string;
   discoveredAt?: number;
@@ -747,6 +750,7 @@ export interface V16SettlementEconomyState {
   toolsCreated: number;
   lastHarvestWorldMinute?: number;
   lastConstructionWorldMinute?: number;
+  lastMaterialProjectDecisionWorldMinute?: number;
 }
 
 export interface V16SettlementRelationEvidenceState {

@@ -1,12 +1,18 @@
-# Ainkrad v0.3.20 — clock and streets fix 2
+# Ainkrad v0.3.20 — viewport and metre-scale streets fix 3
 
-This package builds on published main ba1735146bd4bf3593cc1d4c366a984a32dbff4b.
-It repairs elapsed-time accounting, reduces unnecessary live-frame work, and
-uses physical coordinates for residents, buildings and settlement footprints.
-Walking routes avoid occupied plots; new homes reserve space for lanes.
-See [RELEASE_NOTES_v0.3.20_FIX2.md](RELEASE_NOTES_v0.3.20_FIX2.md) and
-[docs/V0_3_20_FIX2_AUDIT.json](docs/V0_3_20_FIX2_AUDIT.json).
-Earlier versioned audits remain historical. Continue the existing world.
+Built on published main 308305d0e0059a56312d159156a55c94d3a956d6.
+FIX3 bounds map drawing to the screen, uses 12 × 10 m homes with 6 m lanes
+and a 10 m central street, and migrates the existing settlement layout.
+The worker uses small adaptive batches with idle intervals. All inhabitants
+remain in the simulation, including those outside the visible map.
+
+Continue the existing world at its existing site address. Do not reset it.
+Full regression: **211 tests in 49 files PASS**, TypeScript and Vite build PASS.
+Actual Xbox/Android memory and thermal behaviour have not been measured.
+See [RELEASE_NOTES_v0.3.20_FIX3.md](RELEASE_NOTES_v0.3.20_FIX3.md),
+[docs/V0_3_20_FIX3_AUDIT.json](docs/V0_3_20_FIX3_AUDIT.json), and
+[docs/CARDINAL_WORLD_BOUNDARIES.md](docs/CARDINAL_WORLD_BOUNDARIES.md).
+Earlier versioned reports below are historical and retain their original limits.
 
 An experimental autonomous world for developing and testing a self-checking AI governance layer.
 

@@ -1,4 +1,4 @@
-import { routeAroundBuildings } from './SettlementStreets';
+import { routeAroundBuildings, urbanStreetPath } from './SettlementStreets';
 import type {
   WorldPlace,
   WorldPoint2D,
@@ -151,14 +151,15 @@ export function buildRoute(
   const directDistance = Math.max(0.001, pointDistance(start, end));
   const perpendicularX = -(end.y - start.y) / directDistance;
   const perpendicularY = (end.x - start.x) / directDistance;
-  const bend = Math.min(6, Math.max(1.15, directDistance * 0.13));
+  const bend = Math.min(6, directDistance * 0.13);
   const sign = stableBendSign(routeIdBetween(from.id, to.id));
   const middle = {
     x: (start.x + end.x) / 2 + perpendicularX * bend * sign,
     y: (start.y + end.y) / 2 + perpendicularY * bend * sign,
   };
-  const waypoints = directDistance < 7 ? [start, middle, end] : [start];
-  if (directDistance >= 7) {
+  const streetPath = traversal === 'walk' ? urbanStreetPath(from, to, terrain) : undefined;
+  const waypoints = streetPath ?? (directDistance < 7 ? [start, middle, end] : [start]);
+  if (!streetPath && directDistance >= 7) {
     const rough = Object.values(terrain).filter(place => ['mountains', 'swamp', 'forest'].includes(place.kind) &&
       pointDistance(start, { x: place.mapX, y: place.mapY }) < directDistance + 12);
     for (let index = 1; index <= 4; index += 1) {

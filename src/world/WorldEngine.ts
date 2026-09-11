@@ -1,10 +1,10 @@
 import { ensureElfLibraryV20, elfStudyMaterialV20, readingBudgetV20 } from '../v20/LibraryLearningV20';
-import type { InterventionKind } from '../cardinal/types';
+import type { WorldInterventionKind as InterventionKind, WorldInputEnvelope as InputEnvelope } from '../core/WorldContracts';
 import { observeLocalPlacesV20, sharePlaceKnowledgeV20, removeUnsurveyedHomelandLinksV20, frontierSiteV20, mayKnowPlaceV20 } from '../v20/KnowledgeBoundariesV20';
-import { vacantHomePlot } from './SettlementStreets';
+import { nextUrbanHomeLot } from './SettlementStreets';
+import { repairCompactSettlementLayout } from './CompactSettlementLayout';
 import { hasGiftV20, learningFactorV20, canReadLibraryV20, giftLearningSnapshotV20, applyLivedGiftLearningV20 } from '../v20/DivineGiftsV20';
 import { stableJsonStringify } from '../core/stableJson';
-import type { InputEnvelope } from '../runtime/inputBus/types';
 import { SeededRng } from '../utils/rng';
 import {
   createGenesisTeachers,
@@ -2435,6 +2435,7 @@ function assertWorldState(value: unknown): asserts value is WorldState {
       for (const time of [
         'lastHarvestWorldMinute',
         'lastConstructionWorldMinute',
+        'lastMaterialProjectDecisionWorldMinute',
       ] as const) {
         if (economy[time] === undefined) continue;
         const coordinate = finiteNumber(
@@ -3980,7 +3981,8 @@ async function repairCompatibleV19World(
     repairSapientHomelandGeography(next);
     removeUnsurveyedHomelandLinksV20(next);
     repairSecretLibraryPlacementV18(next);
-    // Update physical walking lanes without moving residents already travelling.
+    repairCompactSettlementLayout(next);
+    // Update physical walking lanes while retaining completed traversal history.
     next.routes = rebuildWorldRoutes(next.places, next.routes);
     if (stableJsonStringify(next) === before) return current;
 
@@ -4376,6 +4378,7 @@ export class WorldEngine {
     state.v18 = createWorldV18State(state, WORLD_RULES_VERSION);
     state.v19 = createWorldV19State(state, WORLD_RULES_VERSION);
     repairSecretLibraryPlacementV18(state);
+    repairCompactSettlementLayout(state);
 
     for (const resident of Object.values(state.agents)) observeLocalPlacesV20(state, resident);
     assertWorldState(state);
@@ -4538,6 +4541,7 @@ export class WorldEngine {
           WORLD_RULES_VERSION,
         );
         repairSecretLibraryPlacementV18(this.state);
+        repairCompactSettlementLayout(this.state);
         this.state.determinism.eventSequence = priorSequence;
         this.rng.restore(rng.snapshot());
 
@@ -9643,7 +9647,7 @@ export class WorldEngine {
 
   private advanceSettlementMaterialProjects(now: number): void {
     const scheduleTick = this.v15ScheduleTick(now);
-    if (!Number.isInteger(scheduleTick) || scheduleTick % 24 !== 0) return;
+    if (!Number.isInteger(scheduleTick)) return;
     const worldMinutes = this.state.calendar.elapsedWorldMinutes;
 
     for (const settlement of Object.values(this.state.settlements).sort((a, b) =>
@@ -9653,6 +9657,9 @@ export class WorldEngine {
         (agent) =>
           agent.life.alive && this.homeSettlementId(agent) === settlement.id,
       );
+      const economy = ensureSettlementEconomyV16(this.state, settlement.id);
+      if (economy.lastMaterialProjectDecisionWorldMinute !== undefined &&
+        worldMinutes - economy.lastMaterialProjectDecisionWorldMinute < 24 * V15_SIMULATION_QUANTUM_WORLD_MINUTES) continue;
       const workers = this.shuffled(
         residents.filter(
           (agent) =>
@@ -9671,7 +9678,7 @@ export class WorldEngine {
       );
       const worker = workers[0];
       if (!worker) continue;
-      const economy = ensureSettlementEconomyV16(this.state, settlement.id);
+      economy.lastMaterialProjectDecisionWorldMinute = worldMinutes;
       refreshSettlementEconomyCapacityV16(this.state, economy);
       const workshopId = settlement.memberPlaceIds.find(
         (placeId) => this.state.places[placeId]?.kind === 'workshop',
@@ -9717,11 +9724,7 @@ export class WorldEngine {
           homeId = `${settlement.id}_built_home_${sequence}`;
         }
         const center = this.state.places[settlement.centerPlaceId];
-        const angle = sequence * 2.399963229728653;
-        const plot = vacantHomePlot(this.state.places, {
-          x: center.mapX + Math.cos(angle) * (4.2 + sequence * 0.18),
-          y: center.mapY + Math.sin(angle) * (4.2 + sequence * 0.18),
-        });
+        const plot = nextUrbanHomeLot(this.state.places, { x: center.mapX, y: center.mapY }, settlement.id);
         if (!plot) {
           economy.stocks.wood += 0.65;
           economy.stocks.stone += 0.35;
@@ -9744,6 +9747,8 @@ export class WorldEngine {
             discoveredAt: now,
           },
         );
+        this.state.places[homeId].urbanLot = plot.lot;
+        this.state.places[homeId].urbanLayoutVersion = 1;
         makeConnectionsReciprocal(this.state.places);
         this.rebuildSpatialProjection();
         economy.constructionEvents += 1;
@@ -14145,6 +14150,7 @@ export class WorldEngine {
       this.state.settlements,
       0,
     );
+    repairCompactSettlementLayout(this.state);
     this.state.routes = rebuildWorldRoutes(
       this.state.places,
       this.state.routes,

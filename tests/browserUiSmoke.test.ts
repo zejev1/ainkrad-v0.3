@@ -142,8 +142,10 @@ describe('SPCK browser UI smoke contract', () => {
     const xs = projected.map((point) => point.x);
     const ys = projected.map((point) => point.y);
     expect(unique.size).toBe(agents.length);
-    expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(2);
-    expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(1.5);
+    expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(0.04);
+    expect(Math.max(...xs) - Math.min(...xs)).toBeLessThan(0.20);
+    expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(0.03);
+    expect(Math.max(...ys) - Math.min(...ys)).toBeLessThan(0.20);
   });
 
   it('paints motion before the first slow-speed quantum without changing resident decisions', async () => {
