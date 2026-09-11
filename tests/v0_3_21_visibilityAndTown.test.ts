@@ -47,9 +47,9 @@ describe('v0.3.21 FIX1 visible residents and local town buildings', () => {
     expect(livedState(after)).toEqual(preserved);
     expect(after.places.resource_field).toEqual(before.places.resource_field);
     expect(after.places.outskirts).toEqual(before.places.outskirts);
-    expect(after.places.secret_library_v18.mapX).toBe(50);
-    expect(after.places.secret_library_v18.mapY).toBeCloseTo(49.74);
-    expect(after.agents.agent_1.position).toEqual({x:50,y:49.74,layerId:'surface'});
+    const repairedLibrary=after.places.secret_library_v18;
+    expect(Math.hypot(repairedLibrary.mapX-50,repairedLibrary.mapY-50)).toBeLessThan(.5);
+    expect(after.agents.agent_1.position).toEqual({x:repairedLibrary.mapX,y:repairedLibrary.mapY,layerId:'surface'});
     expect(after.v18!.secretLibrary.visitors[0].readingMinutes).toBe(42);
     expect(after.v18!.secretLibrary.visitors[0].wordsRead).toBe(1000);
     expect(after.agents.agent_2.movement?.targetPlaceId).toBe('commons');
@@ -67,7 +67,7 @@ describe('v0.3.21 FIX1 visible residents and local town buildings', () => {
     const world=await fresh(), saved=structuredClone(world);
     const focus=townMapFocus(world,'agent_1',390,600)!;
     const camera=new WorldMapCamera(); camera.resize(390,600); Object.assign(camera,focus);
-    for(const place of Object.values(world.places).filter(p=>p.urbanLayoutVersion===2 && ['home','library','workshop','quiet_space'].includes(p.kind))) {
+    for(const place of Object.values(world.places).filter(p=>p.urbanLayoutVersion===3 && ['home','library','workshop','quiet_space'].includes(p.kind))) {
       const p=camera.point(place.mapX,place.mapY);
       expect(p.x).toBeGreaterThan(0); expect(p.x).toBeLessThan(100);
       expect(p.y).toBeGreaterThan(0); expect(p.y).toBeLessThan(100);

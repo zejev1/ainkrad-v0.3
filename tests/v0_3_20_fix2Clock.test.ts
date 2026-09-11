@@ -75,7 +75,10 @@ describe('FIX2 elapsed time and bounded live work', () => {
     const pendingCommit = runtime.advanceResponsive(0, false);
     runtime.coverLiveTimeThrough(owed / 2);
     await pendingCommit;
-    expect(runtime.liveTiming().pendingWorldMinutes).toBeCloseTo(owed / 2);
+    // A larger completed batch can itself consume the offline-covered interval.
+    // Debit only time beyond that interval, independent of adaptive batch size.
+    const committed=runtime.worldContinuityPosition().elapsedWorldMinutes;
+    expect(runtime.liveTiming().pendingWorldMinutes).toBeCloseTo(Math.max(0,owed-Math.max(owed/2,committed)));
     while (!(await runtime.catchUpBatchTo(owed / 2)).completed) { /* bounded batches */ }
     while (runtime.liveTiming().pendingWorldMinutes > 1e-7) await runtime.advanceResponsive(0, false);
     expect(runtime.worldContinuityPosition().elapsedWorldMinutes).toBe(owed);

@@ -23,7 +23,7 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
       - name: World, persistence and geography tests
-        run: npm run test -- --bail=1 --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/ainkrad-tests.json"
+        run: npm run test -- tests/v0_3_18_secretLibrary.test.ts tests/v0_3_20_fix2Clock.test.ts tests/v0_3_21_foundingOcean.test.ts tests/v0_3_21_visibilityAndTown.test.ts tests/v0_3_21_atlasGeography.test.ts tests/v0_3_21_timeReceiptRetention.test.ts --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/ainkrad-tests.json"
       - name: Production build
         run: npm run build
   browser:

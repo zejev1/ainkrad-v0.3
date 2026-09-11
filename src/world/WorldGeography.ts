@@ -27,6 +27,8 @@ export function updateNaturalGeography(world:WorldState):boolean {
   const natural=all.filter(p=>['forest','meadow','mountains','swamp','river','lake','shore','ocean','ruins','cemetery'].includes(p.kind));
   for(const place of natural) {
     if(place.geographyVersion===GEOGRAPHY_VERSION)continue;
+    // Existing explicit seas are already physical geometry; preserve their record.
+    if(place.surface==='water'&&place.boundaryPolygon)continue;
     const seed=geographySeed(place.id),origin={x:place.mapX,y:place.mapY};
     if(!place.boundaryPolygon&&!place.waterPolygon) {
       const nearest=Math.min(1500,...natural.filter(p=>p.id!==place.id).map(p=>Math.hypot(p.mapX-place.mapX,p.mapY-place.mapY)));
