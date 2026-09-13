@@ -1,3 +1,4 @@
+import type { TerrainFoundation } from './geography/TerrainTypes';
 import type { WorldV18State } from '../v18/types';
 import type { WorldV19State } from '../v19/types';
 
@@ -357,6 +358,7 @@ export interface WorldPlace {
 }
 
 export interface WorldRouteState {
+  terrainKey?: string;
   geometryVersion?: 1;
   widthMetres?: number;
   completedTraversals?: number;
@@ -838,6 +840,7 @@ export interface WorldDeterminismState {
 }
 
 export interface WorldState {
+  terrain?: TerrainFoundation;
   id: string;
   geography?: { version: 1; revision: number; signature: string };
   /** Logical world epoch. Optional only for legacy fixtures before migration. */

@@ -1,5 +1,8 @@
 import { buildingPolygon, buildingSize, pointInPolygon, polygonsOverlap } from './BuildingFootprints';
 import type { WorldPlace, WorldPoint2D, WorldState } from './types';
+import {terrainForPlaces} from './geography/WorldTerrain';
+import {riverPolygon} from './geography/TerrainModel';
+import {nearestRiverPoint} from './geography/RiverCourses';
 
 export const GEOGRAPHY_VERSION=1;
 export function geographySeed(id:string):number {
@@ -30,6 +33,19 @@ export function updateNaturalGeography(world:WorldState):boolean {
     // Existing explicit seas are already physical geometry; preserve their record.
     if(place.surface==='water'&&place.boundaryPolygon)continue;
     const seed=geographySeed(place.id),origin={x:place.mapX,y:place.mapY};
+    const terrain=terrainForPlaces(world.places);
+    if(terrain&&!place.waterPolygon&&(place.kind==='river'||place.kind==='lake')) {
+      if(place.kind==='river') {
+        const nearby=terrain.rivers.query({minX:origin.x-3,minY:origin.y-3,maxX:origin.x+3,maxY:origin.y+3})
+          .sort((a,b)=>nearestRiverPoint(origin,a).distance-nearestRiverPoint(origin,b).distance)[0];
+        if(nearby&&nearestRiverPoint(origin,nearby).distance<=nearby.width+2&&!pointInPolygon(origin,riverPolygon(nearby))) {
+          place.waterPolygon=riverPolygon(nearby);place.terrainPath=nearby.points?.map(p=>({...p}))??[nearby.from,nearby.to];
+        }
+      } else {
+        const lake=terrain.foundation.anchors.find(a=>a.kind==='lake'&&a.water?.some(p=>Math.hypot(p.x-origin.x,p.y-origin.y)<3));
+        if(lake?.water&&!pointInPolygon(origin,lake.water))place.waterPolygon=lake.water.map(p=>({...p}));
+      }
+    }
     if(!place.boundaryPolygon&&!place.waterPolygon) {
       const nearest=Math.min(1500,...natural.filter(p=>p.id!==place.id).map(p=>Math.hypot(p.mapX-place.mapX,p.mapY-place.mapY)));
       const size=Math.max(.65,Math.min(600,nearest*.38));

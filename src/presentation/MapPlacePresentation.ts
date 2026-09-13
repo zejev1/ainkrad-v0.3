@@ -31,7 +31,7 @@ export function visibleMapLabels(places:readonly WorldPlace[],camera:Readonly<Wo
     if(p.kind==='home'&&!highlighted.has(p.id))continue;
     const point=camera.point(p.mapX,p.mapY),cx=point.x*camera.width/100,cy=point.y*camera.height/100;
     if(cx<0||cx>camera.width||cy<0||cy>camera.height)continue;
-    const width=Math.min(180,Math.max(60,(names.get(p.id)??p.name).length*7.2)),height=23;
+    const width=Math.min(180,Math.max(72,16+(names.get(p.id)??p.name).length*8)),height=23;
     const size=buildingSize(p),offset=Math.max(16,size.height*camera.pixelsPerUnit/2+4);
     const x=Math.max(4,Math.min(camera.width-width-4,cx-width/2)),y=Math.max(4,Math.min(camera.height-height-4,cy+offset));
     if(occupied.some(r=>x<r.x+r.width+8&&x+width+8>r.x&&y<r.y+r.height+5&&y+height+5>r.y))continue;

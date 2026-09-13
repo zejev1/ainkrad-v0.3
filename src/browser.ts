@@ -1,3 +1,5 @@
+import {TERRAIN_BOUNDS} from './world/geography/TerrainTypes';
+import { MapInteraction } from './presentation/MapInteraction';
 import { installWorldMapGestures } from './presentation/WorldMapGestures';
 import { installObserverChrome } from './presentation/ObserverChrome';
 import { WorldAtlasRenderer } from './presentation/WorldAtlasRenderer';
@@ -341,7 +343,7 @@ app.innerHTML = `
   <div class="ainkrad-app">
     <header class="world-header">
       <div>
-        <p class="eyebrow">v0.3.21.5</p>
+        <p class="eyebrow">v0.3.21.6</p>
         <h1 id="world-title">Мир · уровень 1</h1>
       </div>
 
@@ -841,8 +843,6 @@ let continuityAnnounced = false;
 let renderedGrowthStage = -1;
 const mapCamera = new WorldMapCamera();
 let mapZoom = mapCamera.pixelsPerUnit / 100;
-let mapPaintScheduled = false;
-let lastMapPaintAt = 0;
 let activeConsoleTab: CardinalConsoleTab = 'laws';
 let cardinalConsoleSnapshot: CardinalConsoleSnapshot | undefined;
 let highlightedPlaceIds = new Set<string>();
@@ -1023,17 +1023,10 @@ function applyMapZoom(): void {
   mapDistance.querySelector<HTMLElement>('span')!.style.width = `${scale.pixels}px`;
   mapDistance.querySelector<HTMLElement>('b')!.textContent = scale.label;
 }
-function scheduleMapPaint(): void {
-  if (mapPaintScheduled) return;
-  mapPaintScheduled = true;
-  requestAnimationFrame(() => {
-    mapPaintScheduled = false;
-    if (performance.now() - lastMapPaintAt < 50) { scheduleMapPaint(); return; }
-    lastMapPaintAt = performance.now();
-    applyMapZoom();
-    if (lastFrame) renderMap(lastFrame);
-  });
-}
+const mapInteraction = new MapInteraction(worldMap,mapCamera,()=>{
+  applyMapZoom();if(lastFrame)renderMap(lastFrame);
+});
+function scheduleMapPaint(): void { mapInteraction.invalidate(); }
 function setMapZoom(nextZoom: number, focalX=mapCamera.width/2, focalY=mapCamera.height/2): void {
   mapCamera.zoom(nextZoom*100,focalX,focalY);
   mapZoom = mapCamera.pixelsPerUnit/100;
@@ -1053,7 +1046,7 @@ function focusSelectedResident(): void {
 }
 function fitMapToViewport(): void {
   if (!lastFrame) return;
-  const {minX,maxX,minY,maxY}=extentForWorld(lastFrame.world);
+  const {minX,maxX,minY,maxY}=lastFrame.world.terrain?TERRAIN_BOUNDS:extentForWorld(lastFrame.world);
   mapCamera.x=(minX+maxX)/2;mapCamera.y=(minY+maxY)/2;
   setMapZoom(Math.min(mapCamera.width/Math.max(1,maxX-minX),mapCamera.height/Math.max(1,maxY-minY))*0.85/100);
 }
@@ -2394,13 +2387,16 @@ function renderMap(frame: Readonly<LiveWorldFrame>): void {
     );
   });
 
+  mapInteraction.paintedFrame();
 }
 
 function updateWorld(frame: Readonly<LiveWorldFrame>): void {
+  if(mapInteraction.defer(()=>updateWorld(frame)))return;
   observerChrome.clear();
   lastFrame = frame;
   const agents=Object.values(frame.world.agents).filter(agent=>agent.life.alive);
   syncResidentPicker(frame.world,agents);
+  applyMapZoom();
   renderMap(frame);
   const humanPopulation = agents.filter(
     (agent) => (agent.race ?? 'human') === 'human',
@@ -3099,8 +3095,8 @@ requiredElement<HTMLButtonElement>('map-city-focus').addEventListener('click', (
   if (focus) { mapCamera.x=focus.x;mapCamera.y=focus.y;setMapZoom(focus.pixelsPerUnit/100); }
 });
 requiredElement<HTMLButtonElement>('map-resident-focus').addEventListener('click', focusSelectedResident);
-installWorldMapGestures(worldMapViewport,mapCamera,()=>{
-  mapZoom=mapCamera.pixelsPerUnit/100;scheduleMapPaint();
+installWorldMapGestures(worldMapViewport,mapCamera,phase=>{
+  mapZoom=mapCamera.pixelsPerUnit/100;mapInteraction.gesture(phase);
 });
 new ResizeObserver(scheduleMapPaint).observe(worldMapViewport);
 

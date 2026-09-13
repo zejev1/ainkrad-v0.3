@@ -8,6 +8,11 @@
 .world-notice[hidden] { display:none; }
 .world-notice button { padding:8px; color:inherit; background:#152e2c; border:1px solid #657867; border-radius:8px; }
 .world-map { background:#97a486; }
+.map-motion-layer { position:absolute; inset:0; transform-origin:50% 50%; z-index:2; }
+.map-motion-layer.is-moving { will-change:transform; }
+.map-motion-layer.is-moving .resident-avatar,
+.map-motion-layer.is-moving .resident-avatar * { animation-play-state:paused !important; }
+.world-map-viewport { overscroll-behavior:contain; user-select:none; -webkit-user-select:none; }
 .map-sky { display:none; }
 .biomes-layer { position:absolute; inset:0; z-index:1; pointer-events:none; }
 .atlas-terrain { position:absolute; inset:0; width:100%; height:100%; }
@@ -28,3 +33,5 @@
 .world-map .is-natural-marker:not(:hover):not(:focus-visible):not(.is-highlighted) .place-building { opacity:.65; }
 .world-map[data-atlas-level="world"] .resident-avatar,
 .world-map[data-atlas-level="region"] .resident-avatar { display:none; }
+
+.atlas-raster { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }

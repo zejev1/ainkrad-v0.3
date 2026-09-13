@@ -1,3 +1,15 @@
+# Ainkrad 0.3.21-hotfix.6
+
+FIX6 corrects interrupted touch dragging and moves the composed map during gestures, with bounded progressive terrain tiles. The same physical coastline, drainage network and terrain costs now connect the world between settlements; roads and water use the same geometry for movement and display.
+
+Base: `7af766900e2a71d8fa27c73b6285cded42e803d1` from `zejev1/ainkrad-v0.3/main`, including the user's mobile-map commits. Continue the existing world at the same site address. Migration preserves people, their knowledge and families, calendar, RNG, road history and Cardinal records. A negative preference score can no longer remove a child's only available action.
+
+See [FIX6 review](docs/V0_3_21_FIX6_REVIEW.md) and [release audit](docs/V0_3_21_FIX6_AUDIT.json). The SPCK archive contains the stated main Git base with prepared, uncommitted changes. Git email: `zejev1@users.noreply.github.com`.
+
+Physical Android and Xbox testing remains necessary; measurements from a desktop browser are identified as such. Requested extreme time acceleration remains limited by the work the device can calculate. The world is a simulation, and its atlas depicts its physical model rather than satellite imagery.
+
+The notes below describe earlier releases.
+
 # Ainkrad 0.3.21-hotfix.5
 
 Responsive world-time calculation and a physical vector atlas. The observer header contains version and world level; diagnostics remain closed by default.

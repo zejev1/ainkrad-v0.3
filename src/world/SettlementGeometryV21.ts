@@ -2,6 +2,7 @@ import { buildingRadius, dryBuildingPlot, nextUrbanHomeLot } from './SettlementS
 import { buildingPolygon, buildingsHaveClearance, buildingSize, polygonsOverlap } from './BuildingFootprints';
 import { convexHull, fieldPolygon, geographySeed } from './WorldGeography';
 import type { WorldPlace, WorldPoint2D, WorldState } from './types';
+import {terrainPlotIsDry,terrainParcelIsDry} from './geography/WorldTerrain';
 
 export const SETTLEMENT_LAYOUT_VERSION=3;
 /** Plan on migration/construction only. Daily work never repeats this survey. */
@@ -21,7 +22,7 @@ export function updateSettlementGeometry(world:WorldState,move:(id:string,point:
         const r=i?.10*Math.sqrt(i):0,a=i*2.3999632297;
         const point={x:preferred.x+Math.cos(a)*r,y:preferred.y+Math.sin(a)*r};
         if(Math.hypot(point.x-origin.x,point.y-origin.y)<minimum)continue;
-        if(!dryBuildingPlot(point,hx,hy,water,place.rotation))continue;
+        if(!terrainPlotIsDry(world.places,point,Math.max(hx,hy))||!dryBuildingPlot(point,hx,hy,water,place.rotation))continue;
         const candidate={...place,mapX:point.x,mapY:point.y};
         if(all.some(p=>p.id!==place.id&&p.urbanLayoutVersion===3&&!buildingsHaveClearance(candidate,p)))continue;
         if(size.width>0&&Math.abs(point.x-origin.x)<hx+.06&&Math.abs(point.y-origin.y)<hy+.06)continue;
@@ -62,7 +63,7 @@ export function updateSettlementGeometry(world:WorldState,move:(id:string,point:
         // Survey the whole agricultural plot, including its corners.
         for(let n=0;point&&n<32;n++) {
           const candidate={...place,mapX:point.x,mapY:point.y,rotation:angle},polygon=fieldPolygon(candidate);
-          if(!polygonsOverlap(polygon,town.boundaryPolygon)&&!water.some(p=>polygonsOverlap(polygon,p.waterPolygon??p.boundaryPolygon??[]))) {
+          if(terrainParcelIsDry(world.places,polygon)&&!polygonsOverlap(polygon,town.boundaryPolygon)&&!water.some(p=>polygonsOverlap(polygon,p.waterPolygon??p.boundaryPolygon??[]))) {
             place.rotation=angle;break;
           }
           point={x:origin.x+Math.cos(angle)*(r+n*.08),y:origin.y+Math.sin(angle)*(r+n*.08)};

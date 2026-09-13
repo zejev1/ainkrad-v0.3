@@ -13,3 +13,5 @@ These rules apply to every future Ainkrad commit package.
 9. Do not repeatedly ask whether errors appeared. The user will report an error if one occurs.
 
 10. Before every future Ainkrad release, perform a release audit before giving the user the ZIP: verify migration and continuity, protected resident autonomy, Cardinal/Gateway decision-to-effect causality, bounded storage growth, typecheck and tests. Do not label or recommend a package as final until this audit passes. SAO Alicization / Underworld is the primary reference for world design; Cardinal is Ainkrad's separate improved architecture.
+
+11. Complete the entire authorized task, not a silently reduced subset. Before packaging, map every requested outcome to implemented behavior and evidence, including visual and physical behavior where relevant. Passing tests alone does not establish completeness. Carry unfinished requirements forward and state concrete blockers honestly; do not defer requested functionality to another release merely to finish a package sooner. The user will interrupt and report new problems when needed; incorporate those reports into the active task.

@@ -1,3 +1,6 @@
+import {surveyFrontier,surveySettlementSite} from './geography/FrontierSurvey';
+import {residentChoiceCandidates} from './ResidentChoice';
+import {bindWorldTerrain,assertTerrainFoundation,terrainWalkingScale} from './geography/WorldTerrain';
 import { assertPlaceGeography } from './WorldGeographyValidation';
 import type { WorldTimeExecution } from './WorldTimeExecution';
 import { createFoundingOcean, repairFoundingOcean } from './FoundingOcean';
@@ -822,6 +825,7 @@ function assertUnitFields(
 
 function assertWorldState(value: unknown): asserts value is WorldState {
   const state = asRecord(value, 'World state');
+  assertTerrainFoundation(state.terrain);
   const id = requiredString(state.id, 'World state id');
   const stateNow = finiteNumber(state.now, 'World state time');
   nonNegativeInteger(state.revision, 'World state revision');
@@ -3678,6 +3682,8 @@ async function repairCompatibleV16World(
     if (current.rulesVersion !== WORLD_RULES_VERSION_V16) return current;
     const next = structuredClone(current);
     const before = stableJsonStringify(next);
+    assertTerrainFoundation(next.terrain);
+    bindWorldTerrain(next);
     const repairedFoundingOcean = repairFoundingOcean(next);
     if (repairedFoundingOcean) next.routes = rebuildWorldRoutes(next.places, next.routes);
     repairWorldV16AdditiveSchema(
@@ -3948,7 +3954,7 @@ async function migrateV18WorldToV19(
 }
 
 const V19_ADDITIVE_SCHEMA_REPAIR_OPERATION_ID =
-  'migration:v21-world-geography-fix5-2026-09-11';
+  'migration:v21-world-geography-fix6-2026-09-11';
 
 async function repairCompatibleV19World(
   store: WorldStore,
@@ -3959,7 +3965,7 @@ async function repairCompatibleV19World(
     from: WORLD_RULES_VERSION,
     to: WORLD_RULES_VERSION,
     mode: 'same_version_additive_schema_repair',
-    schemaRevision: '2026-09-11-world-geography-fix5',
+    schemaRevision: '2026-09-11-world-geography-fix6',
   });
   let current = persisted;
 
@@ -3994,7 +4000,7 @@ async function repairCompatibleV19World(
     await store.checkpointWorld?.(current.id, current.revision, 'before-additive-schema-migration');
     next.revision = current.revision + 1;
     const migrationEvent: WorldEvent = {
-      eventId: `migration:${next.id}:v21-geography-fix5-2026-09-11:revision:${current.revision}`,
+      eventId: `migration:${next.id}:v21-geography-fix6-2026-09-11:revision:${current.revision}`,
       worldId: next.id,
       kind: 'world.migrated',
       source: 'system',
@@ -4136,6 +4142,7 @@ export class WorldEngine {
   ) {
     assertWorldState(state);
     this.committedState = structuredClone(state);
+    bindWorldTerrain(this.committedState);
     this.rng = new SeededRng('restored-world', state.determinism.rngState);
   }
 
@@ -4505,6 +4512,8 @@ export class WorldEngine {
           protectedPersonhoodDomains: ['identity', 'memory', 'agency', 'values', 'relationships'], laws: defaultWorldLaws(resetAt, 0),
         };
         this.state.places = places;
+        this.state.terrain = undefined;
+        this.state.geography = undefined;
         this.state.routes = rebuildWorldRoutes(places);
         this.state.settlements = rebuildSettlementProjection(places, {}, resetAt);
         this.state.wildlife = {};
@@ -5975,6 +5984,7 @@ export class WorldEngine {
       const before = this.committedState;
       const beforeRng = this.rng.snapshot();
       this.workingState = structuredClone(before);
+      bindWorldTerrain(this.workingState);
       this.rng.restore(before.determinism.rngState);
       this.stagedEvents = [];
       this.stagedMemories = [];
@@ -7820,23 +7830,18 @@ export class WorldEngine {
       }
     }
 
-    scores.sort((a, b) => b.score - a.score);
-    const dominantAction = scores[0].action;
     const choiceWindow =
       0.32 +
       agent.personality.curiosity * 0.2 +
       agent.personality.riskTolerance * 0.1;
-    const candidates = scores.filter(
-      (item) =>
-        item.score >= scores[0].score - choiceWindow &&
-        item.score > -0.25,
-    );
+    const candidates = residentChoiceCandidates(scores,allowedActions,choiceWindow);
+    const dominantAction = candidates[0].action;
     const temperature =
       0.1 +
       agent.personality.curiosity * 0.1 +
       agent.personality.riskTolerance * 0.045;
     const weights = candidates.map((item) =>
-      Math.exp((item.score - scores[0].score) / temperature),
+      Math.exp((item.score - candidates[0].score) / temperature),
     );
     const total = weights.reduce((sum, weight) => sum + weight, 0);
     let roll = this.rng.next() * total;
@@ -9376,6 +9381,7 @@ export class WorldEngine {
     const expansion =
       WORLD_EXPANSIONS.find((candidate) => candidate.stage === nextStage) ??
       this.createProceduralExpansion(nextStage, now, agent);
+    if(!expansion)return undefined;
 
     this.state.places[expansion.place.id] = {
       ...structuredClone(expansion.place),
@@ -11210,6 +11216,8 @@ export class WorldEngine {
     const angle =
       sequence * 2.399963229728653 +
       SAPIENT_RACES.indexOf(expansion.race) * 0.71;
+    const site=surveySettlementSite(this.state,{x:anchor.mapX+Math.cos(angle)*(8+sequence),y:anchor.mapY+Math.sin(angle)*(8+sequence)});
+    if(!site)return;
     this.state.places[id] = createPlace(
       id,
       `Поселение ${names[(sequence - 1) % names.length]}`,
@@ -11217,8 +11225,8 @@ export class WorldEngine {
       24,
       {
         biome: 'settlement',
-        mapX: anchor.mapX + Math.cos(angle) * (8 + sequence),
-        mapY: anchor.mapY + Math.sin(angle) * (8 + sequence),
+        mapX: site.x,
+        mapY: site.y,
         connectedPlaceIds: [frontierId],
         fertility: clamp01(0.56 + anchor.fertility * 0.2),
         danger: 0.05,
@@ -11326,7 +11334,7 @@ export class WorldEngine {
     stage: number,
     now: number,
     explorer: AgentState,
-  ): WorldExpansionDefinition {
+  ): WorldExpansionDefinition | undefined {
     const proceduralBiomes: readonly WorldBiome[] = [
       'mountains',
       'lake',
@@ -11350,7 +11358,7 @@ export class WorldEngine {
       'swamp',
       'ancient_ruins',
     ];
-    const biome = firstMonsterFrontier
+    let biome = firstMonsterFrontier
       ? monsterBiomes[(stage + biomeRoll) % monsterBiomes.length]
       : proceduralBiomes[(stage + biomeRoll) % proceduralBiomes.length];
     const kindByBiome: Record<WorldBiome, WorldPlaceKind> = {
@@ -11369,10 +11377,12 @@ export class WorldEngine {
       (stage + Math.floor(this.rng.next() * REGION_NAME_PREFIXES.length)) %
         REGION_NAME_PREFIXES.length
     ];
+    const regionId = `region_${stage}`;
+    const site = surveyFrontier(this.state,frontierSiteV20(this.state, explorer, stage),biome,firstMonsterFrontier?monsterBiomes:[biome]);
+    if(!site)return undefined;
+    biome=site.biome;
     const suffixes = REGION_NAME_SUFFIXES[biome];
     const suffix = suffixes[stage % suffixes.length];
-    const regionId = `region_${stage}`;
-    const site = frontierSiteV20(this.state, explorer, stage);
     const mapX = site.x;
     const mapY = site.y;
     const fertilityByBiome: Record<WorldBiome, number> = {
@@ -14041,10 +14051,12 @@ export class WorldEngine {
       const dx = target.x - agent.position.x;
       const dy = target.y - agent.position.y;
       const distance = Math.hypot(dx, dy);
-      if (distance <= remaining + 0.0001) {
+      const groundScale=terrainWalkingScale(this.state.places,movement.waypoints[Math.max(0,movement.nextWaypointIndex-1)],target);
+      const effort=distance/groundScale;
+      if (effort <= remaining + 0.0001) {
         agent.position.x = target.x;
         agent.position.y = target.y;
-        remaining -= distance;
+        remaining -= effort;
         movement.nextWaypointIndex += 1;
         if (movement.nextWaypointIndex >= movement.waypoints.length) {
           const place = this.state.places[movement.targetPlaceId];
@@ -14074,8 +14086,8 @@ export class WorldEngine {
         }
         continue;
       }
-      agent.position.x += (dx / distance) * remaining;
-      agent.position.y += (dy / distance) * remaining;
+      agent.position.x += (dx / distance) * remaining * groundScale;
+      agent.position.y += (dy / distance) * remaining * groundScale;
       remaining = 0;
     }
     return true;
@@ -14425,6 +14437,7 @@ export class WorldEngine {
     // from their durable projection. WorldEngine takes ownership and never
     // mutates it until cloning the next working transaction.
     this.committedState = state;
+    bindWorldTerrain(state);
     this.rng.restore(state.determinism.rngState);
   }
 }

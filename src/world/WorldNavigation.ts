@@ -1,4 +1,6 @@
 import { routeAroundWater, pathCrossesWater } from './WaterNavigation';
+import {regionalTerrainRoute} from './geography/RegionalNavigation';
+import {terrainForPlaces} from './geography/WorldTerrain';
 import { routeAroundBuildings, urbanStreetPath } from './SettlementStreets';
 import type {
   WorldPlace,
@@ -84,7 +86,7 @@ export function buildRoute(
     x: (start.x + end.x) / 2 + perpendicularX * bend * sign,
     y: (start.y + end.y) / 2 + perpendicularY * bend * sign,
   };
-  const streetPath = traversal === 'walk' ? urbanStreetPath(from, to, terrain) : undefined;
+  const streetPath = traversal === 'walk' ? urbanStreetPath(from, to, terrain)??regionalTerrainRoute(start,end,terrain) : undefined;
   const waypoints = streetPath ?? (directDistance < 7 ? [start, middle, end] : [start]);
   if (!streetPath && directDistance >= 7) {
     const rough = Object.values(terrain).filter(place => ['mountains', 'swamp', 'forest'].includes(place.kind) &&
@@ -122,6 +124,7 @@ export function rebuildWorldRoutes(
   existing: Readonly<Record<string, WorldRouteState>> = {},
 ): Record<string, WorldRouteState> {
   const routes: Record<string, WorldRouteState> = {};
+  const terrainKey=terrainForPlaces(places)?.foundation.key;
   for (const place of Object.values(places)) {
     for (const connectedId of place.connectedPlaceIds) {
       const connected = places[connectedId];
@@ -131,7 +134,7 @@ export function rebuildWorldRoutes(
       const explicit = existing[id];
       const traversal = explicit?.traversal ?? traversalBetween(place, connected);
       if (!traversal) continue;
-      if(explicit?.geometryVersion===1 && explicit.waypoints.length>1) {
+      if(explicit?.geometryVersion===1 && explicit.terrainKey===terrainKey && explicit.waypoints.length>1) {
         const first=explicit.waypoints[0],last=explicit.waypoints.at(-1)!;
         const direct=explicit.fromPlaceId===place.id;
         const a=direct?place:connected,b=direct?connected:place;
@@ -144,6 +147,7 @@ export function rebuildWorldRoutes(
       const route = buildRoute(place, connected, traversal, places);
       route.completedTraversals = explicit?.completedTraversals ?? 0;
       route.geometryVersion=1;route.widthMetres=traversal==='walk'?3:4;
+      if(terrainKey)route.terrainKey=terrainKey;
       if (traversal === 'walk') {
         let path:WorldPoint2D[]|undefined=route.waypoints;
         for(let attempt=0;attempt<3;attempt++) {

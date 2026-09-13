@@ -1,6 +1,7 @@
 import { buildingSize, buildingLocalPoint, buildingPolygon, buildingsHaveClearance, polygonsOverlap } from './BuildingFootprints';
 import { organicHomeLot, organicStreetPath, organicLotAddress } from './OrganicSettlementStreets';
 import type { WorldPlace, WorldPoint2D } from './types';
+import {terrainPlotIsDry} from './geography/WorldTerrain';
 
 // Map unit = 100 metres. Homes are 12 x 10m; ordinary lanes 6m, main street 10m.
 export const STREET_CLEARANCE = 0.015;
@@ -101,7 +102,7 @@ export function vacantHomePlot(places: Readonly<Record<string, WorldPlace>>, pre
     const radius = i === 0 ? 0 : 0.18 * Math.sqrt(i);
     const point = {x: preferred.x + Math.cos(i * 2.399963229728653) * radius,
       y: preferred.y + Math.sin(i * 2.399963229728653) * radius};
-    if (dryBuildingPlot(point, 0.06, 0.05, water) && buildings.every(p => Math.hypot(point.x - p.mapX, point.y - p.mapY) >=
+    if (terrainPlotIsDry(places,point)&&dryBuildingPlot(point, 0.06, 0.05, water) && buildings.every(p => Math.hypot(point.x - p.mapX, point.y - p.mapY) >=
       Math.SQRT2 * (0.06 + buildingRadius(p) + 0.06))) return point;
   }
   return undefined;
@@ -129,7 +130,7 @@ export function nextUrbanHomeLot(places: Readonly<Record<string, WorldPlace>>, c
   for(let lot=0;lot<used.size+1024;lot++) {
     if(used.has(lot))continue;
     const point=organicLotAddress(center,lot);
-    if(!dryBuildingPlot(point,.06,.05,water,point.rotation))continue;
+    if(!terrainPlotIsDry(places,point)||!dryBuildingPlot(point,.06,.05,water,point.rotation))continue;
     const candidate={kind:'home',mapX:point.x,mapY:point.y,rotation:point.rotation} as WorldPlace;
     if(buildings.some(p=>!buildingsHaveClearance(candidate,p)))continue;
     return {x:point.x,y:point.y,lot,rotation:point.rotation};

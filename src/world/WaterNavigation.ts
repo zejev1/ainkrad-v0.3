@@ -1,17 +1,21 @@
 import { pointInPolygon, segmentHitsPolygon } from './BuildingFootprints';
 import type { WorldPlace, WorldPoint2D } from './types';
+import {terrainForPlaces} from './geography/WorldTerrain';
+import {featureBounds,type FeatureBounds} from './geography/FeatureIndex';
 
-export function worldWaterPolygons(places:Readonly<Record<string,WorldPlace>>):WorldPoint2D[][] {
-  return Object.values(places).flatMap(p=>p.waterPolygon?[p.waterPolygon]:p.surface==='water'&&p.boundaryPolygon?[p.boundaryPolygon]:[]);
+export function worldWaterPolygons(places:Readonly<Record<string,WorldPlace>>,bounds?:FeatureBounds):WorldPoint2D[][] {
+  const model=terrainForPlaces(places);
+  const local=Object.values(places).flatMap(p=>p.waterPolygon?[p.waterPolygon]:p.surface==='water'&&p.boundaryPolygon?[p.boundaryPolygon]:[]);
+  return [...local,...(model?[model.ocean,...(bounds?model.waterIn(bounds):model.riverPolygons)]:[])];
 }
 export function pathCrossesWater(path:readonly WorldPoint2D[],places:Readonly<Record<string,WorldPlace>>):boolean {
-  const water=worldWaterPolygons(places);
+  const water=worldWaterPolygons(places,featureBounds(path));
   return path.slice(1).some((p,i)=>water.some(poly=>segmentHitsPolygon(path[i],p,poly)));
 }
 /** Survey a dry bank route around the actual water polygon. A bridge/boat must
  * still be explicit; zoom and a cosmetic curve can never authorize crossing. */
 export function routeAroundWater(path:WorldPoint2D[],places:Readonly<Record<string,WorldPlace>>):WorldPoint2D[]|undefined {
-  const water=worldWaterPolygons(places);
+  const water=worldWaterPolygons(places,featureBounds(path,2));
   const clear=(a:WorldPoint2D,b:WorldPoint2D)=>!water.some(poly=>segmentHitsPolygon(a,b,poly));
   if(path.slice(1).every((p,i)=>clear(path[i],p)))return path;
   const outside=path.filter((p,i)=>!i||i===path.length-1||!water.some(poly=>pointInPolygon(p,poly)));
@@ -22,7 +26,12 @@ export function routeAroundWater(path:WorldPoint2D[],places:Readonly<Record<stri
   }
   const [a,b]=outside;
   if(water.some(poly=>pointInPolygon(a,poly)||pointInPolygon(b,poly)))return undefined;
-  const blocking=water.filter(poly=>segmentHitsPolygon(a,b,poly)).slice(0,24);
+  const near=featureBounds(path,2);
+  const intersects=(p:WorldPoint2D[])=>{const box=featureBounds(p);return box.minX<=near.maxX&&box.maxX>=near.minX&&box.minY<=near.maxY&&box.maxY>=near.minY;};
+  // Include the neighbouring banks too: a detour around one tributary can
+  // otherwise run into a lake that did not intersect the original line.
+  const blocking=water.filter(poly=>segmentHitsPolygon(a,b,poly)||
+    (intersects(poly)&&poly.length<200)).slice(0,32);
   const nodes=[a,b,...blocking.flatMap(poly=>{
     const xs=poly.map(p=>p.x),ys=poly.map(p=>p.y),margin=.02;
     const cx=(Math.min(...xs)+Math.max(...xs))/2,cy=(Math.min(...ys)+Math.max(...ys))/2;
