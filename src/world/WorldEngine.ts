@@ -13,6 +13,17 @@ import { repairCompactSettlementLayout } from './CompactSettlementLayout';
 import { assertResidentLearning, beginLearningAttempt, finishLearningAttempt, learnedActionAdjustment, learnedSiteAdjustment, noteLearningHelp, noteLearningMaterial } from './learning/index';
 import { canResidentAct, stopDeceasedActions, repairDeceasedActions, assertDeceasedBody } from './ResidentBodyBoundary';
 import { knownMeetingPlace } from './ResidentNavigationKnowledge';
+import {
+  CENTURY_HUMPBACK_CRAWL,
+  CENTURY_HUMPBACK_INCUBATION,
+  CENTURY_HUMPBACK_INTERVAL,
+  CENTURY_HUMPBACK_LARVA_KILLED_INTERVAL,
+  CENTURY_HUMPBACK_SPECIES,
+  CENTURY_HUMPBACK_STRENGTH_THRESHOLD,
+  canDefeatAdultCenturyHumpback,
+  createCenturyHumpbackState,
+  ensureCenturyHumpbackState,
+} from './CenturyHumpback';
 import { hasGiftV20, learningFactorV20, canReadLibraryV20, giftLearningSnapshotV20, applyLivedGiftLearningV20 } from '../v20/DivineGiftsV20';
 import { stableJsonStringify } from '../core/stableJson';
 import { SeededRng } from '../utils/rng';
@@ -370,12 +381,14 @@ const WILDLIFE_SPECIES: readonly WildlifeSpecies[] = [
   'dire_wolf',
   'ogre',
   'wraith',
+  'century_humpback',
 ];
 
 const MONSTER_SPECIES = new Set<WildlifeSpecies>([
   'dire_wolf',
   'ogre',
   'wraith',
+  'century_humpback',
 ]);
 
 const BIOMES: readonly WorldBiome[] = [
@@ -401,6 +414,7 @@ const HABITAT_BIOMES: Record<WildlifeSpecies, readonly WorldBiome[]> = {
   dire_wolf: ['forest', 'mountains', 'ancient_ruins'],
   ogre: ['swamp', 'mountains', 'ancient_ruins'],
   wraith: ['ancient_ruins', 'swamp'],
+  century_humpback: ['mountains', 'ancient_ruins', 'swamp'],
 };
 
 const MONSTER_PREY_SPECIES: Readonly<
@@ -3164,6 +3178,7 @@ async function migrateLegacyWorld(
     dire_wolf: 0.72,
     ogre: 0.86,
     wraith: 0.94,
+    century_humpback: 1,
   };
   for (const population of Object.values(next.wildlife)) {
     population.threat ??= legacyThreat[population.species] ?? 0.05;
@@ -3954,7 +3969,7 @@ async function migrateV18WorldToV19(
 }
 
 const V19_ADDITIVE_SCHEMA_REPAIR_OPERATION_ID =
-  'migration:v21-world-geography-fix6-2026-09-11';
+  'migration:v21-demography-monster-roads-fix7-2026-09-13';
 
 async function repairCompatibleV19World(
   store: WorldStore,
@@ -3965,7 +3980,7 @@ async function repairCompatibleV19World(
     from: WORLD_RULES_VERSION,
     to: WORLD_RULES_VERSION,
     mode: 'same_version_additive_schema_repair',
-    schemaRevision: '2026-09-11-world-geography-fix6',
+    schemaRevision: '2026-09-13-demography-monster-roads-fix7',
   });
   let current = persisted;
 
@@ -3993,6 +4008,7 @@ async function repairCompatibleV19World(
     repairCompactSettlementLayout(next);
     reconcileLibraryAdmissions(next, next.calendar.elapsedWorldMinutes, true);
     repairDeceasedActions(next);
+    ensureCenturyHumpbackState(next);
     // Update physical walking lanes while retaining completed traversal history.
     next.routes = rebuildWorldRoutes(next.places, next.routes);
     if (stableJsonStringify(next) === before) return current;
@@ -4000,7 +4016,7 @@ async function repairCompatibleV19World(
     await store.checkpointWorld?.(current.id, current.revision, 'before-additive-schema-migration');
     next.revision = current.revision + 1;
     const migrationEvent: WorldEvent = {
-      eventId: `migration:${next.id}:v21-geography-fix6-2026-09-11:revision:${current.revision}`,
+      eventId: `migration:${next.id}:v21-demography-monster-roads-fix7-2026-09-13:revision:${current.revision}`,
       worldId: next.id,
       kind: 'world.migrated',
       source: 'system',
@@ -4357,6 +4373,7 @@ export class WorldEngine {
       wildlife: {},
       agents,
       relationships: {},
+      centuryHumpback: createCenturyHumpbackState(),
       v15: createWorldV15State(
         options.worldId,
         1,
@@ -4519,6 +4536,7 @@ export class WorldEngine {
         this.state.wildlife = {};
         this.state.agents = agents;
         this.state.relationships = {};
+        this.state.centuryHumpback = createCenturyHumpbackState();
         this.state.v15 = createWorldV15State(
           this.state.id,
           nextEpoch,
@@ -4792,6 +4810,12 @@ export class WorldEngine {
           return urgent || index % cohortSize === cohortSlot;
         }),
       );
+      const deliberatingAgentIds = new Set(agents.map((agent) => agent.id));
+      for (const agent of livingAgents) {
+        if (!deliberatingAgentIds.has(agent.id)) {
+          this.continueOrdinaryLifeBetweenDeliberations(agent, effectiveEnvironment);
+        }
+      }
       this.beginSecretLibraryYearV18(livingAgents, now);
       const residentsStudyingInLibrary = this.advanceSecretLibraryVisitorsV18(now);
       for (const agent of agents) {
@@ -4806,6 +4830,7 @@ export class WorldEngine {
       this.advanceSettlementsV18(now);
       this.advanceVoluntaryResettlement(now);
       this.advanceSapientRaces(now);
+      this.advanceCenturyHumpback(now);
       this.advanceSettlementMaterialProjects(now);
       this.advanceSettlementRelationsAndConflict(now);
       this.advanceBurialAftercare(now);
@@ -7192,6 +7217,31 @@ export class WorldEngine {
     );
   }
 
+  /** Large worlds rotate expensive goal deliberation, but residents do not
+   * stop sleeping or sharing an ordinary household between those decisions.
+   * This advances only bodily/social continuity; it never selects a goal,
+   * partner, journey, fight or child for the resident. */
+  private continueOrdinaryLifeBetweenDeliberations(
+    agent: AgentState,
+    environment: WorldEnvironment,
+  ): void {
+    if (agent.movement || !this.canAccessHomeSettlementStores(agent)) return;
+    agent.energy = clamp01(
+      agent.energy + 0.01 + agent.life.physiology.recovery * 0.006,
+    );
+    agent.needs.belonging = clamp01(
+      agent.needs.belonging + 0.004 + agent.socialDrive * 0.003,
+    );
+    agent.needs.purpose = clamp01(
+      agent.needs.purpose + agent.personality.diligence * 0.0025,
+    );
+    agent.stress = clamp01(
+      agent.stress -
+        environment.safetySupport *
+          (0.0025 + agent.personality.resilience * 0.002),
+    );
+  }
+
   private updateGoal(agent: AgentState, now: number): void {
     const resourceSecurity = this.v15EffectiveResourceSecurity(agent);
     const scores: Array<{ kind: AgentGoalKind; strength: number }> = [
@@ -7893,9 +7943,14 @@ export class WorldEngine {
       dire_wolf: 0.24,
       ogre: 0.3,
       wraith: 0.04,
+      century_humpback: 0,
     };
     for (const population of Object.values(this.state.wildlife)) {
-      if (population.count <= 0 || !this.state.places[population.habitatId]) {
+      if (
+        population.species === CENTURY_HUMPBACK_SPECIES ||
+        population.count <= 0 ||
+        !this.state.places[population.habitatId]
+      ) {
         continue;
       }
       const route = this.pathBetween(locationId, population.habitatId);
@@ -8369,6 +8424,7 @@ export class WorldEngine {
       dire_wolf: 0.24,
       ogre: 0.3,
       wraith: 0.04,
+      century_humpback: 0,
     };
 
     const populations: Array<{
@@ -8379,7 +8435,11 @@ export class WorldEngine {
       | { population: WildlifePopulation; score: number }
       | undefined;
     for (const population of Object.values(this.state.wildlife)) {
-      if (population.count <= 0 || !this.state.places[population.habitatId]) {
+      if (
+        population.species === CENTURY_HUMPBACK_SPECIES ||
+        population.count <= 0 ||
+        !this.state.places[population.habitatId]
+      ) {
         continue;
       }
       const route = this.pathBetween(agent.locationId, population.habitatId);
@@ -8454,6 +8514,7 @@ export class WorldEngine {
       dire_wolf: 0.38,
       ogre: 0.2,
       wraith: 0.04,
+      century_humpback: 0,
     };
     const riskDecision = decideHuntingAgencyV15(
       {
@@ -8599,6 +8660,7 @@ export class WorldEngine {
       dire_wolf: 0.24,
       ogre: 0.3,
       wraith: 0.04,
+      century_humpback: 0,
     };
     const successChance = clamp01(
       0.13 +
@@ -10621,9 +10683,9 @@ export class WorldEngine {
     const founderFemaleCount = founders.filter((founder) => founder.sex === 'female').length;
     if (
       !anchor ||
-      founders.length < 6 ||
-      founderMaleCount < 2 ||
-      founderFemaleCount < 2
+      founders.length < 10 ||
+      founderMaleCount < 4 ||
+      founderFemaleCount < 4
     ) {
       this.returnFrontierExpeditionV18(expedition, now, 'site_or_members_lost');
       return;
@@ -10816,7 +10878,7 @@ export class WorldEngine {
       const members = this.expeditionMembersV18(active);
       const origin = this.state.settlements[active.originSettlementId];
       const target = this.state.places[active.targetPlaceId];
-      if (members.length < 6 || !origin || !target) {
+      if (members.length < 10 || !origin || !target) {
         active.stage = 'failed';
         active.lastChangedWorldMinute = worldMinutes;
         this.stageEvent({
@@ -10898,9 +10960,9 @@ export class WorldEngine {
         (founder) => founder.sex === 'female',
       ).length;
       if (
-        founders.length < 6 ||
-        founderMaleCount < 2 ||
-        founderFemaleCount < 2
+        founders.length < 10 ||
+        founderMaleCount < 4 ||
+        founderFemaleCount < 4
       ) {
         this.returnFrontierExpeditionV18(active, now, 'members_chose_not_to_settle');
         return;
@@ -11001,9 +11063,9 @@ export class WorldEngine {
         ({ agent }) => agent.sex === 'female',
       );
       if (
-        descendantVolunteers.length < 8 ||
-        maleVolunteers.length < 3 ||
-        femaleVolunteers.length < 3
+        descendantVolunteers.length < 10 ||
+        maleVolunteers.length < 4 ||
+        femaleVolunteers.length < 4
       ) continue;
       const founderGuides = accepted.filter(
         ({ agent }) => agent.life.generation === 0,
@@ -11430,6 +11492,7 @@ export class WorldEngine {
       dire_wolf: 0.72,
       ogre: 0.86,
       wraith: 0.94,
+      century_humpback: 1,
     };
     const carryingCapacity =
       4 + Math.floor(fertilityByBiome[biome] * 8 + this.rng.next() * 4);
@@ -11503,6 +11566,8 @@ export class WorldEngine {
     const recoveryLaw =
       this.lawValue('wildlife_recovery', 1);
     for (const population of Object.values(this.state.wildlife)) {
+      // This singleton is advanced only by its scripted one-egg lifecycle.
+      if (population.species === CENTURY_HUMPBACK_SPECIES) continue;
       const habitat = this.state.places[population.habitatId];
       if (!isHabitatCompatible(population.species, habitat)) {
         population.count = 0;
@@ -11642,7 +11707,12 @@ export class WorldEngine {
     }
 
     const monsters = Object.values(this.state.wildlife)
-      .filter((population) => population.isMonster && population.count > 0)
+      .filter(
+        (population) =>
+          population.isMonster &&
+          population.species !== CENTURY_HUMPBACK_SPECIES &&
+          population.count > 0,
+      )
       .sort((a, b) => a.id.localeCompare(b.id));
 
     for (const monster of monsters) {
@@ -11716,6 +11786,284 @@ export class WorldEngine {
           reason: 'no_reachable_prey',
           worldMinutes: this.state.calendar.elapsedWorldMinutes,
         },
+      });
+    }
+  }
+
+  /**
+   * One scripted parasite, one host and one larva. It is deliberately outside
+   * ordinary wildlife reproduction and never writes courage, obedience or any
+   * other choice into a resident. Fighting is an individual voluntary act.
+   */
+  private advanceCenturyHumpback(now: number): void {
+    const cycle = ensureCenturyHumpbackState(this.state);
+    const worldMinutes = this.state.calendar.elapsedWorldMinutes;
+    const population = cycle.populationId
+      ? this.state.wildlife[cycle.populationId]
+      : undefined;
+    const clearPhysicalMonster = (): void => {
+      if (population) {
+        population.count = 0;
+        population.lastChangedAt = now;
+      }
+    };
+    const nearbyResidents = (): AgentState[] => {
+      if (!cycle.nearbyRace) return [];
+      const settlementId = `settlement_${cycle.nearbyRace}_homeland`;
+      return Object.values(this.state.agents)
+        .filter(
+          (agent) =>
+            agent.life.alive &&
+            (agent.race ?? 'human') === cycle.nearbyRace &&
+            this.homeSettlementId(agent) === settlementId,
+        )
+        .sort((left, right) => left.id.localeCompare(right.id));
+    };
+
+    if (cycle.phase === 'dormant') {
+      if (worldMinutes < cycle.nextEmergenceWorldMinute) return;
+      const possibleRaces = (['dwarf', 'goblin', 'orc', 'ogre'] as const).filter(
+        (race) => this.state.places[`settlement_${race}_homeland`] !== undefined,
+      );
+      if (possibleRaces.length === 0) return;
+      cycle.cycle += 1;
+      const nearbyRace = possibleRaces[(cycle.cycle - 1) % possibleRaces.length];
+      const settlementId = `settlement_${nearbyRace}_homeland`;
+      const settlement = this.state.places[settlementId];
+      const angle = cycle.cycle * 2.399963229728653;
+      const habitatId = `century_humpback_lair_${cycle.cycle}`;
+      const populationId = `century_humpback_${cycle.cycle}`;
+      this.state.places[habitatId] = createPlace(
+        habitatId,
+        cycle.cycle % 2 === 0
+          ? 'Пустошь Столетнего горбатника'
+          : 'Пещера Столетнего горбатника',
+        cycle.cycle % 2 === 0 ? 'ruins' : 'mountains',
+        2,
+        {
+          biome: cycle.cycle % 2 === 0 ? 'ancient_ruins' : 'mountains',
+          mapX: settlement.mapX + Math.cos(angle) * 80,
+          mapY: settlement.mapY + Math.sin(angle) * 80,
+          connectedPlaceIds: [settlementId],
+          fertility: 0.02,
+          danger: 1,
+          surface: 'land',
+          discoveredAt: now,
+        },
+      );
+      makeConnectionsReciprocal(this.state.places);
+      this.state.wildlife[populationId] = {
+        id: populationId,
+        species: CENTURY_HUMPBACK_SPECIES,
+        habitatId,
+        count: 1,
+        carryingCapacity: 1,
+        reproductionRate: 0,
+        alertness: 1,
+        threat: 1,
+        isMonster: true,
+        lastChangedAt: now,
+      };
+      cycle.phase = 'adult';
+      cycle.phaseStartedWorldMinute = worldMinutes;
+      cycle.phaseEndsWorldMinute = undefined;
+      cycle.habitatId = habitatId;
+      cycle.populationId = populationId;
+      cycle.hostAgentId = undefined;
+      cycle.nearbyRace = nearbyRace;
+      this.rebuildSpatialProjection();
+      this.stageEvent({
+        eventId: this.nextId('century-humpback-emerged'),
+        worldId: this.state.id,
+        kind: 'world.monster.century_humpback.emerged',
+        source: 'world',
+        occurredAt: now,
+        payload: {
+          cycle: cycle.cycle,
+          habitatId,
+          nearbyRace,
+          singleton: true,
+          reproductionRate: 0,
+          adultStrengthRequired: CENTURY_HUMPBACK_STRENGTH_THRESHOLD,
+          humanKnowledge: 'countermeasures',
+          elfKnowledge: 'countermeasures',
+          otherRaceKnowledge: 'danger_warning_only',
+          worldMinutes,
+        },
+      });
+      return;
+    }
+
+    if (cycle.phase === 'adult') {
+      if (cycle.phaseStartedWorldMinute === worldMinutes) return;
+      const capable = nearbyResidents().filter(
+        (agent) =>
+          canDefeatAdultCenturyHumpback(agent.life.physiology.strength) &&
+          agent.life.health >= 0.55 &&
+          agent.life.stage === 'adult',
+      );
+      const volunteers = capable.filter((agent) => {
+        const willingness = clamp01(
+          0.04 +
+            agent.personality.riskTolerance * 0.3 +
+            agent.mind.values.care * 0.2 +
+            (agent.progression?.combatMastery ?? 0) * 0.24 -
+            agent.stress * 0.16,
+        );
+        return this.rng.next() < willingness;
+      });
+      if (volunteers.length > 0) {
+        const defender = volunteers.sort(
+          (left, right) =>
+            right.life.physiology.strength - left.life.physiology.strength ||
+            left.id.localeCompare(right.id),
+        )[0];
+        clearPhysicalMonster();
+        cycle.phase = 'dormant';
+        cycle.nextEmergenceWorldMinute = worldMinutes + CENTURY_HUMPBACK_INTERVAL;
+        cycle.lastOutcome = 'adult_defeated';
+        cycle.hostAgentId = undefined;
+        this.stageEvent({
+          eventId: this.nextId('century-humpback-defeated'),
+          worldId: this.state.id,
+          kind: 'world.monster.century_humpback.defeated',
+          source: 'agent',
+          occurredAt: now,
+          payload: {
+            agentId: defender.id,
+            strength: defender.life.physiology.strength,
+            requiredStrength: CENTURY_HUMPBACK_STRENGTH_THRESHOLD,
+            voluntary: true,
+            forcedByEngine: false,
+            nextCycleYears: 100,
+            worldMinutes,
+          },
+        });
+        return;
+      }
+
+      const hosts = nearbyResidents().filter(
+        (agent) => agent.life.stage !== 'child' && agent.life.health >= 0.35,
+      );
+      if (hosts.length === 0) return;
+      const host = hosts[Math.floor(this.rng.next() * hosts.length)];
+      clearPhysicalMonster();
+      cycle.phase = 'incubating';
+      cycle.phaseStartedWorldMinute = worldMinutes;
+      cycle.phaseEndsWorldMinute = worldMinutes + CENTURY_HUMPBACK_INCUBATION;
+      cycle.hostAgentId = host.id;
+      this.stageEvent({
+        eventId: this.nextId('century-humpback-infected'),
+        worldId: this.state.id,
+        kind: 'world.monster.century_humpback.infected_host',
+        source: 'world',
+        occurredAt: now,
+        payload: {
+          hostAgentId: host.id,
+          hostRace: host.race ?? 'human',
+          oneEgg: true,
+          hostBehaviorSuppressed: false,
+          worldMinutes,
+        },
+      });
+      return;
+    }
+
+    if (cycle.phase === 'incubating') {
+      if (worldMinutes < (cycle.phaseEndsWorldMinute ?? Infinity)) return;
+      const host = cycle.hostAgentId
+        ? this.state.agents[cycle.hostAgentId]
+        : undefined;
+      if (host?.life.alive) {
+        this.recordDeath(host, 'monster', now, {
+          species: CENTURY_HUMPBACK_SPECIES,
+          isMonster: true,
+          habitatId: cycle.habitatId,
+          populationCount: 1,
+          carryingCapacity: 1,
+          threat: 1,
+          damage: 1,
+          lethalChance: 1,
+          encounterReason: 'territorial_defense',
+        });
+      }
+      const larva = cycle.populationId
+        ? this.state.wildlife[cycle.populationId]
+        : undefined;
+      if (larva) {
+        larva.count = 1;
+        larva.lastChangedAt = now;
+      }
+      cycle.phase = 'larva_crawling';
+      cycle.phaseStartedWorldMinute = worldMinutes;
+      cycle.phaseEndsWorldMinute = worldMinutes + CENTURY_HUMPBACK_CRAWL;
+      cycle.lastOutcome = 'host_killed';
+      this.stageEvent({
+        eventId: this.nextId('century-humpback-larva'),
+        worldId: this.state.id,
+        kind: 'world.monster.century_humpback.larva_emerged',
+        source: 'world',
+        occurredAt: now,
+        payload: {
+          hostAgentId: cycle.hostAgentId ?? 'unknown',
+          habitatId: cycle.habitatId ?? 'unknown',
+          larvaCount: 1,
+          crawlingToLair: true,
+          worldMinutes,
+        },
+      });
+      return;
+    }
+
+    if (cycle.phase === 'larva_crawling') {
+      if (cycle.phaseStartedWorldMinute === worldMinutes) return;
+      const volunteers = nearbyResidents().filter((agent) => {
+        if (agent.life.stage === 'child' || agent.life.health < 0.4) return false;
+        const willingness = clamp01(
+          0.08 +
+            agent.personality.riskTolerance * 0.24 +
+            agent.mind.values.care * 0.18 +
+            agent.skills.hunting * 0.2 -
+            agent.stress * 0.12,
+        );
+        return this.rng.next() < willingness;
+      });
+      if (volunteers.length > 0) {
+        const defender = volunteers[0];
+        clearPhysicalMonster();
+        cycle.phase = 'dormant';
+        cycle.nextEmergenceWorldMinute =
+          worldMinutes + CENTURY_HUMPBACK_LARVA_KILLED_INTERVAL;
+        cycle.lastOutcome = 'larva_killed';
+        this.stageEvent({
+          eventId: this.nextId('century-humpback-larva-killed'),
+          worldId: this.state.id,
+          kind: 'world.monster.century_humpback.larva_killed',
+          source: 'agent',
+          occurredAt: now,
+          payload: {
+            agentId: defender.id,
+            voluntary: true,
+            forcedByEngine: false,
+            larvaCount: 1,
+            nextCycleYears: 200,
+            worldMinutes,
+          },
+        });
+        return;
+      }
+      if (worldMinutes < (cycle.phaseEndsWorldMinute ?? Infinity)) return;
+      clearPhysicalMonster();
+      cycle.phase = 'dormant';
+      cycle.nextEmergenceWorldMinute = worldMinutes + CENTURY_HUMPBACK_INTERVAL;
+      cycle.lastOutcome = 'larva_reached_lair';
+      this.stageEvent({
+        eventId: this.nextId('century-humpback-lair'),
+        worldId: this.state.id,
+        kind: 'world.monster.century_humpback.reached_lair',
+        source: 'world',
+        occurredAt: now,
+        payload: { nextCycleYears: 100, worldMinutes },
       });
     }
   }
@@ -12108,7 +12456,10 @@ export class WorldEngine {
             conflict: relationship.conflict,
             attachment,
           },
-          householdResourceSecurity: Math.min(a.resources, b.resources),
+          householdResourceSecurity: Math.min(
+            this.v15EffectiveResourceSecurity(a),
+            this.v15EffectiveResourceSecurity(b),
+          ),
           physicalEligibility: {
             minimumAdultAge: raceProfile.adultAtAge,
             maximumReproductiveAge: raceProfile.maximumReproductiveAge,
@@ -12842,6 +13193,7 @@ export class WorldEngine {
     const monster = Object.values(this.state.wildlife)
       .filter(
         (population) =>
+          population.species !== CENTURY_HUMPBACK_SPECIES &&
           (population.isMonster || population.threat >= 0.28) &&
           population.count > 0 &&
           population.habitatId === agent.locationId,

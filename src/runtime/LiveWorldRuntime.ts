@@ -51,6 +51,7 @@ import {
 } from '../sensors/WorldSensors';
 import { InMemoryWorldStore } from '../world/InMemoryWorldStore';
 import { WorldEngine } from '../world/WorldEngine';
+import { demographyByRace } from '../world/DemographyByRace';
 import type { WorldEvent } from '../world/events';
 import type { WorldStore } from '../world/persistence';
 import type {
@@ -307,6 +308,7 @@ function buildWorldHealthForConsole(
 ): WorldHealthReportV15 {
   const worldMinutes = world.calendar.elapsedWorldMinutes;
   const worldEpoch = world.epoch ?? 1;
+  const humanDemography = demographyByRace(world).human;
   const livingHumans = Object.values(world.agents).filter(
     (agent) => agent.life.alive && (agent.race ?? 'human') === 'human',
   );
@@ -422,8 +424,8 @@ function buildWorldHealthForConsole(
     worldMinutes,
     population: {
       livingHumans: livingHumans.length,
-      births: world.population.births,
-      deaths: world.population.deaths,
+      births: humanDemography.births,
+      deaths: humanDemography.deaths,
       secondGenerationLiving: livingHumans.filter(
         (agent) => agent.life.generation >= 2,
       ).length,
@@ -695,17 +697,22 @@ export class LiveWorldRuntime {
     living: number;
     births: number;
     deaths: number;
+    sapientBirths: number;
+    sapientDeaths: number;
     relationships: number;
     places: number;
     settlements: number;
     revision: number;
   } {
     const world = this.world.runtimeStateView();
+    const humans = demographyByRace(world).human;
     return {
       elapsedWorldMinutes: world.calendar.elapsedWorldMinutes,
       living: Object.values(world.agents).filter((agent) => agent.life.alive).length,
-      births: world.population.births,
-      deaths: world.population.deaths,
+      births: humans.births,
+      deaths: humans.deaths,
+      sapientBirths: world.population.births,
+      sapientDeaths: world.population.deaths,
       relationships: Object.keys(world.relationships).length,
       places: Object.keys(world.places).length,
       settlements: Object.keys(world.settlements).length,

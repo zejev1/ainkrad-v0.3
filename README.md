@@ -1,4 +1,4 @@
-# Ainkrad 0.3.21-hotfix.6
+# Ainkrad 0.3.21-hotfix.7
 
 FIX6 corrects interrupted touch dragging and moves the composed map during gestures, with bounded progressive terrain tiles. The same physical coastline, drainage network and terrain costs now connect the world between settlements; roads and water use the same geometry for movement and display.
 

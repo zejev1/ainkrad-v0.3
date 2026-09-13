@@ -134,7 +134,7 @@ export function rebuildWorldRoutes(
       const explicit = existing[id];
       const traversal = explicit?.traversal ?? traversalBetween(place, connected);
       if (!traversal) continue;
-      if(explicit?.geometryVersion===1 && explicit.terrainKey===terrainKey && explicit.waypoints.length>1) {
+      if(explicit?.geometryVersion===2 && explicit.terrainKey===terrainKey && explicit.waypoints.length>1) {
         const first=explicit.waypoints[0],last=explicit.waypoints.at(-1)!;
         const direct=explicit.fromPlaceId===place.id;
         const a=direct?place:connected,b=direct?connected:place;
@@ -146,7 +146,7 @@ export function rebuildWorldRoutes(
       }
       const route = buildRoute(place, connected, traversal, places);
       route.completedTraversals = explicit?.completedTraversals ?? 0;
-      route.geometryVersion=1;route.widthMetres=traversal==='walk'?3:4;
+      route.geometryVersion=2;route.widthMetres=traversal==='walk'?3:4;
       if(terrainKey)route.terrainKey=terrainKey;
       if (traversal === 'walk') {
         let path:WorldPoint2D[]|undefined=route.waypoints;

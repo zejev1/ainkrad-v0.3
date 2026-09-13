@@ -110,6 +110,7 @@ const wildlifeLabels: Readonly<Record<WildlifePopulation['species'], string>> = 
   dire_wolf: 'Лютоволки',
   ogre: 'Дикие огры',
   wraith: 'Тени',
+  century_humpback: 'Столетний горбатник',
 };
 
 const biomeLabels: Readonly<Record<WorldPlace['biome'], string>> = {

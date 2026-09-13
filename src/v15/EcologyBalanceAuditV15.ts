@@ -14,10 +14,11 @@ export type WildlifeSpeciesV15 =
   | 'bird'
   | 'dire_wolf'
   | 'ogre'
-  | 'wraith';
+  | 'wraith'
+  | 'century_humpback';
 
 export const MONSTER_SPECIES_V15: ReadonlySet<WildlifeSpeciesV15> =
-  new Set(['dire_wolf', 'ogre', 'wraith']);
+  new Set(['dire_wolf', 'ogre', 'wraith', 'century_humpback']);
 
 export const RECOVERED_SPECIES_THREAT_V15: Readonly<
   Record<WildlifeSpeciesV15, number>
@@ -31,6 +32,7 @@ export const RECOVERED_SPECIES_THREAT_V15: Readonly<
   dire_wolf: 0.72,
   ogre: 0.86,
   wraith: 0.94,
+  century_humpback: 1,
 };
 
 export interface WildlifePopulationAuditV15 {

@@ -13,6 +13,7 @@ import type {
   WorldLawState,
   WorldState,
 } from '../world/types';
+import { demographyByRace } from '../world/DemographyByRace';
 import type { CardinalExperienceState } from './types';
 import {
   CANONICAL_WORLD_QUANTUM_MINUTES,
@@ -109,6 +110,7 @@ export interface WorldArchitectureObservation {
 export function observeWorldArchitecture(
   world: Readonly<WorldState>,
 ): WorldArchitectureObservation {
+  const humanDemography = demographyByRace(world).human;
   return structuredClone({
     worldId: world.id,
     worldRevision: world.revision,
@@ -157,14 +159,14 @@ export function observeWorldArchitecture(
         .filter((value) => Number.isFinite(value));
       return born.length === 0 ? {} : { lastHumanBirthAt: Math.max(...born) };
     })(),
-    ...(world.population.lastBirthWorldMinute === undefined
+    ...(humanDemography.lastBirthWorldMinute === undefined
       ? {}
       : {
           lastHumanBirthWorldMinutes:
-            world.population.lastBirthWorldMinute,
+            humanDemography.lastBirthWorldMinute,
         }),
-    totalBirths: world.population.births,
-    totalDeaths: world.population.deaths,
+    totalBirths: humanDemography.births,
+    totalDeaths: humanDemography.deaths,
     ...(world.population.lastBirthAt === undefined
       ? {}
       : { lastBirthAt: world.population.lastBirthAt }),

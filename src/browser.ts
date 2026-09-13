@@ -231,6 +231,7 @@ const wildlifeLabels: Record<WildlifeSpecies, string> = {
   dire_wolf: 'Лютоволки',
   ogre: 'Огры',
   wraith: 'Тени',
+  century_humpback: 'Столетний горбатник',
 };
 
 const wildlifeIcons: Record<WildlifeSpecies, string> = {
@@ -243,6 +244,7 @@ const wildlifeIcons: Record<WildlifeSpecies, string> = {
   dire_wolf: '🐺',
   ogre: '👹',
   wraith: '👻',
+  century_humpback: '🪰',
 };
 
 const emotionLabels: Record<keyof AgentState['mind']['emotions'], string> = {
@@ -343,7 +345,7 @@ app.innerHTML = `
   <div class="ainkrad-app">
     <header class="world-header">
       <div>
-        <p class="eyebrow">v0.3.21.6</p>
+        <p class="eyebrow">v0.3.21.7</p>
         <h1 id="world-title">Мир · уровень 1</h1>
       </div>
 
@@ -1599,6 +1601,7 @@ function renderWildlife(world: Readonly<WorldState>): void {
       dire_wolf: { x: -7, y: 6 },
       ogre: { x: 7, y: -6 },
       wraith: { x: -6, y: -6 },
+      century_humpback: { x: 0, y: -9 },
     };
     const offset = offsets[population.species];
     let element = wildlifeElements.get(populationId);

@@ -359,7 +359,7 @@ export interface WorldPlace {
 
 export interface WorldRouteState {
   terrainKey?: string;
-  geometryVersion?: 1;
+  geometryVersion?: 1 | 2;
   widthMetres?: number;
   completedTraversals?: number;
   id: string;
@@ -394,7 +394,8 @@ export type WildlifeSpecies =
   | 'bird'
   | 'dire_wolf'
   | 'ogre'
-  | 'wraith';
+  | 'wraith'
+  | 'century_humpback';
 
 export interface WildlifePopulation {
   id: string;
@@ -409,6 +410,32 @@ export interface WildlifePopulation {
   lastChangedAt: number;
   /** Last semantic world tick on which this population consumed real prey. */
   lastFedAt?: number;
+}
+
+export type CenturyHumpbackPhase =
+  | 'dormant'
+  | 'adult'
+  | 'incubating'
+  | 'larva_crawling';
+
+export interface CenturyHumpbackState {
+  version: 1;
+  phase: CenturyHumpbackPhase;
+  cycle: number;
+  nextEmergenceWorldMinute: number;
+  phaseStartedWorldMinute?: number;
+  phaseEndsWorldMinute?: number;
+  habitatId?: string;
+  populationId?: string;
+  hostAgentId?: string;
+  nearbyRace?: Exclude<AgentRace, 'human' | 'elf'>;
+  lastOutcome?:
+    | 'adult_defeated'
+    | 'host_killed'
+    | 'larva_killed'
+    | 'larva_reached_lair';
+  /** Cultural information only; never a write into a resident's mind. */
+  knowledgeByRace: Record<AgentRace, 'countermeasures' | 'warning'>;
 }
 
 export interface WorldCalendarState {
@@ -863,6 +890,8 @@ export interface WorldState {
   routes: Record<string, WorldRouteState>;
   settlements: Record<string, WorldSettlementState>;
   wildlife: Record<string, WildlifePopulation>;
+  /** One physical century parasite cycle, lazily added to older saves. */
+  centuryHumpback?: CenturyHumpbackState;
   agents: Record<string, AgentState>;
   relationships: Record<string, RelationshipState>;
 
