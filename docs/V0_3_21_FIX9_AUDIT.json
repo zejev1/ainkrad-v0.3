@@ -1,0 +1,113 @@
+{
+  "release": "0.3.21-hotfix.9",
+  "status": "passed",
+  "base_commit": "9f52d6281607adf3dfe44c6b8649a014351cc8f6",
+  "environment": {
+    "node": "v24.19.0",
+    "physical_android_or_xbox": false,
+    "browser_executor_available": false
+  },
+  "gates": {
+    "full_regression_before_seeded_foundation": {
+      "files_passed": 66,
+      "tests_passed": 300,
+      "failed": 0
+    },
+    "final_affected_scenarios": {
+      "passed": 37,
+      "failed": 0,
+      "coverage": [
+        "seeded founding layout",
+        "new epoch and founding ocean",
+        "settlement and continental geometry",
+        "sapient homeland placement",
+        "family agency",
+        "resident social navigation"
+      ]
+    },
+    "typecheck": "passed",
+    "production_build": "passed",
+    "diff_check": "passed"
+  },
+  "acceleration": {
+    "maximum_presentation_rendering": "suspended",
+    "offline_map_rendering": "already_suspended",
+    "durable_batch_quanta": {
+      "initial": 24,
+      "successful_growth": [60, 120],
+      "storage_failure": "halves and restores last committed state"
+    },
+    "measured_same_world": {
+      "world_years": 20,
+      "batch_16_seconds": 11.6066,
+      "batch_120_seconds": 8.9322,
+      "improvement_percent": 23.0,
+      "world_history_equal_except_revision": true
+    },
+    "device_speed_guarantee": false
+  },
+  "demography_and_agency": {
+    "human_counts_exclude_other_races": true,
+    "minimum_human_reproductive_age": 13,
+    "development_between_13_and_18": "continuous_probability_modifier",
+    "close_kin_engine_ban_before_year_200": false,
+    "close_kin_engine_ban_from_year_200": true,
+    "resident_choice_forced": false,
+    "inherited_health_risk_possible": true,
+    "known_commons_can_enable_voluntary_social_travel": true
+  },
+  "human_construction": {
+    "status": "passed",
+    "checks": [
+      "housing pressure follows living population and completed-home capacity",
+      "known local wood can be gathered from zero settlement stock",
+      "timber-wattle-thatch housing does not require stone",
+      "an unfinished physical site persists across engine reopen",
+      "completion requires accumulated person-days and is not instantaneous",
+      "adult relocation and construction help remain voluntary",
+      "dependent children move only with their parent",
+      "construction practice increases knowledge without replacing prior learning",
+      "identityId, origin and personality remain unchanged",
+      "construction site and progress are inspectable on the atlas"
+    ]
+  },
+  "seeded_geography": {
+    "new_world_position_varies": true,
+    "new_world_layout_varies": true,
+    "remote_homeland_transform_varies": true,
+    "same_seed_reproducible": true,
+    "reload_reshuffles_saved_world": false
+  },
+  "mind_body_portability": {
+    "status": "design_only_not_enabled",
+    "document": "docs/MIND_BODY_PORTABILITY_DESIGN.md",
+    "reason": "A separate verified transactional migration is required before changing persisted personhood."
+  },
+  "protected": {
+    "user_main_used_as_base": true,
+    "no_commit_by_assistant": true,
+    "no_push_by_assistant": true,
+    "no_deployment": true,
+    "cardinal_has_no_resident_mind_or_action_writer": true
+  },
+  "limitations": [
+    "No physical Android or Xbox run",
+    "The owner's exact IndexedDB save was not supplied",
+    "Other peoples retain their prior housing routine",
+    "No claim that browser hardware can achieve the fictional Underworld acceleration rate"
+  ],
+  "source_sha256": {
+    "src/v21/HumanConstructionV21.ts": "c4cf0185f0116791f4fb5dc56f2ad3b843ba9cb30a7b8a652c864e2b933850c9",
+    "src/world/WorldEngine.ts": "c1199906bf68b4093cd4379b12ae10fb2e3c1dc92e3b0b8e97a2ba1822c9f367",
+    "src/world/types.ts": "3240346c43629fa48e2f12dbf9de3dfed4bfd9f1bc25185fee905c7e6057d628",
+    "src/runtime/LiveAccelerationBudget.ts": "38cdf9c8d47e5accb2459505cf03d994494394705e6de62fbfbd8a5722c91de8",
+    "src/runtime/liveWorld.worker.ts": "e7b50e4d8887496a2227da38bac1fbbfbbcebd5d3c5a14d2413d34693393a6a8",
+    "src/v15/FamilyAgency.ts": "c2792fc546425da26b83b74223c958d635c2f6271be6cd268c4567d1c005397f",
+    "src/v16/SocietyFoundationV16.ts": "704b9ce34ea11559e74ee1c9aeed28e03732935ab7971011eb6fec024f0fb94d",
+    "src/world/ResidentNavigationKnowledge.ts": "92048dcf7dca3c06ab9e6c8d871a2e3130a47fb94f240bc0d8606463fe54add5",
+    "src/world/geography/WorldTerrain.ts": "8d176391226e50934bc4ee3e7c59330a12980c2cd9bdb349fece109826e0ec7f",
+    "tests/v0_3_21_randomFoundingWorld.test.ts": "f94c7dc4731be5a9231610da37b2739c73579c31c543af602cc9469d7309a316",
+    "docs/MIND_BODY_PORTABILITY_DESIGN.md": "ab3cfd60e4b4e7e04d3caeb553c81eb7d1ce4669b16c9454a0e6552c075c4de5",
+    "docs/V0_3_21_FIX9_REVIEW.md": "785df146982a0a257b3d79853cb584d841fb9c60689c7d7997709732f841aaee"
+  }
+}

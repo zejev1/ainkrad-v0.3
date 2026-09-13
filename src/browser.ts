@@ -41,6 +41,7 @@ import {
   ageParts,
   DEFAULT_WORLD_SPEED_ID,
   DEFAULT_WORLD_SPEED_MULTIPLIER,
+  isMaximumAccelerationSpeed,
   isWorldSpeedId,
   isWorldSpeedMultiplier,
   WORLD_MINUTES_PER_YEAR,
@@ -204,6 +205,15 @@ const raceLabels: Record<NonNullable<AgentState['race']>, string> = {
   ogre: 'огр',
 };
 
+const raceGroupLabels: Record<NonNullable<AgentState['race']>, string> = {
+  human: 'Люди',
+  elf: 'Эльфы',
+  dwarf: 'Гномы',
+  goblin: 'Гоблины',
+  orc: 'Орки',
+  ogre: 'Огры',
+};
+
 interface MapPoint {
   x: number;
   y: number;
@@ -346,7 +356,7 @@ app.innerHTML = `
   <div class="ainkrad-app">
     <header class="world-header">
       <div>
-        <p class="eyebrow">v0.3.21.8</p>
+        <p class="eyebrow">v0.3.21.9</p>
         <h1 id="world-title">Мир · уровень 1</h1>
       </div>
 
@@ -386,6 +396,11 @@ app.innerHTML = `
       </label>
       <small id="live-clock-throughput" aria-live="polite">Измеряем скорость мира…</small>
       <small id="offline-clock-status">Загрузка времени мира…</small>
+    </section>
+
+    <section class="maximum-acceleration-mode" id="maximum-acceleration-mode" hidden>
+      <strong>Максимальное ускорение</strong>
+      <p>Карта и подробные панели остановлены. Жители продолжают проживать все шаги мира; управление скоростью остаётся доступно выше.</p>
     </section>
 
     <section class="catch-up-overlay" id="catch-up-overlay" aria-live="assertive" hidden>
@@ -460,6 +475,7 @@ app.innerHTML = `
 
           <label class="resident-picker-label" for="resident-picker">
             <span>Найти конкретного жителя</span>
+            <input id="resident-search" type="search" placeholder="Имя жителя" autocomplete="off" />
             <select id="resident-picker" aria-label="Выбрать жителя"></select>
           </label>
 
@@ -738,6 +754,10 @@ const clockRateValue = requiredElement<HTMLElement>('clock-rate-value');
 const offlineClockStatus = requiredElement<HTMLElement>('offline-clock-status');
 const liveClockThroughput = requiredElement<HTMLElement>('live-clock-throughput');
 const catchUpOverlay = requiredElement<HTMLElement>('catch-up-overlay');
+const maximumAccelerationMode = requiredElement<HTMLElement>('maximum-acceleration-mode');
+const resolvedAppShell = app.querySelector<HTMLElement>('.ainkrad-app');
+if (!resolvedAppShell) throw new Error('Ainkrad application shell was not created.');
+const appShell: HTMLElement = resolvedAppShell;
 const catchUpTitle = requiredElement<HTMLElement>('catch-up-title');
 const catchUpPercent = requiredElement<HTMLElement>('catch-up-percent');
 const catchUpBar = requiredElement<HTMLElement>('catch-up-bar');
@@ -754,6 +774,7 @@ const liveLabel = requiredElement<HTMLElement>('live-label');
 const disturbanceBanner = requiredElement<HTMLElement>('disturbance-banner');
 const residentPortrait = requiredElement<HTMLElement>('resident-portrait');
 const residentPicker = requiredElement<HTMLSelectElement>('resident-picker');
+const residentSearch = requiredElement<HTMLInputElement>('resident-search');
 const residentName = requiredElement<HTMLElement>('resident-name');
 const residentActivity = requiredElement<HTMLElement>('resident-activity');
 const residentPlace = requiredElement<HTMLElement>('resident-place');
@@ -841,7 +862,11 @@ const settlementElements = new Map<string, HTMLElement>();
 
 let selectedAgentId: string | undefined;
 let residentPickerSignature = '';
+let residentSearchQuery = '';
 let lastFrame: LiveWorldFrame | undefined;
+let maximumSpeedPresentation = false;
+let catchUpPresentation = false;
+let headlessAccelerationActive = false;
 let continuityAnnounced = false;
 let renderedGrowthStage = -1;
 const mapCamera = new WorldMapCamera();
@@ -889,6 +914,7 @@ try {
 } catch {
   // A blocked localStorage only means the external speed resets on next visit.
 }
+maximumSpeedPresentation = isMaximumAccelerationSpeed(preferredSpeedId);
 
 try {
   pendingOfflineClockAnchor = parseOfflineWorldClockAnchor(
@@ -926,6 +952,14 @@ function applyTextScale(): void {
 }
 
 applyTextScale();
+
+function applyHeadlessAccelerationPresentation(): void {
+  headlessAccelerationActive = maximumSpeedPresentation || catchUpPresentation;
+  appShell.classList.toggle('is-headless-acceleration', headlessAccelerationActive);
+  maximumAccelerationMode.hidden = !maximumSpeedPresentation;
+}
+
+applyHeadlessAccelerationPresentation();
 
 function clockRateLabel(
   speedId: WorldSpeedId,
@@ -1081,6 +1115,7 @@ function pointForPlace(
   if (place && world) {
     const symbolByKind: Partial<Record<WorldPlaceKind, string>> = {
       home: '⌂',
+      construction_site: '▨',
       commons: '◆',
       library: '📖',
       resource_field: '✦',
@@ -1750,25 +1785,43 @@ function syncResidentPicker(
   world: Readonly<WorldState>,
   agents: readonly AgentState[],
 ): void {
-  const sorted = [...agents].sort(
+  const query = residentSearchQuery.trim().toLocaleLowerCase('ru-RU');
+  const sorted = [...agents].filter((agent) =>
+    !query || agent.name.toLocaleLowerCase('ru-RU').includes(query),
+  ).sort(
     (left, right) => left.name.localeCompare(right.name, 'ru') || left.id.localeCompare(right.id),
   );
   const signature = sorted
     .map((agent) => {
       const livelihood = world.v18?.livelihoodByAgentId[agent.id];
-      return `${agent.id}:${agent.name}:${livelihood?.primary ?? 'undecided'}`;
+      return `${agent.id}:${agent.name}:${agent.race ?? 'human'}:${livelihood?.primary ?? 'undecided'}`;
     })
-    .join('|');
+    .join('|') + `|query:${query}`;
   if (signature !== residentPickerSignature) {
     residentPickerSignature = signature;
-    const options = sorted.map((agent) => {
-      const option = document.createElement('option');
-      option.value = agent.id;
-      const livelihood = world.v18?.livelihoodByAgentId[agent.id];
-      option.textContent = `${agent.name} · ${livelihoodLabels[livelihood?.primary ?? 'undecided']}`;
-      return option;
-    });
-    residentPicker.replaceChildren(...options);
+    const groups: HTMLOptGroupElement[] = [];
+    for (const race of ['human', 'elf', 'dwarf', 'goblin', 'orc', 'ogre'] as const) {
+      const members = sorted.filter((agent) => (agent.race ?? 'human') === race);
+      if (members.length === 0) continue;
+      const group = document.createElement('optgroup');
+      group.label = `${raceGroupLabels[race]} · ${members.length}`;
+      for (const agent of members) {
+        const option = document.createElement('option');
+        option.value = agent.id;
+        const livelihood = world.v18?.livelihoodByAgentId[agent.id];
+        option.textContent = `${agent.name} · ${livelihoodLabels[livelihood?.primary ?? 'undecided']}`;
+        group.append(option);
+      }
+      groups.push(group);
+    }
+    if (groups.length === 0) {
+      const empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = 'Никого не найдено';
+      residentPicker.replaceChildren(empty);
+    } else {
+      residentPicker.replaceChildren(...groups);
+    }
   }
   if (selectedAgentId) residentPicker.value = selectedAgentId;
 }
@@ -2105,6 +2158,8 @@ function eventText(
       return `Жители основали ${String(event.payload.name ?? 'новое поселение')}`;
     case 'agent.resettled':
       return `${name} добровольно переселился в другое поселение`;
+    case 'world.building.home_started':
+      return 'Жители добровольно начали строить новый дом';
     case 'world.building.home_built':
       return 'Жители построили новый дом из местных материалов';
     case 'world.item.tool_crafted':
@@ -2407,6 +2462,29 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
   if(mapInteraction.defer(()=>updateWorld(frame)))return;
   observerChrome.clear();
   lastFrame = frame;
+  if (headlessAccelerationActive) {
+    const worldLevel = frame.world.growth.stage + 1;
+    worldTitle.textContent = `Мир · уровень ${worldLevel}`;
+    updateWorldTime(frame);
+    preferredSpeedId = frame.clock.speedId;
+    preferredSpeedMultiplier = frame.clock.multiplier;
+    showClockControl(frame.clock.speedId, frame.clock.multiplier);
+    const timing = frame.liveTiming;
+    if (timing?.actualWorldMinutesPerRealMinute !== undefined) {
+      const rate = timing.actualWorldMinutesPerRealMinute;
+      const tempo = rate >= WORLD_MINUTES_PER_YEAR
+        ? `${(rate / WORLD_MINUTES_PER_YEAR).toFixed(1)} г.`
+        : rate >= 1_440
+          ? `${(rate / 1_440).toFixed(1)} дн.`
+          : `${rate.toFixed(1)} мин.`;
+      liveClockThroughput.textContent = `Фактически за минуту: ${tempo}` +
+        (timing.capacityLimited ? ' · предел расчёта устройства' : '');
+    }
+    updateOfflineClockContinuity(frame);
+    liveLabel.textContent = 'МИР УСКОРЕН';
+    liveIndicator.classList.add('is-live');
+    return;
+  }
   const agents=Object.values(frame.world.agents).filter(agent=>agent.life.alive);
   syncResidentPicker(frame.world,agents);
   applyMapZoom();
@@ -3094,6 +3172,8 @@ const clockPanel = new WorldClockPanel({
   post: message => liveWorldWorker.postMessage(message),
   onPreference: (speedId, multiplier) => {
     preferredSpeedId = speedId; preferredSpeedMultiplier = multiplier;
+    maximumSpeedPresentation = isMaximumAccelerationSpeed(speedId);
+    applyHeadlessAccelerationPresentation();
     showClockControl(speedId, multiplier);
   },
 });
@@ -3194,6 +3274,14 @@ residentPicker.addEventListener('change', () => {
   updateSelection();
   focusSelectedResident();
 });
+residentSearch.addEventListener('input', () => {
+  residentSearchQuery = residentSearch.value;
+  residentPickerSignature = '';
+  if (lastFrame) {
+    const living = Object.values(lastFrame.world.agents).filter((agent) => agent.life.alive);
+    syncResidentPicker(lastFrame.world, living);
+  }
+});
 textScaleButton.addEventListener('click', () => {
   const currentIndex = TEXT_SCALE_STEPS.indexOf(textScale);
   textScale = TEXT_SCALE_STEPS[(currentIndex + 1) % TEXT_SCALE_STEPS.length];
@@ -3272,16 +3360,26 @@ liveWorldWorker.addEventListener(
       return;
     }
     if (event.data.type === 'catch_up_progress') {
-      if (clockPanel.accepts(event.data.clockRevision ?? 0)) clockPanel.progress(event.data);
+      if (clockPanel.accepts(event.data.clockRevision ?? 0)) {
+        catchUpPresentation = !event.data.completed;
+        applyHeadlessAccelerationPresentation();
+        clockPanel.progress(event.data);
+      }
       return;
     }
     if (event.data.type === 'clock_applied') {
+      if (event.data.discarded) {
+        catchUpPresentation = false;
+        applyHeadlessAccelerationPresentation();
+      }
       clockPanel.acknowledge(event.data);
       return;
     }
     if (event.data.type === 'catch_up_recovery') {
       if (!clockPanel.accepts(event.data.clockRevision ?? 0)) return;
       if (event.data.abandoned) {
+        catchUpPresentation = false;
+        applyHeadlessAccelerationPresentation();
         clockPanel.continuity.targetWorldMinutes = undefined;
         catchUpOverlay.hidden = true;
         offlineClockStatus.textContent =

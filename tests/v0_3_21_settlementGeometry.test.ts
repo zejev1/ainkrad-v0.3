@@ -14,7 +14,7 @@ describe('physical settlement geometry and observer navigation',()=>{
   it('migrates different homelands internally, preserving IDs and long geographical separation',async()=>{
     const w=await fresh(),model=w.places.home_agent_1;
     for(const [i,race] of ['elf','orc','dwarf'].entries()) {
-      const id='settlement_'+race,x=-10000-i*10000,y=50;
+      const id='settlement_'+race,x=w.places.commons.mapX-10000-i*10000,y=w.places.commons.mapY;
       w.places[id]={...w.places.commons,id,name:race,kind:'village',settlementId:id,mapX:x,mapY:y,connectedPlaceIds:[]};
       w.settlements[id]={id,name:race,kind:'village',centerPlaceId:id,centerX:x,centerY:y,radius:17,memberPlaceIds:[],foundedAt:0};
       for(let j=0;j<10;j++) {
@@ -59,11 +59,11 @@ describe('physical settlement geometry and observer navigation',()=>{
     expect(a.movement!.waypoints).toEqual(expected);
     const n=a.movement!.nextWaypointIndex,prev=expected[n-1],next=expected[n];
     expect(Math.abs((a.position.x-prev.x)*(next.y-prev.y)-(a.position.y-prev.y)*(next.x-prev.x))).toBeLessThan(1e-8);
-    expect(Math.hypot(w.places.resource_field.mapX-50,w.places.resource_field.mapY-50)).toBeLessThan(2);
-    expect(Math.hypot(w.places.outskirts.mapX-50,w.places.outskirts.mapY-50)).toBeLessThan(2);
+    expect(Math.hypot(w.places.resource_field.mapX-w.places.commons.mapX,w.places.resource_field.mapY-w.places.commons.mapY)).toBeLessThan(2);
+    expect(Math.hypot(w.places.outskirts.mapX-w.places.commons.mapX,w.places.outskirts.mapY-w.places.commons.mapY)).toBeLessThan(2);
   });
   it('extends curved lanes without crossing buildings, with bounded metre-scale widths',async()=>{
-    const w=await fresh(),center={x:50,y:50};
+    const w=await fresh(),center={x:w.places.commons.mapX,y:w.places.commons.mapY};
     for(let i=0;i<22;i++) {
       const p=nextUrbanHomeLot(w.places,center,'settlement_ainkrad')!;expect(p).toBeDefined();
       const id='future_'+i;w.places[id]={...w.places.home_agent_1,id,mapX:p.x,mapY:p.y,urbanLot:p.lot,urbanLayoutVersion:3,rotation:p.rotation,connectedPlaceIds:['commons']};

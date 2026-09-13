@@ -6,7 +6,7 @@ import {terrainPlotIsDry} from './geography/WorldTerrain';
 // Map unit = 100 metres. Homes are 12 x 10m; ordinary lanes 6m, main street 10m.
 export const STREET_CLEARANCE = 0.015;
 export function buildingRadius(place: Pick<WorldPlace, 'kind'>): number {
-  return place.kind === 'home' ? 0.06 :
+  return place.kind === 'home' || place.kind === 'construction_site' ? 0.06 :
     place.kind === 'workshop' || place.kind === 'library' ? 0.08 : 0;
 }
 

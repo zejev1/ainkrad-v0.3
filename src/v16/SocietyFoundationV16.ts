@@ -40,6 +40,8 @@ export const SAPIENT_RACES_V16 = [
 /** Retained only for old report imports; births are never capped by it. */
 export const TECHNICAL_POPULATION_SAFETY_CEILING_V16 = Number.MAX_SAFE_INTEGER;
 export const FAMILY_HOUSING_TRANSITION_RESERVE_V16 = 6;
+export const HUMAN_MINIMUM_REPRODUCTIVE_AGE_V16 = 13;
+export const FOUNDING_CLOSE_KIN_WINDOW_WORLD_YEARS_V16 = 200;
 
 export interface SapientRaceLifeProfileV16 {
   childUntilAge: number;
@@ -136,6 +138,34 @@ export function lifeStageForRaceV16(
   return 'elder';
 }
 
+/** Puberty and judgment do not arrive on one legal birthday. Under thirteen
+ * is physically excluded; early adolescence remains possible but rare; the
+ * ordinary adult value is reached at eighteen. This multiplier is neither
+ * consent nor a command to form a family. */
+export function reproductiveDevelopmentV16(
+  race: AgentRace,
+  ageYears: number,
+): number {
+  const profile = SAPIENT_RACE_LIFE_PROFILES_V16[race];
+  if (race !== 'human') return ageYears >= profile.adultAtAge ? 1 : 0;
+  if (ageYears < HUMAN_MINIMUM_REPRODUCTIVE_AGE_V16) return 0;
+  return clamp01(
+    0.18 +
+      ((ageYears - HUMAN_MINIMUM_REPRODUCTIVE_AGE_V16) /
+        (profile.adultAtAge - HUMAN_MINIMUM_REPRODUCTIVE_AGE_V16)) *
+        0.82,
+  );
+}
+
+export function foundingCloseKinAllowedV16(
+  race: AgentRace,
+  worldMinutes: number,
+): boolean {
+  return SAPIENT_RACES_V16.includes(race) &&
+    worldMinutes <
+      FOUNDING_CLOSE_KIN_WINDOW_WORLD_YEARS_V16 * WORLD_MINUTES_PER_YEAR;
+}
+
 const ALLOWED_ACTIONS_BY_CAPABILITY_V16 = new Map<
   string,
   ReadonlySet<AgentActionKind>
@@ -159,7 +189,10 @@ export function allowedActionsForAgeV16(
   if (relativeAge >= 0.48) capabilityMask |= 1 << 5;
   if (ageYears >= profile.childUntilAge) capabilityMask |= 1 << 6;
   if (relativeAge >= 0.78) capabilityMask |= 1 << 7;
-  if (ageYears >= profile.adultAtAge) capabilityMask |= 1 << 8;
+  if (
+    ageYears >= profile.adultAtAge ||
+    (race === 'human' && ageYears >= HUMAN_MINIMUM_REPRODUCTIVE_AGE_V16)
+  ) capabilityMask |= 1 << 8;
   const cacheKey = `${race}:${capabilityMask}`;
   const cached = ALLOWED_ACTIONS_BY_CAPABILITY_V16.get(cacheKey);
   if (cached) return cached;

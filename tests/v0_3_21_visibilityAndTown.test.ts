@@ -48,13 +48,14 @@ describe('v0.3.21 FIX1 visible residents and local town buildings', () => {
     expect(after.places.resource_field).toEqual(before.places.resource_field);
     expect(after.places.outskirts).toEqual(before.places.outskirts);
     const repairedLibrary=after.places.secret_library_v18;
-    expect(Math.hypot(repairedLibrary.mapX-50,repairedLibrary.mapY-50)).toBeLessThan(.5);
+    const commons=after.places.commons;
+    expect(Math.hypot(repairedLibrary.mapX-commons.mapX,repairedLibrary.mapY-commons.mapY)).toBeLessThan(.5);
     expect(after.agents.agent_1.position).toEqual({x:repairedLibrary.mapX,y:repairedLibrary.mapY,layerId:'surface'});
     expect(after.v18!.secretLibrary.visitors[0].readingMinutes).toBe(42);
     expect(after.v18!.secretLibrary.visitors[0].wordsRead).toBe(1000);
     expect(after.agents.agent_2.movement?.targetPlaceId).toBe('commons');
-    expect(after.agents.agent_2.movement?.waypoints.at(-1)).toEqual({x:50,y:50});
-    expect(Math.hypot(after.agents.agent_2.position.x-50, after.agents.agent_2.position.y-50)).toBeLessThan(0.3);
+    expect(after.agents.agent_2.movement?.waypoints.at(-1)).toEqual({x:commons.mapX,y:commons.mapY});
+    expect(Math.hypot(after.agents.agent_2.position.x-commons.mapX, after.agents.agent_2.position.y-commons.mapY)).toBeLessThan(0.3);
     expect(after.routes[route.id].completedTraversals).toBe(17);
     const repaired=structuredClone(after);
     for(let i=0;i<3;i++) {
@@ -89,11 +90,12 @@ describe('v0.3.21 FIX1 visible residents and local town buildings', () => {
   it('uses a vacant local plot and keeps library buildings out of water', async () => {
     const world=await fresh();
     const existing=world.places.secret_library_v18;
-    const free=compactLibraryPlot(world.places,{x:50,y:50},'new_library')!;
+    const center={x:world.places.commons.mapX,y:world.places.commons.mapY};
+    const free=compactLibraryPlot(world.places,center,'new_library')!;
     expect(Math.abs(free.x-existing.mapX)>=0.22-1e-7 || Math.abs(free.y-existing.mapY)>=0.22-1e-7).toBe(true);
     world.places.test_water={...world.places.ocean_ainkrad,id:'test_water',boundaryPolygon:[
-      {x:49.8,y:49.6},{x:50.2,y:49.6},{x:50.2,y:49.9},{x:49.8,y:49.9}]};
-    const dry=compactLibraryPlot(world.places,{x:50,y:50},existing.id)!;
-    expect(Math.abs(dry.x-50)>0.28 || dry.y+0.08<=49.6+1e-7).toBe(true);
+      {x:center.x-.2,y:center.y-.4},{x:center.x+.2,y:center.y-.4},{x:center.x+.2,y:center.y-.1},{x:center.x-.2,y:center.y-.1}]};
+    const dry=compactLibraryPlot(world.places,center,existing.id)!;
+    expect(Math.abs(dry.x-center.x)>0.28 || dry.y+0.08<=center.y-.4+1e-7).toBe(true);
   });
 });

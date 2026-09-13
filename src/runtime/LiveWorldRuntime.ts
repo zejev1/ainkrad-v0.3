@@ -95,7 +95,8 @@ const WORLD_TIME_EPSILON = 1e-7;
  * roughly four months of Ainkrad time: large enough for fast restoration,
  * while keeping every durable transaction small enough for a phone.
  */
-export const OFFLINE_CATCH_UP_MAX_BATCH_QUANTA = 24;
+export const OFFLINE_CATCH_UP_DEFAULT_BATCH_QUANTA = 24;
+export const OFFLINE_CATCH_UP_MAX_BATCH_QUANTA = 120;
 // Keep the highly formative first two years at one durable revision per
 // semantic quantum. Mature worlds then batch quiet quanta, which is where
 // decade-scale ×10/×100 runs otherwise become I/O bound.
@@ -1155,7 +1156,7 @@ export class LiveWorldRuntime {
     const maxBatchQuanta =
       requestedMaxBatchQuanta ??
       (this.continuity.durable
-        ? OFFLINE_CATCH_UP_MAX_BATCH_QUANTA
+        ? OFFLINE_CATCH_UP_DEFAULT_BATCH_QUANTA
         : 300);
     if (!Number.isInteger(maxBatchQuanta) || maxBatchQuanta < 1) {
       throw new Error('Offline catch-up batch limit must be a positive integer.');

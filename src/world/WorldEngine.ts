@@ -2,7 +2,7 @@ import {surveyFrontier,surveySettlementSite} from './geography/FrontierSurvey';
 import {residentChoiceCandidates} from './ResidentChoice';
 import { residentDecisionReflection } from './ResidentDecisionReflection';
 import { residentExplorationTarget } from './ResidentExploration';
-import {bindWorldTerrain,assertTerrainFoundation,terrainWalkingScale} from './geography/WorldTerrain';
+import {bindWorldTerrain,assertTerrainFoundation,homelandCenterForWorld,terrainWalkingScale} from './geography/WorldTerrain';
 import { assertPlaceGeography } from './WorldGeographyValidation';
 import type { WorldTimeExecution } from './WorldTimeExecution';
 import { createFoundingOcean, repairFoundingOcean } from './FoundingOcean';
@@ -14,7 +14,10 @@ import { nextUrbanHomeLot } from './SettlementStreets';
 import { repairCompactSettlementLayout } from './CompactSettlementLayout';
 import { assertResidentLearning, beginLearningAttempt, finishLearningAttempt, learnedActionAdjustment, learnedSiteAdjustment, noteLearningHelp, noteLearningMaterial } from './learning/index';
 import { canResidentAct, stopDeceasedActions, repairDeceasedActions, assertDeceasedBody } from './ResidentBodyBoundary';
-import { knownMeetingPlace } from './ResidentNavigationKnowledge';
+import {
+  knownMeetingPlace,
+  socialOpportunityAvailable,
+} from './ResidentNavigationKnowledge';
 import {
   CENTURY_HUMPBACK_CRAWL,
   CENTURY_HUMPBACK_INCUBATION,
@@ -27,6 +30,13 @@ import {
   ensureCenturyHumpbackState,
 } from './CenturyHumpback';
 import { hasGiftV20, learningFactorV20, canReadLibraryV20, giftLearningSnapshotV20, applyLivedGiftLearningV20 } from '../v20/DivineGiftsV20';
+import {
+  humanConstructionLaborV21,
+  humanConstructionStageV21,
+  humanConstructionVolunteerWillingnessV21,
+  humanHousingInitiativeV21,
+  selectHumanHouseRecipeV21,
+} from '../v21/HumanConstructionV21';
 import { stableJsonStringify } from '../core/stableJson';
 import { SeededRng } from '../utils/rng';
 import {
@@ -102,6 +112,9 @@ import {
   recordResidentContactEvidenceV16,
   recordSettlementPracticeEvidenceV16,
   repairWorldV16AdditiveSchema,
+  foundingCloseKinAllowedV16,
+  HUMAN_MINIMUM_REPRODUCTIVE_AGE_V16,
+  reproductiveDevelopmentV16,
   SAPIENT_RACE_LIFE_PROFILES_V16,
   SAPIENT_RACES_V16,
   WORLD_RULES_VERSION_V16,
@@ -188,6 +201,7 @@ import {
   DEFAULT_WORLD_MINUTES_PER_TICK,
   WORLD_MINUTES_PER_YEAR,
   WORLD_TICKS_PER_YEAR,
+  worldCalendarAtMinutes,
 } from './WorldClock';
 import {
   orientedRouteWaypoints,
@@ -201,6 +215,7 @@ import {
   racePhysiology,
   repairSapientHomelandGeography,
   SAPIENT_PEOPLE_FOUNDATIONS,
+  settlementFoundingRace,
 } from './SapientPeoples';
 import type {
   AgentActionKind,
@@ -353,6 +368,7 @@ const GOAL_KINDS: readonly AgentGoalKind[] = [
 
 const PLACE_KINDS: readonly WorldPlaceKind[] = [
   'home',
+  'construction_site',
   'commons',
   'library',
   'resource_field',
@@ -1677,6 +1693,12 @@ function assertWorldState(value: unknown): asserts value is WorldState {
     ) {
       throw new Error(`Agent ${agentId}.lastAction is invalid.`);
     }
+    if (
+      agent.lastWorkKind !== undefined &&
+      !['ordinary', 'construction'].includes(agent.lastWorkKind as string)
+    ) {
+      throw new Error(`Agent ${agentId}.lastWorkKind is invalid.`);
+    }
 
     if (agent.lastDecision !== undefined) {
       const decision = asRecord(
@@ -2478,6 +2500,108 @@ function assertWorldState(value: unknown): asserts value is WorldState {
           );
         }
       }
+
+      if (economy.activeHumanHomeProject !== undefined) {
+        const project = asRecord(
+          economy.activeHumanHomeProject,
+          `World v16 settlement economy ${settlementId}.activeHumanHomeProject`,
+        );
+        requiredString(project.id, `Human home project ${settlementId}.id`);
+        if (project.settlementId !== settlementId) {
+          throw new Error(`Human home project ${settlementId} has wrong settlement.`);
+        }
+        const homeId = requiredString(
+          project.homeId,
+          `Human home project ${settlementId}.homeId`,
+        );
+        if (
+          !placeKeys.has(homeId) ||
+          asRecord(places[homeId], `Human home project place ${homeId}`).kind !==
+            'construction_site'
+        ) {
+          throw new Error(`Human home project ${settlementId} has no physical site.`);
+        }
+        if (
+          !['timber_wattle_thatch', 'timber_stone_foundation'].includes(
+            project.recipe as string,
+          )
+        ) {
+          throw new Error(`Human home project ${settlementId} has invalid recipe.`);
+        }
+        const initiatorId = requiredString(
+          project.initiatedByAgentId,
+          `Human home project ${settlementId}.initiatedByAgentId`,
+        );
+        if (!agentKeys.has(initiatorId)) {
+          throw new Error(`Human home project ${settlementId} has missing initiator.`);
+        }
+        for (const field of ['intendedResidentIds', 'builderIds'] as const) {
+          if (
+            !Array.isArray(project[field]) ||
+            project[field].some(
+              (agentId) =>
+                typeof agentId !== 'string' || !agentKeys.has(agentId),
+            )
+          ) {
+            throw new Error(`Human home project ${settlementId}.${field} is invalid.`);
+          }
+        }
+        for (const field of ['plotX', 'plotY', 'plotRotation', 'urbanLot'] as const) {
+          finiteNumber(project[field], `Human home project ${settlementId}.${field}`);
+        }
+        for (const field of ['startedWorldMinute', 'lastProgressWorldMinute'] as const) {
+          if (project[field] === undefined) continue;
+          const coordinate = finiteNumber(
+            project[field],
+            `Human home project ${settlementId}.${field}`,
+          );
+          if (coordinate < 0 || coordinate > elapsedWorldMinutes) {
+            throw new Error(`Human home project ${settlementId}.${field} is invalid.`);
+          }
+        }
+        if (
+          ![
+            'site_selection',
+            'materials',
+            'foundation',
+            'frame',
+            'walls',
+            'roof',
+            'finishing',
+          ].includes(project.stage as string)
+        ) {
+          throw new Error(`Human home project ${settlementId} has invalid stage.`);
+        }
+        const laborRequired = finiteNumber(
+          project.laborRequiredPersonDays,
+          `Human home project ${settlementId}.laborRequiredPersonDays`,
+        );
+        const laborCompleted = finiteNumber(
+          project.laborCompletedPersonDays,
+          `Human home project ${settlementId}.laborCompletedPersonDays`,
+        );
+        if (
+          laborRequired <= 0 ||
+          laborCompleted < 0 ||
+          laborCompleted > laborRequired + 1e-9
+        ) {
+          throw new Error(`Human home project ${settlementId} has invalid labour.`);
+        }
+        const reserved = asRecord(
+          project.reservedMaterials,
+          `Human home project ${settlementId}.reservedMaterials`,
+        );
+        for (const material of ['wood', 'stone'] as const) {
+          if (
+            finiteNumber(
+              reserved[material],
+              `Human home project ${settlementId}.reservedMaterials.${material}`,
+            ) < 0
+          ) {
+            throw new Error(`Human home project ${settlementId} has negative materials.`);
+          }
+        }
+      }
     }
     for (const settlementId of Object.keys(settlementEconomyById)) {
       if (!settlementKeys.has(settlementId)) {
@@ -2874,6 +2998,46 @@ function placeMigrationDefaults(
     fertility: 0.5,
     danger: 0.15,
     surface: 'land',
+  };
+}
+
+interface FoundingSettlementLayout {
+  center: WorldPoint2D;
+  rotation: number;
+  stretchX: number;
+  stretchY: number;
+}
+
+/** A seed creates one physical plan, then the saved coordinates become the
+ * authority. New epochs therefore differ, while reloads never reshuffle an
+ * inhabited town. */
+function drawFoundingSettlementLayout(rng: SeededRng): FoundingSettlementLayout {
+  return {
+    // Keep the founding town on the broad eastern lowlands, but not at the
+    // old hard-coded (50, 50) point every time.
+    center: {
+      x: rng.between(-1_600, -240),
+      y: rng.between(-1_300, 1_300),
+    },
+    rotation: rng.between(-Math.PI, Math.PI),
+    stretchX: rng.between(0.78, 1.28),
+    stretchY: rng.between(0.78, 1.28),
+  };
+}
+
+function foundingPlaceDefaults(
+  defaults: ReturnType<typeof placeMigrationDefaults>,
+  layout: Readonly<FoundingSettlementLayout>,
+): ReturnType<typeof placeMigrationDefaults> {
+  if (defaults.settlementId !== 'settlement_ainkrad') return defaults;
+  const dx = (defaults.mapX - 50) * layout.stretchX;
+  const dy = (defaults.mapY - 50) * layout.stretchY;
+  const cosine = Math.cos(layout.rotation);
+  const sine = Math.sin(layout.rotation);
+  return {
+    ...defaults,
+    mapX: layout.center.x + dx * cosine - dy * sine,
+    mapY: layout.center.y + dx * sine + dy * cosine,
   };
 }
 
@@ -4200,47 +4364,44 @@ export class WorldEngine {
 
     const rng = new SeededRng(options.seed);
     const names = options.agentNames ?? ['Aron', 'Mira', 'Kai', 'Noa', 'Ilan', 'Rin', 'Lea', 'Daren', 'Sora', 'Talia'];
+    const foundingLayout = drawFoundingSettlementLayout(rng);
+    const initialPlace = (id: string, kind: WorldPlaceKind, homeIndex = 0) =>
+      foundingPlaceDefaults(placeMigrationDefaults({ id, kind }, homeIndex), foundingLayout);
     const places: Record<string, WorldPlace> = {
       commons: createPlace(
         'commons',
         'Площадь и рынок Айнкрада',
         'commons',
         Math.max(8, names.length * 2),
-        placeMigrationDefaults({ id: 'commons', kind: 'commons' }, 0),
+        initialPlace('commons', 'commons'),
       ),
       resource_field: createPlace(
         'resource_field',
         'Поля и фермы Айнкрада',
         'resource_field',
         Math.max(6, names.length),
-        placeMigrationDefaults(
-          { id: 'resource_field', kind: 'resource_field' },
-          0,
-        ),
+        initialPlace('resource_field', 'resource_field'),
       ),
       workshop: createPlace(
         'workshop',
         'Мастерская Айнкрада',
         'workshop',
         Math.max(6, names.length),
-        placeMigrationDefaults({ id: 'workshop', kind: 'workshop' }, 0),
+        initialPlace('workshop', 'workshop'),
       ),
       quiet_space: createPlace(
         'quiet_space',
         'Тихий сад Айнкрада',
         'quiet_space',
         Math.max(4, names.length),
-        placeMigrationDefaults(
-          { id: 'quiet_space', kind: 'quiet_space' },
-          0,
-        ),
+        initialPlace('quiet_space', 'quiet_space'),
       ),
       outskirts: createPlace(
         'outskirts',
         'Окраина Айнкрада',
         'outskirts',
         Math.max(8, names.length * 2),
-        placeMigrationDefaults({ id: 'outskirts', kind: 'outskirts' }, 0),
+        initialPlace('outskirts', 'outskirts'),
       ),
       ocean_ainkrad: createFoundingOcean(now),
     };
@@ -4254,7 +4415,7 @@ export class WorldEngine {
         `${name}'s Home`,
         'home',
         3,
-        placeMigrationDefaults({ id: homeId, kind: 'home' }, index),
+        initialPlace(homeId, 'home', index),
       );
 
       const personality = {
@@ -4493,19 +4654,22 @@ export class WorldEngine {
         const priorSequence = this.state.determinism.eventSequence;
         const rng = new SeededRng(`${seed}:epoch:${nextEpoch}`);
         const names = [...founderNames];
+        const foundingLayout = drawFoundingSettlementLayout(rng);
+        const initialPlace = (id: string, kind: WorldPlaceKind, homeIndex = 0) =>
+          foundingPlaceDefaults(placeMigrationDefaults({ id, kind }, homeIndex), foundingLayout);
         const places: Record<string, WorldPlace> = {
-          commons: createPlace('commons', 'Площадь и рынок Айнкрада', 'commons', Math.max(20, names.length * 2), placeMigrationDefaults({ id: 'commons', kind: 'commons' }, 0)),
-          resource_field: createPlace('resource_field', 'Поля и фермы Айнкрада', 'resource_field', Math.max(12, names.length), placeMigrationDefaults({ id: 'resource_field', kind: 'resource_field' }, 0)),
-          workshop: createPlace('workshop', 'Мастерская Айнкрада', 'workshop', Math.max(10, names.length), placeMigrationDefaults({ id: 'workshop', kind: 'workshop' }, 0)),
-          quiet_space: createPlace('quiet_space', 'Тихий сад Айнкрада', 'quiet_space', Math.max(8, names.length), placeMigrationDefaults({ id: 'quiet_space', kind: 'quiet_space' }, 0)),
-          outskirts: createPlace('outskirts', 'Окраина Айнкрада', 'outskirts', Math.max(16, names.length * 2), placeMigrationDefaults({ id: 'outskirts', kind: 'outskirts' }, 0)),
+          commons: createPlace('commons', 'Площадь и рынок Айнкрада', 'commons', Math.max(20, names.length * 2), initialPlace('commons', 'commons')),
+          resource_field: createPlace('resource_field', 'Поля и фермы Айнкрада', 'resource_field', Math.max(12, names.length), initialPlace('resource_field', 'resource_field')),
+          workshop: createPlace('workshop', 'Мастерская Айнкрада', 'workshop', Math.max(10, names.length), initialPlace('workshop', 'workshop')),
+          quiet_space: createPlace('quiet_space', 'Тихий сад Айнкрада', 'quiet_space', Math.max(8, names.length), initialPlace('quiet_space', 'quiet_space')),
+          outskirts: createPlace('outskirts', 'Окраина Айнкрада', 'outskirts', Math.max(16, names.length * 2), initialPlace('outskirts', 'outskirts')),
           ocean_ainkrad: createFoundingOcean(resetAt),
         };
         const agents: Record<string, AgentState> = {};
         names.forEach((name, index) => {
           const id = `epoch_${nextEpoch}_agent_${index + 1}`;
           const homeId = `home_${id}`;
-          places[homeId] = createPlace(homeId, `Дом ${name}`, 'home', 3, placeMigrationDefaults({ id: homeId, kind: 'home' }, index));
+          places[homeId] = createPlace(homeId, `Дом ${name}`, 'home', 3, initialPlace(homeId, 'home', index));
           const personality = {
             sociability: rng.between(0.25, 0.9), diligence: rng.between(0.25, 0.9), curiosity: rng.between(0.25, 0.9),
             generosity: rng.between(0.25, 0.9), resilience: rng.between(0.35, 0.92), riskTolerance: rng.between(0.22, 0.86),
@@ -6350,13 +6514,16 @@ export class WorldEngine {
   }
 
   private v15LearningDomainForAction(
+    agent: Readonly<AgentState>,
     action: AgentActionKind | undefined,
   ): { domain: GenesisDomain; challenge: number } | undefined {
     switch (action) {
       case 'gather':
         return { domain: 'agriculture', challenge: 0.48 };
       case 'work':
-        return { domain: 'construction', challenge: 0.58 };
+        return agent.lastWorkKind === 'construction'
+          ? { domain: 'construction', challenge: 0.58 }
+          : undefined;
       case 'socialize':
       case 'help':
       case 'bond':
@@ -6376,7 +6543,7 @@ export class WorldEngine {
     allAgents: AgentState[],
     now: number,
   ): void {
-    const mapped = this.v15LearningDomainForAction(agent.lastAction);
+    const mapped = this.v15LearningDomainForAction(agent, agent.lastAction);
     if (!mapped) return;
 
     const policy = learningStagePolicyV15(agent.life.ageYears);
@@ -7090,8 +7257,10 @@ export class WorldEngine {
       case 'socialize': {
         const others = localAgents.filter((other) => other.id !== agent.id);
         if (others.length === 0) {
-          if (ageAllowedActions.has('reflect')) this.performReflect(agent, now);
-          else this.performRest(agent, now);
+          // The resident already chose to seek company. Being alone at home
+          // leads toward the public meeting place instead of silently turning
+          // that choice into another day indoors.
+          this.performBlockedSocialize(agent, now);
         } else {
           const accessChance = clamp01(
             0.12 +
@@ -7376,19 +7545,18 @@ export class WorldEngine {
       ? this.previewHuntOpportunity(agent.locationId)
       : undefined;
     const bondAvailable =
-      agent.life.stage === 'adult' &&
+      allowedActions.has('bond') &&
       allAgents.some(
         (other) =>
           other.id !== agent.id &&
           other.life.alive &&
-          other.life.stage === 'adult' &&
-          other.locationId === agent.locationId,
+          other.locationId === agent.locationId &&
+          this.canFormIntimateRelationship(agent, other),
       );
-    const socialAvailable = allAgents.some(
-      (other) =>
-        other.id !== agent.id &&
-        other.life.alive &&
-        other.locationId === agent.locationId,
+    const socialAvailable = socialOpportunityAvailable(
+      this.state,
+      agent,
+      allAgents,
     );
     const natureAvailable = this.state.growth.stage > 0;
     const goalBoost = (kind: AgentGoalKind) => (agent.goal.kind === kind ? 0.24 : 0);
@@ -7406,6 +7574,29 @@ export class WorldEngine {
       settlementId
         ? this.residentCountByHomeSettlement?.get(settlementId) ?? 1
         : 1,
+    );
+    const localSettlement = settlementId
+      ? this.state.settlements[settlementId]
+      : undefined;
+    const localHousingCapacity = localSettlement
+      ? localSettlement.memberPlaceIds
+          .map((placeId) => this.state.places[placeId])
+          .filter((place): place is WorldPlace => place?.kind === 'home')
+          .reduce((sum, place) => sum + place.capacity, 0)
+      : Number.POSITIVE_INFINITY;
+    const localHousingReserve = Math.max(
+      10,
+      Math.ceil(settlementResidents * 0.25),
+    );
+    const housingPressure = Number.isFinite(localHousingCapacity)
+      ? clamp01(
+          (settlementResidents + localHousingReserve - localHousingCapacity) /
+            Math.max(6, localHousingReserve),
+        )
+      : 0;
+    const activeHumanConstruction = Boolean(
+      economy?.activeHumanHomeProject &&
+        settlementFoundingRace(this.state, settlementId ?? '') === 'human',
     );
     // Storage capacity is an upper engineering limit, not a target stock.
     // Scoring absence against the whole warehouse made every new storehouse
@@ -7519,6 +7710,7 @@ export class WorldEngine {
           (1 - resourceSecurity) * 0.72 +
           foodPressure * 1.25 +
           materialPressure * 0.62 +
+          housingPressure * 0.32 +
           v15Resources.renewableBase * 0.2 +
           sharedResourceNeed *
             (0.16 +
@@ -7559,6 +7751,9 @@ export class WorldEngine {
           toolPressure * craftInputAvailability * 0.42 +
           craftInputAvailability * 0.22 -
           materialPressure * 0.12 +
+          housingPressure *
+            (0.28 + agent.personality.diligence * 0.2 + agent.mind.values.care * 0.14) +
+          (activeHumanConstruction ? 0.38 : 0) +
           (1 - agent.needs.purpose) * 0.34 +
           agent.personality.diligence * 0.45 +
           agent.skills.craft * 0.16 +
@@ -9092,6 +9287,7 @@ export class WorldEngine {
   }
 
   private performWork(agent: AgentState, now: number): void {
+    if (this.tryPerformHumanConstructionWork(agent, now)) return;
     const workshopId = this.localPlace(agent, ['workshop'], 'workshop');
     if (this.travelBeforeAction(agent, workshopId, 'work', now)) return;
     this.tryAdventureMarketTrade(agent, now);
@@ -9116,6 +9312,7 @@ export class WorldEngine {
       agent.skills.craft + 0.004 * (0.45 + capacityScale * 0.55),
     );
     agent.lastAction = 'work';
+    agent.lastWorkKind = 'ordinary';
     agent.lastMeaningfulEventAt = now;
     this.advanceV15SmithingFromWork(agent, now);
 
@@ -9125,7 +9322,220 @@ export class WorldEngine {
       resources: agent.resources,
       skill: agent.skills.craft,
       locationId: agent.locationId,
+      workKind: 'ordinary',
     });
+  }
+
+  /** A resident who already chose ordinary work may freely join a known local
+   * house project. Refusal falls through to their normal workshop activity. */
+  private tryPerformHumanConstructionWork(
+    agent: AgentState,
+    now: number,
+  ): boolean {
+    if ((agent.race ?? 'human') !== 'human') return false;
+    const settlementId = this.homeSettlementId(agent);
+    if (!settlementId) return false;
+    const economy = ensureSettlementEconomyV16(this.state, settlementId);
+    const project = economy.activeHumanHomeProject;
+    if (!project || !this.state.places[project.homeId]) return false;
+
+    const residents = Object.values(this.state.agents).filter(
+      (candidate) =>
+        candidate.life.alive && this.homeSettlementId(candidate) === settlementId,
+    );
+    const settlement = this.state.settlements[settlementId];
+    const housingCapacity = settlement.memberPlaceIds
+      .map((placeId) => this.state.places[placeId])
+      .filter((place): place is WorldPlace => place?.kind === 'home')
+      .reduce((sum, place) => sum + place.capacity, 0);
+    const localCrowding = clamp01(
+      (residents.length - housingCapacity) / Math.max(6, housingCapacity),
+    );
+    const householdMember = project.intendedResidentIds.includes(agent.id);
+    const willingness = humanConstructionVolunteerWillingnessV21(
+      agent,
+      householdMember,
+      localCrowding,
+    );
+    if (willingness < 0.38 || this.rng.next() >= 0.12 + willingness * 0.62) {
+      return false;
+    }
+
+    agent.knownPlaceIds ??= [];
+    if (!agent.knownPlaceIds.includes(project.homeId)) {
+      agent.knownPlaceIds.push(project.homeId);
+      agent.knownPlaceIds = agent.knownPlaceIds.slice(-256);
+    }
+    if (this.travelBeforeAction(agent, project.homeId, 'work', now)) return true;
+
+    ensureAgentV15State(this.state, agent);
+    const constructionKnowledge = this.v15World().knowledgeByAgentId[agent.id].construction;
+    const contribution = humanConstructionLaborV21({
+      agent,
+      constructionKnowledge,
+      hasConstructionTool: economy.constructionTools > 0,
+      season: worldCalendarAtMinutes(
+        this.state.calendar.elapsedWorldMinutes,
+      ).season,
+    });
+    project.laborCompletedPersonDays = Math.min(
+      project.laborRequiredPersonDays,
+      project.laborCompletedPersonDays + contribution,
+    );
+    project.lastProgressWorldMinute = this.state.calendar.elapsedWorldMinutes;
+    project.stage = humanConstructionStageV21(
+      project.laborCompletedPersonDays,
+      project.laborRequiredPersonDays,
+    );
+    if (!project.builderIds.includes(agent.id)) {
+      project.builderIds.push(agent.id);
+      project.builderIds = project.builderIds.slice(-32);
+    }
+
+    agent.energy = clamp01(agent.energy - 0.052);
+    agent.stress = clamp01(
+      agent.stress + 0.008 * (1 - agent.personality.resilience),
+    );
+    agent.needs.purpose = clamp01(agent.needs.purpose + 0.052);
+    agent.skills.craft = clamp01(agent.skills.craft + 0.0035);
+    agent.lastAction = 'work';
+    agent.lastWorkKind = 'construction';
+    agent.lastMeaningfulEventAt = now;
+    recordLivelihoodPracticeV18(this.state, agent, {
+      action: 'work',
+      placeId: project.homeId,
+      choiceRoll: this.rng.next(),
+      professionHint: 'builder',
+      amount: Math.min(2, contribution / 2),
+    });
+    this.recordAgentEvent(agent, now, 'agent.worked', {
+      workKind: 'construction',
+      projectId: project.id,
+      placeId: project.homeId,
+      stage: project.stage,
+      contributedPersonDays: contribution,
+      completedPersonDays: project.laborCompletedPersonDays,
+      requiredPersonDays: project.laborRequiredPersonDays,
+      voluntary: true,
+      locationId: agent.locationId,
+    });
+
+    if (
+      project.laborCompletedPersonDays + 1e-9 >=
+      project.laborRequiredPersonDays
+    ) {
+      this.completeHumanHomeProject(settlementId, now);
+    }
+    return true;
+  }
+
+  private completeHumanHomeProject(settlementId: string, now: number): void {
+    const economy = ensureSettlementEconomyV16(this.state, settlementId);
+    const project = economy.activeHumanHomeProject;
+    if (!project) return;
+    const site = this.state.places[project.homeId];
+    if (!site) {
+      economy.activeHumanHomeProject = undefined;
+      return;
+    }
+
+    const settlement = this.state.settlements[settlementId];
+    const sequence = settlement.memberPlaceIds.filter(
+      (placeId) => this.state.places[placeId]?.kind === 'home',
+    ).length + 1;
+    site.kind = 'home';
+    site.name = `Построенный дом ${sequence}`;
+    site.capacity = 6;
+    site.urbanLot = project.urbanLot;
+    site.urbanLayoutVersion = 3;
+    site.rotation = project.plotRotation;
+
+    const movedResidentIds: string[] = [];
+    for (const residentId of project.intendedResidentIds.slice(0, site.capacity)) {
+      const resident = this.state.agents[residentId];
+      if (
+        !resident?.life.alive ||
+        this.homeSettlementId(resident) !== settlementId
+      ) {
+        continue;
+      }
+      const priorHomeId = resident.homeId;
+      resident.homeId = site.id;
+      movedResidentIds.push(resident.id);
+      this.stageEvent({
+        eventId: this.nextId('household-move'),
+        worldId: this.state.id,
+        kind: 'agent.household.moved_home',
+        source: 'agent',
+        occurredAt: now,
+        payload: {
+          agentId: resident.id,
+          priorHomeId,
+          homeId: site.id,
+          settlementId,
+          projectId: project.id,
+          priorConsent: true,
+        },
+      });
+    }
+
+    economy.constructionEvents += 1;
+    economy.lastConstructionWorldMinute = this.state.calendar.elapsedWorldMinutes;
+    economy.activeHumanHomeProject = undefined;
+    makeConnectionsReciprocal(this.state.places);
+    this.rebuildSpatialProjection();
+    refreshSettlementEconomyCapacityV16(this.state, economy);
+    recordSettlementPracticeEvidenceV16(this.state, settlementId, 'craft');
+    this.stageEvent({
+      eventId: this.nextId('home-built'),
+      worldId: this.state.id,
+      kind: 'world.building.home_built',
+      source: 'agent',
+      occurredAt: now,
+      payload: {
+        settlementId,
+        placeId: site.id,
+        projectId: project.id,
+        recipe: project.recipe,
+        initiatedByAgentId: project.initiatedByAgentId,
+        builderIds: [...project.builderIds],
+        movedResidentIds,
+        materialCost: { ...project.reservedMaterials },
+        laborPersonDays: project.laborRequiredPersonDays,
+        startedWorldMinute: project.startedWorldMinute,
+        completedWorldMinute: this.state.calendar.elapsedWorldMinutes,
+        worldMinutes: this.state.calendar.elapsedWorldMinutes,
+      },
+    });
+
+    const builders = new Set(project.builderIds);
+    for (const residentId of new Set([
+      ...project.builderIds,
+      ...movedResidentIds,
+    ])) {
+      const resident = this.state.agents[residentId];
+      if (!resident?.life.alive) continue;
+      const helpedBuild = builders.has(residentId);
+      const movedIn = movedResidentIds.includes(residentId);
+      this.stageMemory({
+        memoryId: this.nextId('memory'),
+        worldId: this.state.id,
+        agentId: residentId,
+        createdAt: now,
+        kind: 'world_event',
+        summary:
+          helpedBuild && movedIn
+            ? `${resident.name} remembers choosing to help build and move into ${site.name}.`
+            : helpedBuild
+              ? `${resident.name} remembers helping the household build ${site.name}.`
+              : `${resident.name} remembers agreeing to move into ${site.name}.`,
+        importance: movedIn ? 0.82 : 0.68,
+        valence: 0.64,
+        relatedAgentIds: [...new Set(project.intendedResidentIds)]
+          .filter((agentId) => agentId !== residentId)
+          .slice(0, 8),
+      });
+    }
   }
 
   private tryAdventureMarketTrade(agent: AgentState, now: number): void {
@@ -9664,6 +10074,24 @@ export class WorldEngine {
           agent.life.alive && this.homeSettlementId(agent) === settlement.id,
       );
       const economy = ensureSettlementEconomyV16(this.state, settlement.id);
+      const humanSettlement =
+        settlementFoundingRace(this.state, settlement.id) === 'human';
+      if (humanSettlement && economy.activeHumanHomeProject) {
+        const project = economy.activeHumanHomeProject;
+        if (!this.state.places[project.homeId]) {
+          economy.stocks.wood = Math.min(
+            economy.storageCapacity.wood,
+            economy.stocks.wood + project.reservedMaterials.wood,
+          );
+          economy.stocks.stone = Math.min(
+            economy.storageCapacity.stone,
+            economy.stocks.stone + project.reservedMaterials.stone,
+          );
+          economy.activeHumanHomeProject = undefined;
+        } else {
+          continue;
+        }
+      }
       if (economy.lastMaterialProjectDecisionWorldMinute !== undefined &&
         worldMinutes - economy.lastMaterialProjectDecisionWorldMinute < 24 * V15_SIMULATION_QUANTUM_WORLD_MINUTES) continue;
       const workers = this.shuffled(
@@ -9689,14 +10117,6 @@ export class WorldEngine {
       const workshopId = settlement.memberPlaceIds.find(
         (placeId) => this.state.places[placeId]?.kind === 'workshop',
       ) ?? settlement.centerPlaceId;
-      const willingness = clamp01(
-        worker.personality.diligence * 0.3 +
-          worker.personality.curiosity * 0.18 +
-          worker.mind.values.care * 0.18 +
-          worker.skills.craft * 0.26 +
-          worker.needs.purpose * 0.08,
-      );
-      if (this.rng.next() >= 0.08 + willingness * 0.34) continue;
 
       const homePlaces = settlement.memberPlaceIds
         .map((placeId) => this.state.places[placeId])
@@ -9715,7 +10135,210 @@ export class WorldEngine {
         Math.ceil(residents.length / 14),
       );
 
+      if (humanSettlement && needsHome) {
+        const occupancy = new Map<string, number>();
+        for (const resident of residents) {
+          occupancy.set(
+            resident.homeId,
+            (occupancy.get(resident.homeId) ?? 0) + 1,
+          );
+        }
+        const rankedInitiators = [...workers].sort((left, right) => {
+          const crowding = (candidate: AgentState) => {
+            const home = this.state.places[candidate.homeId];
+            return clamp01(
+              ((occupancy.get(candidate.homeId) ?? 1) -
+                (home?.capacity ?? 1)) /
+                Math.max(1, home?.capacity ?? 1),
+            );
+          };
+          return (
+            humanHousingInitiativeV21(right, crowding(right)) -
+              humanHousingInitiativeV21(left, crowding(left)) ||
+            right.skills.craft - left.skills.craft ||
+            left.id.localeCompare(right.id)
+          );
+        });
+        const initiator = rankedInitiators[0];
+        const initiatorHome = initiator
+          ? this.state.places[initiator.homeId]
+          : undefined;
+        const householdCrowding = initiator
+          ? clamp01(
+              ((occupancy.get(initiator.homeId) ?? 1) -
+                (initiatorHome?.capacity ?? 1)) /
+                Math.max(1, initiatorHome?.capacity ?? 1),
+            )
+          : 0;
+        const initiative = initiator
+          ? humanHousingInitiativeV21(initiator, householdCrowding)
+          : 0;
+        const localLand = ensureSettlementResourcesV16(
+          this.state,
+          settlement.id,
+        );
+        const recipe = selectHumanHouseRecipeV21(economy, localLand);
+        const constructionKnowledge = initiator
+          ? (this.v15World().knowledgeByAgentId[initiator.id]?.construction ?? 0)
+          : 0;
+
+        if (
+          initiator &&
+          recipe &&
+          constructionKnowledge >= 0.025 &&
+          initiative >= 0.38 &&
+          this.rng.next() < 0.08 + initiative * 0.44
+        ) {
+          let sequence = homePlaces.length + 1;
+          let homeId = `${settlement.id}_built_home_${sequence}`;
+          while (this.state.places[homeId]) {
+            sequence += 1;
+            homeId = `${settlement.id}_built_home_${sequence}`;
+          }
+          const center = this.state.places[settlement.centerPlaceId];
+          const plot = nextUrbanHomeLot(
+            this.state.places,
+            { x: center.mapX, y: center.mapY },
+            settlement.id,
+          );
+          if (plot) {
+            economy.stocks.wood -= recipe.wood;
+            economy.stocks.stone -= recipe.stone;
+            const sameHome = residents
+              .filter((resident) => resident.homeId === initiator.homeId)
+              .sort(
+                (left, right) =>
+                  Number(right.id === initiator.id) -
+                    Number(left.id === initiator.id) ||
+                  Number(
+                    right.life.parentIds.includes(initiator.id) ||
+                      initiator.life.childIds.includes(right.id),
+                  ) -
+                    Number(
+                      left.life.parentIds.includes(initiator.id) ||
+                        initiator.life.childIds.includes(left.id),
+                    ) ||
+                  left.id.localeCompare(right.id),
+              );
+            const intendedResidentIds = [initiator.id];
+            for (const candidate of sameHome) {
+              if (
+                candidate.id === initiator.id ||
+                intendedResidentIds.length >= 6
+              ) {
+                continue;
+              }
+              const dependentChild =
+                (candidate.life.stage === 'child' ||
+                  candidate.life.stage === 'adolescent') &&
+                (candidate.life.parentIds.includes(initiator.id) ||
+                  initiator.life.childIds.includes(candidate.id));
+              const acceptsHouseholdMove =
+                dependentChild ||
+                ((candidate.life.stage === 'adult' ||
+                  candidate.life.stage === 'elder') &&
+                  this.rng.next() <
+                    0.34 +
+                      householdCrowding * 0.28 +
+                      candidate.mind.values.care * 0.16 +
+                      candidate.needs.belonging * 0.1);
+              if (acceptsHouseholdMove) intendedResidentIds.push(candidate.id);
+            }
+            const laborRequiredPersonDays = Math.round(
+              recipe.laborPersonDays *
+                (1.08 - constructionKnowledge * 0.18) *
+                (economy.constructionTools > 0 ? 0.92 : 1.08),
+            );
+            this.state.places[homeId] = createPlace(
+              homeId,
+              `Строящийся дом ${sequence}`,
+              'construction_site',
+              1,
+              {
+                biome: 'settlement',
+                mapX: plot.x,
+                mapY: plot.y,
+                connectedPlaceIds: [settlement.centerPlaceId],
+                fertility: 0.54,
+                danger: 0.045,
+                surface: 'land',
+                settlementId: settlement.id,
+                discoveredAt: now,
+              },
+            );
+            this.state.places[homeId].urbanLot = plot.lot;
+            this.state.places[homeId].urbanLayoutVersion = 3;
+            this.state.places[homeId].rotation = plot.rotation;
+            economy.activeHumanHomeProject = {
+              id: `human-home-project:${settlement.id}:${sequence}`,
+              settlementId: settlement.id,
+              homeId,
+              recipe: recipe.id,
+              initiatedByAgentId: initiator.id,
+              intendedResidentIds,
+              builderIds: [],
+              plotX: plot.x,
+              plotY: plot.y,
+              plotRotation: plot.rotation,
+              urbanLot: plot.lot,
+              startedWorldMinute: worldMinutes,
+              stage: 'site_selection',
+              laborRequiredPersonDays,
+              laborCompletedPersonDays: 0,
+              reservedMaterials: {
+                wood: recipe.wood,
+                stone: recipe.stone,
+              },
+            };
+            for (const residentId of intendedResidentIds) {
+              const resident = this.state.agents[residentId];
+              if (!resident) continue;
+              resident.knownPlaceIds ??= [];
+              if (!resident.knownPlaceIds.includes(homeId)) {
+                resident.knownPlaceIds.push(homeId);
+                resident.knownPlaceIds = resident.knownPlaceIds.slice(-256);
+              }
+            }
+            makeConnectionsReciprocal(this.state.places);
+            this.rebuildSpatialProjection();
+            this.stageEvent({
+              eventId: this.nextId('home-started'),
+              worldId: this.state.id,
+              kind: 'world.building.home_started',
+              source: 'agent',
+              occurredAt: now,
+              payload: {
+                projectId: economy.activeHumanHomeProject.id,
+                settlementId: settlement.id,
+                placeId: homeId,
+                initiatedByAgentId: initiator.id,
+                intendedResidentIds,
+                recipe: recipe.id,
+                materialReservation: {
+                  wood: recipe.wood,
+                  stone: recipe.stone,
+                },
+                laborRequiredPersonDays,
+                voluntary: true,
+                worldMinutes,
+              },
+            });
+            continue;
+          }
+        }
+      }
+
+      const willingness = clamp01(
+        worker.personality.diligence * 0.3 +
+          worker.personality.curiosity * 0.18 +
+          worker.mind.values.care * 0.18 +
+          worker.skills.craft * 0.26 +
+          worker.needs.purpose * 0.08,
+      );
+      if (this.rng.next() >= 0.08 + willingness * 0.34) continue;
+
       if (
+        !humanSettlement &&
         needsHome &&
         economy.stocks.wood >= 0.65 &&
         economy.stocks.stone >= 0.35 &&
@@ -12483,10 +13106,21 @@ export class WorldEngine {
             this.v15EffectiveResourceSecurity(b),
           ),
           physicalEligibility: {
-            minimumAdultAge: raceProfile.adultAtAge,
+            minimumAdultAge:
+              selectedRace === 'human'
+                ? HUMAN_MINIMUM_REPRODUCTIVE_AGE_V16
+                : raceProfile.adultAtAge,
             maximumReproductiveAge: raceProfile.maximumReproductiveAge,
             minimumReproductiveHealth: raceProfile.minimumReproductiveHealth,
           },
+          allowCloseKin: foundingCloseKinAllowedV16(
+            selectedRace,
+            worldMinutes,
+          ),
+          developmentalReadiness: Math.min(
+            reproductiveDevelopmentV16(selectedRace, a.life.ageYears),
+            reproductiveDevelopmentV16(selectedRace, b.life.ageYears),
+          ),
         };
         const signals = evaluateFamilyAgency(familyA, familyB, context);
         const intimacyDecision = decideIntimacyVoluntarily(
@@ -12627,16 +13261,26 @@ export class WorldEngine {
    * have a relationship.
    */
   private canFormIntimateRelationship(a: AgentState, b: AgentState): boolean {
+    const race = a.race ?? 'human';
+    const profile = SAPIENT_RACE_LIFE_PROFILES_V16[race];
+    const minimumAge = race === 'human'
+      ? HUMAN_MINIMUM_REPRODUCTIVE_AGE_V16
+      : profile.adultAtAge;
+    const closeKin = this.areCloseFamilyRelatives(a, b);
+    const foundingCloseKinAllowed = foundingCloseKinAllowedV16(
+      race,
+      this.state.calendar.elapsedWorldMinutes,
+    );
     return (
       a.life.alive &&
       b.life.alive &&
-      a.life.stage === 'adult' &&
-      b.life.stage === 'adult' &&
+      a.life.ageYears >= minimumAge &&
+      b.life.ageYears >= minimumAge &&
       Boolean(a.sex) &&
       Boolean(b.sex) &&
       a.sex !== b.sex &&
-      (a.race ?? 'human') === (b.race ?? 'human') &&
-      !this.areCloseFamilyRelatives(a, b)
+      race === (b.race ?? 'human') &&
+      (!closeKin || foundingCloseKinAllowed)
     );
   }
 
@@ -12696,6 +13340,16 @@ export class WorldEngine {
       parentView(b),
       this.rng,
     );
+    const closeKinFoundingUnion = this.areCloseFamilyRelatives(a, b);
+    // Close kinship raises risk; it does not predetermine illness. The draw is
+    // made only after both residents independently chose the relationship and
+    // child, so it can never become a demographic command.
+    const inheritedHealthRiskManifested =
+      closeKinFoundingUnion && this.rng.next() < 0.22;
+    const inheritedHealth = clamp01(
+      blueprint.health -
+        (inheritedHealthRiskManifested ? this.rng.between(0.04, 0.16) : 0),
+    );
     const nameChoice = chooseCulturalChildNameV18({
       worldId: this.state.id,
       race,
@@ -12747,13 +13401,13 @@ export class WorldEngine {
         lifespanYears,
         stage: 'child',
         alive: true,
-        health: blueprint.health,
+        health: inheritedHealth,
         physiology: racePhysiology(
           race,
           physiologyForAge(
             0,
             lifespanYears,
-            blueprint.health,
+            inheritedHealth,
           ),
         ),
         generation: blueprint.generation,
@@ -12835,6 +13489,8 @@ export class WorldEngine {
         worldMinutes: this.state.calendar.elapsedWorldMinutes,
         namingStyle: nameChoice.style,
         chosenByParentIds: nameChoice.parentIds,
+        closeKinFoundingUnion,
+        inheritedHealthRiskManifested,
         technicalSequenceKeptOnlyInAgentId: true,
       },
     });
@@ -12918,9 +13574,11 @@ export class WorldEngine {
     const settlementId = `settlement_${plan.race}_homeland`;
     if (this.state.places[settlementId]) return;
     const foundation = SAPIENT_PEOPLE_FOUNDATIONS[plan.race];
-    const centerX = foundation.homelandCenter.x;
-    const centerY = foundation.homelandCenter.y;
-    const angle = Math.atan2(centerY - 50, centerX - 50);
+    const homelandCenter = homelandCenterForWorld(this.state, plan.race);
+    const centerX = homelandCenter.x;
+    const centerY = homelandCenter.y;
+    const humanCenter = homelandCenterForWorld(this.state, 'human');
+    const angle = Math.atan2(centerY - humanCenter.y, centerX - humanCenter.x);
     this.state.places[settlementId] = createPlace(
       settlementId,
       foundation.homelandName,
@@ -13039,7 +13697,7 @@ export class WorldEngine {
       eventId: this.nextId('sapient-people'), worldId: this.state.id, kind: 'world.sapient_people.discovered', source: 'world', occurredAt: now,
       payload: { race: plan.race, settlementId, originRegionId: anchor.id, originBiome: anchor.biome, founderIds: founders.join(','),
         founderCount: founders.length,
-        distanceFromWorldOriginKm: Math.hypot(centerX - 50, centerY - 50) / 10,
+        distanceFromWorldOriginKm: Math.hypot(centerX - humanCenter.x, centerY - humanCenter.y) / 10,
         previouslyBeyondKnownFrontier: true,
         humanPopulation: Object.values(this.state.agents).filter((agent) => agent.life.alive && (agent.race ?? 'human') === 'human').length },
     });
@@ -13558,13 +14216,11 @@ export class WorldEngine {
     agent: AgentState,
     allAgents: AgentState[],
   ): AgentState | undefined {
-    if (agent.life.stage !== 'adult') return undefined;
     let best: { other: AgentState; score: number } | undefined;
     for (const other of allAgents) {
       if (
         other.id === agent.id ||
         !other.life.alive ||
-        other.life.stage !== 'adult' ||
         other.locationId !== agent.locationId ||
         !this.canFormIntimateRelationship(agent, other)
       ) {

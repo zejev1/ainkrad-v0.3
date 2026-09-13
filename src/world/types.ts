@@ -256,6 +256,8 @@ export interface AgentState {
 
   lastMeaningfulEventAt: number;
   lastAction?: AgentActionKind;
+  /** What the latest completed work action physically was. */
+  lastWorkKind?: 'ordinary' | 'construction';
   lastDecision?: AgentDecisionState;
   plan?: AgentPlanState;
   privateDivineCalling?: AgentDivineCallingState;
@@ -294,6 +296,7 @@ export interface MemoryRecord {
 
 export type WorldPlaceKind =
   | 'home'
+  | 'construction_site'
   | 'commons'
   | 'library'
   | 'resource_field'
@@ -784,6 +787,43 @@ export interface V16SettlementResourceState {
 
 export type V16MaterialKind = 'food' | 'wood' | 'stone' | 'metal' | 'fuel';
 
+export type V16HumanHouseRecipe =
+  | 'timber_wattle_thatch'
+  | 'timber_stone_foundation';
+
+export type V16HumanConstructionStage =
+  | 'site_selection'
+  | 'materials'
+  | 'foundation'
+  | 'frame'
+  | 'walls'
+  | 'roof'
+  | 'finishing';
+
+/**
+ * A real, unfinished dwelling chosen and built by residents. Labour is stored
+ * in person-days so closing the browser cannot finish, lose or duplicate it.
+ */
+export interface V16HumanHomeProjectState {
+  id: string;
+  settlementId: string;
+  homeId: string;
+  recipe: V16HumanHouseRecipe;
+  initiatedByAgentId: string;
+  intendedResidentIds: string[];
+  builderIds: string[];
+  plotX: number;
+  plotY: number;
+  plotRotation: number;
+  urbanLot: number;
+  startedWorldMinute: number;
+  lastProgressWorldMinute?: number;
+  stage: V16HumanConstructionStage;
+  laborRequiredPersonDays: number;
+  laborCompletedPersonDays: number;
+  reservedMaterials: Pick<Record<V16MaterialKind, number>, 'wood' | 'stone'>;
+}
+
 export interface V16SettlementEconomyState {
   settlementId: string;
   stocks: Record<V16MaterialKind, number>;
@@ -797,6 +837,8 @@ export interface V16SettlementEconomyState {
   lastHarvestWorldMinute?: number;
   lastConstructionWorldMinute?: number;
   lastMaterialProjectDecisionWorldMinute?: number;
+  /** Human-only in FIX9; other peoples keep their existing model for now. */
+  activeHumanHomeProject?: V16HumanHomeProjectState;
 }
 
 export interface V16SettlementRelationEvidenceState {

@@ -515,6 +515,10 @@ export function inspectPlaceV16(
   const localEconomy = place.settlementId
     ? world.v16?.settlementEconomyById[place.settlementId]
     : undefined;
+  const constructionProject =
+    localEconomy?.activeHumanHomeProject?.homeId === place.id
+      ? localEconomy.activeHumanHomeProject
+      : undefined;
   const burialSite = place.settlementId
     ? world.v16?.burialSitesBySettlementId[place.settlementId]
     : undefined;
@@ -645,6 +649,58 @@ export function inspectPlaceV16(
                   value: localEconomy
                     ? `урожаев/добычи ${localEconomy.harvestEvents} (еда ${localEconomy.harvestEventsByMaterial.food}, дерево ${localEconomy.harvestEventsByMaterial.wood}, камень ${localEconomy.harvestEventsByMaterial.stone}, металл ${localEconomy.harvestEventsByMaterial.metal}, топливо ${localEconomy.harvestEventsByMaterial.fuel}) · построек ${localEconomy.constructionEvents} · инструментов ${localEconomy.toolsCreated}`
                     : 'нет данных',
+                },
+              ],
+            },
+          ]
+        : []),
+      ...(constructionProject
+        ? [
+            {
+              title: 'Строительство дома',
+              rows: [
+                {
+                  label: 'Этап',
+                  value:
+                    {
+                      site_selection: 'выбор и подготовка участка',
+                      materials: 'подготовка материалов',
+                      foundation: 'основание',
+                      frame: 'каркас',
+                      walls: 'стены',
+                      roof: 'крыша',
+                      finishing: 'завершение',
+                    }[constructionProject.stage],
+                },
+                {
+                  label: 'Выполнено труда',
+                  value: `${constructionProject.laborCompletedPersonDays.toFixed(1)} из ${constructionProject.laborRequiredPersonDays} человеко-дней (${percent(constructionProject.laborCompletedPersonDays / constructionProject.laborRequiredPersonDays)})`,
+                },
+                {
+                  label: 'Прошло времени мира',
+                  value: `${Math.max(0, (world.calendar.elapsedWorldMinutes - constructionProject.startedWorldMinute) / (24 * 60)).toFixed(1)} дней`,
+                },
+                {
+                  label: 'Способ строительства',
+                  value:
+                    constructionProject.recipe === 'timber_stone_foundation'
+                      ? 'деревянный дом на каменном основании'
+                      : 'дерево, плетение, глина и соломенная кровля',
+                },
+                {
+                  label: 'Добровольные строители',
+                  value:
+                    constructionProject.builderIds.length > 0
+                      ? constructionProject.builderIds
+                          .map((id) => agentName(world, id))
+                          .join(', ')
+                      : 'работы ещё не начались',
+                },
+                {
+                  label: 'Будущие жильцы',
+                  value: constructionProject.intendedResidentIds
+                    .map((id) => agentName(world, id))
+                    .join(', '),
                 },
               ],
             },

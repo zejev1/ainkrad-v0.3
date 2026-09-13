@@ -48,7 +48,7 @@ while (true) {
   const batch = await next.catchUpBatchTo(YEAR * 28, size);
   const ms = performance.now() - started;
   largestBatchMs = Math.max(largestBatchMs, ms); batches++;
-  size = nextCatchUpBatchSize(batch.semanticQuantaProcessed, ms);
+  size = nextCatchUpBatchSize(size, batch.semanticQuantaProcessed, ms);
   if (batch.completed) break;
 }
 const fixedSeconds = (performance.now() - newStart) / 1000;

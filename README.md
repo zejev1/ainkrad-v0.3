@@ -1,3 +1,21 @@
+# Ainkrad 0.3.21-hotfix.9
+
+FIX9 adds population-driven human housebuilding without scripting residents.
+Families prepare a physical site, gather local material, work through persisted
+stages and move only with prior consent. Construction knowledge grows from
+verified labour; personality, identity and accumulated experience are retained.
+The atlas shows the unfinished structure and its inspector reports elapsed world
+days and person-days. Other peoples keep their existing housing model for now.
+
+Base: `9f52d6281607adf3dfe44c6b8649a014351cc8f6` from
+`zejev1/ainkrad-v0.3/main`, including the owner's published FIX8 CI repair.
+Continue the existing world. See
+[FIX9 review](docs/V0_3_21_FIX9_REVIEW.md),
+[release audit](docs/V0_3_21_FIX9_AUDIT.json), and the separate future
+[mind/body portability design](docs/MIND_BODY_PORTABILITY_DESIGN.md).
+
+The sections below describe earlier releases.
+
 # Ainkrad 0.3.21-hotfix.8
 
 FIX6 corrects interrupted touch dragging and moves the composed map during gestures, with bounded progressive terrain tiles. The same physical coastline, drainage network and terrain costs now connect the world between settlements; roads and water use the same geometry for movement and display.

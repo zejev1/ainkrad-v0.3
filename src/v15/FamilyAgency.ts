@@ -57,6 +57,13 @@ export interface FamilyDecisionContext {
     maximumReproductiveAge: number;
     minimumReproductiveHealth: number;
   };
+
+  /** A small founding population may permit close-kin unions. This changes
+   * physical eligibility only; it never changes either resident's choice. */
+  allowCloseKin?: boolean;
+
+  /** Continuous physical/emotional development, from zero to full maturity. */
+  developmentalReadiness?: number;
 }
 
 export interface FamilyDecisionSignals {
@@ -97,6 +104,7 @@ export function evaluateFamilyAgency(
   const relationship = context.relationship;
   const meanStress = clamp01((a.stress + b.stress) / 2);
   const resourceSecurity = clamp01(context.householdResourceSecurity);
+  const developmentalReadiness = clamp01(context.developmentalReadiness ?? 1);
   const physicalEligibility = context.physicalEligibility ?? {
     minimumAdultAge: 18,
     maximumReproductiveAge: 55,
@@ -119,7 +127,8 @@ export function evaluateFamilyAgency(
       b.personality.physicalIntimacyInclination,
     ) *
       (0.38 + mutualAttachment * 0.62) *
-      (1 - meanStress * 0.34),
+      (1 - meanStress * 0.34) *
+      (0.18 + developmentalReadiness * 0.82),
   );
 
   // Child intent is independent of intimacy. Security and stress influence the
@@ -130,7 +139,7 @@ export function evaluateFamilyAgency(
       resourceSecurity * 0.12 +
       Math.min(a.health, b.health) * 0.06 -
       meanStress * 0.1,
-  );
+  ) * (0.12 + developmentalReadiness * 0.88);
 
   const intimateRelationshipEligible =
     a.alive &&
@@ -138,7 +147,7 @@ export function evaluateFamilyAgency(
     a.sex !== b.sex &&
     a.ageYears >= physicalEligibility.minimumAdultAge &&
     b.ageYears >= physicalEligibility.minimumAdultAge &&
-    !closeRelative(a, b);
+    (context.allowCloseKin === true || !closeRelative(a, b));
 
   const reproductivelyEligible =
     intimateRelationshipEligible &&

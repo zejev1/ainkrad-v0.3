@@ -7,6 +7,11 @@ import {
   type FamilyDecisionContext,
   type FamilyPerson,
 } from '../src/v15/FamilyAgency';
+import {
+  foundingCloseKinAllowedV16,
+  reproductiveDevelopmentV16,
+} from '../src/v16/SocietyFoundationV16';
+import { WORLD_MINUTES_PER_YEAR } from '../src/world/WorldClock';
 
 const person = (
   id: string,
@@ -45,6 +50,78 @@ const context = (
 });
 
 describe('v15 family agency constitution', () => {
+  it('models human reproductive development continuously instead of using age 18 as biology', () => {
+    expect(reproductiveDevelopmentV16('human', 8)).toBe(0);
+    expect(reproductiveDevelopmentV16('human', 9)).toBe(0);
+    expect(reproductiveDevelopmentV16('human', 12.99)).toBe(0);
+    expect(reproductiveDevelopmentV16('human', 13)).toBeGreaterThan(0);
+    expect(reproductiveDevelopmentV16('human', 13)).toBeLessThan(
+      reproductiveDevelopmentV16('human', 15),
+    );
+    expect(reproductiveDevelopmentV16('human', 15)).toBeLessThan(
+      reproductiveDevelopmentV16('human', 18),
+    );
+    expect(reproductiveDevelopmentV16('human', 18)).toBe(1);
+
+    const earlyA = person('a', {
+      ageYears: 13,
+      stress: 0,
+      personality: {
+        physicalIntimacyInclination: 0.99,
+        childDesire: 0.99,
+        autonomy: 0.9,
+      },
+    });
+    const earlyB = person('b', {
+      ageYears: 13,
+      stress: 0,
+      personality: {
+        physicalIntimacyInclination: 0.99,
+        childDesire: 0.99,
+        autonomy: 0.9,
+      },
+    });
+    const earlyContext = context({
+      householdResourceSecurity: 1,
+      relationship: {
+        trust: 0.95,
+        affinity: 0.95,
+        respect: 0.95,
+        conflict: 0,
+        attachment: 0.95,
+      },
+      physicalEligibility: {
+        minimumAdultAge: 13,
+        maximumReproductiveAge: 55,
+        minimumReproductiveHealth: 0.58,
+      },
+      developmentalReadiness: reproductiveDevelopmentV16('human', 13),
+    });
+    expect(evaluateFamilyAgency(earlyA, earlyB, earlyContext).childDecisionPossible).toBe(true);
+    expect(decideChildVoluntarily(earlyA, earlyB, earlyContext, 0.001, 683_280).chosen).toBe(true);
+    expect(evaluateFamilyAgency(
+      { ...earlyA, ageYears: 12.99 },
+      earlyB,
+      earlyContext,
+    ).childDecisionPossible).toBe(false);
+  });
+
+  it('permits close-kin opportunity only in the first 200 years without forcing a yes', () => {
+    const a = person('a', { parentIds: ['founder-parent'] });
+    const b = person('b', { parentIds: ['founder-parent'] });
+    expect(evaluateFamilyAgency(a, b, context()).intimacyPossible).toBe(false);
+    const early = context({ allowCloseKin: true });
+    expect(evaluateFamilyAgency(a, b, early).intimacyPossible).toBe(true);
+    expect(decideChildVoluntarily(a, b, early, 0.99, 683_280).chosen).toBe(false);
+    expect(foundingCloseKinAllowedV16('human', 199 * WORLD_MINUTES_PER_YEAR)).toBe(true);
+    expect(foundingCloseKinAllowedV16('human', 200 * WORLD_MINUTES_PER_YEAR)).toBe(false);
+    // During the founding window even a direct blood relation is not blocked
+    // by the engine. The residents still make their own individual decision.
+    expect(foundingCloseKinAllowedV16('human', 50 * WORLD_MINUTES_PER_YEAR)).toBe(true);
+    expect(foundingCloseKinAllowedV16('elf', 50 * WORLD_MINUTES_PER_YEAR)).toBe(true);
+    expect(foundingCloseKinAllowedV16('elf', 200 * WORLD_MINUTES_PER_YEAR)).toBe(false);
+  });
+
   it('does not use high stress or low resources as a hard intimacy ban', () => {
     const a = person('a', { stress: 0.96, resources: 0.04 });
     const b = person('b', { stress: 0.92, resources: 0.05 });

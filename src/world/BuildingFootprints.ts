@@ -2,7 +2,7 @@ import type { WorldPlace, WorldPoint2D } from './types';
 
 /** Units are 100m, angles are radians; rendering and collision share this shape. */
 export function buildingSize(place: Pick<WorldPlace,'kind'>): {width:number;height:number} {
-  return place.kind==='home'?{width:.12,height:.10}:
+  return place.kind==='home'||place.kind==='construction_site'?{width:.12,height:.10}:
     place.kind==='workshop'?{width:.16,height:.14}:
     place.kind==='library'?{width:.16,height:.16}:{width:0,height:0};
 }

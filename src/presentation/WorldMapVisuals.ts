@@ -7,6 +7,9 @@ export function placeDrawing(kind: WorldPlaceKind): string {
     case 'home':
       body='<rect x="1" y="1" width="58" height="48" rx="2" fill="#dbcaac" stroke="#594b3e"/><path d="M1 5H59V43H1Z" fill="#9d5641"/><path d="M1 24H59M7 5V43M16 5V43M25 5V43M34 5V43M43 5V43M52 5V43" stroke="#c9805d" stroke-width="1.5"/><path d="M1 24H59" stroke="#6b352c" stroke-width="3"/><path d="M43 8H50V18H43Z" fill="#63594a"/><path d="M27 44H34V49H27Z" fill="#5f4735"/>';
       break;
+    case 'construction_site':
+      body='<path d="M3 47H57" stroke="#7c674a" stroke-width="4"/><path d="M8 45V10M52 45V10M8 14H52M15 14V45M45 14V45M15 27H45" fill="none" stroke="#8b633d" stroke-width="3"/><path d="M5 10L30 2L55 10" fill="none" stroke="#6f5438" stroke-width="3"/><path d="M18 45V32H34V45" fill="#b89d70" stroke="#6b5940"/><path d="M39 33L50 45M50 33L39 45" stroke="#b6a272" stroke-width="2"/>';
+      break;
     case 'workshop':
       body='<rect x="2" y="3" width="54" height="40" fill="#b6a383" stroke="#574f43"/><path d="M2 6H56V33H2Z" fill="#635f58"/><path d="M3 19H56M15 6V33M30 6V33M45 6V33" stroke="#858077" stroke-width="2"/><rect x="40" y="2" width="10" height="15" fill="#4b4440"/><path d="M6 45H54" stroke="#705f41" stroke-width="5"/>';
       break;

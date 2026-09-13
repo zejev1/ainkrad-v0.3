@@ -92,6 +92,15 @@ export function isWorldSpeedId(value: unknown): value is WorldSpeedId {
   return WORLD_SPEED_PRESETS.some((preset) => preset.id === value);
 }
 
+/** At these requested rates, observing every rendered frame competes with the
+ * simulation for the same device. The world remains fully simulated while the
+ * presentation may switch to a sparse, headless view. */
+export function isMaximumAccelerationSpeed(speedId: WorldSpeedId): boolean {
+  return speedId === 'decade_per_minute' ||
+    speedId === 'fifty_years_per_minute' ||
+    speedId === 'century_per_minute';
+}
+
 export function isWorldSpeedMultiplier(
   value: unknown,
 ): value is WorldSpeedMultiplier {

@@ -1,6 +1,10 @@
 import { cooperativeWorldTimeExecution } from '../world/WorldTimeExecution';
 import { ExternalClockCommands, type ExternalClockCommand } from './ExternalClockCommands';
-import { nextCatchUpBatchSize } from './LiveAccelerationBudget';
+import {
+  INITIAL_RAPID_CATCH_UP_BATCH_QUANTA,
+  MAX_RAPID_CATCH_UP_BATCH_QUANTA,
+  nextCatchUpBatchSize,
+} from './LiveAccelerationBudget';
 import { LiveWallClock, liveLoopDelay } from './LiveWallClock';
 import {
   LiveWorldRuntime,
@@ -14,6 +18,10 @@ import { WorldRevisionConflictError } from '../world/persistence';
 import type {
   WorldSpeedId,
   WorldSpeedMultiplier,
+} from '../world/WorldClock';
+import {
+  DEFAULT_WORLD_SPEED_ID,
+  isMaximumAccelerationSpeed,
 } from '../world/WorldClock';
 import type {
   DivineContactKind,
@@ -31,7 +39,7 @@ const DIVINE_AUDIENCE_CHANNEL_NAME = 'ainkrad-v0-3-divine-audience';
 const STORAGE_CHECK_INTERVAL_TICKS = 300;
 const AINKRAD_STORAGE_SOFT_BUDGET_BYTES = 2 * 1024 * 1024 * 1024;
 const AINKRAD_STORAGE_CRITICAL_BUDGET_BYTES = 4 * 1024 * 1024 * 1024;
-const FRAME_PROTOCOL_VERSION = 'ainkrad-live-frame-0.3.21-hotfix.8';
+const FRAME_PROTOCOL_VERSION = 'ainkrad-live-frame-0.3.21-hotfix.9';
 const COMPATIBLE_FRAME_PROTOCOLS = new Set([FRAME_PROTOCOL_VERSION]);
 
 // Test disturbances never run automatically in the persistent live world.
@@ -160,8 +168,9 @@ let appliedClockRevision = 0;
 let pendingWorldReset = false;
 let pendingOfflineCatchUp: OfflineClockCatchUpMessage | undefined;
 let divineAudiencePaused = false;
-let catchUpBatchQuanta = 8;
-let catchUpBatchCeiling = 16;
+let catchUpBatchQuanta = INITIAL_RAPID_CATCH_UP_BATCH_QUANTA;
+let catchUpBatchCeiling = MAX_RAPID_CATCH_UP_BATCH_QUANTA;
+let appliedSpeedId: WorldSpeedId = DEFAULT_WORLD_SPEED_ID;
 let lastCatchUpProgressPostedAt = 0;
 let catchUpFailureCount = 0;
 let catchUpTracker:
@@ -197,8 +206,8 @@ function applyOfflineCatchUp(message: OfflineClockCatchUpMessage): void {
       !pendingOfflineCatchUp ||
       pendingOfflineCatchUp.worldEpoch !== message.worldEpoch
     ) {
-      catchUpBatchQuanta = 8;
-      catchUpBatchCeiling = 16;
+      catchUpBatchQuanta = INITIAL_RAPID_CATCH_UP_BATCH_QUANTA;
+      catchUpBatchCeiling = MAX_RAPID_CATCH_UP_BATCH_QUANTA;
       catchUpFailureCount = 0;
     }
     activeRuntime?.coverLiveTimeThrough(message.targetWorldMinutes, message.worldEpoch);
@@ -482,8 +491,10 @@ async function runForever(): Promise<void> {
     boundedLiveAcceleration: true,
   });
   activeRuntime = runtime;
-  runtime.setCooperativeExecution(cooperativeWorldTimeExecution(() =>
-    clockCommands.revision !== appliedClockRevision || pendingWorldReset || divineAudiencePaused));
+  runtime.setCooperativeExecution(cooperativeWorldTimeExecution(
+    () => clockCommands.revision !== appliedClockRevision || pendingWorldReset || divineAudiencePaused,
+    () => pendingOfflineCatchUp || isMaximumAccelerationSpeed(appliedSpeedId) ? 48 : 12,
+  ));
   liveWallClock.reset(performance.now());
   let lastFramePostedAt = -Infinity;
 
@@ -497,11 +508,12 @@ async function runForever(): Promise<void> {
           runtime.enqueueLiveElapsed(liveWallClock.sample(performance.now()));
         }
         runtime.setWorldSpeed(command.speedId, command.multiplier);
+        appliedSpeedId = command.speedId;
         if (command.discardPending) {
           pendingOfflineCatchUp = undefined;
           catchUpTracker = undefined;
-          catchUpBatchQuanta = 8;
-          catchUpBatchCeiling = 16;
+          catchUpBatchQuanta = INITIAL_RAPID_CATCH_UP_BATCH_QUANTA;
+          catchUpBatchCeiling = MAX_RAPID_CATCH_UP_BATCH_QUANTA;
           catchUpFailureCount = 0;
           runtime.discardPendingLiveTime();
         }
@@ -524,8 +536,8 @@ async function runForever(): Promise<void> {
         pendingWorldReset = false;
         pendingOfflineCatchUp = undefined;
         catchUpTracker = undefined;
-        catchUpBatchQuanta = 8;
-        catchUpBatchCeiling = 16;
+        catchUpBatchQuanta = INITIAL_RAPID_CATCH_UP_BATCH_QUANTA;
+        catchUpBatchCeiling = MAX_RAPID_CATCH_UP_BATCH_QUANTA;
         catchUpFailureCount = 0;
         await runtime.resetWorld();
         liveWallClock.reset(performance.now());
@@ -596,8 +608,8 @@ async function runForever(): Promise<void> {
                 runtime.discardPendingLiveTime();
                 liveWallClock.reset(performance.now());
                 publishCatchUpRecovery(message, true);
-                catchUpBatchQuanta = 8;
-                catchUpBatchCeiling = 16;
+                catchUpBatchQuanta = INITIAL_RAPID_CATCH_UP_BATCH_QUANTA;
+                catchUpBatchCeiling = MAX_RAPID_CATCH_UP_BATCH_QUANTA;
                 catchUpFailureCount = 0;
               }
               await sleep(0);
@@ -605,7 +617,12 @@ async function runForever(): Promise<void> {
             }
             const batchWorkMs = Math.max(1, performance.now() - batchStartedAt);
             catchUpBatchQuanta = Math.min(catchUpBatchCeiling, OFFLINE_CATCH_UP_MAX_BATCH_QUANTA,
-              nextCatchUpBatchSize(batch.semanticQuantaProcessed, batchWorkMs));
+              nextCatchUpBatchSize(
+                catchUpBatchQuanta,
+                batch.semanticQuantaProcessed,
+                batchWorkMs,
+                catchUpBatchCeiling,
+              ));
             catchUpTracker.semanticQuantaProcessed +=
               batch.semanticQuantaProcessed;
             const elapsedRealMs = Math.max(
@@ -651,8 +668,8 @@ async function runForever(): Promise<void> {
             }
             pendingOfflineCatchUp = undefined;
             catchUpTracker = undefined;
-            catchUpBatchQuanta = 8;
-            catchUpBatchCeiling = 16;
+            catchUpBatchQuanta = INITIAL_RAPID_CATCH_UP_BATCH_QUANTA;
+            catchUpBatchCeiling = MAX_RAPID_CATCH_UP_BATCH_QUANTA;
             catchUpFailureCount = 0;
             completedCatchUpThisLoop = true;
           }
@@ -660,7 +677,11 @@ async function runForever(): Promise<void> {
       }
       const wallNow = performance.now();
       if (completedCatchUpThisLoop) liveWallClock.reset(wallNow);
-      const emitFrame = completedCatchUpThisLoop || wallNow - lastFramePostedAt >= 1000;
+      // At fictional Underworld-scale requests, presentation must not compete
+      // with residents for device time. One sparse frame keeps controls and
+      // clock continuity alive; the browser hides the heavy map between them.
+      const frameIntervalMs = isMaximumAccelerationSpeed(appliedSpeedId) ? 10_000 : 1_000;
+      const emitFrame = completedCatchUpThisLoop || wallNow - lastFramePostedAt >= frameIntervalMs;
       // Sample BEFORE the await. Work and persistence time are charged by the
       // next iteration; there is no one-second clamp dropping elapsed time.
       const elapsed = liveWallClock.sample(wallNow);

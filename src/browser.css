@@ -187,6 +187,45 @@ button {
   white-space: normal;
 }
 
+.maximum-acceleration-mode[hidden] {
+  display: none;
+}
+
+.maximum-acceleration-mode {
+  min-height: 42vh;
+  display: grid;
+  place-content: center;
+  gap: 9px;
+  padding: 28px;
+  border: 1px solid rgba(255, 205, 119, 0.25);
+  border-radius: 16px;
+  background: #020506;
+  color: #fff1cf;
+  text-align: center;
+}
+
+.maximum-acceleration-mode strong {
+  font-size: 1.12rem;
+}
+
+.maximum-acceleration-mode p {
+  max-width: 560px;
+  margin: 0;
+  color: #9eb0aa;
+  line-height: 1.5;
+}
+
+.ainkrad-app.is-headless-acceleration .status-strip,
+.ainkrad-app.is-headless-acceleration .world-layout,
+.ainkrad-app.is-headless-acceleration .world-maintenance {
+  display: none;
+}
+
+.ainkrad-app.is-headless-acceleration {
+  min-height: 100vh;
+  background: #020506;
+}
+
 .catch-up-overlay[hidden] {
   display: none;
 }
@@ -1507,7 +1546,8 @@ button {
   font-weight: 720;
 }
 
-.resident-picker-label select {
+.resident-picker-label select,
+.resident-picker-label input {
   width: 100%;
   min-height: 42px;
   padding: 8px 10px;
@@ -1520,7 +1560,8 @@ button {
   font-size: 0.82rem;
 }
 
-.resident-picker-label select:focus-visible {
+.resident-picker-label select:focus-visible,
+.resident-picker-label input:focus-visible {
   border-color: #8af0bb;
   box-shadow: 0 0 0 3px rgba(92, 229, 157, 0.14);
 }

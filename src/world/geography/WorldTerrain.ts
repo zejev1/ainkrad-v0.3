@@ -1,4 +1,4 @@
-import type {WorldPlace,WorldState,WorldPoint2D} from '../types';
+import type {AgentRace,WorldPlace,WorldState,WorldPoint2D} from '../types';
 import {SAPIENT_PEOPLE_FOUNDATIONS} from '../SapientPeoples';
 import {polygonsOverlap} from '../BuildingFootprints';
 import {featureBounds} from './FeatureIndex';
@@ -11,6 +11,42 @@ export const terrainForPlaces=(places:Readonly<Record<string,WorldPlace>>)=>cont
 export function bindWorldTerrain(world:Readonly<WorldState>):TerrainModel|undefined {
   if(!world.terrain)return undefined;let model=contexts.get(world.places);
   if(!model||model.foundation.key!==world.terrain.key){model=terrainModel(world.terrain);contexts.set(world.places,model);}return model;
+}
+
+/** Resolve a persisted settlement first. Before a people appears, reserve a
+ * seed-specific remote region in the terrain. All peoples share one rotation,
+ * reflection and scale, preserving continental separation without repeating
+ * identical coordinates in every new epoch. */
+export function homelandCenterForWorld(
+  world: Readonly<WorldState>,
+  race: AgentRace,
+): WorldPoint2D {
+  const settlementId = race === 'human'
+    ? 'commons'
+    : `settlement_${race}_homeland`;
+  const existing = world.places[settlementId];
+  if (existing) return { x: existing.mapX, y: existing.mapY };
+  const reserved = world.terrain?.anchors.find(
+    (anchor) => anchor.id === `foundation_${race}`,
+  );
+  if (reserved) return { x: reserved.x, y: reserved.y };
+
+  const human = world.places.commons ?? SAPIENT_PEOPLE_FOUNDATIONS.human.homelandCenter;
+  if (race === 'human') return { x: human.mapX, y: human.mapY };
+  const key = `${world.id}:epoch:${world.epoch ?? 1}:homeland-layout`;
+  const unit = (suffix: string) => hash(`${key}:${suffix}`) / 0x1_0000_0000;
+  const angle = (unit('rotation') - 0.5) * 0.44;
+  const scale = 1.02 + unit('scale') * 0.16;
+  const mirror = unit('reflection') < 0.5 ? -1 : 1;
+  const canonical = SAPIENT_PEOPLE_FOUNDATIONS[race].homelandCenter;
+  const dx = canonical.x - SAPIENT_PEOPLE_FOUNDATIONS.human.homelandCenter.x;
+  const dy = (canonical.y - SAPIENT_PEOPLE_FOUNDATIONS.human.homelandCenter.y) * mirror;
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  return {
+    x: human.mapX + (dx * cosine - dy * sine) * scale,
+    y: human.mapY + (dx * sine + dy * cosine) * scale,
+  };
 }
 /** Freeze the physical foundation once. Exploring or moving the observer
  * never regenerates previously existing rivers, heights or coastlines. */
@@ -25,7 +61,7 @@ export function repairWorldTerrain(world:WorldState):boolean {
     ...(p.waterPolygon?{water:p.waterPolygon.map(p=>({...p}))}:{})}));
   for(const [race,f] of Object.entries(SAPIENT_PEOPLE_FOUNDATIONS)){
     const biome=f.homelandBiomes[0],kind=biome==='forest'?'forest':biome==='mountains'?'mountains':biome==='swamp'?'swamp':'meadow';
-    anchors.push({id:'foundation_'+race,...f.homelandCenter,kind,radius:12});
+    anchors.push({id:'foundation_'+race,...homelandCenterForWorld(world,race as AgentRace),kind,radius:12});
   }
   // The founding shore exists physically before residents discover it.
   // Reserving its bank grants no place knowledge or route to any resident.

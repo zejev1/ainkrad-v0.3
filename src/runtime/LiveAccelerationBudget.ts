@@ -4,6 +4,13 @@ import { CANONICAL_WORLD_QUANTUM_MINUTES } from '../v15/WorldTimeContract';
 // later. This is outside canonical world state and never consumes world RNG.
 export const MAX_LIVE_PENDING_MINUTES = 8 * CANONICAL_WORLD_QUANTUM_MINUTES;
 
+// Offline restoration starts conservatively, then grows only after a durable
+// commit succeeds. One hundred and twenty quanta are two world-years: large
+// enough to amortize full-world cloning, while the worker can still stop after
+// any individual six-day quantum and fall back after an IndexedDB abort.
+export const INITIAL_RAPID_CATCH_UP_BATCH_QUANTA = 24;
+export const MAX_RAPID_CATCH_UP_BATCH_QUANTA = 120;
+
 export class LiveAccelerationBudget {
   private queued = 0;
   private coveredThrough = 0;
@@ -41,10 +48,23 @@ export class LiveAccelerationBudget {
   }
 }
 
-/** Avoid the old feedback trap: snapshot I/O made every slow batch shrink to
- * one quantum, which multiplied the same full-world serialization cost.
- * Eight to sixteen ordered quanta amortize that cost; failure recovery may still
- * explicitly retry a single quantum. No quantum is skipped. */
-export function nextCatchUpBatchSize(processedQuanta: number, workMs: number): number {
-  return Math.max(8, Math.min(16, Math.ceil(Math.max(1, processedQuanta) * 600 / Math.max(1, workMs))));
+/** Grow successful restoration transactions instead of mistaking slow device
+ * I/O for a reason to serialize the same mature world even more often. A real
+ * storage failure is handled separately by halving the batch. No semantic
+ * quantum is skipped and Cardinal boundaries may still end a batch early. */
+export function nextCatchUpBatchSize(
+  currentBatchQuanta: number,
+  processedQuanta: number,
+  workMs: number,
+  ceiling = MAX_RAPID_CATCH_UP_BATCH_QUANTA,
+): number {
+  if (!Number.isFinite(workMs) || workMs < 0 || !Number.isInteger(ceiling) || ceiling < 1) {
+    throw new Error('Invalid rapid catch-up budget.');
+  }
+  const current = Math.max(1, Math.min(ceiling, Math.floor(currentBatchQuanta)));
+  if (processedQuanta <= 0) return current;
+  if (current < 60) return Math.min(ceiling, 60);
+  // On fast devices, two-year commits remove almost all snapshot overhead.
+  // On a slow console, keep one-year commits so progress remains observable.
+  return workMs <= 4_000 ? Math.min(ceiling, Math.max(current, current * 2)) : current;
 }

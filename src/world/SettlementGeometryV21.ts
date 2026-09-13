@@ -11,9 +11,10 @@ export function updateSettlementGeometry(world:WorldState,move:(id:string,point:
   for(const town of Object.values(world.settlements)) {
     const center=world.places[town.centerPlaceId];if(!center)continue;
     const origin={x:center.mapX,y:center.mapY};
+    const layoutSeed=geographySeed(`${town.id}:${origin.x.toFixed(4)}:${origin.y.toFixed(4)}`);
     const members=all.filter(p=>p.settlementId===town.id ||
       (p.id===world.v18?.secretLibrary.placeId&&world.v18.secretLibrary.anchorPlaceId===center.id));
-    const managed=['home','workshop','library','quiet_space','resource_field','outskirts','cemetery'];
+    const managed=['home','construction_site','workshop','library','quiet_space','resource_field','outskirts','cemetery'];
     const signature=members.map(p=>p.id+':'+p.kind).sort().join('|');
     if(town.layoutVersion===3&&town.layoutSignature===signature&&members.every(p=>!managed.includes(p.kind)||p.urbanLayoutVersion===3))continue;
     const safe=(place:WorldPlace,preferred:WorldPoint2D,minimum=0):WorldPoint2D|undefined=>{
@@ -34,7 +35,7 @@ export function updateSettlementGeometry(world:WorldState,move:(id:string,point:
     for(const place of members.filter(p=>['library','workshop','quiet_space','cemetery'].includes(p.kind))
       .sort((a,b)=>Number(b.kind==='library')-Number(a.kind==='library')||a.id.localeCompare(b.id))) {
       const n=civic++;if(place.urbanLayoutVersion===3)continue;
-      place.rotation=(geographySeed(town.id)-.5)*.16;
+      place.rotation=(layoutSeed-.5)*Math.PI*.72;
       const sx=n%2?-1:1,sy=n%4<2?-1:1;
       const plot=safe(place,{x:origin.x+sx*(.20+Math.floor(n/4)*.22),y:origin.y+sy*.19},.19);
       if(plot) {
@@ -42,7 +43,7 @@ export function updateSettlementGeometry(world:WorldState,move:(id:string,point:
         if(place.id===world.v18?.secretLibrary.placeId){world.v18.secretLibrary.anchorMapX=plot.x;world.v18.secretLibrary.anchorMapY=plot.y;}
       }
     }
-    for(const home of members.filter(p=>p.kind==='home').sort((a,b)=>a.id.localeCompare(b.id))) {
+    for(const home of members.filter(p=>p.kind==='home'||p.kind==='construction_site').sort((a,b)=>a.id.localeCompare(b.id))) {
       if(home.urbanLayoutVersion===3)continue;
       const plot=nextUrbanHomeLot(world.places,origin,town.id);
       if(plot){home.rotation=plot.rotation;move(home.id,plot);home.urbanLot=plot.lot;}
@@ -56,7 +57,7 @@ export function updateSettlementGeometry(world:WorldState,move:(id:string,point:
     let field=0,fringe=0;
     for(const place of members.filter(p=>p.kind==='resource_field'||p.kind==='outskirts')) {
       const isField=place.kind==='resource_field',index=isField?field++:fringe++;
-      const angle=(isField?.45:1.25)+index*1.8+geographySeed(town.id)*.25;
+      const angle=(isField?.45:1.25)+index*1.8+layoutSeed*Math.PI*1.35;
       const r=edge+(isField?.40:.07);
       let point=safe(place,{x:origin.x+Math.cos(angle)*r,y:origin.y+Math.sin(angle)*r},edge+(isField?.34:.04));
       if(point&&isField) {

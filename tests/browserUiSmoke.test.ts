@@ -29,6 +29,7 @@ describe('SPCK browser UI smoke contract', () => {
     expect(template).toContain('id="catch-up-overlay"');
     expect(template).toContain('id="text-scale"');
     expect(template).toContain('id="resident-picker"');
+    expect(template).toContain('id="resident-search"');
     expect(template).toContain('id="resident-profession"');
     expect(template).toContain('id="resident-adventure"');
     expect(template).toContain('id="dungeon-count"');
