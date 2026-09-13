@@ -366,7 +366,7 @@ app.innerHTML = `
   <div class="ainkrad-app">
     <header class="world-header">
       <div>
-        <p class="eyebrow">v0.3.21.10.4</p>
+        <p class="eyebrow">v0.3.22.f1</p>
         <h1 id="world-title">Мир · уровень 1</h1>
       </div>
 
@@ -380,7 +380,7 @@ app.innerHTML = `
       <span>Возраст <strong id="tick-value">0 дней</strong></span>
       <span>Календарь <strong id="time-value">Год 1 · день 1</strong></span>
       <span>Мир <strong id="world-level-value">ур. 1</strong></span>
-      <span>Агентов <strong id="population-value">10</strong></span>
+      <span>Искр <strong id="population-value">10</strong></span>
       <span>Карта <strong id="growth-value">5 мест</strong></span>
       <span>Cardinal <strong id="cardinal-status-level">ур. 1</strong></span>
       <span>Животные <strong id="wildlife-value">0</strong></span>
@@ -410,7 +410,7 @@ app.innerHTML = `
 
     <section class="maximum-acceleration-mode" id="maximum-acceleration-mode" hidden>
       <strong>Максимальное ускорение</strong>
-      <p>Карта и подробные панели остановлены. Агенты продолжают проживать все шаги мира; управление скоростью остаётся доступно выше.</p>
+      <p>Карта и подробные панели остановлены. Искры продолжают проживать все шаги мира; управление скоростью остаётся доступно выше.</p>
     </section>
 
     <section class="catch-up-overlay" id="catch-up-overlay" aria-live="assertive" hidden>
@@ -435,7 +435,7 @@ app.innerHTML = `
             <button id="map-zoom-fit" type="button" aria-label="Показать всю карту">100%</button>
             <span id="settlement-picker"></span>
             <button id="map-city-focus" type="button">Город</button>
-            <button id="map-resident-focus" type="button" aria-label="Найти выбранного агента на карте">Агент</button>
+            <button id="map-resident-focus" type="button" aria-label="Найти выбранную Искру на карте">Искра</button>
           <button id="map-zoom-in" type="button" aria-label="Увеличить карту">+</button>
             <button id="text-scale" type="button" aria-label="Увеличить размер текста">Текст 115%</button>
           </div>
@@ -479,21 +479,22 @@ app.innerHTML = `
       <aside class="world-sidebar">
         <section class="resident-panel" aria-live="polite">
           <div class="panel-heading-row">
-            <p class="panel-label">Выбранный агент</p>
+            <p class="panel-label" title="Искры — искусственные разумные обитатели мира всех народов">Выбранная Искра</p>
+            <p class="muted">Искры — искусственные разумные обитатели мира.</p>
             <span class="autonomy-mark">САМ РЕШАЕТ</span>
           </div>
 
           <label class="resident-picker-label" for="resident-picker">
-            <span>Найти конкретного агента</span>
-            <input id="resident-search" type="search" placeholder="Имя агента" autocomplete="off" />
-            <select id="resident-picker" aria-label="Выбрать агента"></select>
+            <span>Найти конкретную Искру</span>
+            <input id="resident-search" type="search" placeholder="Имя Искры" autocomplete="off" />
+            <select id="resident-picker" aria-label="Выбрать Искру"></select>
           </label>
 
           <div class="resident-title-row">
             <div class="resident-portrait" id="resident-portrait" aria-hidden="true">A</div>
             <div>
               <h2 id="resident-name">Мир запускается…</h2>
-              <p id="resident-activity" class="resident-activity">Подготавливаем агентов</p>
+              <p id="resident-activity" class="resident-activity">Подготавливаем Искр</p>
             </div>
           </div>
 
@@ -556,8 +557,8 @@ app.innerHTML = `
             <span><strong id="artifact-count">0</strong>артефактов</span>
             <span><strong id="trade-volume">0</strong>оборот</span>
           </div>
-          <p class="adventure-latest" id="adventure-latest">Агенты ещё не нашли входы в подземелья.</p>
-          <p class="adventure-economy-note" id="adventure-economy-note">Монеты и добыча не телепортируются: их переносят сами агенты.</p>
+          <p class="adventure-latest" id="adventure-latest">Искры ещё не нашли входы в подземелья.</p>
+          <p class="adventure-economy-note" id="adventure-economy-note">Монеты и добыча не телепортируются: их переносят сами Искры.</p>
         </section>
 
         <section class="event-panel">
@@ -573,7 +574,7 @@ app.innerHTML = `
             <div id="conversation-feed">Пока рядом не слышно разговора.</div>
           </div>
           <button class="prayer-inbox-open" id="prayer-inbox-open" type="button">
-            Молитвы агентов <span id="prayer-unread-count">0</span>
+            Молитвы Искр <span id="prayer-unread-count">0</span>
           </button>
         </section>
 
@@ -597,7 +598,7 @@ app.innerHTML = `
           </p>
 
           <p id="cardinal-message">
-            Cardinal не управляет агентами. Любое изменение мира проходит
+            Cardinal не управляет Искрами. Любое изменение мира проходит
             только через независимый gateway.
           </p>
           <p class="cardinal-last-action" id="cardinal-last-action">
@@ -650,14 +651,14 @@ app.innerHTML = `
         <header>
           <div>
             <p class="prayer-inbox__badge">ЛИЧНЫЕ ОБРАЩЕНИЯ</p>
-            <h2 id="prayer-inbox-title">Молитвы агентов</h2>
-            <p id="prayer-inbox-summary">Здесь появляются реальные обращения из прожитой жизни NPC.</p>
+            <h2 id="prayer-inbox-title">Молитвы Искр</h2>
+            <p id="prayer-inbox-summary">Здесь появляются реальные обращения из прожитой жизни Искр.</p>
           </div>
           <button id="prayer-inbox-close" type="button" aria-label="Закрыть молитвы">×</button>
         </header>
         <div class="prayer-inbox__filters">
           <label>Поселение<select id="prayer-filter-settlement"><option value="">Все поселения</option></select></label>
-          <label>Агент<input id="prayer-filter-npc" type="search" placeholder="Имя агента" /></label>
+          <label>Искра<input id="prayer-filter-npc" type="search" placeholder="Имя Искры" /></label>
           <label>Тема<select id="prayer-filter-topic"><option value="">Все темы</option></select></label>
           <label>Вера<select id="prayer-filter-belief"><option value="">Любая</option><option value="high">Высокая</option><option value="low">Низкая или сомнение</option></select></label>
           <label>Отчаяние<select id="prayer-filter-desperation"><option value="">Любое</option><option value="high">Сильное</option><option value="low">Невысокое</option></select></label>
@@ -672,12 +673,12 @@ app.innerHTML = `
           <div>
             <p class="divine-audience__badge">ЛИЧНАЯ АУДИЕНЦИЯ</p>
             <h2 id="divine-audience-title">Закрытая аудиенция</h2>
-            <p id="divine-audience-subtitle">Мир и возраст выбранного агента остановлены.</p>
+            <p id="divine-audience-subtitle">Мир и возраст выбранной Искры остановлены.</p>
           </div>
           <button id="divine-audience-close" type="button" aria-label="Закрыть аудиенцию">×</button>
         </header>
         <form id="divine-audience-form">
-          <label>Как вас услышит агент
+          <label>Как вас услышит Искра
             <input id="divine-deity-name" maxlength="64" required value="Создатель" />
           </label>
           <label>Имя религии <small>(необязательно)</small>
@@ -696,7 +697,7 @@ app.innerHTML = `
             </select>
           </label>
           <label>Ваши слова или смысл знака
-            <textarea id="divine-message" maxlength="480" rows="4" placeholder="Агент услышит это только при выбранном контакте…"></textarea>
+            <textarea id="divine-message" maxlength="480" rows="4" placeholder="Искра услышит это только при выбранном контакте…"></textarea>
           </label>
           <label>Дар <small>(необязательно)</small>
             <select id="divine-gift">
@@ -708,7 +709,7 @@ app.innerHTML = `
             <select id="divine-legacy-gift"></select>
           </label>
           <p class="divine-audience__gift-note" id="divine-gift-note"></p>
-          <p class="divine-audience__choice-note">Дар не меняет профессию, характер или судьбу. Приказ не отнимает свободу воли. Священником или героем агент может стать только через собственную жизнь и признание окружающих.</p>
+          <p class="divine-audience__choice-note">Дар не меняет профессию, характер или судьбу. Приказ не отнимает свободу воли. Священником или героем Искра может стать только через собственную жизнь и признание окружающих.</p>
           <p class="divine-audience__status" id="divine-audience-status" aria-live="polite"></p>
           <button class="divine-audience__grant" id="divine-audience-grant" type="submit">Совершить божественное действие</button>
         </form>
@@ -1273,8 +1274,8 @@ function updateDivineContactRequirements(): void {
   const contact = selectedDivineContactKind();
   divineMessage.required = contact !== undefined;
   divineMessage.placeholder = contact
-    ? 'Передайте агенту сообщение или смысл знака…'
-    : 'При даре без контакта агент не узнает источник автоматически.';
+    ? 'Передайте Искре сообщение или смысл знака…'
+    : 'При даре без контакта Искра не узнает источник автоматически.';
 }
 
 function openPrivateDivineAudience(prayerId?: string): void {
@@ -1408,7 +1409,7 @@ function prayerCard(world: Readonly<WorldState>, prayer: Readonly<V19PrayerRecor
   actions.className = 'prayer-card__actions';
   const openNpc = document.createElement('button');
   openNpc.type = 'button';
-  openNpc.textContent = 'Открыть NPC';
+  openNpc.textContent = 'Открыть Искру';
   openNpc.addEventListener('click', () => {
     selectedAgentId = prayer.npcId;
     closePrayerInbox();
@@ -1615,8 +1616,8 @@ function renderAdventurePanel(world: Readonly<WorldState>): void {
     adventureLatest.textContent = `${agent?.name ?? latest.agentId} ${outcome} · ${dungeon?.name ?? latest.dungeonId} · ранг ${latest.rankAfter}`;
   } else {
     adventureLatest.textContent = dungeons.length > 0
-      ? `Открыто входов: ${dungeons.length}. Решение войти примут сами агенты.`
-      : 'Агенты ещё не нашли входы в подземелья.';
+      ? `Открыто входов: ${dungeons.length}. Решение войти примут сами Искры.`
+      : 'Искры ещё не нашли входы в подземелья.';
   }
   adventureEconomyNote.textContent =
     `Из подземелий вынесено ${adventure.totalCoinRecovered.toFixed(1)} монет · ` +
@@ -1985,8 +1986,8 @@ function eventAgentName(
 ): string {
   const agentId = event.payload.agentId;
   return typeof agentId === 'string'
-    ? world.agents[agentId]?.name ?? 'Агент'
-    : 'Агент';
+    ? world.agents[agentId]?.name ?? 'Искра'
+    : 'Искра';
 }
 
 function eventText(
@@ -2080,7 +2081,7 @@ function eventText(
       const targetId = event.payload.targetId;
       const target =
         typeof targetId === 'string' ? world.agents[targetId]?.name : undefined;
-      return `${name} помог${target ? ` ${target}` : ' другому агенту'}`;
+      return `${name} помог${target ? ` ${target}` : ' другой Искре'}`;
     }
     case 'agent.help.rejected':
       return `Помощь ${name} не приняли`;
@@ -2096,7 +2097,7 @@ function eventText(
       const sentiment = event.payload.sentiment;
       const aName = typeof a === 'string' ? world.agents[a]?.name : undefined;
       const bName = typeof b === 'string' ? world.agents[b]?.name : undefined;
-      if (!aName || !bName) return 'Между агентами изменилась связь';
+      if (!aName || !bName) return 'Между Искрами изменилась связь';
       return typeof sentiment === 'number' && sentiment < -0.18
         ? `${aName} и ${bName} поспорили`
         : `${aName} и ${bName} пообщались`;
@@ -2115,7 +2116,7 @@ function eventText(
             world.places[regionId]?.name ??
             regionId
           }`
-        : 'Агенты открыли новую территорию';
+        : 'Искры открыли новую территорию';
     }
     case 'world.wildlife.recovered': {
       const species = event.payload.species;
@@ -2178,21 +2179,21 @@ function eventText(
               ? 'огров'
               : race;
       return event.kind === 'world.sapient_people.discovered'
-        ? `Агенты открыли самостоятельный разумный народ: ${label}`
+        ? `Искры открыли самостоятельный разумный народ: ${label}`
         : `В мире возник самостоятельный разумный народ: ${label}`;
     }
     case 'agent.level.changed':
       return `${name} достиг уровня ${String(event.payload.level ?? '?')}`;
     case 'world.settlement.founded':
-      return `Агенты основали ${String(event.payload.name ?? 'новое поселение')}`;
+      return `Искры основали ${String(event.payload.name ?? 'новое поселение')}`;
     case 'agent.resettled':
       return `${name} добровольно переселился в другое поселение`;
     case 'world.building.home_started':
-      return 'Агенты добровольно начали строить новый дом';
+      return 'Искры добровольно начали строить новый дом';
     case 'world.building.home_built':
-      return 'Агенты построили новый дом из местных материалов';
+      return 'Искры построили новый дом из местных материалов';
     case 'world.building.home_repaired':
-      return 'Агенты отремонтировали и вернули бесхозный дом в жизнь';
+      return 'Искры отремонтировали и вернули бесхозный дом в жизнь';
     case 'agent.household.moved_home':
       return event.payload.reason === 'voluntary_reoccupation_after_repair'
         ? `${name} добровольно поселился в восстановленном доме`
@@ -2218,11 +2219,11 @@ function eventText(
     case 'world.settlement.peace':
       return 'Участники прекратили войну';
     case 'world.cemetery.established':
-      return 'Агенты отвели место под кладбище';
+      return 'Искры отвели место под кладбище';
     case 'world.resident.buried': {
-      return name === 'Агент'
-        ? 'Агенты похоронили умершего'
-        : `Агенты похоронили ${name}`;
+      return name === 'Искра'
+        ? 'Искры похоронили умершего'
+        : `Искры похоронили ${name}`;
     }
     case 'world.city.emerged':
       return `${String(event.payload.name ?? 'Поселение')} выросло в город`;
@@ -2231,7 +2232,7 @@ function eventText(
     case 'world.tradition.emerged':
       return 'В мире родилась новая традиция';
     case 'world.entry.resident_manifested':
-      return 'В мир вошёл новый внешний агент';
+      return 'В мир вошёл новый внешний обитатель';
     case 'world.entry.deity_manifested':
       return 'Мир почувствовал присутствие неизвестной силы';
     case 'world.omen.aurora':
@@ -2239,7 +2240,7 @@ function eventText(
     case 'world.omen.eclipse':
     case 'world.omen.miracle':
     case 'world.omen.storm_sign':
-      return 'Агенты стали свидетелями необъяснимого знамения';
+      return 'Искры стали свидетелями необъяснимого знамения';
     case 'world.omen.natural.sky_lights':
     case 'world.omen.natural.distant_voice':
     case 'world.omen.natural.silent_storm':
@@ -2318,7 +2319,7 @@ function renderAudibleConversations(frame: Readonly<LiveWorldFrame>): void {
   }
   for (const conversation of conversations) {
     const item = document.createElement('article');
-    const speaker = frame.world.agents[conversation.speakerId]?.name ?? 'Агент';
+    const speaker = frame.world.agents[conversation.speakerId]?.name ?? 'Искра';
     const listener = frame.world.agents[conversation.listenerId]?.name ?? 'собеседник';
     const place = frame.world.places[conversation.placeId]?.name ?? conversation.placeId;
     const heading = document.createElement('span');
@@ -2341,7 +2342,7 @@ function announceDisturbance(frame: Readonly<LiveWorldFrame>): void {
 
   disturbanceBanner.textContent =
     disturbance.kind === 'resource_shock'
-      ? '⚠ Ресурсный удар — агенты решают сами'
+      ? '⚠ Ресурсный удар — Искры решают сами'
       : disturbance.kind === 'social_barrier'
         ? '⚠ Социальный барьер'
         : '⚠ Угроза безопасности';
@@ -2620,7 +2621,7 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
   } else if (unlocked.length > 0) {
     cardinalMessage.textContent = `Cardinal освоил: ${unlocked
       .map((capability) => cardinalCapabilityLabels[capability])
-      .join(', ')}. Воля агентов не изменилась.`;
+      .join(', ')}. Воля Искр не изменилась.`;
   } else if (frame.intervention?.executed) {
     cardinalMessage.textContent =
       'Cardinal предложил меру. Независимый gateway проверил и выполнил её.';
@@ -2731,15 +2732,15 @@ function russianGatewayReason(reason: string | undefined): string {
 function lawExplanation(mechanism: WorldState['governance']['laws'][string]['mechanism']): string {
   const explanations: Record<typeof mechanism, string> = {
     frontier_expansion:
-      'Агенты могут постепенно открывать новые участки карты; Cardinal меняет только темп, а не решения исследователей.',
+      'Искры могут постепенно открывать новые участки карты; Cardinal меняет только темп, а не решения исследователей.',
     wildlife_recovery:
       'Популяции восстанавливаются по состоянию среды, без мгновенного появления животных по команде.',
     fertility_support:
-      'Мир поддерживает условия для семей, но решение о близости и детях остаётся за агентами.',
+      'Мир поддерживает условия для семей, но решение о близости и детях остаётся за Искрами.',
     resource_regeneration:
       'Общие природные ресурсы постепенно восстанавливаются сами.',
     mystic_resonance:
-      'Определяет вероятность знамений и развитие верований, не переписывая убеждения агентов.',
+      'Определяет вероятность знамений и развитие верований, не переписывая убеждения Искр.',
     weather_volatility:
       'Ограничивает изменчивость внешних условий и будущих погодных событий.',
     catastrophe_recovery:
@@ -2913,7 +2914,7 @@ function renderCardinalConsole(): void {
             ['Где действует', locationSummary(places)],
             ['Срок', 'Постоянно, пока независимый gateway не разрешит новую ограниченную поправку.'],
             ['История', law.revision > 0 ? `Редакция ${law.revision}. Предыдущее числовое значение не хранится в текущем срезе; оно остаётся в append-only событии.` : 'Исходная редакция мира.'],
-            ['Граница полномочий', 'Закон не даёт Cardinal доступа к личности, памяти, ценностям, отношениям или выбору агентов.'],
+            ['Граница полномочий', 'Закон не даёт Cardinal доступа к личности, памяти, ценностям, отношениям или выбору Искр.'],
           ],
           places,
         ),
@@ -3446,7 +3447,7 @@ liveWorldWorker.addEventListener(
       divineAudienceRequestPending = false;
       divineAudienceGrant.disabled = false;
       divineAudienceStatus.textContent = event.data.authorized
-        ? `${event.data.giftGranted ? 'Дар получен. ' : ''}${event.data.contactRecorded ? 'Контакт состоялся. ' : ''}${event.data.residentResponse ? `Агент отвечает: «${event.data.residentResponse}»` : 'Действие завершено.'}`
+        ? `${event.data.giftGranted ? 'Дар получен. ' : ''}${event.data.contactRecorded ? 'Контакт состоялся. ' : ''}${event.data.residentResponse ? `Искра отвечает: «${event.data.residentResponse}»` : 'Действие завершено.'}`
         : `Аудиенция не завершена: ${event.data.reason}`;
       return;
     }

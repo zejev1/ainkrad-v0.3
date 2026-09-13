@@ -23,11 +23,23 @@ export function pointInPolygon(point:WorldPoint2D, polygon:readonly WorldPoint2D
   }
   return inside;
 }
+const boundaryCache=new WeakMap<readonly WorldPoint2D[],{length:number;edges:[WorldPoint2D,WorldPoint2D][]}>();
+/** Even-odd polygons join holes with an edge traversed in both directions.
+ * Those zero-area connectors are not physical banks or walls. */
+function boundaryEdges(polygon:readonly WorldPoint2D[]):[WorldPoint2D,WorldPoint2D][] {
+  const cached=boundaryCache.get(polygon);if(cached?.length===polygon.length)return cached.edges;
+  const edges=new Map<string,[WorldPoint2D,WorldPoint2D]>();
+  for(let i=0;i<polygon.length;i++){
+    const a=polygon[i],b=polygon[(i+1)%polygon.length];if(a.x===b.x&&a.y===b.y)continue;
+    const key=[`${a.x},${a.y}`,`${b.x},${b.y}`].sort().join('|');
+    if(edges.has(key))edges.delete(key);else edges.set(key,[a,b]);
+  }
+  const result=[...edges.values()];boundaryCache.set(polygon,{length:polygon.length,edges:result});return result;
+}
 export function segmentHitsPolygon(a:WorldPoint2D,b:WorldPoint2D,polygon:readonly WorldPoint2D[]):boolean {
   if(pointInPolygon(a,polygon)||pointInPolygon(b,polygon)||pointInPolygon({x:(a.x+b.x)/2,y:(a.y+b.y)/2},polygon))return true;
   const cross=(p:WorldPoint2D,q:WorldPoint2D,r:WorldPoint2D)=>(q.x-p.x)*(r.y-p.y)-(q.y-p.y)*(r.x-p.x);
-  return polygon.some((c,i)=>{
-    const d=polygon[(i+1)%polygon.length];
+  return boundaryEdges(polygon).some(([c,d])=>{
     return cross(a,b,c)*cross(a,b,d)<-1e-14 && cross(c,d,a)*cross(c,d,b)<-1e-14;
   });
 }

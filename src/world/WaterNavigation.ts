@@ -5,7 +5,7 @@ import {featureBounds,type FeatureBounds} from './geography/FeatureIndex';
 
 export function worldWaterPolygons(places:Readonly<Record<string,WorldPlace>>,bounds?:FeatureBounds):WorldPoint2D[][] {
   const model=terrainForPlaces(places);
-  const local=Object.values(places).flatMap(p=>p.waterPolygon?[p.waterPolygon]:p.surface==='water'&&p.boundaryPolygon?[p.boundaryPolygon]:[]);
+  const local=Object.values(places).filter(p=>!model||p.kind!=='ocean').flatMap(p=>p.waterPolygon?[p.waterPolygon]:p.surface==='water'&&p.boundaryPolygon?[p.boundaryPolygon]:[]);
   return [...local,...(model?[model.ocean,...(bounds?model.waterIn(bounds):model.riverPolygons)]:[])];
 }
 export function pathCrossesWater(path:readonly WorldPoint2D[],places:Readonly<Record<string,WorldPlace>>):boolean {

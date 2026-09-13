@@ -21,3 +21,12 @@ These rules apply to every future Ainkrad commit package.
 13. For SPCK exports, verify both loose and packed main refs, the exact current remote main ancestry, a portable self-contained Git object database and a flat ZIP root. An archive audit cannot establish that a phone-side Push will succeed. If SPCK only reports a generic rejection, do not invent a cause or advise disabling protection/force-pushing; preserve the user's work and obtain the actual rejection detail.
 
 14. Current priority: first develop the autonomous mortal world and its agents toward the Underworld/Alicization reference; work on Cardinal's own new capabilities follows that foundation. Books, bodies, materials, tools, homes, travel and occupations must affect lived behavior. Preserve personal history and independent choice; do not manufacture prosperity, professions or consent through Cardinal.
+
+15. Пользовательский номер текущего выпуска: **0.3.22.f1**. Общее краткое имя
+    искусственных разумных обитателей в UI — **Искры**; конкретные народы
+    (люди, эльфы и т.д.) сохраняют свои названия. Технические идентификаторы
+    сохранений ради UI-терминологии не менять.
+16. Дальняя суша не создаётся от движения камеры или заранее. Cardinal может
+    предложить её только по факту дальнего добровольного морского исследования;
+    независимая граница мира защищает обследованное море, сушу и маршруты.
+    Ни появление суши, ни её отображение не дают жителям готовых знаний и решений.

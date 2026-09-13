@@ -42,7 +42,7 @@ writeFileSync(join(target,'.git','packed-refs'),'# pack-refs with: peeled fully-
 for(const path of ['FETCH_HEAD','logs','hooks'])rmSync(join(target,'.git',path),{recursive:true,force:true});
 for(const item of readdirSync(target))if(item!=='.git')rmSync(join(target,item),{recursive:true,force:true});
 const paths=execFileSync('git',['ls-files','-z','--cached','--others','--exclude-standard'],{cwd:root,encoding:'utf8'}).split('\0')
- .filter(p=>p&&!p.startsWith('__qa/')&&existsSync(join(root,p)));
+ .filter(p=>p&&p!=='docs/SPCK_FILES.json'&&!p.startsWith('__qa/')&&existsSync(join(root,p)));
 const hashes={};
 for(const path of paths){
  assert(!path.startsWith('/')&&!path.split('/').includes('..'));

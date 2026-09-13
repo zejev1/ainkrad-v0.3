@@ -1,3 +1,5 @@
+import {applyOceanDecision} from './geography/OceanGeographyPolicy';
+import {assertOceanExploration,type OceanDecision} from './geography/OceanExploration';
 import { consumeReadingWords } from '../v18/HistoricalReading';
 import {boatWorkSite, workOnBoat} from '../v21/MaritimePractice';
 import {advanceBoats, availableBoat, startBoatExploration, startBoatFishing, startBoatTravel} from '../v21/BoatNavigation';
@@ -899,6 +901,7 @@ function assertUnitFields(
 function assertWorldState(value: unknown): asserts value is WorldState {
   const state = asRecord(value, 'World state');
   assertTerrainFoundation(state.terrain);
+  assertOceanExploration(state as unknown as WorldState);
   const id = requiredString(state.id, 'World state id');
   const stateNow = finiteNumber(state.now, 'World state time');
   nonNegativeInteger(state.revision, 'World state revision');
@@ -4768,6 +4771,7 @@ export class WorldEngine {
         };
         this.state.places = places;
         this.state.terrain = undefined;
+        this.state.oceanExploration = undefined;
         this.state.geography = undefined;
         this.state.routes = rebuildWorldRoutes(places);
         this.state.settlements = rebuildSettlementProjection(places, {}, resetAt);
@@ -5528,6 +5532,16 @@ export class WorldEngine {
   /** Cardinal may propose world laws, but only the independent authority
    * gateway receives this mutation capability. Personhood is not addressable
    * through this method. */
+  async applyAuthorizedOceanDecision(decision:OceanDecision,revision:number):Promise<WorldMutationResult> {
+    return this.mutateDetailed(`ocean-frontier:${this.committedState.epoch??1}:${decision.requestId}`,
+      stableJsonStringify(decision),async()=>{
+        applyOceanDecision(this.state,decision);
+        this.stageEvent({eventId:this.stableOperationEventId('ocean-frontier',decision.requestId),worldId:this.state.id,
+          kind:'world.geography.extended',source:'cardinal',occurredAt:this.state.now,
+          payload:{requestId:decision.requestId,landKind:decision.land?.kind??'ocean',landId:decision.land?.id??null}});
+      },revision);
+  }
+
   async applyAuthorizedWorldLaw(
     worldId: string,
     lawId: string,

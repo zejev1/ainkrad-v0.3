@@ -15,7 +15,7 @@ export function surveyFrontier<T extends WorldPoint2D>(world:Readonly<WorldState
     if(wanted==='ancient_ruins')biome='ancient_ruins';
     for(const r of model.rivers.query({minX:x-2,minY:y-2,maxX:x+2,maxY:y+2}))if(nearestRiverPoint({x,y},r).distance<r.width+1)biome='river';
     for(const a of model.anchors.query({minX:x-3,minY:y-3,maxX:x+3,maxY:y+3}))if(a.water&&a.kind==='lake'&&a.water.some(p=>Math.hypot(p.x-x,p.y-y)<2))biome='lake';
-    if(!pointInPolygon({x:x+2,y},model.outline)||!pointInPolygon({x:x-2,y},model.outline))biome='coast';
+    if(!model.isLand({x:x+2,y})||!model.isLand({x:x-2,y}))biome='coast';
     const cost=radius+(compatible.includes(biome)?0:40);
     if(cost<bestCost){best={...proposed,x,y,biome};bestCost=cost;}if(i===0&&biome===wanted)break;
   }

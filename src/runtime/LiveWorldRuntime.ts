@@ -1,3 +1,5 @@
+import {CardinalOceanArchitect} from '../cardinal/CardinalOceanArchitect';
+import {IndependentOceanFrontierGateway,oceanDecisionAllowed} from '../boundary/OceanFrontierGateway';
 import type { WorldTimeExecution } from '../world/WorldTimeExecution';
 import { LiveAccelerationBudget, MAX_LIVE_PENDING_MINUTES } from './LiveAccelerationBudget';
 import { worldStorageDiagnostics } from '../persistence/WorldSaveSafety';
@@ -1264,6 +1266,14 @@ export class LiveWorldRuntime {
     intervention?: InterventionRecord;
     worldAuthority?: WorldAuthorityRecord;
   }> {
+    // Geographic extension is separately authorized on a real voyage. It
+    // neither waits for a population crisis nor writes a resident decision.
+    if(this.mode==='intervene'&&semanticWorld.oceanExploration?.pending&&!semanticWorld.oceanExploration.sealed){
+      const proposed=new CardinalOceanArchitect().consider(semanticWorld.oceanExploration.pending);
+      const decision=oceanDecisionAllowed(semanticWorld,proposed)?proposed:{requestId:proposed.requestId};
+      await new IndependentOceanFrontierGateway(this.world).execute(decision,semanticWorld.revision);
+      semanticWorld=this.world.runtimeStateView();
+    }
     const worldMinutes = semanticWorld.calendar.elapsedWorldMinutes;
     const livingPopulation = Object.values(semanticWorld.agents).filter(
       (agent) =>

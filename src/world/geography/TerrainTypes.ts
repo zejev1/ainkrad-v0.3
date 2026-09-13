@@ -6,6 +6,7 @@ export interface TerrainAnchor extends WorldPoint2D {
  * caches, not mutable RNG state or resident discoveries. */
 export interface TerrainFoundation {
   version:1;epoch:number;seed:number;key:string;anchors:TerrainAnchor[];
+  offshore?:import('./OceanExploration').OffshoreLand[];
 }
 export interface TerrainRidge {id:string;name:string;points:WorldPoint2D[];height:number;width:number}
 export interface RiverReach {id:string;from:WorldPoint2D;to:WorldPoint2D;points?:WorldPoint2D[];width:number;flow:number;bedFrom:number;bedTo:number;downstream?:string}

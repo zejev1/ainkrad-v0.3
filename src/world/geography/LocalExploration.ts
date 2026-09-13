@@ -1,7 +1,6 @@
 import type { AgentState, WorldBiome, WorldPoint2D, WorldState } from '../types';
 import { bindWorldTerrain } from './WorldTerrain';
 import { nearestRiverPoint } from './RiverCourses';
-import { pointInPolygon } from '../BuildingFootprints';
 import { distanceToSegment, hash } from './TerrainMath';
 
 /** Survey the ground that exists, including the accessible bank, never create
@@ -19,7 +18,7 @@ export function localTerrainBiome(world: Readonly<WorldState>, point: WorldPoint
   for (const river of model.rivers.query(box)) {
     if (nearestRiverPoint(point, river).distance < river.width + 0.4) return 'river';
   }
-  if (model.outline.some((p, i, polygon) => distanceToSegment(point, p, polygon[(i + 1) % polygon.length]).distance < 0.6)) return 'coast';
+  if (model.landOutlines.some(outline=>outline.some((p, i, polygon) => distanceToSegment(point, p, polygon[(i + 1) % polygon.length]).distance < 0.6))) return 'coast';
   return sample.biome;
 }
 
@@ -47,7 +46,7 @@ export function localSurveySite(world: Readonly<WorldState>, explorer: Readonly<
         const t = j / Math.ceil(radius / 0.1);
         if (model.sample(origin.x + (point.x - origin.x) * t, origin.y + (point.y - origin.y) * t).water) { dry = false; break; }
       }
-      if (!dry || !pointInPolygon(point, model.outline)) continue;
+      if (!dry || !model.isLand(point)) continue;
       const useful = biome === 'forest' ? (1 - explorer.resources) * 0.25 : ['coast', 'river', 'lake'].includes(biome) ? 0.18 : 0;
       const weight = 1 + useful + explorer.personality.curiosity * (index % 3) * 0.08;
       choices.push({ ...point, biome, connections: [explorer.locationId], weight });

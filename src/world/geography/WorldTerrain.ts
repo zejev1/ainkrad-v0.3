@@ -95,6 +95,17 @@ export function assertTerrainFoundation(value:unknown):void {
     ids.add(a.id);
     if(a.water&&(!Array.isArray(a.water)||a.water.length<3||a.water.some(p=>!Number.isFinite(p.x)||!Number.isFinite(p.y))))throw new Error('World terrain water is invalid.');
   }
-  const expected='terrain-v1:'+hash(JSON.stringify({version:1,epoch:f.epoch,seed:f.seed,key:'',anchors:f.anchors}));
+  if(f.offshore){
+    if(!Array.isArray(f.offshore)||f.offshore.length>32)throw new Error('Invalid offshore land count.');
+    const landIds=new Set<string>();
+    for(const land of f.offshore){
+      if(!land||typeof land.id!=='string'||landIds.has(land.id)||!['islet','island','continent'].includes(land.kind)||
+        !Number.isSafeInteger(land.seed)||!land.center||!Number.isFinite(land.center.x)||!Number.isFinite(land.center.y)||
+        !Number.isFinite(land.radius)||land.radius<2.5||land.radius>3000||!Array.isArray(land.outline)||land.outline.length!==32||
+        land.outline.some(p=>!Number.isFinite(p.x)||!Number.isFinite(p.y)))throw new Error('Invalid offshore land recipe.');
+      landIds.add(land.id);
+    }
+  }
+  const expected='terrain-v1:'+hash(JSON.stringify({version:1,epoch:f.epoch,seed:f.seed,key:'',anchors:f.anchors,...(f.offshore?{offshore:f.offshore}:{})}));
   if(f.key!==expected)throw new Error('World terrain recipe checksum is invalid.');
 }

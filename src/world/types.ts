@@ -1076,6 +1076,7 @@ export interface WorldV21State {
 
 export interface WorldState {
   terrain?: TerrainFoundation;
+  oceanExploration?: import('./geography/OceanExploration').OceanExplorationState;
   id: string;
   geography?: { version: 1; revision: number; signature: string };
   /** Logical world epoch. Optional only for legacy fixtures before migration. */

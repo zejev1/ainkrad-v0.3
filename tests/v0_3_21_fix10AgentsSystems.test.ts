@@ -54,13 +54,13 @@ describe('FIX10 autonomous agents and separated world systems', () => {
     expect(worldMinutesPerTick('century_per_minute', 100)).toBe(decade);
   });
 
-  it('shows distinct race headings, agent terminology and the plain field name', () => {
+  it('shows distinct race headings, Iskra terminology and the plain field name', () => {
     const browser = readFileSync(new URL('../src/browser.ts', import.meta.url), 'utf8');
     const css = readFileSync(new URL('../src/browser.css', import.meta.url), 'utf8');
     expect(browser).toContain('group.dataset.race');
     expect(browser).toContain("label: 'Поле'");
     expect(browser).not.toContain("label: 'Ресурсное поле'");
-    expect(browser).toContain('Выбранный агент');
+    expect(browser).toContain('Выбранная Искра');
     for (const id of ['tick-value','time-value','population-value','growth-value','wildlife-value','monster-value','resource-value']) {
       expect(browser).toContain(`id="${id}"`);
     }

@@ -1,3 +1,4 @@
+import {recordOceanPassage} from '../world/geography/OceanExploration';
 import type { AgentActionKind, AgentState, V15WorldItemState, WorldBiome, WorldPoint2D, WorldState } from '../world/types';
 import { routeIdBetween } from '../world/WorldNavigation';
 import { worldWeatherV21 } from './WeatherV21';
@@ -196,6 +197,7 @@ export function advanceBoats(world:WorldState,elapsed:number,startMinute:number)
       boat.boat.condition=clamp((boat.boat.condition??1)-duration*(weather.kind==='storm'?.0004:.00002));
       pilot.energy=clamp(pilot.energy-duration*.00012);
       minute+=duration;j.lastAdvancedWorldMinute=minute;
+      recordOceanPassage(world,item.id,j,point,minute);
       if(!fishing&&distance-duration*speed<1e-8) {
         j.nextWaypointIndex++;
         if(j.nextWaypointIndex>=j.waypoints.length)arrivals.push(...arrive(world,boat));
