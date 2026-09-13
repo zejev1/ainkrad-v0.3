@@ -366,7 +366,7 @@ app.innerHTML = `
   <div class="ainkrad-app">
     <header class="world-header">
       <div>
-        <p class="eyebrow">v0.3.21.10.1</p>
+        <p class="eyebrow">v0.3.21.10.2</p>
         <h1 id="world-title">Мир · уровень 1</h1>
       </div>
 

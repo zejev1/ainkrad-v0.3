@@ -61,6 +61,10 @@ describe('FIX10 autonomous agents and separated world systems', () => {
     expect(browser).toContain("label: 'Поле'");
     expect(browser).not.toContain("label: 'Ресурсное поле'");
     expect(browser).toContain('Выбранный агент');
+    for (const id of ['tick-value','time-value','population-value','growth-value','wildlife-value','monster-value','resource-value']) {
+      expect(browser).toContain(`id="${id}"`);
+    }
+    expect(css).toMatch(/\.status-strip\s*\{[^}]*display:\s*grid/s);
     expect(css).toContain("optgroup[data-race='human']");
     expect(css).toContain("optgroup[data-race='elf']");
     expect(css).toMatch(/#resident-picker optgroup\s*\{[^}]*font-weight:\s*900/s);

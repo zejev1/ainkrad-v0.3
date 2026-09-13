@@ -1,4 +1,4 @@
-# Ainkrad 0.3.21-hotfix.10.1
+# Ainkrad 0.3.21-hotfix.10.2
 
 Ainkrad — автономный город-мир, вдохновлённый устройством Underworld из
 *Sword Art Online: Alicization*. Это не игра с управляемыми персонажами.
