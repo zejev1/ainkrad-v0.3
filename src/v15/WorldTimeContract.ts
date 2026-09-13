@@ -15,9 +15,10 @@ export const WORLD_MINUTES_PER_YEAR =
   WORLD_MINUTES_PER_DAY * WORLD_DAYS_PER_YEAR; // 525_600
 
 /**
- * One semantic decision opportunity in the v15 world. External worker calls
- * may contribute a fraction of this value or many of these values at once,
- * but they never change the quantum itself.
+ * One coarse life-update opportunity in the v15 world. It advances the
+ * consequences of work, travel, rest and relationships; it is not the amount
+ * of time a resident spends thinking. Short deliberation is recorded on the
+ * resident decision itself.
  */
 export const CANONICAL_WORLD_QUANTUM_MINUTES =
   WORLD_MINUTES_PER_YEAR / 60; // 8_760

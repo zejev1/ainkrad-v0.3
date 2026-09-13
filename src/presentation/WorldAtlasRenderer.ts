@@ -40,7 +40,7 @@ export class WorldAtlasRenderer {
           const path=document.createElementNS(SVG,'path');path.setAttribute('d',parts.join(' '));path.setAttribute('fill','none');
           path.setAttribute('vector-effect','non-scaling-stroke');
           path.style.stroke=color;path.style.strokeWidth=Math.max(.65,width*camera.pixelsPerUnit/100)+'px';
-          path.setAttribute('stroke-linecap','round');path.classList.add('atlas-road-'+kind);this.roads.append(path);
+          path.setAttribute('stroke-linecap','round');path.setAttribute('stroke-linejoin','round');path.classList.add('atlas-road-'+kind);this.roads.append(path);
         }
       }
       this.roadKey=roadKey;

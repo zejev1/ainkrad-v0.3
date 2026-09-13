@@ -187,6 +187,10 @@ export interface AgentDecisionState {
   consideredActionCount: number;
   openness: number;
   chosenAt: number;
+  /** Actual short reflection time; the action itself may continue afterwards. */
+  deliberationWorldMinutes?: number;
+  /** Private first-person account derived from this resident's lived state. */
+  innerThought?: string;
 }
 
 export interface AgentPlanState {
@@ -359,7 +363,7 @@ export interface WorldPlace {
 
 export interface WorldRouteState {
   terrainKey?: string;
-  geometryVersion?: 1 | 2;
+  geometryVersion?: 1 | 2 | 3;
   widthMetres?: number;
   completedTraversals?: number;
   id: string;

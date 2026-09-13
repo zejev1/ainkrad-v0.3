@@ -76,6 +76,7 @@ import {
 } from './v16/TruthfulInspectorsV16';
 import { formatAinkradWorldTime } from './v15/CardinalReadableReport';
 import { worldDurationDescription } from './v15/WorldTimeContract';
+import { residentDecisionReflection } from './world/ResidentDecisionReflection';
 import type {
   V18LivelihoodKind,
   V18LivelihoodStage,
@@ -345,7 +346,7 @@ app.innerHTML = `
   <div class="ainkrad-app">
     <header class="world-header">
       <div>
-        <p class="eyebrow">v0.3.21.7</p>
+        <p class="eyebrow">v0.3.21.8</p>
         <h1 id="world-title">Мир · уровень 1</h1>
       </div>
 
@@ -480,7 +481,7 @@ app.innerHTML = `
             <div><dt>Дело жизни</dt><dd id="resident-profession">—</dd></div>
             <div><dt>Приключения</dt><dd id="resident-adventure">—</dd></div>
             <div><dt>Сильный навык</dt><dd id="resident-skill">—</dd></div>
-            <div><dt>Выбор</dt><dd id="resident-choice">—</dd></div>
+            <div><dt>Мысль</dt><dd id="resident-choice">—</dd></div>
             <div><dt>Личный опыт</dt><dd id="resident-learning">—</dd></div>
           </dl>
 
@@ -1838,12 +1839,21 @@ function updateSelection(): void {
         : 'Закрытая аудиенция божества';
 
   if (selected.lastDecision) {
-    const openness = Math.round(selected.lastDecision.openness * 100);
-    residentChoice.textContent = `${selected.lastDecision.consideredActionCount} варианта · ${openness}%`;
-    residentChoice.title =
-      selected.lastDecision.action === selected.lastDecision.dominantAction
-        ? 'Выбран самый привлекательный вариант'
-        : `Выбран неочевидный вариант вместо «${actionLabels[selected.lastDecision.dominantAction]}»`;
+    const reflection = selected.lastDecision.innerThought &&
+      selected.lastDecision.deliberationWorldMinutes !== undefined
+      ? {
+          innerThought: selected.lastDecision.innerThought,
+          deliberationWorldMinutes: selected.lastDecision.deliberationWorldMinutes,
+        }
+      : residentDecisionReflection(selected, selected.lastDecision);
+    residentChoice.textContent = reflection.innerThought;
+    const decisionSeconds = Math.max(
+      10,
+      Math.round((reflection.deliberationWorldMinutes * 60) / 5) * 5,
+    );
+    residentChoice.title = decisionSeconds < 60
+      ? `Решение заняло около ${decisionSeconds} секунд времени мира. Само действие продолжается отдельно.`
+      : `Решение заняло около ${Math.round(decisionSeconds / 60)} минут времени мира. Само действие продолжается отдельно.`;
   } else {
     residentChoice.textContent = 'первое решение впереди';
     residentChoice.removeAttribute('title');

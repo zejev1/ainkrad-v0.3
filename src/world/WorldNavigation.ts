@@ -2,6 +2,7 @@ import { routeAroundWater, pathCrossesWater } from './WaterNavigation';
 import {regionalTerrainRoute} from './geography/RegionalNavigation';
 import {terrainForPlaces} from './geography/WorldTerrain';
 import { routeAroundBuildings, urbanStreetPath } from './SettlementStreets';
+import { roundedRoutePath } from './RouteCurves';
 import type {
   WorldPlace,
   WorldPoint2D,
@@ -134,7 +135,7 @@ export function rebuildWorldRoutes(
       const explicit = existing[id];
       const traversal = explicit?.traversal ?? traversalBetween(place, connected);
       if (!traversal) continue;
-      if(explicit?.geometryVersion===2 && explicit.terrainKey===terrainKey && explicit.waypoints.length>1) {
+      if(explicit?.geometryVersion===3 && explicit.terrainKey===terrainKey && explicit.waypoints.length>1) {
         const first=explicit.waypoints[0],last=explicit.waypoints.at(-1)!;
         const direct=explicit.fromPlaceId===place.id;
         const a=direct?place:connected,b=direct?connected:place;
@@ -146,7 +147,7 @@ export function rebuildWorldRoutes(
       }
       const route = buildRoute(place, connected, traversal, places);
       route.completedTraversals = explicit?.completedTraversals ?? 0;
-      route.geometryVersion=2;route.widthMetres=traversal==='walk'?3:4;
+      route.geometryVersion=3;route.widthMetres=traversal==='walk'?3:4;
       if(terrainKey)route.terrainKey=terrainKey;
       if (traversal === 'walk') {
         let path:WorldPoint2D[]|undefined=route.waypoints;
@@ -164,8 +165,18 @@ export function rebuildWorldRoutes(
         // A final building pass must not invalidate the verified water route.
         const final=routeAroundBuildings(path,place.id,connected.id,places);
         if(!final||pathCrossesWater(final,places))continue;
-        route.waypoints=final;
-        route.distance=final.slice(1).reduce((sum,p,i)=>sum+pointDistance(final[i],p),0);
+        const rounded = roundedRoutePath(final);
+        const roundedAvoidsBuildings = routeAroundBuildings(
+          rounded,
+          place.id,
+          connected.id,
+          places,
+        ) === rounded;
+        const physicalPath = roundedAvoidsBuildings && !pathCrossesWater(rounded, places)
+          ? rounded
+          : final;
+        route.waypoints=physicalPath;
+        route.distance=physicalPath.slice(1).reduce((sum,p,i)=>sum+pointDistance(physicalPath[i],p),0);
       }
       routes[id] = route;
     }

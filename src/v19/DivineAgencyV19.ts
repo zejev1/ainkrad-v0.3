@@ -435,45 +435,98 @@ function residentResponseForAction(
   agent: Readonly<AgentState>,
   deityName: string,
   gift: DivineGiftKind | undefined,
+  inheritanceGift: DivineGiftKind | undefined,
   contactKind: DivineContactKind | undefined,
+  message: string | undefined,
   interpretation: V19DivineInterpretation,
 ): string {
   const profession = professionFor(world, agent.id);
   const independent = agent.mind.values.freedom >= 0.62;
   const frightened = agent.mind.emotions.fear >= 0.58;
   const faithful = agent.mind.beliefs.divinePresence >= 0.58;
+  const words = (message ?? '').trim().replace(/\s+/g, ' ');
+  const heardWords = words
+    ? `: «${words.length > 112 ? `${words.slice(0, 109)}…` : words}»`
+    : '';
+  type PersonalValue = 'freedom' | 'care' | 'knowledge' | 'tradition' | 'ambition';
+  const valueScores: Array<[PersonalValue, number]> = [
+    ['freedom', agent.mind.values.freedom],
+    ['care', agent.mind.values.care],
+    ['knowledge', agent.mind.values.knowledge],
+    ['tradition', agent.mind.values.tradition],
+    ['ambition', agent.mind.values.ambition],
+  ];
+  const strongestValue = valueScores.sort((left, right) => right[1] - left[1])[0][0];
+  const personalStance: Record<PersonalValue, string> = {
+    freedom: 'Я привык решать сам',
+    care: 'Сначала я подумаю о близких',
+    knowledge: 'Мне нужны смысл и подтверждение',
+    tradition: 'Я сверю это с тем, чему доверяю',
+    ambition: 'Я хочу понять, чего смогу добиться',
+  };
+  const giftResponse = (() => {
+    if (!gift) return '';
+    if (gift === 'legacy') {
+      const inherited = inheritanceGift
+        ? GIFT_CATALOG_V20[inheritanceGift][0]
+        : 'выбранный дар';
+      return contactKind && contactKind !== 'sign'
+        ? ` Мой прежний дар «${inherited}» не исчез: наследие лишь даёт ему шанс перейти моему ребёнку.`
+        : ' Мой прежний дар не исчез; новую перемену можно будет понять только по жизни моих детей.';
+    }
+    const [name, description] = GIFT_CATALOG_V20[gift];
+    return contactKind && contactKind !== 'sign'
+      ? ` Я понял, что получил дар «${name}»: ${description} Но проверю его в собственных поступках.`
+      : ` Я чувствую новую возможность — похоже, ${description.toLocaleLowerCase('ru-RU')} Источник мне пока неизвестен.`;
+  })();
   if (contactKind) {
-    const heard = contactKind === 'sign' ? 'Я увидел этот знак' : `Я слышу тебя, ${deityName}`;
+    const heard = contactKind === 'sign'
+      ? `Я увидел знак${heardWords}`
+      : contactKind === 'vision'
+        ? `Я увидел видение от тебя, ${deityName}${heardWords}`
+        : `Я слышу тебя, ${deityName}${heardWords}`;
+    let answer: string;
     if (contactKind === 'command' && independent) {
-      return `${heard}. Я обдумаю твои слова, но решение и последствия останутся моими.`;
+      answer = 'Я обдумаю это, но решение и последствия останутся моими.';
+    } else if (contactKind === 'request') {
+      answer = agent.mind.values.care >= 0.58
+        ? 'Я постараюсь помочь, если это не предаст тех, за кого я отвечаю.'
+        : 'Я решу после того, как пойму цену этой просьбы.';
+    } else if (contactKind === 'warning') {
+      answer = agent.personality.riskTolerance >= 0.62
+        ? 'Я проверю опасность сам и подготовлюсь, если предупреждение подтвердится.'
+        : 'Мне тревожно; сначала предупрежу тех, кому доверяю, и поищу подтверждение.';
+    } else if (contactKind === 'sign') {
+      answer = interpretation === 'miracle'
+        ? 'Я допускаю, что это чудо, но смысл знака ещё должен подтвердиться.'
+        : 'Я не стану выдавать неоднозначный знак за приказ или доказанное чудо.';
+    } else if (frightened) {
+      answer = 'Мне страшно, и я не обещаю, что понял тебя правильно.';
+    } else if (faithful) {
+      answer = 'Я сохраню эти слова и сам решу, как жить с ними дальше.';
+    } else {
+      answer = 'Я пока не знаю, голос ли это божества или испытание моего разума.';
     }
-    if (frightened) {
-      return `${heard}. Мне страшно, и я не обещаю, что понял тебя правильно.`;
-    }
-    if (faithful) {
-      return `${heard}. Я сохраню эти слова и сам решу, как жить с ними дальше.`;
-    }
-    return `${heard}, но пока не знаю, голос ли это божества или испытание моего разума.`;
+    return `${heard}. Я ${profession}; ${personalStance[strongestValue].toLocaleLowerCase('ru-RU')}. ${answer}${giftResponse}`;
   }
   const change = gift
     ? `Мои возможности изменились, хотя я по-прежнему ${profession}`
     : 'Со мной произошло нечто непонятное';
+  let answer: string;
   if (interpretation === 'miracle') {
-    return `${change}. Возможно, это ответ на молитву, но уверенности у меня нет.`;
+    answer = 'Возможно, это ответ на молитву, но уверенности у меня нет.';
+  } else if (interpretation === 'luck') {
+    answer = 'Может быть, мне просто невероятно повезло.';
+  } else if (interpretation === 'another_deity') {
+    answer = 'Я не знаю, кому обязан этим и что от меня теперь ждут.';
+  } else if (interpretation === 'frightening') {
+    answer = 'Это пугает меня сильнее, чем радует.';
+  } else if (interpretation === 'natural_cause') {
+    answer = 'Сначала я поищу этому обычное объяснение.';
+  } else {
+    answer = 'Я не стану называть это чудом, пока не пойму, что случилось.';
   }
-  if (interpretation === 'luck') {
-    return `${change}. Может быть, мне просто невероятно повезло.`;
-  }
-  if (interpretation === 'another_deity') {
-    return `${change}. Я не знаю, кому обязан этим и что от меня теперь ждут.`;
-  }
-  if (interpretation === 'frightening') {
-    return `${change}. Это пугает меня сильнее, чем радует.`;
-  }
-  if (interpretation === 'natural_cause') {
-    return `${change}. Сначала я поищу этому обычное объяснение.`;
-  }
-  return `${change}. Я не стану называть это чудом, пока не пойму, что случилось.`;
+  return `${change}. ${personalStance[strongestValue]}. ${answer}${giftResponse}`;
 }
 
 function findPrayer(
@@ -540,17 +593,19 @@ export function applyDivineActionV19(
     input.contactKind,
     clamp01(input.interpretationRoll),
   );
+  const alreadyHadGift = input.gift
+    ? profile.gifts.some((grant) => grant.gift === input.gift)
+    : false;
   const response = residentResponseForAction(
     world,
     agent,
     input.deityName,
-    input.gift,
+    input.gift && !alreadyHadGift ? input.gift : undefined,
+    input.inheritanceGift,
     input.contactKind,
+    input.message,
     interpretation,
   ).slice(0, 480);
-  const alreadyHadGift = input.gift
-    ? profile.gifts.some((grant) => grant.gift === input.gift)
-    : false;
   let giftGranted = false;
 
   if (input.gift && !alreadyHadGift) {

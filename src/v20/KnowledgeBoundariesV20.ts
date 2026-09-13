@@ -4,6 +4,7 @@ import { routeIdBetween } from '../world/WorldNavigation';
 
 export const HUMAN_LIBRARY_ID_V20 = 'secret_library_v18';
 export const ELF_LIBRARY_ID_V20 = 'elf_library_v20';
+export const LOCAL_TRAIL_NOTICE_RADIUS_V20 = 45;
 
 export function mayKnowPlaceV20(agent: Readonly<AgentState>, placeId: string, world?: Readonly<WorldState>): boolean {
   return !isSecretLibrary(placeId) || (!!world && hasLibraryAdmission(world, agent, placeId));
@@ -15,10 +16,11 @@ export function observeLocalPlacesV20(world: Readonly<WorldState>, agent: AgentS
   if (mayKnowPlaceV20(agent, agent.locationId, world)) known.add(agent.locationId);
   for (const id of world.places[agent.locationId]?.connectedPlaceIds ?? []) {
     const place = world.places[id];
-    // A local trail or a visible neighbour can be perceived, not a remote
-    // continent merely because the observer has a global world-state object.
+    // A directly connected local trail can be perceived as far as the
+    // frontier survey radius (procedural frontier sites are at most 40 map
+    // units away). This does not reveal an unconnected place or continent.
     if (place && mayKnowPlaceV20(agent, id, world) &&
-        Math.hypot(place.mapX - agent.position.x, place.mapY - agent.position.y) <= 30) known.add(id);
+        Math.hypot(place.mapX - agent.position.x, place.mapY - agent.position.y) <= LOCAL_TRAIL_NOTICE_RADIUS_V20) known.add(id);
   }
   agent.knownPlaceIds = [...known];
   const dungeon = world.v19?.adventureEconomy.dungeonsById[`dungeon:${agent.locationId}`];

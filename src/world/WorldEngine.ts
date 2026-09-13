@@ -1,5 +1,7 @@
 import {surveyFrontier,surveySettlementSite} from './geography/FrontierSurvey';
 import {residentChoiceCandidates} from './ResidentChoice';
+import { residentDecisionReflection } from './ResidentDecisionReflection';
+import { residentExplorationTarget } from './ResidentExploration';
 import {bindWorldTerrain,assertTerrainFoundation,terrainWalkingScale} from './geography/WorldTerrain';
 import { assertPlaceGeography } from './WorldGeographyValidation';
 import type { WorldTimeExecution } from './WorldTimeExecution';
@@ -1709,6 +1711,26 @@ function assertWorldState(value: unknown): asserts value is WorldState {
         decision.chosenAt,
         `Agent ${agentId}.lastDecision.chosenAt`,
       );
+      if (decision.deliberationWorldMinutes !== undefined) {
+        const duration = finiteNumber(
+          decision.deliberationWorldMinutes,
+          `Agent ${agentId}.lastDecision.deliberationWorldMinutes`,
+        );
+        if (duration < 0 || duration > 60) {
+          throw new Error(
+            `Agent ${agentId}.lastDecision.deliberationWorldMinutes is out of range.`,
+          );
+        }
+      }
+      if (decision.innerThought !== undefined) {
+        const thought = requiredString(
+          decision.innerThought,
+          `Agent ${agentId}.lastDecision.innerThought`,
+        );
+        if (thought.length > 640) {
+          throw new Error(`Agent ${agentId}.lastDecision.innerThought is too long.`);
+        }
+      }
     }
 
     if (agent.plan !== undefined) {
@@ -5940,7 +5962,7 @@ export class WorldEngine {
           createdAt: now,
           kind: 'divine_audience',
           summary: contactKind
-            ? `${agent.name} privately received a ${contactKind} from ${deityName}: ${message}`
+            ? `${agent.name} privately received a ${contactKind} from ${deityName}: ${message}${gift ? `; gift: ${gift}` : ''}`
             : `${agent.name} experienced an unexplained change: ${gift}.`,
           importance: 1,
           valence: result.interpretation === 'frightening' ? -0.32 : 0.42,
@@ -7030,12 +7052,14 @@ export class WorldEngine {
 
     const localAgents = this.agentsAtLocation(agent.locationId);
     const decision = this.chooseAction(agent, localAgents, environment);
+    const reflection = residentDecisionReflection(agent, decision);
     agent.lastDecision = {
       action: decision.action,
       dominantAction: decision.dominantAction,
       consideredActionCount: decision.consideredActionCount,
       openness: decision.openness,
       chosenAt: now,
+      ...reflection,
     };
     const action = decision.action;
     beginLearningAttempt(this.state, agent, action);
@@ -7834,13 +7858,6 @@ export class WorldEngine {
       ) {
         agent.plan = undefined;
       } else {
-        if (agent.plan.kind === 'explore_frontier') {
-          agent.plan.targetPlaceId =
-            this.state.growth.discoveredRegionIds[
-              this.state.growth.discoveredRegionIds.length - 1
-            ] ?? 'outskirts';
-        }
-
         // Plans belong to the resident; they are not engine commands. Even
         // before expiry, personality and current condition decide whether the
         // resident continues the plan or re-opens the ordinary action choice.
@@ -9144,11 +9161,13 @@ export class WorldEngine {
   private performExplore(agent: AgentState, now: number): void {
     observeLocalPlacesV20(this.state, agent);
     const known = new Set(agent.knownPlaceIds ?? []);
-    const localFrontiers = [...known].map(id => this.state.places[id])
-      .filter(place => place && !['home', 'village', 'graveyard'].includes(place.kind) && this.pathBetween(agent.locationId, place.id))
-      .sort((a,b) => Math.hypot(b.mapX-this.state.places[agent.homeId].mapX,b.mapY-this.state.places[agent.homeId].mapY)-Math.hypot(a.mapX-this.state.places[agent.homeId].mapX,a.mapY-this.state.places[agent.homeId].mapY));
-    const targetFrontier = localFrontiers[0]?.id ?? agent.locationId;
     const livelihood = ensureLivelihoodV18(this.state, agent);
+    const targetFrontier = residentExplorationTarget(
+      this.state,
+      agent,
+      (placeId) => this.pathBetween(agent.locationId, placeId) !== undefined,
+      livelihood.mappedPlaceIds,
+    );
     const adventure = syncAdventureEconomyV19(this.state);
     observeLocalPlacesV20(this.state, agent);
     let targetDungeon =
@@ -9371,6 +9390,9 @@ export class WorldEngine {
       now,
     );
     if (discoveredRegionId) {
+      agent.knownPlaceIds = [
+        ...new Set([...(agent.knownPlaceIds ?? []), discoveredRegionId]),
+      ];
       syncAdventureEconomyV19(this.state);
       if (!livelihood.mappedPlaceIds.includes(discoveredRegionId)) {
         livelihood.mappedPlaceIds.push(discoveredRegionId);

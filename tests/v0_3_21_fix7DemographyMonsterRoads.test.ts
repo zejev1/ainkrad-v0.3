@@ -144,7 +144,7 @@ describe('FIX7 demography, century parasite and physical roads', () => {
       },
     });
     const route = routes[id];
-    expect(route.geometryVersion).toBe(2);
+    expect(route.geometryVersion).toBe(3);
     expect(route.completedTraversals).toBe(521);
     expect(route.waypoints.length).toBeGreaterThan(12);
     expect(pathCrossesWater(route.waypoints, world.places)).toBe(false);
