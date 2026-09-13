@@ -370,13 +370,16 @@ describe('v0.3.17 physically grounded hostile ecology', () => {
       biome: 'forest',
       mapX: outskirts.mapX + 4,
       mapY: outskirts.mapY + 2,
-      connectedPlaceIds: ['outskirts'],
+      // Keep this controlled exposure site isolated. Once FIX8 restored
+      // voluntary frontier travel, residents correctly left a connected
+      // dangerous forest before the seeded encounter roll happened, making
+      // this old stochastic fixture assert an attack on an empty place.
+      connectedPlaceIds: [],
       danger: 0.95,
       settlementId: undefined,
       claimedBySettlementId: undefined,
       discoveredAt: 0,
     };
-    outskirts.connectedPlaceIds.push('test_monster_forest');
     raw.wildlife.test_commons_rabbits = {
       id: 'test_commons_rabbits',
       species: 'rabbit',
