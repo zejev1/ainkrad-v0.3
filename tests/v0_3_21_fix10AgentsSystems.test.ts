@@ -31,6 +31,8 @@ import {
   toRussianWorldNameV18,
 } from '../src/v18/CulturalNamingV18';
 import {
+  FOUNDING_PRIMER_BOOK_ID_V21,
+  FOUNDING_PRIMER_BOOK_V21,
   FOUNDING_PRIMER_ID_V21,
   studyFoundingPrimerV21,
 } from '../src/v21/FoundingPrimerV21';
@@ -206,7 +208,7 @@ describe('FIX10 autonomous agents and separated world systems', () => {
     expect(toRussianWorldNameV18('Lethiel')).not.toMatch(/[A-Za-z]/);
   });
 
-  it('teaches ages 5-17 a bounded primer without choosing their action', async () => {
+  it('stores and reads a complete physical primer without choosing the child action', async () => {
     const world = (await freshEngine('fix10-founding-primer')).snapshot();
     const child = world.agents.agent_1;
     child.life.ageYears = 5;
@@ -215,7 +217,19 @@ describe('FIX10 autonomous agents and separated world systems', () => {
     child.lastAction = 'rest';
     const first = studyFoundingPrimerV21(world, child, 'rest');
     expect(first.firstLesson).toBe(true);
-    expect(world.v15!.items[FOUNDING_PRIMER_ID_V21]).toBeDefined();
+    const copy = world.v15!.items[FOUNDING_PRIMER_ID_V21];
+    const book = world.v15!.books![FOUNDING_PRIMER_BOOK_ID_V21];
+    expect(copy.bookId).toBe(FOUNDING_PRIMER_BOOK_ID_V21);
+    expect(book.pages).toHaveLength(12);
+    expect(book.totalWords).toBe(FOUNDING_PRIMER_BOOK_V21.totalWords);
+    expect(book.totalWords).toBeGreaterThan(700);
+    expect(book.pages.every((page) => page.text.split(/\s+/u).length > 50))
+      .toBe(true);
+    expect(first.pageNumber).toBe(1);
+    expect(first.chapter).toBe(book.pages[0].chapter);
+    expect(first.wordsRead).toBeGreaterThan(0);
+    expect(world.v21!.appliedKnowledgeByAgentId[child.id].foundingPrimerWordsRead)
+      .toBe(first.wordsRead);
     expect(world.v21!.appliedKnowledgeByAgentId[child.id].homeTheory)
       .toBeGreaterThan(0);
     expect(child.lastAction).toBe('rest');

@@ -1,5 +1,6 @@
 import type {
   AgentState,
+  V15WorldItemState,
   V15WeaponKind,
   V21AppliedKnowledgeState,
   V21BodyRegion,
@@ -64,6 +65,10 @@ function emptyKnowledge(agentId: string): V21AppliedKnowledgeState {
     familyTheory: 0,
     weatherTheory: 0,
     foundingPrimerLessons: 0,
+    foundingPrimerPageIndex: 0,
+    foundingPrimerWordOffset: 0,
+    foundingPrimerWordsRead: 0,
+    foundingPrimerCompletedReadings: 0,
     anatomyTheory: 0,
     woundTheory: 0,
     diseaseTheory: 0,
@@ -107,18 +112,22 @@ function weaponComposition(kind: V15WeaponKind | undefined): V21ItemPhysicalStat
 }
 
 function emptyItemPhysics(
-  itemId: string,
-  weaponKind: V15WeaponKind | undefined,
+  item: Pick<V15WorldItemState, 'id' | 'weaponKind' | 'bookId'>,
 ): V21ItemPhysicalState {
-  const materials = weaponComposition(weaponKind);
+  const isBook = Boolean(item.bookId);
+  const materials: V21ItemPhysicalState['materials'] = isBook
+    ? { fiber: 0.72, leather: 0.18, wood: 0.1 }
+    : weaponComposition(item.weaponKind);
   const metal = materials.iron ?? 0;
   const stone = materials.stone ?? 0;
   return {
-    itemId,
+    itemId: item.id,
     materials,
-    massKg: 0.5 + (materials.wood ?? 0) * 1.2 + stone * 2.1 + metal * 2.8,
+    massKg: isBook
+      ? 0.82
+      : 0.5 + (materials.wood ?? 0) * 1.2 + stone * 2.1 + metal * 2.8,
     integrity: 1,
-    edge: clamp01(0.28 + stone * 0.72 + metal * 0.9),
+    edge: isBook ? 0.03 : clamp01(0.28 + stone * 0.72 + metal * 0.9),
     contamination: 0,
   };
 }
@@ -139,7 +148,7 @@ export function createEmbodiedWorldV21(world: Readonly<WorldState>): WorldV21Sta
     state.appliedKnowledgeByAgentId[agent.id] = emptyKnowledge(agent.id);
   }
   for (const item of Object.values(world.v15?.items ?? {})) {
-    state.itemPhysicsByItemId[item.id] = emptyItemPhysics(item.id, item.weaponKind);
+    state.itemPhysicsByItemId[item.id] = emptyItemPhysics(item);
   }
   return state;
 }
@@ -170,9 +179,20 @@ export function ensureEmbodiedWorldV21(world: WorldState): WorldV21State {
     knowledge.familyTheory ??= 0;
     knowledge.weatherTheory ??= 0;
     knowledge.foundingPrimerLessons ??= 0;
+    knowledge.foundingPrimerPageIndex ??= 0;
+    knowledge.foundingPrimerWordOffset ??= 0;
+    knowledge.foundingPrimerWordsRead ??= 0;
+    knowledge.foundingPrimerCompletedReadings ??= 0;
   }
   for (const item of Object.values(world.v15?.items ?? {})) {
-    state.itemPhysicsByItemId[item.id] ??= emptyItemPhysics(item.id, item.weaponKind);
+    const physics = (state.itemPhysicsByItemId[item.id] ??=
+      emptyItemPhysics(item));
+    if (item.bookId && !physics.materials.leather) {
+      const bookPhysics = emptyItemPhysics(item);
+      physics.materials = bookPhysics.materials;
+      physics.massKg = bookPhysics.massKg;
+      physics.edge = bookPhysics.edge;
+    }
   }
   for (const itemId of Object.keys(state.itemPhysicsByItemId)) {
     if (!world.v15?.items[itemId]) delete state.itemPhysicsByItemId[itemId];
@@ -401,7 +421,7 @@ export function recordItemUseV21(
   const state = ensureEmbodiedWorldV21(world);
   const item = world.v15.items[itemId];
   const physics = state.itemPhysicsByItemId[itemId] ??=
-    emptyItemPhysics(itemId, item.weaponKind);
+    emptyItemPhysics(item);
   const toughness = Object.entries(physics.materials).reduce(
     (sum, [kind, share]) => sum +
       (state.materialCatalog[kind as V21PhysicalMaterialKind]?.toughness ?? 0.2) * (share ?? 0),

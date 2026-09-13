@@ -597,6 +597,24 @@ export type V15WeaponKind =
   | 'crude_metal_spear'
   | 'forged_spear';
 
+export interface V15WorldBookPageState {
+  pageNumber: number;
+  chapter: string;
+  minimumAgeYears: number;
+  text: string;
+  concepts: string[];
+}
+
+export interface V15WorldBookState {
+  id: string;
+  title: string;
+  author: string;
+  language: string;
+  edition: number;
+  pages: V15WorldBookPageState[];
+  totalWords: number;
+}
+
 export interface V15WorldItemState {
   id: string;
   kind: 'weapon' | 'artifact';
@@ -610,6 +628,8 @@ export interface V15WorldItemState {
   effectiveness: number;
   reliability: number;
   description: string;
+  /** A physical copy refers to one complete text stored once in the world. */
+  bookId?: string;
 }
 
 export interface V15SmithingKnowledgeState {
@@ -694,6 +714,8 @@ export interface WorldV15State {
   smithingInnovations: Record<string, V15SmithingInnovationState>;
   equipmentByAgentId: Record<string, V15EquipmentState>;
   items: Record<string, V15WorldItemState>;
+  /** Complete readable texts, shared by physical copies without duplicating pages. */
+  books?: Record<string, V15WorldBookState>;
   founderSmithAgentId?: string;
   renewableResources: V15RenewableResourceState;
   simulationClock: V15SimulationClockState;
@@ -976,6 +998,10 @@ export interface V21AppliedKnowledgeState {
   familyTheory: number;
   weatherTheory: number;
   foundingPrimerLessons: number;
+  foundingPrimerPageIndex: number;
+  foundingPrimerWordOffset: number;
+  foundingPrimerWordsRead: number;
+  foundingPrimerCompletedReadings: number;
   lastPrimerWorldMinute?: number;
   anatomyTheory: number;
   woundTheory: number;

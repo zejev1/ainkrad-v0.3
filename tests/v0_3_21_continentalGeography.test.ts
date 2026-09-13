@@ -16,6 +16,7 @@ import {settlementOptions} from '../src/presentation/SettlementPicker';
 import {WorldMapCamera} from '../src/presentation/WorldMapCamera';
 import {WorldAtlasIndex} from '../src/presentation/WorldAtlasIndex';
 import {WORLD_MINUTES_PER_YEAR as Y} from '../src/world/WorldClock';
+import {toRussianWorldNameV18} from '../src/v18/CulturalNamingV18';
 import type {WorldState} from '../src/world/types';
 
 // Captured from real main 423fee6, seed ainkrad-browser-world, immediately
@@ -81,7 +82,8 @@ describe('one physical world from continental view to walking streets',()=>{
   const engine=await WorldEngine.open({worldId:old.id,store:bundle.worldStore}),after=engine.snapshot();
   for(const key of ['id','epoch','calendar','determinism','relationships'] as const)expect(after[key]).toEqual(old[key]);
   for(const [id,a]of Object.entries(old.agents)){
-   const {position:_p,movement:_m,...person}=a,{position:_q,movement:_n,...continued}=after.agents[id];expect(continued,id).toEqual(person);
+   const {position:_p,movement:_m,name:_oldName,...person}=a,{position:_q,movement:_n,name,...continued}=after.agents[id];
+   expect(continued,id).toEqual(person);expect(name,id).toBe(toRussianWorldNameV18(a.name));
   }
   expect(Object.keys(after.places).sort()).toEqual(Object.keys(old.places).sort());
   expect(after.v18!.secretLibrary.knowledgeByAgentId).toEqual(old.v18!.secretLibrary.knowledgeByAgentId);

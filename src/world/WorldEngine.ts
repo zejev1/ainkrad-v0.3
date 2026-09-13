@@ -13906,6 +13906,9 @@ export class WorldEngine {
     ensureRussianKnowledgeV18(this.state, child);
     ensureLivelihoodV18(this.state, child);
     ensureLifeRhythmV18(this.state, child);
+    // A newborn receives its body and applied-knowledge record in the same
+    // atomic birth operation. Reopening must never be the moment a body appears.
+    ensureEmbodiedWorldV21(this.state);
     this.v15World().familyAgencyByAgentId[childId] = {
       ...blueprint.protectedFamilyPersonality,
     };

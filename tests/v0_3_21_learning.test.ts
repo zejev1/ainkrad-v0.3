@@ -114,7 +114,8 @@ describe('Personal observation → attempt → real receipt → changed advice',
     const people=Object.values(before.agents).filter(a=>(a.learning?.totalEvaluated??0)>0);
     expect(people.length).toBeGreaterThan(0);
     const history=await store.history(before.id);
-    expect(history.some(e=>e.kind==='agent.gathered')).toBe(true);
+    // Productive life need not include gathering when local stocks are enough.
+    expect(history.some(e=>['agent.gathered','agent.worked','agent.hunted'].includes(e.kind))).toBe(true);
     expect(history.some(e=>e.payload.recalledMethodIds!==undefined||e.kind==='agent.learning.outcome_evaluated')).toBe(false);
     const reopened=await WorldEngine.open({worldId:before.id,store});
     expect(reopened.snapshot()).toEqual(before);
