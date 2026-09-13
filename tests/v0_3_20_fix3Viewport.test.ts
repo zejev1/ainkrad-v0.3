@@ -50,10 +50,15 @@ describe('FIX3 metre-scale cities and bounded map surfaces', () => {
     const store=new InMemoryWorldStore();
     const source=await WorldEngine.create({worldId:'old-metre-layout',seed:'old-town',store});
     const legacy=source.snapshot();
+    const foundingCenter={
+      x:legacy.settlements.settlement_ainkrad.centerX,
+      y:legacy.settlements.settlement_ainkrad.centerY,
+    };
     for (const p of Object.values(legacy.places)) {
       if (p.kind !== 'home') continue;
       delete p.urbanLot; delete p.urbanLayoutVersion;
-      p.mapX=50+(p.mapX-50)*50; p.mapY=50+(p.mapY-50)*50;
+      p.mapX=foundingCenter.x+(p.mapX-foundingCenter.x)*50;
+      p.mapY=foundingCenter.y+(p.mapY-foundingCenter.y)*50;
     }
     for (const a of Object.values(legacy.agents)) {
       a.position.x=legacy.places[a.locationId].mapX; a.position.y=legacy.places[a.locationId].mapY;
@@ -73,7 +78,10 @@ describe('FIX3 metre-scale cities and bounded map surfaces', () => {
     const after=opened.snapshot();
     expect(protectedState(after)).toEqual(protectedBefore);
     expect(after.routes[route.id].completedTraversals).toBe(23);
-    expect(Math.hypot(after.agents.agent_1.position.x-50,after.agents.agent_1.position.y-50)).toBeLessThan(1);
+    expect(Math.hypot(
+      after.agents.agent_1.position.x-after.settlements.settlement_ainkrad.centerX,
+      after.agents.agent_1.position.y-after.settlements.settlement_ainkrad.centerY,
+    )).toBeLessThan(1);
     const resting=after.agents.agent_2,home=after.places[resting.locationId];
     expect(resting.position.x).toBe(home.mapX);expect(resting.position.y).toBe(home.mapY);
     expect((await WorldEngine.open({worldId:legacy.id,store})).snapshot()).toEqual(after);

@@ -15,8 +15,9 @@ const fresh=async()=> (await WorldEngine.create({worldId:'atlas-world',seed:'str
 describe('FIX5 physical geography and bounded atlas',()=>{
   it('builds irregular rotated parcels with real clearances and fields outside town',async()=>{
     const w=await fresh(),town=w.settlements.settlement_ainkrad;
+    const origin={x:town.centerX,y:town.centerY};
     for(let i=0;i<24;i++) {
-      const lot=nextUrbanHomeLot(w.places,{x:50,y:50},town.id)!;expect(lot).toBeDefined();
+      const lot=nextUrbanHomeLot(w.places,origin,town.id)!;expect(lot).toBeDefined();
       const id='new_'+i;w.places[id]={...w.places.home_agent_1,id,mapX:lot.x,mapY:lot.y,rotation:lot.rotation,urbanLot:lot.lot,urbanLayoutVersion:3,connectedPlaceIds:['commons']};
       w.places.commons.connectedPlaceIds.push(id);
     }
