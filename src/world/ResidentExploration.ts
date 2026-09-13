@@ -22,6 +22,7 @@ export function residentExplorationTarget(
   agent: Readonly<AgentState>,
   canReach: (placeId: string) => boolean,
   mappedPlaceIds: readonly string[] = [],
+  choiceRoll?: number,
 ): string {
   const known = new Set(agent.knownPlaceIds ?? []);
   known.add(agent.locationId);
@@ -51,8 +52,7 @@ export function residentExplorationTarget(
         canReach(place.id),
     );
 
-  candidates.sort((left, right) => {
-    const rank = (place: WorldPlace) => {
+  const score = (place: WorldPlace): number => {
       const outsideRank = place.settlementId === undefined
         ? 3
         : place.settlementId !== homeSettlementId
@@ -63,12 +63,41 @@ export function residentExplorationTarget(
       const distance = home
         ? Math.hypot(place.mapX - home.mapX, place.mapY - home.mapY)
         : 0;
-      return [outsideRank, wildernessRank, unmappedRank, distance] as const;
-    };
-    const a = rank(left);
-    const b = rank(right);
-    return b[0] - a[0] || b[1] - a[1] || b[2] - a[2] || b[3] - a[3] ||
-      left.id.localeCompare(right.id);
-  });
-  return candidates[0]?.id ?? agent.locationId;
+      const bearing = home
+        ? Math.atan2(place.mapY - home.mapY, place.mapX - home.mapX)
+        : 0;
+      let identityHash = 2166136261;
+      for (const char of `${world.id}:${agent.id}`) {
+        identityHash ^= char.charCodeAt(0);
+        identityHash = Math.imul(identityHash, 16777619);
+      }
+      const preferredBearing = ((identityHash >>> 0) / 0xffffffff) * Math.PI * 2;
+      const directionalFit = (Math.cos(bearing - preferredBearing) + 1) / 2;
+      const terrainFit =
+        place.kind === 'forest'
+          ? agent.personality.curiosity * 0.18
+          : place.kind === 'mountains' || place.kind === 'ruins'
+            ? agent.personality.riskTolerance * 0.2
+            : place.kind === 'shore' || place.kind === 'river'
+              ? agent.personality.resilience * 0.12
+              : 0;
+      return outsideRank * 1.2 + wildernessRank * 0.42 + unmappedRank * 0.9 +
+        Math.min(0.8, distance / 90) + directionalFit * 0.36 + terrainFit;
+  };
+  candidates.sort((left, right) => score(right) - score(left) || left.id.localeCompare(right.id));
+  if (candidates.length === 0) return agent.locationId;
+  const pool = candidates.slice(0, Math.min(7, candidates.length));
+  const best = score(pool[0]);
+  const weights = pool.map((place) =>
+    Math.exp((score(place) - best) / (0.2 + agent.personality.curiosity * 0.18)),
+  );
+  const fallbackRoll = ((world.determinism.rngState >>> 0) / 0xffffffff +
+    ((agent.id.length * 0.61803398875) % 1)) % 1;
+  let roll = Math.max(0, Math.min(0.999999, choiceRoll ?? fallbackRoll)) *
+    weights.reduce((sum, weight) => sum + weight, 0);
+  for (let index = 0; index < pool.length; index += 1) {
+    roll -= weights[index];
+    if (roll <= 0) return pool[index].id;
+  }
+  return pool.at(-1)?.id ?? agent.locationId;
 }

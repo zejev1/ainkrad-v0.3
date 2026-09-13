@@ -31,12 +31,45 @@ import {
 } from './CenturyHumpback';
 import { hasGiftV20, learningFactorV20, canReadLibraryV20, giftLearningSnapshotV20, applyLivedGiftLearningV20 } from '../v20/DivineGiftsV20';
 import {
+  HUMAN_HOUSE_RECIPES_V21,
   humanConstructionLaborV21,
   humanConstructionStageV21,
   humanConstructionVolunteerWillingnessV21,
   humanHousingInitiativeV21,
   selectHumanHouseRecipeV21,
 } from '../v21/HumanConstructionV21';
+import {
+  advanceEmergentSocietyV21,
+  emergentPracticeActionAffinityV21,
+} from '../v21/EmergentSocietyV21';
+import {
+  fulfillContractFromLivedActionV21,
+  recordPhysicalGoodsV21,
+} from '../v21/EconomySystemV21';
+import { formVoluntaryDungeonPartyV21 } from '../v21/DungeonRpgV21';
+import { reusableAbandonedHomesV21 } from '../v21/HomeStewardshipV21';
+import {
+  ensureFoundingPrimerV21,
+  studyFoundingPrimerV21,
+} from '../v21/FoundingPrimerV21';
+import { worldWeatherV21 } from '../v21/WeatherV21';
+import {
+  advanceEmbodiedWorldV21,
+  assertEmbodiedWorldV21,
+  bodyCareNeedV21,
+  bodyMobilityScaleV21,
+  bodyRecoveryScaleV21,
+  careActionAffinityV21,
+  createEmbodiedWorldV21,
+  ensureEmbodiedWorldV21,
+  recordCarePracticeV21,
+  recordDeferredChildTripV21,
+  recordEmbodiedReadingV21,
+  recordItemUseV21,
+  recordMaterialPracticeV21,
+  recordTraumaV21,
+  youngChildMayTravelToV21,
+} from '../v21/EmbodiedWorldV21';
 import { stableJsonStringify } from '../core/stableJson';
 import { SeededRng } from '../utils/rng';
 import {
@@ -137,7 +170,10 @@ import {
   practiceCyrillicWritingV18,
   recordRussianConversationV18,
 } from '../v18/LanguageAndConversationV18';
-import { chooseCulturalChildNameV18 } from '../v18/CulturalNamingV18';
+import {
+  chooseCulturalChildNameV18,
+  toRussianWorldNameV18,
+} from '../v18/CulturalNamingV18';
 import {
   practiceSecretLibraryKnowledgeV18,
   repairSecretLibraryPlacementV18,
@@ -2799,6 +2835,7 @@ function assertWorldState(value: unknown): asserts value is WorldState {
     }
     if (state.rulesVersion === WORLD_RULES_VERSION) {
       assertWorldV19State(state as unknown as WorldState);
+      assertEmbodiedWorldV21(state as unknown as WorldState);
     }
   }
 
@@ -4110,6 +4147,8 @@ async function migrateV18WorldToV19(
   next.revision = legacy.revision + 1;
   next.governance.constitutionVersion = WORLD_CONSTITUTION_VERSION;
   next.v19 = createWorldV19State(next, WORLD_RULES_VERSION_V18);
+  ensureFoundingPrimerV21(next);
+  next.v21 = createEmbodiedWorldV21(next);
   const relocatedSapientHomelands = repairSapientHomelandGeography(next);
 
   const migrationEvent: WorldEvent = {
@@ -4188,6 +4227,8 @@ async function repairCompatibleV19World(
       next,
       next.v19?.migratedFromRulesVersion ?? WORLD_RULES_VERSION_V18,
     );
+    ensureFoundingPrimerV21(next);
+    ensureEmbodiedWorldV21(next);
     repairSapientHomelandGeography(next);
     removeUnsurveyedHomelandLinksV20(next);
     repairSecretLibraryPlacementV18(next);
@@ -4363,7 +4404,8 @@ export class WorldEngine {
     }
 
     const rng = new SeededRng(options.seed);
-    const names = options.agentNames ?? ['Aron', 'Mira', 'Kai', 'Noa', 'Ilan', 'Rin', 'Lea', 'Daren', 'Sora', 'Talia'];
+    const names = options.agentNames?.map(toRussianWorldNameV18) ??
+      ['Арон', 'Мира', 'Кай', 'Ноа', 'Илан', 'Рин', 'Лея', 'Дарен', 'Сора', 'Талия'];
     const foundingLayout = drawFoundingSettlementLayout(rng);
     const initialPlace = (id: string, kind: WorldPlaceKind, homeIndex = 0) =>
       foundingPlaceDefaults(placeMigrationDefaults({ id, kind }, homeIndex), foundingLayout);
@@ -4412,7 +4454,7 @@ export class WorldEngine {
       const homeId = `home_${id}`;
       places[homeId] = createPlace(
         homeId,
-        `${name}'s Home`,
+        `Дом ${name}`,
         'home',
         3,
         initialPlace(homeId, 'home', index),
@@ -4569,6 +4611,8 @@ export class WorldEngine {
     state.v16 = createWorldV16State(state, WORLD_RULES_VERSION);
     state.v18 = createWorldV18State(state, WORLD_RULES_VERSION);
     state.v19 = createWorldV19State(state, WORLD_RULES_VERSION);
+    ensureFoundingPrimerV21(state);
+    state.v21 = createEmbodiedWorldV21(state);
     repairSecretLibraryPlacementV18(state);
     repairCompactSettlementLayout(state);
     reconcileLibraryAdmissions(state, state.calendar.elapsedWorldMinutes, true);
@@ -4653,7 +4697,7 @@ export class WorldEngine {
       async () => {
         const priorSequence = this.state.determinism.eventSequence;
         const rng = new SeededRng(`${seed}:epoch:${nextEpoch}`);
-        const names = [...founderNames];
+        const names = founderNames.map(toRussianWorldNameV18);
         const foundingLayout = drawFoundingSettlementLayout(rng);
         const initialPlace = (id: string, kind: WorldPlaceKind, homeIndex = 0) =>
           foundingPlaceDefaults(placeMigrationDefaults({ id, kind }, homeIndex), foundingLayout);
@@ -4743,6 +4787,8 @@ export class WorldEngine {
           this.state,
           WORLD_RULES_VERSION,
         );
+        ensureFoundingPrimerV21(this.state);
+        this.state.v21 = createEmbodiedWorldV21(this.state);
         repairSecretLibraryPlacementV18(this.state);
         repairCompactSettlementLayout(this.state);
         this.state.determinism.eventSequence = priorSequence;
@@ -4957,6 +5003,7 @@ export class WorldEngine {
       this.advanceWildlife(effectiveEnvironment, now);
       this.advanceMonsterFeeding(now);
       this.advanceAgingAndMortality(now, elapsedWorldMinutes);
+      advanceEmbodiedWorldV21(this.state);
       const livingAgents = Object.values(this.state.agents)
         .filter((agent) => agent.life.alive)
         .sort((left, right) => left.id.localeCompare(right.id));
@@ -5019,6 +5066,7 @@ export class WorldEngine {
       this.advanceCenturyHumpback(now);
       this.advanceSettlementMaterialProjects(now);
       this.advanceSettlementRelationsAndConflict(now);
+      advanceEmergentSocietyV21(this.state);
       this.advanceBurialAftercare(now);
       this.advanceMysticism(now);
       this.advanceCollectiveMyth(now);
@@ -5219,6 +5267,13 @@ export class WorldEngine {
     }
     library.knowledgeByAgentId[agent.id] = existingRecords.slice(
       -SECRET_LIBRARY_MAX_KNOWLEDGE_PER_AGENT_V18,
+    );
+    recordEmbodiedReadingV21(
+      this.state,
+      agent,
+      material.knowledge.category,
+      material.knowledge.id,
+      understanding,
     );
     visitor.studyQuanta = Math.min(SECRET_LIBRARY_STUDY_QUANTA_V18, visitor.studyQuanta + 1);
     if (!visitor.learnedKnowledgeIds.includes(material.knowledge.id)) {
@@ -6543,6 +6598,33 @@ export class WorldEngine {
     allAgents: AgentState[],
     now: number,
   ): void {
+    const livedAction = agent.lastAction;
+    if (livedAction) {
+      const primer = studyFoundingPrimerV21(this.state, agent, livedAction);
+      const primerKnowledge =
+        this.state.v21?.appliedKnowledgeByAgentId[agent.id];
+      if (
+        primer.studied &&
+        (primer.firstLesson ||
+          (primerKnowledge?.foundingPrimerLessons ?? 0) % 12 === 0)
+      ) {
+        this.stageEvent({
+          eventId: this.nextId('founding-primer'),
+          worldId: this.state.id,
+          kind: 'agent.education.founding_primer_studied',
+          source: 'agent',
+          occurredAt: now,
+          payload: {
+            agentId: agent.id,
+            ageYears: agent.life.ageYears,
+            lesson: primer.lesson,
+            lessonCount: primerKnowledge?.foundingPrimerLessons ?? 0,
+            actionKeptVoluntary: true,
+            worldMinutes: this.state.calendar.elapsedWorldMinutes,
+          },
+        });
+      }
+    }
     const mapped = this.v15LearningDomainForAction(agent, agent.lastAction);
     if (!mapped) return;
 
@@ -7285,15 +7367,34 @@ export class WorldEngine {
         break;
       }
       case 'help': {
-        const target = this.chooseHelpTarget(
+        const localTarget = this.chooseHelpTarget(
           agent,
           this.agentsAtLocation(agent.locationId),
         );
+        const supervision = this.youngChildNeedingSupervision(agent);
+        const supervisedChild = supervision?.child;
+        const target = localTarget ?? supervisedChild;
         if (!target) {
           if (ageAllowedActions.has('work')) this.performWork(agent, now);
           else if (ageAllowedActions.has('relax')) this.performRelax(agent, now);
           else this.performRest(agent, now);
         } else {
+          if (target.locationId !== agent.locationId) {
+            // Parents do not receive a child's live coordinates. They can go
+            // only to the last place where the child was physically observed.
+            const lastKnownPlaceId = localTarget
+              ? target.locationId
+              : supervision?.lastKnownPlaceId;
+            if (
+              lastKnownPlaceId &&
+              (agent.knownPlaceIds ?? []).includes(lastKnownPlaceId)
+            ) {
+              this.travelBeforeAction(agent, lastKnownPlaceId, 'help', now);
+            } else {
+              this.performReflect(agent, now);
+            }
+            break;
+          }
           this.performHelp(agent, target, now);
         }
         break;
@@ -7344,8 +7445,17 @@ export class WorldEngine {
   }
 
   private applyPassiveNeeds(agent: AgentState, environment: WorldEnvironment): void {
+    const weather = worldWeatherV21(this.state);
+    const placeKind = this.state.places[agent.locationId]?.kind;
+    const sheltered = placeKind !== undefined &&
+      ['home', 'workshop', 'village', 'city'].includes(placeKind);
+    const weatherDiscomfort = (1 - weather.comfort) * (sheltered ? 0.18 : 1);
     agent.energy = clamp01(
-      agent.energy - (0.016 + (1 - agent.life.physiology.endurance) * 0.014) * (hasGiftV20(this.state, agent.id, 'tireless') ? 0.3 : 1),
+      agent.energy -
+        (0.016 + (1 - agent.life.physiology.endurance) * 0.014) *
+          (1.08 - bodyRecoveryScaleV21(this.state, agent.id) * 0.08) *
+          (hasGiftV20(this.state, agent.id, 'tireless') ? 0.3 : 1) -
+        weatherDiscomfort * 0.004,
     );
 
     // Food is consumed as food. Natural fertility and a high scalar resource
@@ -7405,6 +7515,8 @@ export class WorldEngine {
         (1 - agent.energy) * 0.012 +
         (1 - effectiveResourceSecurity) * 0.006 +
         Math.max(0, 0.3 - rhythm.satiety) * 0.08 +
+        weatherDiscomfort *
+          (0.004 + (1 - agent.personality.resilience) * 0.004) +
         (1 - environment.safetySupport) * 0.012 -
         environment.safetySupport * (0.003 + agent.personality.resilience * 0.002),
     );
@@ -7534,12 +7646,13 @@ export class WorldEngine {
     // recipient is resolved only if the resident actually chooses that action.
     // This avoids comparing every pair in a crowded city for residents who
     // ultimately decide to rest, work, gather or travel.
-    const helpAvailable = allAgents.some(
+    const childSupervision = this.youngChildNeedingSupervision(agent);
+    const helpAvailable = Boolean(childSupervision) || allAgents.some(
       (other) =>
         other.id !== agent.id &&
         other.life.alive &&
         other.locationId === agent.locationId &&
-        other.resources < 0.5,
+        (other.resources < 0.5 || bodyCareNeedV21(this.state, other.id) > 0.02),
     );
     const huntTarget = allowedActions.has('hunt')
       ? this.previewHuntOpportunity(agent.locationId)
@@ -7563,6 +7676,9 @@ export class WorldEngine {
     const body = agent.life.physiology;
     const emotions = agent.mind.emotions;
     const v15Resources = this.settlementResourcesForAgent(agent);
+    const weather = worldWeatherV21(this.state);
+    const weatherUnderstanding =
+      this.v15World().knowledgeByAgentId[agent.id]?.survival ?? 0;
     const resourceSecurity = this.v15EffectiveResourceSecurity(agent);
     const sharedResourceNeed = 1 - v15Resources.storedResources;
     const settlementId = this.homeSettlementId(agent);
@@ -7604,7 +7720,13 @@ export class WorldEngine {
     // already secure. These reserves scale with the lives they support.
     const desiredStock: Record<V16MaterialKind, number> = {
       food: Math.max(1, settlementResidents * 0.12),
-      wood: Math.max(0.55, settlementResidents * 0.06),
+      wood: Math.max(
+        0.55,
+        settlementResidents * 0.06,
+        housingPressure > 0
+          ? HUMAN_HOUSE_RECIPES_V21.timber_wattle_thatch.wood * 1.08
+          : 0,
+      ),
       stone: Math.max(0.35, settlementResidents * 0.04),
       metal: Math.max(0.12, settlementResidents * 0.008),
       fuel: Math.max(0.18, settlementResidents * 0.025),
@@ -7661,7 +7783,8 @@ export class WorldEngine {
           )
         : 0;
     const vocationBoost = (action: AgentActionKind) =>
-      livelihoodActionAffinityV18(this.state, agent.id, action);
+      livelihoodActionAffinityV18(this.state, agent.id, action) +
+      emergentPracticeActionAffinityV21(this.state, agent.id, action);
     const learnedKnowledgeBoost = (action: AgentActionKind) =>
       secretLibraryActionAffinityV18(this.state, agent.id, action);
     const divineCapabilityBoost = (action: AgentActionKind): number =>
@@ -7782,8 +7905,11 @@ export class WorldEngine {
         action: 'help',
         score: helpAvailable
           ? agent.personality.generosity * 0.65 +
+            (childSupervision?.pressure ?? 0) *
+              (0.72 + agent.mind.values.care * 0.7) +
             (1 - agent.needs.purpose) * 0.24 +
             Math.max(0, agent.resources - 0.45) * 0.35 +
+            careActionAffinityV21(this.state, agent.id) +
             divineCapabilityBoost('help') +
             learnedKnowledgeBoost('help') +
             goalBoost('contribute')
@@ -7849,6 +7975,21 @@ export class WorldEngine {
           goalBoost('seek_truth'),
       },
     ];
+
+    // Weather changes the real cost and perceived risk of outdoor choices.
+    // Knowledge improves judgement; it never overwrites the selected action.
+    for (const item of scores) {
+      if (['walk', 'gather', 'hunt', 'explore'].includes(item.action)) {
+        const urgentShelterWorkScale = item.action === 'gather'
+          ? 1 - housingPressure
+          : 1;
+        item.score -= weather.outdoorDecisionPenalty *
+          (0.62 + weatherUnderstanding * 0.38) * urgentShelterWorkScale;
+      } else if (item.action === 'rest') {
+        item.score += weather.severity *
+          (0.12 + weatherUnderstanding * 0.16);
+      }
+    }
 
     // Hunger changes the opportunities residents perceive; it does not
     // rewrite their minds or assign them a profession. A settlement with only
@@ -8256,6 +8397,60 @@ export class WorldEngine {
     return this.state.places[agent.homeId]?.settlementId;
   }
 
+  private youngChildNeedingSupervision(
+    parent: Readonly<AgentState>,
+  ): { child: AgentState; pressure: number; lastKnownPlaceId: string } | undefined {
+    let result: {
+      child: AgentState;
+      pressure: number;
+      lastKnownPlaceId: string;
+    } | undefined;
+    for (const childId of parent.life.childIds) {
+      const child = this.state.agents[childId];
+      if (!child?.life.alive || child.life.ageYears >= 13) continue;
+      const supervision = this.state.v21?.childSupervisionByChildId[child.id];
+      const lastKnownPlaceId = parent.locationId === child.locationId
+        ? child.locationId
+        : supervision?.lastKnownPlaceId;
+      if (!lastKnownPlaceId) continue;
+      const home = this.state.places[child.homeId];
+      const place = this.state.places[lastKnownPlaceId];
+      const outsideHome = place?.settlementId !== home?.settlementId;
+      const distance = Math.hypot(
+        (place?.mapX ?? parent.position.x) - parent.position.x,
+        (place?.mapY ?? parent.position.y) - parent.position.y,
+      );
+      const unobservedYears = Math.max(
+        0,
+        (this.state.calendar.elapsedWorldMinutes -
+          (supervision?.lastObservedWorldMinute ?? this.state.calendar.elapsedWorldMinutes)) /
+          WORLD_MINUTES_PER_YEAR,
+      );
+      const pressure = clamp01(
+        (outsideHome ? 0.52 : 0) +
+          (place?.danger ?? 0) * 0.48 +
+          Math.min(0.38, distance / 140) +
+          Math.min(0.32, unobservedYears * 4) +
+          (parent.locationId === child.locationId && child.movement ? 0.12 : 0),
+      );
+      if (pressure >= 0.28 && (!result || pressure > result.pressure)) {
+        result = { child, pressure, lastKnownPlaceId };
+      }
+    }
+    return result;
+  }
+
+  /** Children keep their own choices, but a child under thirteen cannot begin
+   * a remote wilderness journey alone. Local movement inside the familiar
+   * settlement stays available; a remote trip requires a living parent who is
+   * physically present and already travelling toward the same place. */
+  private youngChildMayTravelTo(
+    child: Readonly<AgentState>,
+    destinationId: string,
+  ): boolean {
+    return youngChildMayTravelToV21(this.state, child, destinationId);
+  }
+
   private canAccessHomeSettlementStores(agent: AgentState): boolean {
     const homeSettlementId = this.homeSettlementId(agent);
     if (!homeSettlementId) return false;
@@ -8425,7 +8620,28 @@ export class WorldEngine {
   }
 
   private localCommons(agent: AgentState): string {
-    return this.localPlace(agent, ['commons', 'village', 'city'], agent.homeId);
+    // Family life is a real social setting. This uses physical co-presence at
+    // the known family home; it does not reveal a traveller's live position.
+    const familyAtHome = this.agentsAtLocation(agent.homeId).some(
+      (other) =>
+        other.id !== agent.id &&
+        other.life.alive &&
+        other.homeId === agent.homeId,
+    );
+    if (
+      familyAtHome &&
+      this.pathBetween(agent.locationId, agent.homeId) !== undefined
+    ) {
+      return agent.homeId;
+    }
+
+    // Public life is distributed across several real meeting places. The
+    // least crowded reachable place wins instead of a scripted square.
+    return this.localPlace(
+      agent,
+      ['commons', 'quiet_space', 'workshop', 'village', 'city'],
+      agent.homeId,
+    );
   }
 
   private performTravelPause(agent: AgentState, now: number): void {
@@ -8458,6 +8674,21 @@ export class WorldEngine {
     travelAction: AgentActionKind = 'walk',
   ): boolean {
     if (!mayKnowPlaceV20(agent, destinationId, this.state)) return true;
+    if (!this.youngChildMayTravelTo(agent, destinationId)) {
+      recordDeferredChildTripV21(this.state, agent);
+      agent.energy = clamp01(agent.energy - 0.003);
+      agent.needs.purpose = clamp01(agent.needs.purpose + 0.003);
+      agent.lastAction = travelAction;
+      agent.lastMeaningfulEventAt = now;
+      this.recordAgentEvent(agent, now, 'agent.child.remote_trip_deferred', {
+        agentId: agent.id,
+        ageYears: agent.life.ageYears,
+        destinationId,
+        supervisionRequired: true,
+        forcedChoice: false,
+      });
+      return true;
+    }
     const destination = this.state.places[destinationId];
     const homeSettlementId = this.homeSettlementId(agent);
     const leavesHomeSettlement =
@@ -8511,7 +8742,9 @@ export class WorldEngine {
   private performRest(agent: AgentState, now: number): void {
     if (this.travelBeforeAction(agent, agent.homeId, 'rest', now)) return;
     agent.energy = clamp01(
-      agent.energy + 0.18 + agent.life.physiology.recovery * 0.14,
+      agent.energy +
+        (0.18 + agent.life.physiology.recovery * 0.14) *
+          bodyRecoveryScaleV21(this.state, agent.id),
     );
     agent.stress = clamp01(agent.stress - 0.055 - agent.personality.resilience * 0.02);
     agent.lastAction = 'rest';
@@ -8530,11 +8763,17 @@ export class WorldEngine {
     // multi-week travel while their energy continued to fall. Exploration and
     // travel remain voluntary separate actions; relaxing stays within the
     // resident's own settlement when a quiet/natural place is available.
-    const destination = this.localPlace(
-      agent,
-      ['quiet_space', 'meadow', 'forest', 'shore'],
-      agent.homeId,
-    );
+    const recoverAtHome =
+      agent.energy < 0.58 ||
+      agent.stress > 0.62 ||
+      agent.personality.sociability < 0.42;
+    const destination = recoverAtHome
+      ? agent.homeId
+      : this.localPlace(
+          agent,
+          ['quiet_space', 'meadow', 'forest', 'shore'],
+          agent.homeId,
+        );
 
     if (this.travelBeforeAction(agent, destination, 'relax', now)) return;
     agent.energy = clamp01(
@@ -8862,6 +9101,7 @@ export class WorldEngine {
     agent.plan = undefined;
 
     const activeWeapon = this.v15WeaponForAgent(agent);
+    const activeWeaponItemId = v15.equipmentByAgentId[agent.id]?.weaponItemId;
     const yieldBySpecies: Record<WildlifeSpecies, number> = {
       rabbit: 0.11,
       deer: 0.22,
@@ -8908,6 +9148,28 @@ export class WorldEngine {
 
     if (succeeded) {
       target.count -= 1;
+      if (gathered > 0) {
+        recordPhysicalGoodsV21(this.state, agent, 'meat', gathered * 0.62);
+        if (!['fish', 'bird', 'wraith'].includes(target.species)) {
+          recordPhysicalGoodsV21(this.state, agent, 'hide', gathered * 0.24);
+        }
+        if (target.isMonster) {
+          recordPhysicalGoodsV21(
+            this.state,
+            agent,
+            'monster_part',
+            Math.max(0.02, gathered * 0.38),
+          );
+        }
+        fulfillContractFromLivedActionV21(this.state, agent, {
+          kind: 'hunt',
+          settlementId: this.homeSettlementId(agent),
+          targetPlaceId: target.habitatId,
+          commodity: target.isMonster ? 'monster_part' : 'meat',
+          quantity: 1,
+          succeeded: true,
+        });
+      }
     } else if (activeWeapon.kind !== 'none') {
       v15.smithingByAgentId[agent.id].observedWeaponProblems += 1;
     }
@@ -8944,6 +9206,13 @@ export class WorldEngine {
           (1 - equipmentProtection),
       );
       agent.life.health = clamp01(agent.life.health - monsterDamage);
+      recordTraumaV21(
+        this.state,
+        agent,
+        monsterDamage,
+        target.isMonster ? 'monster' : 'wildlife',
+        `${target.id}:${now}`,
+      );
       agent.stress = clamp01(agent.stress + target.threat * 0.24);
       agent.mind.emotions.fear = clamp01(
         agent.mind.emotions.fear + target.threat * 0.36,
@@ -8964,6 +9233,14 @@ export class WorldEngine {
           (1 - activeWeapon.effectiveness * 0.18),
       );
     }
+
+    recordItemUseV21(
+      this.state,
+      activeWeaponItemId,
+      target.threat + (succeeded ? 0.18 : 0.32),
+      target.isMonster ? 0.02 : 0.006,
+      agent.id,
+    );
 
     this.recordAgentEvent(agent, now, 'agent.hunted', {
       species: target.species,
@@ -9213,7 +9490,9 @@ export class WorldEngine {
       : 0;
     const materialMultiplier: Record<V16MaterialKind, number> = {
       food: 1.8 + profile.agriculture * 1.2 + farmingToolBonus,
-      wood: 0.9,
+      // A deliberate building-timber trip moves logs, not handfuls of food.
+      // Normalised output is therefore larger than casual fuel gathering.
+      wood: housingMaterialsNeeded ? 4 : 0.9,
       stone: 0.75,
       metal: 0.22,
       fuel: 0.55,
@@ -9257,6 +9536,22 @@ export class WorldEngine {
     agent.energy = clamp01(agent.energy - 0.035);
     agent.stress = clamp01(agent.stress + 0.006);
     agent.resources = clamp01(agent.resources + personalShare);
+    recordPhysicalGoodsV21(
+      this.state,
+      agent,
+      gatheredMaterial,
+      Math.min(personalShare, materialYield * 0.35),
+    );
+    if (gatheredMaterial === 'metal' || gatheredMaterial === 'stone') {
+      fulfillContractFromLivedActionV21(this.state, agent, {
+        kind: 'mining',
+        settlementId,
+        targetPlaceId: gatheringPlace.id,
+        commodity: gatheredMaterial,
+        quantity: Math.min(personalShare, materialYield * 0.35),
+        succeeded: materialYield > 0,
+      });
+    }
     agent.skills.gathering = clamp01(
       agent.skills.gathering + 0.004 * (0.4 + capacityScale * 0.6),
     );
@@ -9311,6 +9606,7 @@ export class WorldEngine {
     agent.skills.craft = clamp01(
       agent.skills.craft + 0.004 * (0.45 + capacityScale * 0.55),
     );
+    recordMaterialPracticeV21(this.state, agent.id, produced);
     agent.lastAction = 'work';
     agent.lastWorkKind = 'ordinary';
     agent.lastMeaningfulEventAt = now;
@@ -9408,6 +9704,7 @@ export class WorldEngine {
       professionHint: 'builder',
       amount: Math.min(2, contribution / 2),
     });
+    recordMaterialPracticeV21(this.state, agent.id, contribution);
     this.recordAgentEvent(agent, now, 'agent.worked', {
       workKind: 'construction',
       projectId: project.id,
@@ -9425,6 +9722,13 @@ export class WorldEngine {
       project.laborRequiredPersonDays
     ) {
       this.completeHumanHomeProject(settlementId, now);
+      fulfillContractFromLivedActionV21(this.state, agent, {
+        kind: 'construction',
+        settlementId,
+        targetPlaceId: project.homeId,
+        quantity: 1,
+        succeeded: true,
+      });
     }
     return true;
   }
@@ -9577,7 +9881,14 @@ export class WorldEngine {
       agent,
       (placeId) => this.pathBetween(agent.locationId, placeId) !== undefined,
       livelihood.mappedPlaceIds,
+      this.rng.next(),
     );
+    if (!this.youngChildMayTravelTo(agent, targetFrontier)) {
+      // The child still carries out the chosen curiosity locally; the safety
+      // boundary changes distance, not personality or goal.
+      this.performWalk(agent, now);
+      return;
+    }
     const adventure = syncAdventureEconomyV19(this.state);
     observeLocalPlacesV20(this.state, agent);
     let targetDungeon =
@@ -9612,6 +9923,10 @@ export class WorldEngine {
     }
     if (targetDungeon) {
       const entranceId = targetDungeon.entrancePlaceId;
+      if (!this.youngChildMayTravelTo(agent, entranceId)) {
+        this.performWalk(agent, now);
+        return;
+      }
       if (agent.locationId !== entranceId) {
         agent.plan = {
           kind: 'dungeon_expedition',
@@ -9642,6 +9957,12 @@ export class WorldEngine {
         this.performRest(agent, now);
         return;
       }
+      const party = formVoluntaryDungeonPartyV21(
+        this.state,
+        agent,
+        targetDungeon,
+        this.rng.next(),
+      );
       const expedition = resolveDungeonExpeditionV19(
         this.state,
         agent,
@@ -9654,7 +9975,19 @@ export class WorldEngine {
           artifactKind: this.rng.next(),
           ability: this.rng.next(),
         },
+        party.map((member) => member.id),
       );
+      for (const casualtyId of expedition.run.casualtyAgentIds ?? []) {
+        const casualty = this.state.agents[casualtyId];
+        if (!casualty?.life.alive) continue;
+        this.recordDeath(casualty, 'catastrophe', now, {
+          threat: targetDungeon.threat,
+          escaped: false,
+          damage: expedition.run.healthDamage,
+          lethalChance: 1,
+          encounterReason: 'dungeon',
+        });
+      }
       recordLivelihoodPracticeV18(this.state, agent, {
         action: 'explore',
         placeId: entranceId,
@@ -9678,6 +10011,9 @@ export class WorldEngine {
         artifactName: expedition.artifact?.name ?? null,
         learnedAbility: expedition.learnedAbility ?? null,
         healthDamage: expedition.run.healthDamage,
+        partySize: expedition.run.partyAgentIds?.length ?? 1,
+        partyAgentIds: (expedition.run.partyAgentIds ?? [agent.id]).join(','),
+        casualtyCount: expedition.run.casualtyAgentIds?.length ?? 0,
         voluntary: true,
         locationId: agent.locationId,
       });
@@ -10095,6 +10431,19 @@ export class WorldEngine {
       const homePlaces = settlement.memberPlaceIds
         .map((placeId) => this.state.places[placeId])
         .filter((place): place is WorldPlace => place?.kind === 'home');
+      const occupancy = new Map<string, number>();
+      for (const resident of residents) {
+        occupancy.set(
+          resident.homeId,
+          (occupancy.get(resident.homeId) ?? 0) + 1,
+        );
+      }
+      // A claimant remains a claimant while away: current body location never
+      // turns an expedition or caravan journey into abandonment.
+      const reusableHomes = reusableAbandonedHomesV21(
+        this.state,
+        settlement.id,
+      );
       const homeCapacity = homePlaces.reduce(
         (sum, place) => sum + place.capacity,
         0,
@@ -10138,6 +10487,137 @@ export class WorldEngine {
         (placeId) => this.state.places[placeId]?.kind === 'workshop',
       ) ?? settlement.centerPlaceId;
 
+      const crowding = (candidate: AgentState) => {
+        const home = this.state.places[candidate.homeId];
+        return clamp01(
+          ((occupancy.get(candidate.homeId) ?? 1) -
+            (home?.capacity ?? 1)) /
+            Math.max(1, home?.capacity ?? 1),
+        );
+      };
+      const rankedInitiators = [...workers].sort(
+        (left, right) =>
+          humanHousingInitiativeV21(right, crowding(right)) -
+            humanHousingInitiativeV21(left, crowding(left)) ||
+          (occupancy.get(right.homeId) ?? 1) -
+            (occupancy.get(left.homeId) ?? 1) ||
+          right.skills.craft - left.skills.craft ||
+          left.id.localeCompare(right.id),
+      );
+      const initiator = rankedInitiators[0];
+      const householdCrowding = initiator ? crowding(initiator) : 0;
+      const initiative = initiator
+        ? humanHousingInitiativeV21(initiator, householdCrowding)
+        : 0;
+
+      // Repair and reuse precede new construction. The decision still needs a
+      // willing adult who has actually chosen workshop labour, a shared home
+      // to relieve, real materials and one lived work quantum. At least one
+      // resident stays in the prior home, preventing pointless home swaps.
+      const reusableHome = reusableHomes[0];
+      const priorHouseholdSize = initiator
+        ? occupancy.get(initiator.homeId) ?? 1
+        : 0;
+      const repairWood = 0.14;
+      const repairStone = 0.04;
+      if (
+        initiator &&
+        reusableHome &&
+        priorHouseholdSize >
+          (this.state.places[initiator.homeId]?.capacity ?? 1) &&
+        initiative >= 0.32 &&
+        economy.stocks.wood >= repairWood &&
+        economy.stocks.stone >= repairStone &&
+        this.rng.next() < 0.14 + initiative * 0.5
+      ) {
+        const priorHomeId = initiator.homeId;
+        const maximumMove = Math.min(
+          reusableHome.capacity,
+          priorHouseholdSize - 1,
+        );
+        const household = residents
+          .filter((resident) => resident.homeId === priorHomeId)
+          .sort(
+            (left, right) =>
+              Number(right.id === initiator.id) -
+                Number(left.id === initiator.id) ||
+              Number(
+                right.life.parentIds.includes(initiator.id) ||
+                  initiator.life.childIds.includes(right.id),
+              ) -
+                Number(
+                  left.life.parentIds.includes(initiator.id) ||
+                    initiator.life.childIds.includes(left.id),
+                ) ||
+              left.id.localeCompare(right.id),
+          );
+        const movedResidentIds = household
+          .slice(0, Math.max(1, maximumMove))
+          .map((resident) => resident.id);
+
+        economy.stocks.wood -= repairWood;
+        economy.stocks.stone -= repairStone;
+        economy.constructionEvents += 1;
+        economy.lastConstructionWorldMinute = worldMinutes;
+        initiator.energy = clamp01(initiator.energy - 0.045);
+        initiator.skills.craft = clamp01(initiator.skills.craft + 0.0035);
+        for (const residentId of movedResidentIds) {
+          const resident = this.state.agents[residentId];
+          if (!resident?.life.alive) continue;
+          resident.homeId = reusableHome.id;
+          resident.knownPlaceIds ??= [];
+          if (!resident.knownPlaceIds.includes(reusableHome.id)) {
+            resident.knownPlaceIds.push(reusableHome.id);
+            resident.knownPlaceIds = resident.knownPlaceIds.slice(-256);
+          }
+          this.stageEvent({
+            eventId: this.nextId('household-reoccupy'),
+            worldId: this.state.id,
+            kind: 'agent.household.moved_home',
+            source: 'agent',
+            occurredAt: now,
+            payload: {
+              agentId: resident.id,
+              priorHomeId,
+              homeId: reusableHome.id,
+              settlementId: settlement.id,
+              reason: 'voluntary_reoccupation_after_repair',
+              priorConsent: true,
+            },
+          });
+        }
+        recordLivelihoodPracticeV18(this.state, initiator, {
+          action: 'work',
+          placeId: workshopId,
+          choiceRoll: this.rng.next(),
+          professionHint: 'builder',
+          amount: 0.8,
+        });
+        recordMaterialPracticeV21(this.state, initiator.id, 0.8);
+        recordSettlementPracticeEvidenceV16(
+          this.state,
+          settlement.id,
+          'craft',
+        );
+        this.stageEvent({
+          eventId: this.nextId('home-repaired'),
+          worldId: this.state.id,
+          kind: 'world.building.home_repaired',
+          source: 'agent',
+          occurredAt: now,
+          payload: {
+            settlementId: settlement.id,
+            placeId: reusableHome.id,
+            repairedByAgentId: initiator.id,
+            movedResidentIds,
+            materialCost: { wood: repairWood, stone: repairStone },
+            voluntary: true,
+            worldMinutes,
+          },
+        });
+        continue;
+      }
+
       const neededFarmingTools = Math.max(1, Math.ceil(residents.length / 8));
       const neededConstructionTools = Math.max(
         1,
@@ -10145,43 +10625,6 @@ export class WorldEngine {
       );
 
       if (humanSettlement && needsHome) {
-        const occupancy = new Map<string, number>();
-        for (const resident of residents) {
-          occupancy.set(
-            resident.homeId,
-            (occupancy.get(resident.homeId) ?? 0) + 1,
-          );
-        }
-        const rankedInitiators = [...workers].sort((left, right) => {
-          const crowding = (candidate: AgentState) => {
-            const home = this.state.places[candidate.homeId];
-            return clamp01(
-              ((occupancy.get(candidate.homeId) ?? 1) -
-                (home?.capacity ?? 1)) /
-                Math.max(1, home?.capacity ?? 1),
-            );
-          };
-          return (
-            humanHousingInitiativeV21(right, crowding(right)) -
-              humanHousingInitiativeV21(left, crowding(left)) ||
-            right.skills.craft - left.skills.craft ||
-            left.id.localeCompare(right.id)
-          );
-        });
-        const initiator = rankedInitiators[0];
-        const initiatorHome = initiator
-          ? this.state.places[initiator.homeId]
-          : undefined;
-        const householdCrowding = initiator
-          ? clamp01(
-              ((occupancy.get(initiator.homeId) ?? 1) -
-                (initiatorHome?.capacity ?? 1)) /
-                Math.max(1, initiatorHome?.capacity ?? 1),
-            )
-          : 0;
-        const initiative = initiator
-          ? humanHousingInitiativeV21(initiator, householdCrowding)
-          : 0;
         const localLand = ensureSettlementResourcesV16(
           this.state,
           settlement.id,
@@ -10887,6 +11330,13 @@ export class WorldEngine {
               losingSide ? 0.12 : 0.065,
             );
             participant.life.health = clamp01(participant.life.health - damage);
+            recordTraumaV21(
+              this.state,
+              participant,
+              damage,
+              'conflict',
+              `${settlementA.id}:${settlementB.id}:${relation.conflictRounds}:${participant.id}`,
+            );
             participant.energy = clamp01(participant.energy - 0.09);
             participant.stress = clamp01(participant.stress + 0.1);
             participant.mind.emotions.fear = clamp01(
@@ -12904,6 +13354,11 @@ export class WorldEngine {
     agent.plan = undefined;
     this.state.population.deaths += 1;
     stopDeceasedActions(this.state, agent);
+    if (this.state.v21) {
+      delete this.state.v21.bodiesByAgentId[agent.id];
+      delete this.state.v21.appliedKnowledgeByAgentId[agent.id];
+      delete this.state.v21.childSupervisionByChildId[agent.id];
+    }
     this.state.population.lastDeathAt = now;
 
     this.stageEvent({
@@ -13533,23 +13988,23 @@ export class WorldEngine {
     }> = [
       {
         race: 'elf', minimumStage: 0,
-        names: ['Aelar', 'Lethiel', 'Faelar', 'Nimriel', 'Saeya', 'Iriwen', 'Calion', 'Elaria', 'Thalen', 'Naevia', 'Liarel', 'Aeris'],
+        names: ['Аэлар', 'Летиэль', 'Фаэлар', 'Нимриэль', 'Саэя', 'Иривен', 'Калион', 'Элария', 'Тален', 'Наэвия', 'Лиарэль', 'Аэрис'],
       },
       {
         race: 'dwarf', minimumStage: 0,
-        names: ['Borin', 'Dagna', 'Thora', 'Garin', 'Morda', 'Durim', 'Balgrim', 'Hilda', 'Korin', 'Fara', 'Torun', 'Brina'],
+        names: ['Борин', 'Дагна', 'Тора', 'Гарин', 'Морда', 'Дурим', 'Балгрим', 'Хильда', 'Корин', 'Фара', 'Торун', 'Брина'],
       },
       {
         race: 'goblin', minimumStage: 0,
-        names: ['Ruk', 'Mog', 'Vera', 'Nim', 'Tuk', 'Miri', 'Vek', 'Sena', 'Kip', 'Rina', 'Gor', 'Luma'],
+        names: ['Рук', 'Мог', 'Вера', 'Ним', 'Тук', 'Мири', 'Век', 'Сена', 'Кип', 'Рина', 'Гор', 'Лума'],
       },
       {
         race: 'orc', minimumStage: 0,
-        names: ['Gar', 'Dorn', 'Lira', 'Ona', 'Bran', 'Kora', 'Targ', 'Mira', 'Rok', 'Dara', 'Vor', 'Lena'],
+        names: ['Гар', 'Дорн', 'Лира', 'Она', 'Бран', 'Кора', 'Тарг', 'Мира', 'Рок', 'Дара', 'Вор', 'Лена'],
       },
       {
         race: 'ogre', minimumStage: 0,
-        names: ['Bram', 'Tor', 'Mara', 'Sia', 'Grom', 'Vala', 'Bora', 'Tima', 'Orr', 'Nara', 'Krag', 'Mina'],
+        names: ['Брам', 'Тор', 'Мара', 'Сия', 'Гром', 'Вала', 'Бора', 'Тима', 'Орр', 'Нара', 'Краг', 'Мина'],
       },
     ];
 
@@ -14019,6 +14474,20 @@ export class WorldEngine {
         );
 
     agent.life.health = clamp01(agent.life.health - damage);
+    recordTraumaV21(
+      this.state,
+      agent,
+      damage,
+      monster.isMonster ? 'monster' : 'wildlife',
+      `${monster.id}:${now}:encounter`,
+    );
+    recordItemUseV21(
+      this.state,
+      this.v15World().equipmentByAgentId[agent.id]?.weaponItemId,
+      monster.threat + (choseFight ? 0.34 : 0.12),
+      monster.isMonster ? 0.02 : 0.006,
+      agent.id,
+    );
     agent.stress = clamp01(
       agent.stress + monster.threat * (escaped || repelled ? 0.12 : 0.28),
     );
@@ -14464,11 +14933,14 @@ export class WorldEngine {
     const canHeal = hasDivineGiftV19(this.state, agent.id, 'healing_touch');
     let best: { other: AgentState; score: number } | undefined;
     for (const other of allAgents) {
+      const physicalCareNeed = bodyCareNeedV21(this.state, other.id);
       if (
         other.id === agent.id ||
         !other.life.alive ||
         other.locationId !== agent.locationId ||
-        (other.resources >= 0.5 && (!canHeal || other.life.health >= 0.98))
+        (other.resources >= 0.5 &&
+          (!canHeal || other.life.health >= 0.98) &&
+          physicalCareNeed <= 0.02)
       ) {
         continue;
       }
@@ -14477,6 +14949,7 @@ export class WorldEngine {
       const need =
         (1 - other.resources) * 0.65 +
         (canHeal ? (1 - other.life.health) * 0.85 : 0) +
+        physicalCareNeed * (0.72 + careActionAffinityV21(this.state, agent.id)) +
         other.stress * 0.2 +
         (1 - other.needs.belonging) * 0.15;
       const willingness = relationship
@@ -14504,6 +14977,7 @@ export class WorldEngine {
     const canHeal =
       hasDivineGiftV19(this.state, a.id, 'healing_touch') &&
       b.life.health < 0.98;
+    const physicalCareNeed = bodyCareNeedV21(this.state, b.id);
     const offered = Math.min(0.065, Math.max(0, a.resources - 0.35), 0.72 - b.resources);
     const acceptance = clamp01(
       0.35 +
@@ -14513,16 +14987,22 @@ export class WorldEngine {
         current.conflict * 0.35 +
         b.personality.sociability * 0.08,
     );
-    const accepted = (offered > 0.005 || canHeal) && this.rng.next() < acceptance;
+    const accepted =
+      (offered > 0.005 || canHeal || physicalCareNeed > 0.02) &&
+      this.rng.next() < acceptance;
     const healed = accepted && canHeal
       ? Math.min(0.1, 1 - b.life.health)
       : 0;
     const beneficiaryBefore = b.resources + b.life.health;
+    let ordinaryCareImprovement = 0;
 
     if (accepted) {
       a.resources = clamp01(a.resources - offered);
       b.resources = clamp01(b.resources + offered);
       b.life.health = clamp01(b.life.health + healed);
+      if (physicalCareNeed > 0.02) {
+        ordinaryCareImprovement = recordCarePracticeV21(this.state, a, b).improvement;
+      }
       a.needs.purpose = clamp01(a.needs.purpose + 0.06);
       b.needs.belonging = clamp01(b.needs.belonging + 0.06);
       b.stress = clamp01(b.stress - 0.025);
@@ -14553,6 +15033,8 @@ export class WorldEngine {
     const summary = accepted
       ? healed > 0
         ? `${b.name} accepted care from ${a.name} and felt their health improve.`
+        : ordinaryCareImprovement > 0
+          ? `${b.name} accepted practical treatment from ${a.name}.`
         : `${b.name} accepted help from ${a.name}.`
       : `${b.name} declined help from ${a.name}.`;
     for (const agent of [a, b]) {
@@ -15001,6 +15483,7 @@ export class WorldEngine {
     if (!destination) {
       throw new Error(`Cannot move ${agent.id} to unknown place ${locationId}.`);
     }
+    if (!this.youngChildMayTravelTo(agent, locationId)) return;
     if (!mayKnowPlaceV20(agent, locationId, this.state)) return;
     if (agent.movement && agent.movement.targetPlaceId !== locationId) {
       // Another resident's interaction cannot pull a traveller off a route.
@@ -15074,8 +15557,20 @@ export class WorldEngine {
     const movement = agent.movement;
     if (!movement) return false;
 
+    const weatherWalkingScale = worldWeatherV21(this.state, startMinute)
+      .walkingScale;
+    const currentSettlementId =
+      this.state.places[agent.locationId]?.settlementId;
+    const targetSettlementId =
+      this.state.places[movement.targetPlaceId]?.settlementId;
+    const exposedWeatherScale =
+      currentSettlementId && currentSettlementId === targetSettlementId
+        ? 0.84 + weatherWalkingScale * 0.16
+        : weatherWalkingScale;
     const mobilityScale =
       (0.8 + agent.life.physiology.mobility * 0.4) *
+      bodyMobilityScaleV21(this.state, agent.id) *
+      exposedWeatherScale *
       (hasDivineGiftV19(this.state, agent.id, 'demon_king_hero') ? 5 : 1);
     const movementBudget =
       RESIDENT_WALK_MAP_UNITS_PER_WORLD_MINUTE *
@@ -15293,6 +15788,9 @@ export class WorldEngine {
         }
       }
     }
+    const weather = worldWeatherV21(this.state, worldMinutes);
+    safetyModifier += weather.safetyModifier;
+    habitatModifier += weather.habitatModifier;
 
     return {
       ...this.state.environment,

@@ -85,10 +85,41 @@ function compactNamePart(value: string): string {
     .toLocaleLowerCase('ru-RU');
 }
 
+/** Keeps a cultural sound while writing native world names in Cyrillic. */
+export function toRussianWorldNameV18(value: string): string {
+  const pairs: Readonly<Record<string, string>> = {
+    shch: 'щ', zh: 'ж', kh: 'х', ts: 'ц', ch: 'ч', sh: 'ш',
+    ya: 'я', yu: 'ю', yo: 'ё', ye: 'е', ia: 'ия', ae: 'э',
+    ph: 'ф', th: 'т', qu: 'кв', ck: 'к',
+  };
+  const letters: Readonly<Record<string, string>> = {
+    a: 'а', b: 'б', c: 'к', d: 'д', e: 'е', f: 'ф', g: 'г',
+    h: 'х', i: 'и', j: 'дж', k: 'к', l: 'л', m: 'м', n: 'н',
+    o: 'о', p: 'п', q: 'к', r: 'р', s: 'с', t: 'т', u: 'у',
+    v: 'в', w: 'в', x: 'кс', y: 'й', z: 'з',
+  };
+  const lower = value.toLocaleLowerCase('ru-RU');
+  let result = '';
+  for (let index = 0; index < lower.length;) {
+    const pair = Object.keys(pairs).find((candidate) =>
+      lower.startsWith(candidate, index));
+    if (pair) {
+      result += pairs[pair];
+      index += pair.length;
+      continue;
+    }
+    const character = lower[index];
+    result += letters[character] ?? character;
+    index += 1;
+  }
+  return result.replace(/(^|[\s-])([а-яё])/g, (_match, prefix: string, letter: string) =>
+    `${prefix}${letter.toLocaleUpperCase('ru-RU')}`);
+}
+
 function finishName(onset: string, core: string, ending: string): string {
-  const raw = `${onset}${core}${ending}`
+  const raw = toRussianWorldNameV18(`${onset}${core}${ending}`
     .replace(/([aeiouy])\1+/gi, '$1')
-    .replace(/([^aeiouy])\1{2,}/gi, '$1$1');
+    .replace(/([^aeiouy])\1{2,}/gi, '$1$1'));
   return raw.charAt(0).toLocaleUpperCase('ru-RU') + raw.slice(1);
 }
 
@@ -234,6 +265,20 @@ export function repairLegacyTechnicalChildNamesV18(state: WorldState): number {
     });
     agent.name = choice.name;
     usedNames.add(choice.name.toLocaleLowerCase('ru-RU'));
+    repaired += 1;
+  }
+  return repaired;
+}
+
+/**
+ * Migrates only native world identities that still contain Latin letters.
+ * IDs and all accumulated mind/body/history records remain unchanged.
+ */
+export function repairRussianNativeNamesV18(state: WorldState): number {
+  let repaired = 0;
+  for (const agent of Object.values(state.agents)) {
+    if (agent.origin !== 'native' || !/[A-Za-z]/.test(agent.name)) continue;
+    agent.name = toRussianWorldNameV18(agent.name);
     repaired += 1;
   }
   return repaired;

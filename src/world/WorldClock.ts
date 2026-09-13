@@ -61,8 +61,6 @@ export const WORLD_SPEED_PRESETS: readonly WorldSpeedPreset[] = [
     description: 'Одна минута снаружи равна году мира',
   },
   { id: 'decade_per_minute', worldMinutesPerRealMinute: WORLD_MINUTES_PER_YEAR * 10, shortLabel: '1м ≈ 10 лет', description: 'Целевая скорость; фактическая зависит от мира и устройства' },
-  { id: 'fifty_years_per_minute', worldMinutesPerRealMinute: WORLD_MINUTES_PER_YEAR * 50, shortLabel: '1м ≈ 50 лет', description: 'Целевая скорость без пропуска событий' },
-  { id: 'century_per_minute', worldMinutesPerRealMinute: WORLD_MINUTES_PER_YEAR * 100, shortLabel: '1м ≈ 100 лет', description: 'Предельная целевая скорость; крупный мир будет идти медленнее' },
 ] as const;
 
 export const DEFAULT_WORLD_SPEED_ID: WorldSpeedId = 'year_per_minute';
@@ -89,7 +87,9 @@ const SEASONS: readonly WorldSeason[] = [
 ];
 
 export function isWorldSpeedId(value: unknown): value is WorldSpeedId {
-  return WORLD_SPEED_PRESETS.some((preset) => preset.id === value);
+  return WORLD_SPEED_PRESETS.some((preset) => preset.id === value) ||
+    value === 'fifty_years_per_minute' ||
+    value === 'century_per_minute';
 }
 
 /** At these requested rates, observing every rendered frame competes with the
@@ -108,20 +108,37 @@ export function isWorldSpeedMultiplier(
 }
 
 export function worldSpeedPreset(id: WorldSpeedId): WorldSpeedPreset {
+  const safeId = id === 'fifty_years_per_minute' || id === 'century_per_minute'
+    ? 'decade_per_minute'
+    : id;
   return (
-    WORLD_SPEED_PRESETS.find((preset) => preset.id === id) ??
+    WORLD_SPEED_PRESETS.find((preset) => preset.id === safeId) ??
     WORLD_SPEED_PRESETS.at(-1)!
   );
+}
+
+export function normalizeWorldSpeedControl(
+  speedId: WorldSpeedId,
+  multiplier: WorldSpeedMultiplier,
+): { speedId: WorldSpeedId; multiplier: WorldSpeedMultiplier } {
+  const requested = worldSpeedPreset(speedId).worldMinutesPerRealMinute * multiplier;
+  if (
+    speedId === 'fifty_years_per_minute' ||
+    speedId === 'century_per_minute' ||
+    requested >= WORLD_MINUTES_PER_YEAR * 10
+  ) {
+    return { speedId: 'decade_per_minute', multiplier: 1 };
+  }
+  return { speedId, multiplier };
 }
 
 export function worldMinutesPerTick(
   speedId: WorldSpeedId,
   multiplier: WorldSpeedMultiplier,
 ): number {
-  return (
-    (worldSpeedPreset(speedId).worldMinutesPerRealMinute * multiplier) /
-    LIVE_TICKS_PER_REAL_MINUTE
-  );
+  const normalized = normalizeWorldSpeedControl(speedId, multiplier);
+  return worldSpeedPreset(normalized.speedId).worldMinutesPerRealMinute *
+    normalized.multiplier / LIVE_TICKS_PER_REAL_MINUTE;
 }
 
 export const DEFAULT_WORLD_MINUTES_PER_TICK = worldMinutesPerTick(

@@ -4,6 +4,25 @@ import {
 } from '../v16/SocietyFoundationV16';
 import type { AgentState, WorldPlace, WorldState } from '../world/types';
 import { WORLD_MINUTES_PER_YEAR } from '../world/WorldClock';
+import {
+  assertEmergentSocietyV21,
+  createEmergentSocietyV21,
+  recordVerifiedDungeonOutcomeV21,
+  repairEmergentSocietyV21,
+  socialRankForEvidenceV21,
+} from '../v21/EmergentSocietyV21';
+import {
+  marketUnitPriceV21,
+  recordPhysicalGoodsV21,
+  recordTradeEvidenceV21,
+} from '../v21/EconomySystemV21';
+import { recordTraumaV21 } from '../v21/EmbodiedWorldV21';
+import {
+  assessDungeonRiskV21,
+  DUNGEON_FLOOR_COUNT_V21,
+  dungeonRankForFloorV21,
+  residentCombatCapacityV21,
+} from '../v21/DungeonRpgV21';
 import type {
   V19AdventureAbility,
   V19AdventureEconomyState,
@@ -12,6 +31,7 @@ import type {
   V19AdventureTransactionRecord,
   V19ArtifactKind,
   V19ArtifactState,
+  V19CommodityKind,
   V19DungeonRunRecord,
   V19DungeonState,
   V19SettlementMarketState,
@@ -75,11 +95,7 @@ function rankIndex(rank: V19AdventureRank): number {
 }
 
 export function adventureRankForPointsV19(points: number): V19AdventureRank {
-  let result: V19AdventureRank = 'unranked';
-  for (const rank of ADVENTURE_RANKS_V19) {
-    if (Math.max(0, points) >= RANK_POINT_THRESHOLDS[rank]) result = rank;
-  }
-  return result;
+  return socialRankForEvidenceV21(Math.max(0, points));
 }
 
 function stableNumber(value: string): number {
@@ -102,6 +118,7 @@ function emptyMarket(settlementId: string): V19SettlementMarketState {
     artifactsBought: 0,
     artifactsSold: 0,
     inventoryArtifactIds: [],
+    commodityStocks: {},
   };
 }
 
@@ -119,6 +136,7 @@ function emptyAdventurer(agentId: string): V19AdventurerState {
     totalCoinSpent: 0,
     artifactIds: [],
     abilities: [],
+    carriedGoods: {},
   };
 }
 
@@ -168,8 +186,14 @@ function dungeonFromPlace(
 ): V19DungeonState {
   const rank = dungeonRankForPlace(place);
   const difficulty = Math.max(1, rankIndex(rank));
-  const depth = 3 + difficulty * 2 + (stableNumber(place.id) % 3);
+  const depth = DUNGEON_FLOOR_COUNT_V21;
   const treasureCapacity = 10 + depth * 2.4 + difficulty * 6;
+  const started = Math.max(0, place.discoveredAt ?? worldMinute);
+  const formationProgress = clamp01(
+    (place.kind === 'ruins' ? 0.2 : 0.08) +
+      place.danger * 0.34 +
+      (stableNumber(place.id) % 17) / 100,
+  );
   return {
     id: `dungeon:${place.id}`,
     name: dungeonName(place),
@@ -177,14 +201,25 @@ function dungeonFromPlace(
     rank,
     depth,
     threat: clamp01(0.18 + place.danger * 0.62 + difficulty * 0.045),
-    discoveredWorldMinute: Math.max(0, place.discoveredAt ?? worldMinute),
+    discoveredWorldMinute: started,
     clearedDepth: 0,
     runCount: 0,
     successfulRunCount: 0,
     treasureReserve: treasureCapacity,
     treasureCapacity,
     lastRenewedWorldMinute: worldMinute,
-    active: true,
+    formationStartedWorldMinute: started,
+    lastDevelopedWorldMinute: worldMinute,
+    formationProgress,
+    formationStage: formationProgress >= 0.7
+      ? 'labyrinth'
+      : formationProgress >= 0.45
+        ? 'passages'
+        : formationProgress >= 0.2
+          ? 'den'
+          : 'trace',
+    bossFloors: Array.from({ length: 10 }, (_, index) => (index + 1) * 10),
+    active: formationProgress >= 0.2,
   };
 }
 
@@ -194,6 +229,9 @@ function syncIntoState(
 ): void {
   for (const settlement of Object.values(world.settlements)) {
     state.settlementMarketsById[settlement.id] ??= emptyMarket(settlement.id);
+  }
+  for (const dungeon of Object.values(state.dungeonsById)) {
+    renewDungeon(dungeon, world.calendar.elapsedWorldMinutes);
   }
   const existingCount = Object.keys(state.dungeonsById).length;
   if (existingCount >= MAX_DUNGEONS_V19) return;
@@ -233,7 +271,9 @@ export function createAdventureEconomyV19(
     nextRunSequence: 1,
     nextArtifactSequence: 1,
     nextTransactionSequence: 1,
+    emergentSociety: undefined!,
   };
+  state.emergentSociety = createEmergentSocietyV21(world);
   syncIntoState(world, state);
   return state;
 }
@@ -281,6 +321,7 @@ export function repairAdventureEconomyV19(
     profile.abilities = [...new Set(profile.abilities ?? [])]
       .filter((ability) => ADVENTURE_ABILITIES_V19.includes(ability))
       .slice(-MAX_AGENT_ABILITIES_V19);
+    profile.carriedGoods ??= {};
     profile.dungeonRuns = Math.max(0, profile.dungeonRuns ?? 0);
     profile.successfulRuns = Math.max(0, profile.successfulRuns ?? 0);
     profile.retreats = Math.max(0, profile.retreats ?? 0);
@@ -324,7 +365,34 @@ export function repairAdventureEconomyV19(
         (id) => state.artifactsById[id]?.holderSettlementId === settlementId,
       )
       .slice(-MAX_MARKET_ARTIFACTS_V19);
+    market.commodityStocks ??= {};
   }
+  for (const dungeon of Object.values(state.dungeonsById)) {
+    dungeon.formationStartedWorldMinute ??= dungeon.discoveredWorldMinute;
+    dungeon.lastDevelopedWorldMinute ??= dungeon.lastRenewedWorldMinute;
+    dungeon.formationProgress = clamp01(
+      dungeon.formationProgress ?? (dungeon.active ? 1 : 0.12),
+    );
+    dungeon.formationStage ??= dungeon.formationProgress >= 0.88
+      ? 'deep_domain'
+      : dungeon.formationProgress >= 0.7
+        ? 'labyrinth'
+        : dungeon.formationProgress >= 0.45
+          ? 'passages'
+          : dungeon.formationProgress >= 0.2
+            ? 'den'
+            : 'trace';
+    dungeon.depth = DUNGEON_FLOOR_COUNT_V21;
+    dungeon.bossFloors = [...new Set(dungeon.bossFloors ??
+      Array.from({ length: 10 }, (_, index) => (index + 1) * 10))]
+      .filter((floor) => Number.isInteger(floor) && floor >= 1 && floor <= DUNGEON_FLOOR_COUNT_V21)
+      .sort((left, right) => left - right);
+    dungeon.rank = dungeonRankForFloorV21(
+      Math.min(DUNGEON_FLOOR_COUNT_V21, dungeon.clearedDepth + 1),
+    );
+    dungeon.active = dungeon.formationProgress >= 0.2;
+  }
+  repairEmergentSocietyV21(world, state);
   syncIntoState(world, state);
   return state;
 }
@@ -395,7 +463,9 @@ export function chooseDungeonExpeditionV19(
       (dungeon): dungeon is V19DungeonState =>
         dungeon !== undefined &&
         dungeon.active &&
-        ((agent.knownDungeonIds ?? []).includes(dungeon.id) || agent.locationId === dungeon.entrancePlaceId) &&
+        ((agent.knownDungeonIds ?? []).includes(dungeon.id) ||
+          (agent.knownPlaceIds ?? []).includes(dungeon.entrancePlaceId) ||
+          agent.locationId === dungeon.entrancePlaceId) &&
         dungeon.treasureReserve >= 0.2 &&
         rankIndex(dungeon.rank) <= maximumRankIndex,
     )
@@ -558,6 +628,25 @@ function renewDungeon(
     dungeon.treasureCapacity,
     dungeon.treasureReserve + dungeon.treasureCapacity * years * 0.08,
   );
+  const formationYears = Math.max(
+    0,
+    (worldMinute - dungeon.lastDevelopedWorldMinute) / WORLD_MINUTES_PER_YEAR,
+  );
+  dungeon.formationProgress = clamp01(
+    dungeon.formationProgress +
+      formationYears * (0.018 + dungeon.threat * 0.018),
+  );
+  dungeon.formationStage = dungeon.formationProgress >= 0.88
+    ? 'deep_domain'
+    : dungeon.formationProgress >= 0.7
+      ? 'labyrinth'
+      : dungeon.formationProgress >= 0.45
+        ? 'passages'
+        : dungeon.formationProgress >= 0.2
+          ? 'den'
+          : 'trace';
+  dungeon.active = dungeon.formationProgress >= 0.2;
+  dungeon.lastDevelopedWorldMinute = worldMinute;
   dungeon.lastRenewedWorldMinute = worldMinute;
 }
 
@@ -582,6 +671,7 @@ export function resolveDungeonExpeditionV19(
   agent: AgentState,
   dungeonId: string,
   rolls: Readonly<DungeonExpeditionRollsV19>,
+  partyAgentIds: readonly string[] = [],
 ): DungeonExpeditionResultV19 {
   const state = syncAdventureEconomyV19(world);
   const dungeon = state.dungeonsById[dungeonId];
@@ -595,6 +685,19 @@ export function resolveDungeonExpeditionV19(
 
   const profile = ensureAdventurerV19(world, agent.id);
   renewDungeon(dungeon, world.calendar.elapsedWorldMinutes);
+  const party = [agent, ...partyAgentIds
+    .filter((id) => id !== agent.id)
+    .map((id) => world.agents[id])]
+    .filter(
+      (member): member is AgentState =>
+        Boolean(
+          member?.life.alive &&
+          member.life.stage === 'adult' &&
+          member.locationId === dungeon.entrancePlaceId &&
+          !member.movement,
+        ),
+    )
+    .slice(0, 6);
   const rankBefore = profile.rank;
   const giftKinds = new Set(
     world.v19?.divineAgency.byAgentId[agent.id]?.gifts.map((grant) => grant.gift) ?? [],
@@ -602,7 +705,7 @@ export function resolveDungeonExpeditionV19(
   const legendaryGift = giftKinds.has('demon_king_hero');
   const equipment = ownedArtifactPower(state, profile);
   const progression = agent.progression;
-  const capacity = clamp01(
+  const personalCapacity = clamp01(
     agent.life.health * 0.16 +
       agent.energy * 0.12 +
       agent.life.physiology.strength * 0.13 +
@@ -620,27 +723,36 @@ export function resolveDungeonExpeditionV19(
     agent.personality.riskTolerance * 0.34 +
       agent.personality.resilience * 0.2 +
       agent.mind.values.ambition * 0.18 +
-      capacity * 0.24 -
+      personalCapacity * 0.24 -
       agent.mind.emotions.fear * 0.18 -
       agent.stress * 0.12,
   );
-  const intendedDepth = Math.max(
+  const formedDepth = Math.max(
     1,
-    Math.min(
-      dungeon.depth,
-      1 + Math.floor(clampRoll(rolls.depth) * Math.max(1, dungeon.depth)),
-    ),
+    Math.floor(dungeon.formationProgress * DUNGEON_FLOOR_COUNT_V21),
   );
-  const difficulty = clamp01(
-    0.24 +
-      dungeon.threat * 0.34 +
-      rankIndex(dungeon.rank) * 0.035 +
-      (intendedDepth / dungeon.depth) * 0.13,
+  // A resident can only attempt the next unexplored part of this physical
+  // dungeon. A random roll varies the size of the attempt, never teleports a
+  // newcomer straight to a late floor.
+  const intendedDepth = Math.min(
+    formedDepth,
+    dungeon.clearedDepth + 1 + Math.floor(clampRoll(rolls.depth) * 3),
   );
+  const assessment = assessDungeonRiskV21(world, dungeon, party, intendedDepth);
+  const capacity = clamp01(
+    assessment.partyCapacity +
+      equipment +
+      abilityPower(profile) +
+      (giftKinds.has('might') ? 0.13 : 0) +
+      (legendaryGift ? 0.42 : 0),
+  );
+  const difficulty = assessment.knownDanger;
   const mustRetreat =
     !legendaryGift &&
     (agent.energy < 0.28 ||
       agent.life.health < 0.46 ||
+      (assessment.recommendation === 'reckless' &&
+        agent.personality.riskTolerance < 0.78) ||
       clampRoll(rolls.continuation) > 0.42 + courage * 0.48);
   const success =
     !mustRetreat &&
@@ -659,29 +771,46 @@ export function resolveDungeonExpeditionV19(
       : outcome === 'retreat'
         ? dungeon.threat * 0.025
         : dungeon.threat * (0.11 + (1 - capacity) * 0.16);
-  agent.life.health = Math.max(0.06, clamp01(agent.life.health - healthDamage));
-  agent.energy = clamp01(
-    agent.energy -
-      (outcome === 'success' ? 0.12 : outcome === 'retreat' ? 0.055 : 0.18),
-  );
-  agent.resources = clamp01(
-    agent.resources - (outcome === 'success' ? 0.025 : 0.014),
-  );
-  agent.stress = clamp01(
-    agent.stress + (outcome === 'defeat' ? 0.13 : outcome === 'retreat' ? 0.035 : -0.025),
-  );
-  agent.mind.emotions.fear = clamp01(
-    agent.mind.emotions.fear + (outcome === 'defeat' ? 0.1 : -0.018),
-  );
-  agent.needs.purpose = clamp01(
-    agent.needs.purpose + (outcome === 'success' ? 0.1 : 0.018),
-  );
-  agent.skills.exploration = clamp01(
-    agent.skills.exploration + (outcome === 'success' ? 0.014 : 0.004),
-  );
-  agent.skills.hunting = clamp01(
-    agent.skills.hunting + (outcome === 'success' ? 0.009 : 0.003),
-  );
+  const casualtyAgentIds: string[] = [];
+  for (const member of party) {
+    const memberCapacity = residentCombatCapacityV21(member);
+    const exposure = clamp01(
+      healthDamage *
+        (member.id === agent.id ? 1 : 0.72 + clampRoll(rolls.encounter) * 0.34) *
+        (1.14 - memberCapacity * 0.34),
+    );
+    member.life.health = clamp01(member.life.health - exposure);
+    recordTraumaV21(
+      world,
+      member,
+      exposure,
+      'dungeon',
+      `${dungeon.id}:${state.nextRunSequence}:${member.id}`,
+    );
+    member.energy = clamp01(
+      member.energy -
+        (outcome === 'success' ? 0.12 : outcome === 'retreat' ? 0.055 : 0.18),
+    );
+    member.resources = clamp01(
+      member.resources - (outcome === 'success' ? 0.025 : 0.014),
+    );
+    member.stress = clamp01(
+      member.stress + (outcome === 'defeat' ? 0.13 : outcome === 'retreat' ? 0.035 : -0.025),
+    );
+    member.mind.emotions.fear = clamp01(
+      member.mind.emotions.fear + (outcome === 'defeat' ? 0.1 : -0.018),
+    );
+    member.needs.purpose = clamp01(
+      member.needs.purpose + (outcome === 'success' ? 0.1 : 0.018),
+    );
+    member.skills.exploration = clamp01(
+      member.skills.exploration + (outcome === 'success' ? 0.014 : 0.004),
+    );
+    member.skills.hunting = clamp01(
+      member.skills.hunting + (outcome === 'success' ? 0.009 : 0.003),
+    );
+    if (member.life.health <= 0.015) casualtyAgentIds.push(member.id);
+  }
 
   const experienceGained =
     outcome === 'success'
@@ -707,10 +836,6 @@ export function resolveDungeonExpeditionV19(
       (outcome === 'success' ? 0.012 + rankPower * 0.002 : 0.003),
   );
 
-  const rankPointsGained =
-    outcome === 'success' ? 2 + rankPower * 1.5 + intendedDepth * 0.8 : 0.25;
-  profile.rankPoints += rankPointsGained;
-  profile.rank = adventureRankForPointsV19(profile.rankPoints);
   profile.dungeonRuns += 1;
   profile.successfulRuns += outcome === 'success' ? 1 : 0;
   profile.retreats += outcome === 'retreat' ? 1 : 0;
@@ -726,6 +851,9 @@ export function resolveDungeonExpeditionV19(
     dungeon.clearedDepth,
     outcome === 'success' ? intendedDepth : 0,
   );
+  dungeon.rank = dungeonRankForFloorV21(
+    Math.min(DUNGEON_FLOOR_COUNT_V21, dungeon.clearedDepth + 1),
+  );
 
   const coinRecovered =
     outcome === 'success'
@@ -735,8 +863,12 @@ export function resolveDungeonExpeditionV19(
         )
       : 0;
   dungeon.treasureReserve = Math.max(0, dungeon.treasureReserve - coinRecovered);
-  profile.coinBalance += coinRecovered;
-  profile.totalCoinEarned += coinRecovered;
+  const coinShare = coinRecovered / Math.max(1, party.length);
+  for (const member of party) {
+    const memberProfile = ensureAdventurerV19(world, member.id);
+    memberProfile.coinBalance += coinShare;
+    memberProfile.totalCoinEarned += coinShare;
+  }
   state.totalCoinRecovered += coinRecovered;
   if (coinRecovered > 0) {
     pushTransaction(state, {
@@ -747,6 +879,39 @@ export function resolveDungeonExpeditionV19(
       coin: coinRecovered,
       food: 0,
     });
+  }
+
+  const loot = outcome === 'success'
+    ? {
+        monster_part: Math.min(
+          0.32,
+          dungeon.treasureReserve * 0.018 + dungeon.threat * 0.12,
+        ),
+        rare_mineral: Math.min(
+          0.18,
+          dungeon.treasureReserve * 0.009 + rankPower * 0.012,
+        ),
+      }
+    : undefined;
+  if (loot) {
+    for (const member of party) {
+      recordPhysicalGoodsV21(
+        world,
+        member,
+        'monster_part',
+        loot.monster_part / party.length,
+      );
+      recordPhysicalGoodsV21(
+        world,
+        member,
+        'rare_mineral',
+        loot.rare_mineral / party.length,
+      );
+    }
+    dungeon.treasureReserve = Math.max(
+      0,
+      dungeon.treasureReserve - loot.monster_part * 0.4 - loot.rare_mineral,
+    );
   }
 
   const artifactChance = clamp01(
@@ -783,6 +948,27 @@ export function resolveDungeonExpeditionV19(
     }
   }
 
+  // Social rank is changed only by witnessed, physical evidence. It never
+  // contributes to the capacity calculation above and therefore grants no
+  // magical combat statistics.
+  recordVerifiedDungeonOutcomeV21(
+    world,
+    agent,
+    dungeon.entrancePlaceId,
+    outcome,
+    outcome === 'success' ? intendedDepth : 0,
+  );
+  for (const member of party) {
+    if (member.id === agent.id) continue;
+    recordVerifiedDungeonOutcomeV21(
+      world,
+      member,
+      dungeon.entrancePlaceId,
+      outcome,
+      outcome === 'success' ? intendedDepth : 0,
+    );
+  }
+
   const run: V19DungeonRunRecord = {
     id: `dungeon-run:v19:${state.nextRunSequence++}`,
     worldMinute: world.calendar.elapsedWorldMinutes,
@@ -797,7 +983,10 @@ export function resolveDungeonExpeditionV19(
     experienceGained,
     coinRecovered,
     ...(artifact ? { artifactId: artifact.id } : {}),
+    ...(loot ? { loot } : {}),
     healthDamage,
+    partyAgentIds: party.map((member) => member.id),
+    casualtyAgentIds,
   };
   state.recentRuns.push(run);
   state.recentRuns = state.recentRuns.slice(-MAX_RECENT_DUNGEON_RUNS_V19);
@@ -889,11 +1078,23 @@ export function tryAdventureMarketTradeV19(
 
   if (
     agent.resources < 0.62 &&
-    profile.coinBalance >= 0.25 &&
+    profile.coinBalance >= 0.05 &&
     economy.stocks.food >= 0.08
   ) {
-    const food = Math.min(0.16, economy.stocks.food, 0.08 + (0.62 - agent.resources) * 0.16);
-    const coin = Math.min(profile.coinBalance, Math.max(0.25, food * 3));
+    const unitPrice = marketUnitPriceV21(
+      world,
+      state,
+      settlementId,
+      'food',
+    );
+    const food = Math.min(
+      0.16,
+      economy.stocks.food,
+      profile.coinBalance / Math.max(0.05, unitPrice),
+      0.08 + (0.62 - agent.resources) * 0.16,
+    );
+    const coin = Math.min(profile.coinBalance, food * unitPrice);
+    if (food <= 0.001 || coin <= 0.001) return undefined;
     economy.stocks.food = Math.max(0, economy.stocks.food - food);
     agent.resources = clamp01(agent.resources + food * 0.72);
     profile.coinBalance -= coin;
@@ -912,7 +1113,7 @@ export function tryAdventureMarketTradeV19(
       agent.id,
       coin,
     );
-    return pushTransaction(state, {
+    const transaction = pushTransaction(state, {
       kind: 'food_purchase',
       worldMinute: world.calendar.elapsedWorldMinutes,
       agentId: agent.id,
@@ -921,7 +1122,84 @@ export function tryAdventureMarketTradeV19(
       ...(homeSettlementId ? { originSettlementId: homeSettlementId } : {}),
       coin,
       food,
+      commodity: 'food',
+      quantity: food,
+      unitPrice,
     });
+    recordTradeEvidenceV21(world, agent, settlementId, 'food', food);
+    return transaction;
+  }
+
+  const saleGood = (Object.entries(profile.carriedGoods ?? {}) as Array<
+    [V19CommodityKind, number]
+  >)
+    .filter(([, quantity]) => Number.isFinite(quantity) && quantity > 0.01)
+    .sort((left, right) => {
+      const leftValue = left[1] * marketUnitPriceV21(world, state, settlementId, left[0]);
+      const rightValue = right[1] * marketUnitPriceV21(world, state, settlementId, right[0]);
+      return rightValue - leftValue || left[0].localeCompare(right[0]);
+    })[0];
+  if (saleGood && market.treasuryCoin > 0.01 && roll < 0.42) {
+    const [commodity, carried] = saleGood;
+    const unitPrice = marketUnitPriceV21(
+      world,
+      state,
+      settlementId,
+      commodity,
+    );
+    const quantity = Math.min(
+      carried,
+      0.4,
+      market.treasuryCoin / Math.max(0.05, unitPrice),
+    );
+    const coin = quantity * unitPrice;
+    if (quantity > 0.001 && coin > 0.001) {
+      profile.carriedGoods[commodity] = Math.max(0, carried - quantity);
+      market.commodityStocks[commodity] =
+        (market.commodityStocks[commodity] ?? 0) + quantity;
+      market.treasuryCoin -= coin;
+      market.tradeVolume += coin;
+      market.lastTradeWorldMinute = world.calendar.elapsedWorldMinutes;
+      profile.coinBalance += coin;
+      profile.totalCoinEarned += coin;
+      profile.lastTradeWorldMinute = world.calendar.elapsedWorldMinutes;
+      state.totalTradeVolume += coin;
+      agent.resources = clamp01(agent.resources - Math.min(0.12, quantity * 0.2));
+      if (
+        commodity === 'food' ||
+        commodity === 'wood' ||
+        commodity === 'stone' ||
+        commodity === 'metal' ||
+        commodity === 'fuel'
+      ) {
+        economy.stocks[commodity] += quantity;
+      } else if (commodity === 'meat' || commodity === 'herbs') {
+        economy.stocks.food += quantity * (commodity === 'meat' ? 0.72 : 0.22);
+      }
+      recordCarriedTrade(
+        world,
+        state,
+        homeSettlementId,
+        settlementId,
+        agent.id,
+        coin,
+      );
+      const transaction = pushTransaction(state, {
+        kind: 'commodity_sale',
+        worldMinute: world.calendar.elapsedWorldMinutes,
+        agentId: agent.id,
+        physicalPlaceId: agent.locationId,
+        settlementId,
+        ...(homeSettlementId ? { originSettlementId: homeSettlementId } : {}),
+        coin,
+        food: 0,
+        commodity,
+        quantity,
+        unitPrice,
+      });
+      recordTradeEvidenceV21(world, agent, settlementId, commodity, quantity);
+      return transaction;
+    }
   }
 
   const saleCandidate = profile.artifactIds
@@ -974,7 +1252,7 @@ export function tryAdventureMarketTradeV19(
         agent.id,
         value,
       );
-      return pushTransaction(state, {
+      const transaction = pushTransaction(state, {
         kind: 'artifact_sale',
         worldMinute: world.calendar.elapsedWorldMinutes,
         agentId: agent.id,
@@ -987,6 +1265,8 @@ export function tryAdventureMarketTradeV19(
         food: barterFood,
         artifactId: saleCandidate.id,
       });
+      recordTradeEvidenceV21(world, agent, settlementId, undefined, 1);
+      return transaction;
     }
   }
 
@@ -1023,7 +1303,7 @@ export function tryAdventureMarketTradeV19(
         agent.id,
         price,
       );
-      return pushTransaction(state, {
+      const transaction = pushTransaction(state, {
         kind: 'artifact_purchase',
         worldMinute: world.calendar.elapsedWorldMinutes,
         agentId: agent.id,
@@ -1036,6 +1316,8 @@ export function tryAdventureMarketTradeV19(
         food: 0,
         artifactId: purchaseCandidate.id,
       });
+      recordTradeEvidenceV21(world, agent, settlementId, undefined, 1);
+      return transaction;
     }
   }
   return undefined;
@@ -1072,6 +1354,13 @@ export function assertAdventureEconomyV19(world: Readonly<WorldState>): void {
       throw new Error(`Dungeon ${dungeon.id} exceeds its treasure capacity.`);
     }
     finiteNonNegative(dungeon.treasureReserve, `Dungeon ${dungeon.id}.treasureReserve`);
+    if (
+      dungeon.formationProgress < 0 ||
+      dungeon.formationProgress > 1 ||
+      dungeon.active !== (dungeon.formationProgress >= 0.2)
+    ) {
+      throw new Error(`Dungeon ${dungeon.id} has invalid formation state.`);
+    }
   }
   for (const [agentId, profile] of Object.entries(state.adventurersByAgentId)) {
     if (!world.agents[agentId] || profile.agentId !== agentId) {
@@ -1122,6 +1411,9 @@ export function assertAdventureEconomyV19(world: Readonly<WorldState>): void {
       throw new Error(`Adventure market ${settlementId} exceeds its inventory bound.`);
     }
     finiteNonNegative(market.treasuryCoin, `Adventure market ${settlementId}.treasuryCoin`);
+    for (const quantity of Object.values(market.commodityStocks)) {
+      finiteNonNegative(quantity ?? 0, `Adventure market ${settlementId}.commodityStocks`);
+    }
   }
   for (const run of state.recentRuns) {
     if (
@@ -1133,4 +1425,5 @@ export function assertAdventureEconomyV19(world: Readonly<WorldState>): void {
       throw new Error(`Dungeon run ${run.id} has invalid physical evidence.`);
     }
   }
+  assertEmergentSocietyV21(world, state);
 }

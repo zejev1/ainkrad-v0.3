@@ -153,7 +153,7 @@ describe('Live world continuity', () => {
 });
 
 describe('Cardinal semantic speed equivalence', () => {
-  it('gives Cardinal identical opportunities at ×1, ×10 and ×100 for equal Ainkrad time', async () => {
+  it('gives Cardinal identical opportunities at supported ×1 and ×10 for equal Ainkrad time', async () => {
     async function runAtSpeed(
       worldSpeedMultiplier: 1 | 10 | 100,
       workerTicks: number,
@@ -179,15 +179,11 @@ describe('Cardinal semantic speed equivalence', () => {
 
     const atOne = await runAtSpeed(1, 100);
     const atTen = await runAtSpeed(10, 10);
-    const atHundred = await runAtSpeed(100, 1);
 
     expect(atOne.world.calendar.elapsedWorldMinutes).toBe(876_000);
     expect(atTen.world).toEqual(atOne.world);
-    expect(atHundred.world).toEqual(atOne.world);
     expect(atTen.console.evaluations).toEqual(atOne.console.evaluations);
-    expect(atHundred.console.evaluations).toEqual(atOne.console.evaluations);
     expect(atTen.console.audits).toEqual(atOne.console.audits);
-    expect(atHundred.console.audits).toEqual(atOne.console.audits);
     expect(
       atOne.console.evaluations
         .map((item) => item.evaluatedWorldMinutes)

@@ -173,18 +173,17 @@ describe('FIX4 offline continuity and cancellation', () => {
       currentWorldMinutes: YEAR * 27, nowWallClockMs: 61_000 });
     expect(target(normal)).toBe(YEAR * 27 + 1);
     clock.backgroundMode = 'selected';
-    expect(target(clock.anchor(1000, 'century_per_minute', 1)!)).toBe(YEAR * 127);
+    expect(target(clock.anchor(1000, 'century_per_minute', 1)!)).toBe(YEAR * 37);
   });
 
-  it('cancels a local slowdown after the rate was raised in another tab', () => {
+  it('normalizes removed rates without inventing a slowdown or restoring the old queue', () => {
     const clock = new ClockContinuity();
     clock.observe(position);
     clock.command('year_per_minute', 1, 1000, true);
     clock.observeSpeed('century_per_minute', 1);
     clock.targetWorldMinutes = YEAR * 86;
-    expect(clock.command('fifty_years_per_minute', 1, 2000).discardPending).toBe(true);
-    expect(clock.anchor(2000, 'fifty_years_per_minute', 1)!.cancelPending).toBe(true);
-    expect(clock.targetWorldMinutes).toBeUndefined();
+    expect(clock.command('fifty_years_per_minute', 1, 2000).discardPending).toBe(false);
+    expect(clock.anchor(2000, 'fifty_years_per_minute', 1)!.targetWorldMinutes).toBe(YEAR * 86);
   });
 
   it('rejects stale cross-tab requests and preserves stop when commands arrive rapidly', () => {

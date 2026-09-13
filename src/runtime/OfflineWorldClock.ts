@@ -1,7 +1,8 @@
 import {
   isWorldSpeedId,
   isWorldSpeedMultiplier,
-  worldSpeedPreset,
+  normalizeWorldSpeedControl,
+  worldMinutesPerTick,
   type WorldSpeedId,
   type WorldSpeedMultiplier,
 } from '../world/WorldClock';
@@ -47,7 +48,11 @@ export function parseOfflineWorldClockAnchor(
     ) {
       return undefined;
     }
-    return candidate as OfflineWorldClockAnchor;
+    const normalized = normalizeWorldSpeedControl(
+      candidate.speedId,
+      candidate.multiplier,
+    );
+    return { ...(candidate as OfflineWorldClockAnchor), ...normalized };
   } catch {
     return undefined;
   }
@@ -76,9 +81,11 @@ export function makeOfflineWorldClockAnchor(input: {
   ) {
     throw new Error('Offline world-clock anchor is invalid.');
   }
+  const normalized = normalizeWorldSpeedControl(input.speedId, input.multiplier);
   return {
     version: OFFLINE_WORLD_CLOCK_ANCHOR_VERSION,
     ...input,
+    ...normalized,
   };
 }
 
@@ -113,7 +120,7 @@ export function offlineWorldMinuteTarget(input: {
   );
   const worldMinutesPerRealMinute =
     anchor.backgroundMode === 'real_time' ? 1 :
-      worldSpeedPreset(anchor.speedId).worldMinutesPerRealMinute * anchor.multiplier;
+      worldMinutesPerTick(anchor.speedId, anchor.multiplier) * 60;
   const target =
     base + elapsedRealMinutes * worldMinutesPerRealMinute;
   if (!Number.isFinite(target)) return undefined;

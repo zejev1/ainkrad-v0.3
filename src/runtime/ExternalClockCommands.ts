@@ -1,4 +1,4 @@
-import { isWorldSpeedId, isWorldSpeedMultiplier, worldMinutesPerTick,
+import { isWorldSpeedId, isWorldSpeedMultiplier, normalizeWorldSpeedControl, worldMinutesPerTick,
   type WorldSpeedId, type WorldSpeedMultiplier } from '../world/WorldClock';
 
 export interface ExternalClockCommand {
@@ -25,10 +25,11 @@ export class ExternalClockCommands {
       throw new Error('Rejected malformed external clock control.');
     }
     if (command.clockRevision <= this.latestRevision) return false;
-    const rate = worldMinutesPerTick(command.speedId, command.multiplier);
+    const normalized = normalizeWorldSpeedControl(command.speedId, command.multiplier);
+    const rate = worldMinutesPerTick(normalized.speedId, normalized.multiplier);
     const priorRate = this.pending
       ? worldMinutesPerTick(this.pending.speedId, this.pending.multiplier) : this.appliedRate;
-    this.pending = { ...command, discardPending: Boolean(command.discardPending ||
+    this.pending = { ...command, ...normalized, discardPending: Boolean(command.discardPending ||
       this.pending?.discardPending || (priorRate !== undefined && rate < priorRate)) };
     this.latestRevision = command.clockRevision;
     return true;

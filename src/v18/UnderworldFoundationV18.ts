@@ -17,7 +17,10 @@ import {
   createSecretLibraryStateV18,
   repairSecretLibraryStateV18,
 } from './SecretLibraryV18';
-import { repairLegacyTechnicalChildNamesV18 } from './CulturalNamingV18';
+import {
+  repairLegacyTechnicalChildNamesV18,
+  repairRussianNativeNamesV18,
+} from './CulturalNamingV18';
 
 export const WORLD_RULES_VERSION_V18 = 'ainkrad-world-rules-0.3.18';
 export const WORLD_V18_SCHEMA_VERSION = 'v18' as const;
@@ -256,6 +259,7 @@ export function repairWorldV18AdditiveSchema(
     state.agents,
   );
   repairLegacyTechnicalChildNamesV18(state);
+  repairRussianNativeNamesV18(state);
 
   for (const agent of Object.values(state.agents)) {
     const language = ensureRussianKnowledgeV18(state, agent);

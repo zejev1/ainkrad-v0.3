@@ -3,6 +3,7 @@ import {
   DEFAULT_WORLD_SPEED_MULTIPLIER,
   isWorldSpeedId,
   isWorldSpeedMultiplier,
+  normalizeWorldSpeedControl,
   worldMinutesPerTick,
   type WorldSpeedId,
   type WorldSpeedMultiplier,
@@ -44,10 +45,13 @@ export class IndependentWorldClockGateway {
     if (!isWorldSpeedMultiplier(multiplier)) {
       throw new Error('World-speed multiplier must be 1, 10 or 100.');
     }
+    const normalized = normalizeWorldSpeedControl(speedId, multiplier);
     return {
-      speedId,
-      multiplier,
-      worldMinutesPerTick: worldMinutesPerTick(speedId, multiplier),
+      ...normalized,
+      worldMinutesPerTick: worldMinutesPerTick(
+        normalized.speedId,
+        normalized.multiplier,
+      ),
     };
   }
 }

@@ -50,8 +50,8 @@ describe('External FLA-like world clock', () => {
       'Unknown external world-speed preset',
     );
     expect(gateway.set('year_per_minute', 100)).toMatchObject({
-      speedId: 'year_per_minute',
-      multiplier: 100,
+      speedId: 'decade_per_minute',
+      multiplier: 1,
     });
   });
 });

@@ -119,6 +119,8 @@ describe('v0.3.20 lived knowledge, gifts and continuity', () => {
     const resumed = await reopened.tick(0);
     expect(resumed.evaluation!.experience.totalExperience).toBeGreaterThanOrEqual(experience);
     expect(resumed.world.calendar).toEqual(frame.world.calendar);
-    expect(WORLD_SPEED_PRESETS.find(p => p.id === 'century_per_minute')!.worldMinutesPerRealMinute).toBe(100 * WORLD_MINUTES_PER_YEAR);
+    expect(WORLD_SPEED_PRESETS.some(p => p.id === 'century_per_minute')).toBe(false);
+    expect(WORLD_SPEED_PRESETS.some(p => p.id === 'fifty_years_per_minute')).toBe(false);
+    expect(WORLD_SPEED_PRESETS.find(p => p.id === 'decade_per_minute')!.worldMinutesPerRealMinute).toBe(10 * WORLD_MINUTES_PER_YEAR);
   });
 });

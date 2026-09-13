@@ -185,6 +185,185 @@ export type V19AdventureRank =
   | 'A'
   | 'S';
 
+/**
+ * These are kinds of lived practice, not jobs assigned by Cardinal.  A
+ * community may combine any two of them into a profession title that was not
+ * present in a static catalogue (for example, a smith-scout).
+ */
+export type V19PracticeDomain =
+  | 'farmer'
+  | 'forager'
+  | 'woodcutter'
+  | 'miner'
+  | 'fisher'
+  | 'hunter'
+  | 'artisan'
+  | 'smith'
+  | 'builder'
+  | 'caregiver'
+  | 'scout'
+  | 'cartographer'
+  | 'adventurer'
+  | 'teacher'
+  | 'scribe'
+  | 'guard'
+  | 'warrior'
+  | 'spiritual_keeper'
+  | 'trader';
+
+/** Descriptions inferred from capability. They never grant capability. */
+export type V19ArchetypeKind =
+  | 'fighter'
+  | 'heavy_fighter'
+  | 'scout'
+  | 'hunter'
+  | 'healer'
+  | 'craft_specialist'
+  | 'merchant'
+  | 'leader';
+
+export type V19CommodityKind =
+  | 'food'
+  | 'wood'
+  | 'stone'
+  | 'metal'
+  | 'fuel'
+  | 'meat'
+  | 'hide'
+  | 'herbs'
+  | 'monster_part'
+  | 'rare_mineral';
+
+export type V19ContractKind =
+  | 'delivery'
+  | 'survey'
+  | 'mining'
+  | 'hunt'
+  | 'guard'
+  | 'escort'
+  | 'dungeon_clear'
+  | 'find_person'
+  | 'construction';
+
+export type V19ContractStatus =
+  | 'open'
+  | 'accepted'
+  | 'completed'
+  | 'failed'
+  | 'expired';
+
+export interface V19PracticeDisciplineState {
+  domain: V19PracticeDomain;
+  lifetimePractice: number;
+  currentMastery: number;
+  practiceEvents: number;
+  mentorIds: string[];
+  observedPractice: number;
+  lastPracticedWorldMinute?: number;
+}
+
+export interface V19RecognizedProfessionState {
+  id: string;
+  agentId: string;
+  settlementId: string;
+  title: string;
+  primaryDomain: V19PracticeDomain;
+  secondaryDomain?: V19PracticeDomain;
+  recognizedWorldMinute: number;
+  evidenceCount: number;
+  witnessCount: number;
+}
+
+export interface V19LocalReputationState {
+  settlementId: string;
+  trust: number;
+  reliability: number;
+  provenCompetence: number;
+  completedContracts: number;
+  failedContracts: number;
+  rescuedPeople: number;
+  groupLosses: number;
+  crimes: number;
+  unpaidDebts: number;
+  recommendations: number;
+  lastEvidenceWorldMinute: number;
+}
+
+export interface V19ResidentSocietyState {
+  agentId: string;
+  disciplinesByDomain: Partial<
+    Record<V19PracticeDomain, V19PracticeDisciplineState>
+  >;
+  archetypes: V19ArchetypeKind[];
+  recognizedProfessionId?: string;
+  localReputationBySettlementId: Record<string, V19LocalReputationState>;
+  completedContractIds: string[];
+  failedContractIds: string[];
+  lastUpdatedWorldMinute: number;
+}
+
+export interface V19MarketPriceSignalState {
+  settlementId: string;
+  commodity: V19CommodityKind;
+  unitPrice: number;
+  supply: number;
+  demand: number;
+  scarcity: number;
+  deliveryDistanceKm: number;
+  deliveryRisk: number;
+  quality: number;
+  necessity: number;
+  updatedWorldMinute: number;
+}
+
+export interface V19ContractState {
+  id: string;
+  kind: V19ContractKind;
+  status: V19ContractStatus;
+  issuerKind: 'resident' | 'settlement' | 'guild';
+  issuerAgentId?: string;
+  issuerSettlementId: string;
+  guildId?: string;
+  targetPlaceId?: string;
+  commodity?: V19CommodityKind;
+  requestedQuantity: number;
+  deliveredQuantity: number;
+  danger: number;
+  rewardCoin: number;
+  rewardFood: number;
+  minimumRank: V19AdventureRank;
+  evidence: string[];
+  offeredWorldMinute: number;
+  expiresWorldMinute: number;
+  acceptedByAgentId?: string;
+  acceptedWorldMinute?: number;
+  resolvedWorldMinute?: number;
+}
+
+export interface V19GuildState {
+  id: string;
+  name: string;
+  settlementId: string;
+  focus: 'adventure' | 'trade' | 'craft' | 'mixed';
+  founderAgentIds: string[];
+  memberAgentIds: string[];
+  foundedWorldMinute: number;
+  contractIds: string[];
+  reputation: number;
+}
+
+export interface V19EmergentSocietyState {
+  version: 'emergent-society-v21';
+  residentsByAgentId: Record<string, V19ResidentSocietyState>;
+  professionsById: Record<string, V19RecognizedProfessionState>;
+  marketPricesByKey: Record<string, V19MarketPriceSignalState>;
+  contractsById: Record<string, V19ContractState>;
+  guildsById: Record<string, V19GuildState>;
+  lastAdvancedWorldMinute: number;
+  nextContractSequence: number;
+  nextGuildSequence: number;
+}
+
 export type V19AdventureAbility =
   | 'guardian_stance'
   | 'pathfinder'
@@ -219,6 +398,11 @@ export interface V19DungeonState {
   treasureCapacity: number;
   lastRenewedWorldMinute: number;
   lastRunWorldMinute?: number;
+  formationStartedWorldMinute: number;
+  lastDevelopedWorldMinute: number;
+  formationProgress: number;
+  formationStage: 'trace' | 'den' | 'passages' | 'labyrinth' | 'deep_domain';
+  bossFloors: number[];
   active: boolean;
 }
 
@@ -249,6 +433,7 @@ export interface V19AdventurerState {
   totalCoinSpent: number;
   artifactIds: string[];
   abilities: V19AdventureAbility[];
+  carriedGoods: Partial<Record<V19CommodityKind, number>>;
   lastRunWorldMinute?: number;
   lastTradeWorldMinute?: number;
 }
@@ -261,6 +446,7 @@ export interface V19SettlementMarketState {
   artifactsBought: number;
   artifactsSold: number;
   inventoryArtifactIds: string[];
+  commodityStocks: Partial<Record<V19CommodityKind, number>>;
   lastTradeWorldMinute?: number;
 }
 
@@ -278,7 +464,9 @@ export type V19AdventureTransactionKind =
   | 'dungeon_reward'
   | 'food_purchase'
   | 'artifact_sale'
-  | 'artifact_purchase';
+  | 'artifact_purchase'
+  | 'commodity_sale'
+  | 'contract_reward';
 
 export interface V19AdventureTransactionRecord {
   id: string;
@@ -291,6 +479,10 @@ export interface V19AdventureTransactionRecord {
   coin: number;
   food: number;
   artifactId?: string;
+  commodity?: V19CommodityKind;
+  quantity?: number;
+  unitPrice?: number;
+  contractId?: string;
 }
 
 export interface V19DungeonRunRecord {
@@ -307,7 +499,10 @@ export interface V19DungeonRunRecord {
   experienceGained: number;
   coinRecovered: number;
   artifactId?: string;
+  loot?: Partial<Record<V19CommodityKind, number>>;
   healthDamage: number;
+  partyAgentIds?: string[];
+  casualtyAgentIds?: string[];
 }
 
 export interface V19AdventureEconomyState {
@@ -326,6 +521,7 @@ export interface V19AdventureEconomyState {
   nextRunSequence: number;
   nextArtifactSequence: number;
   nextTransactionSequence: number;
+  emergentSociety: V19EmergentSocietyState;
 }
 
 export interface WorldV19State {

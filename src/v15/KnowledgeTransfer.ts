@@ -40,7 +40,7 @@ export interface LearningCalibration {
 }
 
 export const DEFAULT_LEARNING_CALIBRATION: LearningCalibration = {
-  minimumLearningAgeYears: 7,
+  minimumLearningAgeYears: 5,
   referenceLessonWorldMinutes: 240,
   lessonGainAtEqualAptitude: 0.012,
   practiceGainPerReferenceSession: 0.0045,

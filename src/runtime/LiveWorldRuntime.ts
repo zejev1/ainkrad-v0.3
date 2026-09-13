@@ -103,7 +103,7 @@ export const OFFLINE_CATCH_UP_MAX_BATCH_QUANTA = 120;
 const LIVE_BATCHING_START_WORLD_MINUTES = WORLD_MINUTES_PER_YEAR * 2;
 
 const DEFAULT_LIVE_FOUNDER_NAMES = [
-  'Aron', 'Mira', 'Kai', 'Noa', 'Ilan', 'Rin', 'Lea', 'Daren', 'Sora', 'Talia',
+  'Арон', 'Мира', 'Кай', 'Ноа', 'Илан', 'Рин', 'Лея', 'Дарен', 'Сора', 'Талия',
 ] as const;
 // v15 deliberately has no hidden automatic population rescue.
 // External resident entry remains available only through the independent

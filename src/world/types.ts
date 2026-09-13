@@ -912,6 +912,130 @@ export interface WorldDeterminismState {
   eventSequence: number;
 }
 
+export type V21BodySystemKind =
+  | 'skin'
+  | 'musculoskeletal'
+  | 'circulatory'
+  | 'respiratory'
+  | 'digestive'
+  | 'nervous'
+  | 'immune';
+
+export type V21WoundKind =
+  | 'cut'
+  | 'puncture'
+  | 'blunt_trauma'
+  | 'burn'
+  | 'fracture';
+
+export type V21BodyRegion =
+  | 'head'
+  | 'torso'
+  | 'arm'
+  | 'leg';
+
+export interface V21WoundState {
+  id: string;
+  kind: V21WoundKind;
+  region: V21BodyRegion;
+  severity: number;
+  bleeding: number;
+  contamination: number;
+  pain: number;
+  mobilityPenalty: number;
+  causedWorldMinute: number;
+  lastTreatedWorldMinute?: number;
+  source: 'wildlife' | 'monster' | 'dungeon' | 'conflict' | 'accident';
+}
+
+export interface V21DiseaseState {
+  id: string;
+  kind: 'wound_infection' | 'respiratory' | 'digestive' | 'fever' | 'malnutrition';
+  severity: number;
+  contagiousness: number;
+  startedWorldMinute: number;
+  lastObservedWorldMinute: number;
+}
+
+export interface V21BodyState {
+  agentId: string;
+  systems: Record<V21BodySystemKind, number>;
+  wounds: V21WoundState[];
+  diseases: V21DiseaseState[];
+  pain: number;
+  mobilityScale: number;
+  recoveryScale: number;
+  lastAdvancedWorldMinute: number;
+  nextWoundSequence: number;
+  nextDiseaseSequence: number;
+}
+
+export interface V21AppliedKnowledgeState {
+  agentId: string;
+  homeTheory: number;
+  familyTheory: number;
+  weatherTheory: number;
+  foundingPrimerLessons: number;
+  lastPrimerWorldMinute?: number;
+  anatomyTheory: number;
+  woundTheory: number;
+  diseaseTheory: number;
+  materialTheory: number;
+  diagnosisPractice: number;
+  treatmentPractice: number;
+  materialPractice: number;
+  verifiedObservations: number;
+  lastLearnedWorldMinute?: number;
+}
+
+export type V21PhysicalMaterialKind =
+  | 'wood'
+  | 'stone'
+  | 'iron'
+  | 'fiber'
+  | 'leather'
+  | 'bone'
+  | 'ceramic';
+
+export interface V21MaterialDefinition {
+  kind: V21PhysicalMaterialKind;
+  density: number;
+  hardness: number;
+  toughness: number;
+  flexibility: number;
+  waterResistance: number;
+  heatResistance: number;
+  corrosionRisk: number;
+}
+
+export interface V21ItemPhysicalState {
+  itemId: string;
+  materials: Partial<Record<V21PhysicalMaterialKind, number>>;
+  massKg: number;
+  integrity: number;
+  edge: number;
+  contamination: number;
+  lastUsedWorldMinute?: number;
+}
+
+export interface V21ChildSupervisionState {
+  childId: string;
+  guardianIds: string[];
+  lastKnownPlaceId: string;
+  lastObservedWorldMinute: number;
+  deferredRemoteTrips: number;
+}
+
+export interface WorldV21State {
+  version: 'v21-embodied-world';
+  bodiesByAgentId: Record<string, V21BodyState>;
+  appliedKnowledgeByAgentId: Record<string, V21AppliedKnowledgeState>;
+  itemPhysicsByItemId: Record<string, V21ItemPhysicalState>;
+  materialCatalog: Record<V21PhysicalMaterialKind, V21MaterialDefinition>;
+  childSupervisionByChildId: Record<string, V21ChildSupervisionState>;
+  lastAdvancedWorldMinute: number;
+}
+
 export interface WorldState {
   terrain?: TerrainFoundation;
   id: string;
@@ -952,6 +1076,9 @@ export interface WorldState {
 
   /** v0.3.19 independent gifts, divine contact and contextual prayers. */
   v19?: WorldV19State;
+
+  /** v0.3.21 causal bodies, materials and family-supervision evidence. */
+  v21?: WorldV21State;
 }
 
 export type WorldDisturbanceKind =

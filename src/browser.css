@@ -106,7 +106,7 @@ button {
 }
 
 .status-strip {
-  display: grid;
+  display: none;
   grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
   gap: 10px;
   margin-bottom: 14px;
@@ -432,6 +432,23 @@ button {
 .world-map[data-phase="night"] {
   --sky-top: #243d49;
   --sky-bottom: #132f33;
+}
+
+.world-map[data-weather="cloudy"],
+.world-map[data-weather="fog"],
+.world-map[data-weather="rain"] {
+  --sky-top: #637875;
+  --sky-bottom: #344f4b;
+}
+
+.world-map[data-weather="storm"] {
+  --sky-top: #35434d;
+  --sky-bottom: #1e3438;
+}
+
+.world-map[data-weather="snow"] {
+  --sky-top: #aab9b9;
+  --sky-bottom: #647c78;
 }
 
 .map-sky {
@@ -1564,6 +1581,24 @@ button {
 .resident-picker-label input:focus-visible {
   border-color: #8af0bb;
   box-shadow: 0 0 0 3px rgba(92, 229, 157, 0.14);
+}
+
+#resident-picker optgroup {
+  font-weight: 900;
+  letter-spacing: 0.055em;
+}
+
+#resident-picker optgroup[data-race='human'] { color: #ffd84a; }
+#resident-picker optgroup[data-race='elf'] { color: #70e58c; }
+#resident-picker optgroup[data-race='dwarf'] { color: #f2a24a; }
+#resident-picker optgroup[data-race='goblin'] { color: #c58cff; }
+#resident-picker optgroup[data-race='orc'] { color: #ff7373; }
+#resident-picker optgroup[data-race='ogre'] { color: #72b7ff; }
+
+#resident-picker option {
+  color: #effff5;
+  font-weight: 560;
+  letter-spacing: normal;
 }
 
 .resident-portrait {

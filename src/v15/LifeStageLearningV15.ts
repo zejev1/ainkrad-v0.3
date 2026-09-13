@@ -28,7 +28,7 @@ export interface LearningStagePolicyV15 {
   lifeStage: ResidentLifeStageV15;
 
   /**
-   * Safe knowledge lessons begin at 7 in current recovery calibration.
+   * Safe, short knowledge lessons begin at 5; strenuous practice does not.
    * This is a v15 calibration default, not claimed old-source truth.
    */
   canReceiveStructuredLesson: boolean;
@@ -61,7 +61,7 @@ export function learningStagePolicyV15(
   const lifeStage = lifeStageForAgeV15(ageYears);
 
   if (lifeStage === 'child') {
-    const olderChild = ageYears >= 7;
+    const olderChild = ageYears >= 5;
     return {
       lifeStage,
       canReceiveStructuredLesson: olderChild,
@@ -75,7 +75,7 @@ export function learningStagePolicyV15(
       mayTeachPeers: false,
       mayTeachYoungerResidents: false,
       teachingEfficiencyMultiplier: 0,
-      practiceEfficiencyMultiplier: olderChild ? 0.45 : 0,
+      practiceEfficiencyMultiplier: olderChild ? 0.3 : 0,
     };
   }
 

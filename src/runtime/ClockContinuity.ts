@@ -1,5 +1,5 @@
 import { makeOfflineWorldClockAnchor, offlineWorldMinuteTarget, type OfflineWorldClockAnchor } from './OfflineWorldClock';
-import { worldMinutesPerTick, type WorldSpeedId, type WorldSpeedMultiplier } from '../world/WorldClock';
+import { normalizeWorldSpeedControl, worldMinutesPerTick, type WorldSpeedId, type WorldSpeedMultiplier } from '../world/WorldClock';
 
 export interface ClockPosition { worldEpoch: number; currentWorldMinutes: number; }
 
@@ -23,7 +23,7 @@ export class ClockContinuity {
   get cancelling(): boolean { return this.cancellationPending; }
 
   observeSpeed(speedId: WorldSpeedId, multiplier: WorldSpeedMultiplier): void {
-    this.speed = { speedId, multiplier };
+    this.speed = normalizeWorldSpeedControl(speedId, multiplier);
   }
 
   observe(position: ClockPosition, pending = 0): void {
@@ -49,17 +49,18 @@ export class ClockContinuity {
   }
 
   command(speedId: WorldSpeedId, multiplier: WorldSpeedMultiplier, now: number, initial = false) {
-    const lower = this.speed && worldMinutesPerTick(speedId, multiplier) <
+    const normalized = normalizeWorldSpeedControl(speedId, multiplier);
+    const lower = this.speed && worldMinutesPerTick(normalized.speedId, normalized.multiplier) <
       worldMinutesPerTick(this.speed.speedId, this.speed.multiplier);
     const discardPending = this.cancellationPending || (!initial && (Boolean(lower) || speedId === 'real_time'));
     if (!initial || this.cancellationPending) this.revision = Math.max(Math.ceil(now), this.revision + 1);
-    this.speed = { speedId, multiplier };
+    this.speed = normalized;
     if (discardPending) {
       this.targetWorldMinutes = undefined;
       this.livePending = 0;
       this.cancellationPending = true;
     }
-    return { type: 'set_speed' as const, speedId, multiplier, clockRevision: this.revision, discardPending };
+    return { type: 'set_speed' as const, ...normalized, clockRevision: this.revision, discardPending };
   }
 
   acknowledge(revision: number, position: ClockPosition, discarded: boolean): boolean {
@@ -74,16 +75,17 @@ export class ClockContinuity {
   accepts(revision: number): boolean { return revision >= this.revision && !this.cancellationPending; }
 
   anchor(now: number, speedId: WorldSpeedId, multiplier: WorldSpeedMultiplier): OfflineWorldClockAnchor | undefined {
+    const normalized = normalizeWorldSpeedControl(speedId, multiplier);
     if (!this.position) {
       if (!this.cancellationPending) return;
       return makeOfflineWorldClockAnchor({ worldEpoch: this.initialAnchor?.worldEpoch ?? 1,
-        worldMinutes: 0, wallClockMs: now, speedId, multiplier, clockRevision: this.revision,
+        worldMinutes: 0, wallClockMs: now, ...normalized, clockRevision: this.revision,
         cancelPending: true, backgroundMode: this.backgroundMode });
     }
     const target = this.cancellationPending ? undefined : Math.max(
       this.position.currentWorldMinutes + this.livePending, this.targetWorldMinutes ?? 0);
     return makeOfflineWorldClockAnchor({ worldEpoch: this.position.worldEpoch,
-      worldMinutes: this.position.currentWorldMinutes, wallClockMs: now, speedId, multiplier,
+      worldMinutes: this.position.currentWorldMinutes, wallClockMs: now, ...normalized,
       clockRevision: this.revision, backgroundMode: this.backgroundMode,
       cancelPending: this.cancellationPending,
       catchingUp: !this.cancellationPending && this.targetWorldMinutes !== undefined,

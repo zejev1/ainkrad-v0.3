@@ -78,6 +78,7 @@ import {
 import { formatAinkradWorldTime } from './v15/CardinalReadableReport';
 import { worldDurationDescription } from './v15/WorldTimeContract';
 import { residentDecisionReflection } from './world/ResidentDecisionReflection';
+import { worldWeatherV21 } from './v21/WeatherV21';
 import type {
   V18LivelihoodKind,
   V18LivelihoodStage,
@@ -214,6 +215,15 @@ const raceGroupLabels: Record<NonNullable<AgentState['race']>, string> = {
   ogre: 'Огры',
 };
 
+const raceGroupMarkers: Record<NonNullable<AgentState['race']>, string> = {
+  human: '🟨',
+  elf: '🟩',
+  dwarf: '🟧',
+  goblin: '🟪',
+  orc: '🟥',
+  ogre: '🟦',
+};
+
 interface MapPoint {
   x: number;
   y: number;
@@ -223,7 +233,7 @@ interface MapPoint {
 
 const publicPlacePoints: Record<string, MapPoint> = {
   commons: { x: 50, y: 48, label: 'Общая площадь', symbol: '◆' },
-  resource_field: { x: 16, y: 23, label: 'Ресурсное поле', symbol: '✦' },
+  resource_field: { x: 16, y: 23, label: 'Поле', symbol: '✦' },
   workshop: { x: 83, y: 25, label: 'Мастерская', symbol: '⚒' },
   quiet_space: { x: 18, y: 75, label: 'Тихий сад', symbol: '♣' },
   outskirts: { x: 82, y: 76, label: 'Окраина', symbol: '▲' },
@@ -344,19 +354,19 @@ const seasonLabels = {
 } as const;
 
 const homePoints: readonly MapPoint[] = [
-  { x: 7, y: 49, label: 'Дом Alex', symbol: '⌂' },
-  { x: 30, y: 8, label: 'Дом Mira', symbol: '⌂' },
-  { x: 69, y: 8, label: 'Дом Kai', symbol: '⌂' },
-  { x: 93, y: 49, label: 'Дом Noa', symbol: '⌂' },
-  { x: 70, y: 92, label: 'Дом Ilan', symbol: '⌂' },
-  { x: 30, y: 92, label: 'Дом Rin', symbol: '⌂' },
+  { x: 7, y: 49, label: 'Дом Алексея', symbol: '⌂' },
+  { x: 30, y: 8, label: 'Дом Миры', symbol: '⌂' },
+  { x: 69, y: 8, label: 'Дом Кая', symbol: '⌂' },
+  { x: 93, y: 49, label: 'Дом Ноа', symbol: '⌂' },
+  { x: 70, y: 92, label: 'Дом Илана', symbol: '⌂' },
+  { x: 30, y: 92, label: 'Дом Рина', symbol: '⌂' },
 ];
 
 app.innerHTML = `
   <div class="ainkrad-app">
     <header class="world-header">
       <div>
-        <p class="eyebrow">v0.3.21.9</p>
+        <p class="eyebrow">v0.3.21.10</p>
         <h1 id="world-title">Мир · уровень 1</h1>
       </div>
 
@@ -370,7 +380,7 @@ app.innerHTML = `
       <span>Возраст <strong id="tick-value">0 дней</strong></span>
       <span>Календарь <strong id="time-value">Год 1 · день 1</strong></span>
       <span>Мир <strong id="world-level-value">ур. 1</strong></span>
-      <span>Жителей <strong id="population-value">10</strong></span>
+      <span>Агентов <strong id="population-value">10</strong></span>
       <span>Карта <strong id="growth-value">5 мест</strong></span>
       <span>Cardinal <strong id="cardinal-status-level">ур. 1</strong></span>
       <span>Животные <strong id="wildlife-value">0</strong></span>
@@ -400,7 +410,7 @@ app.innerHTML = `
 
     <section class="maximum-acceleration-mode" id="maximum-acceleration-mode" hidden>
       <strong>Максимальное ускорение</strong>
-      <p>Карта и подробные панели остановлены. Жители продолжают проживать все шаги мира; управление скоростью остаётся доступно выше.</p>
+      <p>Карта и подробные панели остановлены. Агенты продолжают проживать все шаги мира; управление скоростью остаётся доступно выше.</p>
     </section>
 
     <section class="catch-up-overlay" id="catch-up-overlay" aria-live="assertive" hidden>
@@ -425,7 +435,7 @@ app.innerHTML = `
             <button id="map-zoom-fit" type="button" aria-label="Показать всю карту">100%</button>
             <span id="settlement-picker"></span>
             <button id="map-city-focus" type="button">Город</button>
-            <button id="map-resident-focus" type="button" aria-label="Найти выбранного жителя на карте">Житель</button>
+            <button id="map-resident-focus" type="button" aria-label="Найти выбранного агента на карте">Агент</button>
           <button id="map-zoom-in" type="button" aria-label="Увеличить карту">+</button>
             <button id="text-scale" type="button" aria-label="Увеличить размер текста">Текст 115%</button>
           </div>
@@ -469,21 +479,21 @@ app.innerHTML = `
       <aside class="world-sidebar">
         <section class="resident-panel" aria-live="polite">
           <div class="panel-heading-row">
-            <p class="panel-label">Выбранный житель</p>
+            <p class="panel-label">Выбранный агент</p>
             <span class="autonomy-mark">САМ РЕШАЕТ</span>
           </div>
 
           <label class="resident-picker-label" for="resident-picker">
-            <span>Найти конкретного жителя</span>
-            <input id="resident-search" type="search" placeholder="Имя жителя" autocomplete="off" />
-            <select id="resident-picker" aria-label="Выбрать жителя"></select>
+            <span>Найти конкретного агента</span>
+            <input id="resident-search" type="search" placeholder="Имя агента" autocomplete="off" />
+            <select id="resident-picker" aria-label="Выбрать агента"></select>
           </label>
 
           <div class="resident-title-row">
             <div class="resident-portrait" id="resident-portrait" aria-hidden="true">A</div>
             <div>
               <h2 id="resident-name">Мир запускается…</h2>
-              <p id="resident-activity" class="resident-activity">Подготавливаем жителей</p>
+              <p id="resident-activity" class="resident-activity">Подготавливаем агентов</p>
             </div>
           </div>
 
@@ -546,8 +556,8 @@ app.innerHTML = `
             <span><strong id="artifact-count">0</strong>артефактов</span>
             <span><strong id="trade-volume">0</strong>оборот</span>
           </div>
-          <p class="adventure-latest" id="adventure-latest">Жители ещё не нашли входы в подземелья.</p>
-          <p class="adventure-economy-note" id="adventure-economy-note">Монеты и добыча не телепортируются: их переносят сами жители.</p>
+          <p class="adventure-latest" id="adventure-latest">Агенты ещё не нашли входы в подземелья.</p>
+          <p class="adventure-economy-note" id="adventure-economy-note">Монеты и добыча не телепортируются: их переносят сами агенты.</p>
         </section>
 
         <section class="event-panel">
@@ -563,7 +573,7 @@ app.innerHTML = `
             <div id="conversation-feed">Пока рядом не слышно разговора.</div>
           </div>
           <button class="prayer-inbox-open" id="prayer-inbox-open" type="button">
-            Молитвы жителей <span id="prayer-unread-count">0</span>
+            Молитвы агентов <span id="prayer-unread-count">0</span>
           </button>
         </section>
 
@@ -587,7 +597,7 @@ app.innerHTML = `
           </p>
 
           <p id="cardinal-message">
-            Cardinal не управляет жителями. Любое изменение мира проходит
+            Cardinal не управляет агентами. Любое изменение мира проходит
             только через независимый gateway.
           </p>
           <p class="cardinal-last-action" id="cardinal-last-action">
@@ -640,14 +650,14 @@ app.innerHTML = `
         <header>
           <div>
             <p class="prayer-inbox__badge">ЛИЧНЫЕ ОБРАЩЕНИЯ</p>
-            <h2 id="prayer-inbox-title">Молитвы жителей</h2>
+            <h2 id="prayer-inbox-title">Молитвы агентов</h2>
             <p id="prayer-inbox-summary">Здесь появляются реальные обращения из прожитой жизни NPC.</p>
           </div>
           <button id="prayer-inbox-close" type="button" aria-label="Закрыть молитвы">×</button>
         </header>
         <div class="prayer-inbox__filters">
           <label>Поселение<select id="prayer-filter-settlement"><option value="">Все поселения</option></select></label>
-          <label>Житель<input id="prayer-filter-npc" type="search" placeholder="Имя жителя" /></label>
+          <label>Агент<input id="prayer-filter-npc" type="search" placeholder="Имя агента" /></label>
           <label>Тема<select id="prayer-filter-topic"><option value="">Все темы</option></select></label>
           <label>Вера<select id="prayer-filter-belief"><option value="">Любая</option><option value="high">Высокая</option><option value="low">Низкая или сомнение</option></select></label>
           <label>Отчаяние<select id="prayer-filter-desperation"><option value="">Любое</option><option value="high">Сильное</option><option value="low">Невысокое</option></select></label>
@@ -662,12 +672,12 @@ app.innerHTML = `
           <div>
             <p class="divine-audience__badge">ЛИЧНАЯ АУДИЕНЦИЯ</p>
             <h2 id="divine-audience-title">Закрытая аудиенция</h2>
-            <p id="divine-audience-subtitle">Мир и возраст выбранного жителя остановлены.</p>
+            <p id="divine-audience-subtitle">Мир и возраст выбранного агента остановлены.</p>
           </div>
           <button id="divine-audience-close" type="button" aria-label="Закрыть аудиенцию">×</button>
         </header>
         <form id="divine-audience-form">
-          <label>Как вас услышит житель
+          <label>Как вас услышит агент
             <input id="divine-deity-name" maxlength="64" required value="Создатель" />
           </label>
           <label>Имя религии <small>(необязательно)</small>
@@ -686,7 +696,7 @@ app.innerHTML = `
             </select>
           </label>
           <label>Ваши слова или смысл знака
-            <textarea id="divine-message" maxlength="480" rows="4" placeholder="Житель услышит это только при выбранном контакте…"></textarea>
+            <textarea id="divine-message" maxlength="480" rows="4" placeholder="Агент услышит это только при выбранном контакте…"></textarea>
           </label>
           <label>Дар <small>(необязательно)</small>
             <select id="divine-gift">
@@ -698,7 +708,7 @@ app.innerHTML = `
             <select id="divine-legacy-gift"></select>
           </label>
           <p class="divine-audience__gift-note" id="divine-gift-note"></p>
-          <p class="divine-audience__choice-note">Дар не меняет профессию, характер или судьбу. Приказ не отнимает свободу воли. Священником или героем житель может стать только через собственную жизнь и признание окружающих.</p>
+          <p class="divine-audience__choice-note">Дар не меняет профессию, характер или судьбу. Приказ не отнимает свободу воли. Священником или героем агент может стать только через собственную жизнь и признание окружающих.</p>
           <p class="divine-audience__status" id="divine-audience-status" aria-live="polite"></p>
           <button class="divine-audience__grant" id="divine-audience-grant" type="submit">Совершить божественное действие</button>
         </form>
@@ -906,11 +916,12 @@ try {
     localStorage.getItem(CLOCK_PREFERENCE_KEY) ?? 'null',
   ) as { speedId?: unknown; multiplier?: unknown } | null;
   if (stored && isWorldSpeedId(stored.speedId)) {
-    preferredSpeedId = stored.speedId;
+    preferredSpeedId =
+      stored.speedId === 'fifty_years_per_minute' || stored.speedId === 'century_per_minute'
+        ? 'decade_per_minute'
+        : stored.speedId;
   }
-  if (stored && isWorldSpeedMultiplier(stored.multiplier)) {
-    preferredSpeedMultiplier = stored.multiplier;
-  }
+  if (stored && isWorldSpeedMultiplier(stored.multiplier)) preferredSpeedMultiplier = 1;
 } catch {
   // A blocked localStorage only means the external speed resets on next visit.
 }
@@ -1262,8 +1273,8 @@ function updateDivineContactRequirements(): void {
   const contact = selectedDivineContactKind();
   divineMessage.required = contact !== undefined;
   divineMessage.placeholder = contact
-    ? 'Передайте жителю сообщение или смысл знака…'
-    : 'При даре без контакта житель не узнает источник автоматически.';
+    ? 'Передайте агенту сообщение или смысл знака…'
+    : 'При даре без контакта агент не узнает источник автоматически.';
 }
 
 function openPrivateDivineAudience(prayerId?: string): void {
@@ -1604,8 +1615,8 @@ function renderAdventurePanel(world: Readonly<WorldState>): void {
     adventureLatest.textContent = `${agent?.name ?? latest.agentId} ${outcome} · ${dungeon?.name ?? latest.dungeonId} · ранг ${latest.rankAfter}`;
   } else {
     adventureLatest.textContent = dungeons.length > 0
-      ? `Открыто входов: ${dungeons.length}. Решение войти примут сами жители.`
-      : 'Жители ещё не нашли входы в подземелья.';
+      ? `Открыто входов: ${dungeons.length}. Решение войти примут сами агенты.`
+      : 'Агенты ещё не нашли входы в подземелья.';
   }
   adventureEconomyNote.textContent =
     `Из подземелий вынесено ${adventure.totalCoinRecovered.toFixed(1)} монет · ` +
@@ -1743,7 +1754,10 @@ function emotionalSummary(agent: Readonly<AgentState>): string {
     .join(' · ');
 }
 
-function physiologySummary(agent: Readonly<AgentState>): string {
+function physiologySummary(
+  agent: Readonly<AgentState>,
+  world?: Readonly<WorldState>,
+): string {
   const physiology = (
     agent.life as AgentState['life'] & {
       physiology?: AgentState['life']['physiology'];
@@ -1762,7 +1776,11 @@ function physiologySummary(agent: Readonly<AgentState>): string {
         : physiology.endurance < 0.52
           ? 'быстро устаёт'
           : 'в норме';
-  return `${bodyState} · сила ${Math.round(physiology.strength * 100)}% · выносливость ${Math.round(physiology.endurance * 100)}%`;
+  const physical = world?.v21?.bodiesByAgentId[agent.id];
+  const clinical = physical
+    ? ` · ран ${physical.wounds.length} · болезней ${physical.diseases.length} · боль ${Math.round(physical.pain * 100)}%`
+    : '';
+  return `${bodyState} · сила ${Math.round(physiology.strength * 100)}% · выносливость ${Math.round(physiology.endurance * 100)}%${clinical}`;
 }
 
 function closestRelationship(
@@ -1804,7 +1822,8 @@ function syncResidentPicker(
       const members = sorted.filter((agent) => (agent.race ?? 'human') === race);
       if (members.length === 0) continue;
       const group = document.createElement('optgroup');
-      group.label = `${raceGroupLabels[race]} · ${members.length}`;
+      group.dataset.race = race;
+      group.label = `${raceGroupMarkers[race]} ${raceGroupLabels[race].toLocaleUpperCase('ru-RU')} · ${members.length}`;
       for (const agent of members) {
         const option = document.createElement('option');
         option.value = agent.id;
@@ -1862,10 +1881,18 @@ function updateSelection(): void {
     selected.origin === 'native' ? 'рождён здесь' : 'вошёл извне'
   }`;
   residentEmotion.textContent = emotionalSummary(selected);
-  residentPhysiology.textContent = physiologySummary(selected);
+  residentPhysiology.textContent = physiologySummary(selected, lastFrame.world);
   residentTraits.textContent = strongestTraits(selected);
   const livelihood = lastFrame.world.v18?.livelihoodByAgentId[selected.id];
-  residentProfession.textContent = livelihood
+  const socialProfile = lastFrame.world.v19?.adventureEconomy.emergentSociety
+    ?.residentsByAgentId[selected.id];
+  const recognizedProfession = socialProfile?.recognizedProfessionId
+    ? lastFrame.world.v19?.adventureEconomy.emergentSociety
+        ?.professionsById[socialProfile.recognizedProfessionId]
+    : undefined;
+  residentProfession.textContent = recognizedProfession
+    ? `${recognizedProfession.title} · признано по ${recognizedProfession.evidenceCount} случаям практики`
+    : livelihood
     ? `${livelihoodLabels[livelihood.primary]} · ${livelihoodStageLabels[livelihood.stage]}`
     : 'запись создаётся';
   const adventureProfile =
@@ -1958,8 +1985,8 @@ function eventAgentName(
 ): string {
   const agentId = event.payload.agentId;
   return typeof agentId === 'string'
-    ? world.agents[agentId]?.name ?? 'Житель'
-    : 'Житель';
+    ? world.agents[agentId]?.name ?? 'Агент'
+    : 'Агент';
 }
 
 function eventText(
@@ -2029,6 +2056,8 @@ function eventText(
       return `${name} ушёл поразмышлять`;
     case 'agent.prayed':
       return `${name} пытается понять тайны мира`;
+    case 'agent.education.founding_primer_studied':
+      return `${name} изучает основы дома, семьи и безопасной жизни в мире`;
     case 'agent.bond.accepted':
       return `${name} стал кому-то ближе`;
     case 'agent.bond.declined':
@@ -2051,7 +2080,7 @@ function eventText(
       const targetId = event.payload.targetId;
       const target =
         typeof targetId === 'string' ? world.agents[targetId]?.name : undefined;
-      return `${name} помог${target ? ` ${target}` : ' другому жителю'}`;
+      return `${name} помог${target ? ` ${target}` : ' другому агенту'}`;
     }
     case 'agent.help.rejected':
       return `Помощь ${name} не приняли`;
@@ -2067,7 +2096,7 @@ function eventText(
       const sentiment = event.payload.sentiment;
       const aName = typeof a === 'string' ? world.agents[a]?.name : undefined;
       const bName = typeof b === 'string' ? world.agents[b]?.name : undefined;
-      if (!aName || !bName) return 'Между жителями изменилась связь';
+      if (!aName || !bName) return 'Между агентами изменилась связь';
       return typeof sentiment === 'number' && sentiment < -0.18
         ? `${aName} и ${bName} поспорили`
         : `${aName} и ${bName} пообщались`;
@@ -2086,7 +2115,7 @@ function eventText(
             world.places[regionId]?.name ??
             regionId
           }`
-        : 'Жители открыли новую территорию';
+        : 'Агенты открыли новую территорию';
     }
     case 'world.wildlife.recovered': {
       const species = event.payload.species;
@@ -2149,19 +2178,25 @@ function eventText(
               ? 'огров'
               : race;
       return event.kind === 'world.sapient_people.discovered'
-        ? `Жители открыли самостоятельный разумный народ: ${label}`
+        ? `Агенты открыли самостоятельный разумный народ: ${label}`
         : `В мире возник самостоятельный разумный народ: ${label}`;
     }
     case 'agent.level.changed':
       return `${name} достиг уровня ${String(event.payload.level ?? '?')}`;
     case 'world.settlement.founded':
-      return `Жители основали ${String(event.payload.name ?? 'новое поселение')}`;
+      return `Агенты основали ${String(event.payload.name ?? 'новое поселение')}`;
     case 'agent.resettled':
       return `${name} добровольно переселился в другое поселение`;
     case 'world.building.home_started':
-      return 'Жители добровольно начали строить новый дом';
+      return 'Агенты добровольно начали строить новый дом';
     case 'world.building.home_built':
-      return 'Жители построили новый дом из местных материалов';
+      return 'Агенты построили новый дом из местных материалов';
+    case 'world.building.home_repaired':
+      return 'Агенты отремонтировали и вернули бесхозный дом в жизнь';
+    case 'agent.household.moved_home':
+      return event.payload.reason === 'voluntary_reoccupation_after_repair'
+        ? `${name} добровольно поселился в восстановленном доме`
+        : `${name} переселился в построенный дом`;
     case 'world.item.tool_crafted':
       return event.payload.toolKind === 'farming'
         ? 'Мастер изготовил земледельческий инструмент'
@@ -2183,11 +2218,11 @@ function eventText(
     case 'world.settlement.peace':
       return 'Участники прекратили войну';
     case 'world.cemetery.established':
-      return 'Жители отвели место под кладбище';
+      return 'Агенты отвели место под кладбище';
     case 'world.resident.buried': {
-      return name === 'Житель'
-        ? 'Жители похоронили умершего'
-        : `Жители похоронили ${name}`;
+      return name === 'Агент'
+        ? 'Агенты похоронили умершего'
+        : `Агенты похоронили ${name}`;
     }
     case 'world.city.emerged':
       return `${String(event.payload.name ?? 'Поселение')} выросло в город`;
@@ -2196,7 +2231,7 @@ function eventText(
     case 'world.tradition.emerged':
       return 'В мире родилась новая традиция';
     case 'world.entry.resident_manifested':
-      return 'В мир вошёл новый внешний житель';
+      return 'В мир вошёл новый внешний агент';
     case 'world.entry.deity_manifested':
       return 'Мир почувствовал присутствие неизвестной силы';
     case 'world.omen.aurora':
@@ -2204,7 +2239,7 @@ function eventText(
     case 'world.omen.eclipse':
     case 'world.omen.miracle':
     case 'world.omen.storm_sign':
-      return 'Жители стали свидетелями необъяснимого знамения';
+      return 'Агенты стали свидетелями необъяснимого знамения';
     case 'world.omen.natural.sky_lights':
     case 'world.omen.natural.distant_voice':
     case 'world.omen.natural.silent_storm':
@@ -2283,7 +2318,7 @@ function renderAudibleConversations(frame: Readonly<LiveWorldFrame>): void {
   }
   for (const conversation of conversations) {
     const item = document.createElement('article');
-    const speaker = frame.world.agents[conversation.speakerId]?.name ?? 'Житель';
+    const speaker = frame.world.agents[conversation.speakerId]?.name ?? 'Агент';
     const listener = frame.world.agents[conversation.listenerId]?.name ?? 'собеседник';
     const place = frame.world.places[conversation.placeId]?.name ?? conversation.placeId;
     const heading = document.createElement('span');
@@ -2306,7 +2341,7 @@ function announceDisturbance(frame: Readonly<LiveWorldFrame>): void {
 
   disturbanceBanner.textContent =
     disturbance.kind === 'resource_shock'
-      ? '⚠ Ресурсный удар — жители решают сами'
+      ? '⚠ Ресурсный удар — агенты решают сами'
       : disturbance.kind === 'social_barrier'
         ? '⚠ Социальный барьер'
         : '⚠ Угроза безопасности';
@@ -2316,7 +2351,9 @@ function announceDisturbance(frame: Readonly<LiveWorldFrame>): void {
 function updateWorldTime(frame: Readonly<LiveWorldFrame>): void {
   const elapsedWorldMinutes = frame.world.calendar.elapsedWorldMinutes;
   const calendar = worldCalendarAtMinutes(elapsedWorldMinutes);
+  const weather = worldWeatherV21(frame.world, elapsedWorldMinutes);
   worldMap.dataset.phase = calendar.phase;
+  worldMap.dataset.weather = weather.kind;
   const clock = `${String(calendar.hour).padStart(2, '0')}:${String(calendar.minute).padStart(2, '0')}`;
   timeValue.textContent = `год ${calendar.year} · день ${calendar.dayOfYear} · ${clock}`;
   timeValue.title = `Прошло ${calendar.totalDays} дней мира`;
@@ -2324,7 +2361,10 @@ function updateWorldTime(frame: Readonly<LiveWorldFrame>): void {
   tickValue.textContent = elapsedYears >= 1
     ? `${elapsedYears.toFixed(1)} г.`
     : `${Math.floor(elapsedWorldMinutes / 1_440)} дн.`;
-  mapTimeValue.textContent = `${phaseLabels[calendar.phase]} · ${seasonLabels[calendar.season]}`;
+  mapTimeValue.textContent =
+    `${phaseLabels[calendar.phase]} · ${seasonLabels[calendar.season]} · ` +
+    `${weather.label} ${weather.temperatureC > 0 ? '+' : ''}${weather.temperatureC}°C · ` +
+    weather.comfortLabel;
 }
 
 function persistOfflineClockAnchor(
@@ -2579,7 +2619,7 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
   } else if (unlocked.length > 0) {
     cardinalMessage.textContent = `Cardinal освоил: ${unlocked
       .map((capability) => cardinalCapabilityLabels[capability])
-      .join(', ')}. Воля жителей не изменилась.`;
+      .join(', ')}. Воля агентов не изменилась.`;
   } else if (frame.intervention?.executed) {
     cardinalMessage.textContent =
       'Cardinal предложил меру. Независимый gateway проверил и выполнил её.';
@@ -2690,15 +2730,15 @@ function russianGatewayReason(reason: string | undefined): string {
 function lawExplanation(mechanism: WorldState['governance']['laws'][string]['mechanism']): string {
   const explanations: Record<typeof mechanism, string> = {
     frontier_expansion:
-      'Жители могут постепенно открывать новые участки карты; Cardinal меняет только темп, а не решения исследователей.',
+      'Агенты могут постепенно открывать новые участки карты; Cardinal меняет только темп, а не решения исследователей.',
     wildlife_recovery:
       'Популяции восстанавливаются по состоянию среды, без мгновенного появления животных по команде.',
     fertility_support:
-      'Мир поддерживает условия для семей, но решение о близости и детях остаётся за жителями.',
+      'Мир поддерживает условия для семей, но решение о близости и детях остаётся за агентами.',
     resource_regeneration:
       'Общие природные ресурсы постепенно восстанавливаются сами.',
     mystic_resonance:
-      'Определяет вероятность знамений и развитие верований, не переписывая убеждения жителей.',
+      'Определяет вероятность знамений и развитие верований, не переписывая убеждения агентов.',
     weather_volatility:
       'Ограничивает изменчивость внешних условий и будущих погодных событий.',
     catastrophe_recovery:
@@ -2872,7 +2912,7 @@ function renderCardinalConsole(): void {
             ['Где действует', locationSummary(places)],
             ['Срок', 'Постоянно, пока независимый gateway не разрешит новую ограниченную поправку.'],
             ['История', law.revision > 0 ? `Редакция ${law.revision}. Предыдущее числовое значение не хранится в текущем срезе; оно остаётся в append-only событии.` : 'Исходная редакция мира.'],
-            ['Граница полномочий', 'Закон не даёт Cardinal доступа к личности, памяти, ценностям, отношениям или выбору жителей.'],
+            ['Граница полномочий', 'Закон не даёт Cardinal доступа к личности, памяти, ценностям, отношениям или выбору агентов.'],
           ],
           places,
         ),
@@ -3405,7 +3445,7 @@ liveWorldWorker.addEventListener(
       divineAudienceRequestPending = false;
       divineAudienceGrant.disabled = false;
       divineAudienceStatus.textContent = event.data.authorized
-        ? `${event.data.giftGranted ? 'Дар получен. ' : ''}${event.data.contactRecorded ? 'Контакт состоялся. ' : ''}${event.data.residentResponse ? `Житель отвечает: «${event.data.residentResponse}»` : 'Действие завершено.'}`
+        ? `${event.data.giftGranted ? 'Дар получен. ' : ''}${event.data.contactRecorded ? 'Контакт состоялся. ' : ''}${event.data.residentResponse ? `Агент отвечает: «${event.data.residentResponse}»` : 'Действие завершено.'}`
         : `Аудиенция не завершена: ${event.data.reason}`;
       return;
     }
