@@ -18,7 +18,7 @@
 .atlas-terrain { position:absolute; inset:0; width:100%; height:100%; }
 .roads { z-index:3; }
 .roads path { fill:none; }
-.settlements-layer { pointer-events:none; }
+.settlements-layer { pointer-events:none; z-index:4; }
 .world-map .map-place { width:max(22px,var(--physical-width)); height:max(22px,var(--physical-height)); transform:translate(-50%,-50%); padding:0; border:0; background:none; }
 .world-map .map-place .place-building { position:absolute; left:50%; top:50%; display:block; width:var(--physical-width); height:var(--physical-height); transform:translate(-50%,-50%) rotate(var(--building-angle)); margin:0; padding:0; }
 .world-map .map-place .place-art { width:100%; height:100%; overflow:visible; }
@@ -35,3 +35,4 @@
 .world-map[data-atlas-level="region"] .resident-avatar { display:none; }
 
 .atlas-raster { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+.atlas-boat { position:absolute; transform:translate(-50%,-35%); font-size:22px; pointer-events:none; filter:drop-shadow(0 1px 2px #102936); }

@@ -29,6 +29,7 @@ export function reconcileRouteGeometry(world:WorldState,oldRoutes:Readonly<Recor
   moved:ReadonlyMap<string,{before:WorldPoint2D;after:WorldPoint2D}>):void {
   const water=worldWaterPolygons(world.places);
   for(const agent of Object.values(world.agents)) {
+    if(agent.movement?.boatId)continue;
     const movement=agent.movement,relocated=moved.get(agent.locationId);
     if(!movement){if(relocated){agent.position.x=relocated.after.x;agent.position.y=relocated.after.y;}continue;}
     const routeIds=movement.routeIds??[routeIdBetween(agent.locationId,movement.targetPlaceId)];

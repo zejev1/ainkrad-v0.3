@@ -666,9 +666,15 @@ describe('v0.3.16 material settlements and death aftermath', () => {
     // A timber, wattle and thatch home must remain possible without a quarry.
     economy.stocks.stone = 0;
     economy.constructionTools = 1;
-    const knownWoodSourceId = Object.values(raw.places).find(
-      (place) => place.biome === 'forest' && place.surface !== 'water',
-    )!.id;
+    // This is a construction test: provide an actually local known wood lot,
+    // independent of the seed's far-away forests and exploration decisions.
+    const outskirts = raw.places.outskirts;
+    const knownWoodSourceId = 'test_local_wood_lot';
+    raw.places[knownWoodSourceId] = { ...structuredClone(outskirts), id: knownWoodSourceId,
+      name: 'Известная местная роща', kind: 'forest', biome: 'forest',
+      mapX: outskirts.mapX + 0.4, mapY: outskirts.mapY + 0.4,
+      connectedPlaceIds: [outskirts.id], boundaryPolygon: undefined, waterPolygon: undefined };
+    outskirts.connectedPlaceIds.push(knownWoodSourceId);
     for (const agent of Object.values(raw.agents)) {
       agent.life.stage = 'adult';
       agent.life.ageYears = Math.max(24, agent.life.ageYears);
@@ -788,7 +794,9 @@ describe('v0.3.16 material settlements and death aftermath', () => {
       store: new InMemoryWorldStore(),
       startTime: 0,
     });
-    await source.advanceCanonicalTimeTo(WORLD_MINUTES_PER_YEAR * 12);
+    // Wait only for the first independent people to exist; the test then
+    // establishes a local border explicitly and stops after a real conflict.
+    await source.advanceCanonicalTimeTo(WORLD_MINUTES_PER_YEAR * 10);
     const raw = source.snapshot();
     const settlements = Object.values(raw.settlements);
     expect(settlements.length).toBeGreaterThanOrEqual(2);
@@ -865,9 +873,11 @@ describe('v0.3.16 material settlements and death aftermath', () => {
     const store = new InMemoryWorldStore();
     await store.initializeWorld(raw);
     const world = await WorldEngine.open({ worldId: raw.id, store });
-    await world.advanceCanonicalTimeTo(
-      raw.calendar.elapsedWorldMinutes + WORLD_MINUTES_PER_YEAR * 5,
-    );
+    for (let step = 1; step <= 300; step++) {
+      await world.advanceCanonicalTimeTo(raw.calendar.elapsedWorldMinutes + WORLD_MINUTES_PER_YEAR * step / 60);
+      const relation = world.snapshot().v16!.settlementRelations[[settlementA.id, settlementB.id].sort().join('::')];
+      if (relation.conflictRounds > 0) break;
+    }
     const state = world.snapshot();
     const after = state.v16!.settlementRelations[
       [settlementA.id, settlementB.id].sort().join('::')

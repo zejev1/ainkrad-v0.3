@@ -1,0 +1,35 @@
+{
+  "release": "0.3.21-hotfix.10.3",
+  "base_commit": "ef83a3e5250f373a09918881e9fd3112d367a71c",
+  "status": "passed",
+  "mode": "Full suite followed by targeted reruns of affected suites; not a single clean full run.",
+  "full_run": {
+    "total": 317,
+    "passed": 315,
+    "failed": [
+      {
+        "file": "v0_3_16_societyFoundation.test.ts",
+        "test": "v0.3.16 material settlements and death aftermath reserves local materials and builds a real home when housing is full",
+        "status": "failed"
+      },
+      {
+        "file": "v0_3_18_offlineCatchUp.test.ts",
+        "test": "v0.3.18 closed-browser catch-up executes every semantic quantum while bounding durable commits",
+        "status": "failed"
+      }
+    ]
+  },
+  "after_fixes": {
+    "regression_suites": 35,
+    "market_and_offline_suites": 7,
+    "unresolved_test_failures": 0
+  },
+  "typecheck": "passed",
+  "production_build": "passed",
+  "device_validation": "Physical phone and Xbox not tested.",
+  "limitations": [
+    "Finite verified historical corpus, not unrestricted Internet.",
+    "Local small-boat fishing; no ocean voyage simulation.",
+    "Reading speed is distinct from practical mastery and admission waiting time."
+  ]
+}

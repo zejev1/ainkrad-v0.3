@@ -53,6 +53,6 @@ export class WorldAtlasIndex {
       Math.hypot(a.mapX-camera.x,a.mapY-camera.y)-Math.hypot(b.mapX-camera.x,b.mapY-camera.y)).slice(0,180);
   }
   visibleRoads(world:Readonly<WorldState>,camera:Readonly<WorldMapCamera>) {
-    return this.roads.query(this.view(camera)).map(r=>world.routes[r.id]).filter(r=>r&&(r.completedTraversals??0)>0).slice(0,500);
+    return this.roads.query(this.view(camera)).map(r=>world.routes[r.id]).filter(r=>r&&r.traversal!=='boat'&&(r.completedTraversals??0)>0).slice(0,500);
   }
 }

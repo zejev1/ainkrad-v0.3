@@ -1,4 +1,9 @@
-import {surveyFrontier,surveySettlementSite} from './geography/FrontierSurvey';
+import { consumeReadingWords } from '../v18/HistoricalReading';
+import {boatWorkSite, workOnBoat} from '../v21/MaritimePractice';
+import {advanceBoats, availableBoat, startBoatExploration, startBoatFishing, startBoatTravel} from '../v21/BoatNavigation';
+import {assertBoatNavigation} from '../v21/BoatValidation';
+import {surveySettlementSite} from './geography/FrontierSurvey';
+import {localSurveySite} from './geography/LocalExploration';
 import {residentChoiceCandidates} from './ResidentChoice';
 import { residentDecisionReflection } from './ResidentDecisionReflection';
 import { residentExplorationTarget } from './ResidentExploration';
@@ -9,7 +14,7 @@ import { createFoundingOcean, repairFoundingOcean } from './FoundingOcean';
 import { LIBRARY_IDS, LIBRARY_YEAR, admissionDeadline, isSecretLibrary, libraryIdOf, hasLibraryAdmission, reconcileLibraryAdmissions, enforceLibraryBoundary, noteLibraryArrival } from '../v21/LibraryAdmissions';
 import { ensureElfLibraryV20, elfStudyMaterialV20, readingBudgetV20 } from '../v20/LibraryLearningV20';
 import type { WorldInterventionKind as InterventionKind, WorldInputEnvelope as InputEnvelope } from '../core/WorldContracts';
-import { observeLocalPlacesV20, sharePlaceKnowledgeV20, removeUnsurveyedHomelandLinksV20, frontierSiteV20, mayKnowPlaceV20 } from '../v20/KnowledgeBoundariesV20';
+import { observeLocalPlacesV20, sharePlaceKnowledgeV20, removeUnsurveyedHomelandLinksV20, mayKnowPlaceV20 } from '../v20/KnowledgeBoundariesV20';
 import { nextUrbanHomeLot } from './SettlementStreets';
 import { repairCompactSettlementLayout } from './CompactSettlementLayout';
 import { assertResidentLearning, beginLearningAttempt, finishLearningAttempt, learnedActionAdjustment, learnedSiteAdjustment, noteLearningHelp, noteLearningMaterial } from './learning/index';
@@ -964,16 +969,8 @@ function assertWorldState(value: unknown): asserts value is WorldState {
   if (frontierSequence < growthStage) {
     throw new Error('World growth.frontierSequence cannot trail discovered regions.');
   }
-  const expectedPrefix = WORLD_EXPANSIONS.slice(
-    0,
-    Math.min(growthStage, WORLD_EXPANSIONS.length),
-  ).map((expansion) => expansion.place.id);
-  if (
-    expectedPrefix.some(
-      (regionId, index) => discoveredRegionIds[index] !== regionId,
-    )
-  ) {
-    throw new Error('World frontier history is missing its founding regions.');
+  if (new Set(discoveredRegionIds).size !== discoveredRegionIds.length) {
+    throw new Error('World frontier history contains duplicate regions.');
   }
 
   const population = asRecord(state.population, 'World population');
@@ -1308,7 +1305,7 @@ function assertWorldState(value: unknown): asserts value is WorldState {
     }
   }
   for (const expansion of WORLD_EXPANSIONS) {
-    const discovered = expansion.stage <= growthStage;
+    const discovered = discoveredRegionIds.includes(expansion.place.id);
     const storedPlace = places[expansion.place.id];
     if (discovered && !storedPlace) {
       throw new Error(
@@ -1412,7 +1409,7 @@ function assertWorldState(value: unknown): asserts value is WorldState {
   }
   for (const expansion of WORLD_EXPANSIONS) {
     for (const expectedPopulation of expansion.wildlife) {
-      const discovered = expansion.stage <= growthStage;
+      const discovered = discoveredRegionIds.includes(expansion.place.id);
       const storedPopulation = wildlife[expectedPopulation.id];
       if (discovered && !storedPopulation) {
         throw new Error(
@@ -2126,6 +2123,17 @@ function assertWorldState(value: unknown): asserts value is WorldState {
         ['quality', 'effectiveness', 'reliability'],
         `World v15 item ${itemId}`,
       );
+      if (item.boat !== undefined) {
+        const boat = asRecord(item.boat, `World boat ${itemId}`);
+        const labor = finiteNumber(boat.laborMinutes, `World boat ${itemId}.laborMinutes`);
+        const required = finiteNumber(boat.requiredLaborMinutes, `World boat ${itemId}.requiredLaborMinutes`);
+        const lastWorked = finiteNumber(boat.lastWorkedMinute, `World boat ${itemId}.lastWorkedMinute`);
+        if (required <= 0 || labor < 0 || labor > required || lastWorked < 0 || lastWorked > elapsedWorldMinutes ||
+            typeof boat.completed !== 'boolean' || boat.completed !== (labor >= required)) {
+          throw new Error(`World boat ${itemId} has invalid construction progress.`);
+        }
+        assertBoatNavigation(state as unknown as WorldState, itemId);
+      }
       const ownerId = item.ownerAgentId;
       if (ownerId !== undefined && (typeof ownerId !== 'string' || !agents[ownerId])) {
         throw new Error(`World v15 item ${itemId} references missing owner.`);
@@ -5191,6 +5199,8 @@ export class WorldEngine {
       visitor.accessYear,
       visitor.studyQuanta,
       [...new Set([...priorKnowledgeIds, ...visitor.learnedKnowledgeIds])],
+      Object.fromEntries(existingRecords.filter(record => record.bookId && record.pagesRead !== undefined)
+        .map(record => [record.bookId!, record.pagesRead!])),
     );
     const material = agent.race === 'elf' ? elfStudyMaterialV20(visitor.studyQuanta, baseMaterial) : baseMaterial;
     const minute = this.state.calendar.elapsedWorldMinutes;
@@ -5199,9 +5209,12 @@ export class WorldEngine {
     visitor.lastStudyWorldMinute = minute;
     if (budget.minutes <= 0) return;
     const words = material.knowledge.knowledge.join(' ').split(/\s+/u).length;
-    visitor.readingMinutes = (visitor.readingMinutes ?? 0) + Math.min(budget.minutes, words / budget.wordsPerMinute);
-    visitor.wordsRead = (visitor.wordsRead ?? 0) + Math.min(words, budget.maximumWords);
-    if (budget.maximumWords < words) return;
+    const reading = consumeReadingWords(visitor, material.knowledge.id, words, budget.maximumWords);
+    visitor.readingMinutes = (visitor.readingMinutes ?? 0) + reading.wordsRead / budget.wordsPerMinute;
+    visitor.wordsRead = (visitor.wordsRead ?? 0) + reading.wordsRead;
+    if (!reading.completed) return;
+    delete visitor.pendingKnowledgeId;
+    delete visitor.pendingReadWords;
     const profile = this.v15World().knowledgeByAgentId[agent.id];
     const learner = this.v15LearningPerson(agent);
     const practice = applyIndependentPractice(learner, {
@@ -5235,21 +5248,24 @@ export class WorldEngine {
         profile.aptitude[material.domain] * 0.2 -
         material.knowledge.difficulty * 0.16,
     );
-    const recordId =
-      `library:${agent.id}:${material.knowledge.id}:${visitor.accessYear}`;
-    const priorRecord = existingRecords.find(
-      (record) => record.knowledgeId === material.knowledge.id,
-    );
+    const recordKnowledgeId = material.knowledge.sourceBookId
+      ? material.knowledge.id.split(':page:')[0] : material.knowledge.id;
+    const pagesRead = material.knowledge.sourceBookId
+      ? Number(material.knowledge.id.split(':page:')[1] ?? 1) : undefined;
+    const recordId = `library:${agent.id}:${recordKnowledgeId}:${visitor.accessYear}`;
+    const priorRecord = existingRecords.find(record => record.knowledgeId === recordKnowledgeId);
     if (priorRecord) {
       priorRecord.understanding = Math.max(
         priorRecord.understanding,
         understanding,
       );
       priorRecord.acquiredWorldMinute = this.state.calendar.elapsedWorldMinutes;
+      if (pagesRead !== undefined) priorRecord.pagesRead = Math.max(priorRecord.pagesRead ?? 0, pagesRead);
     } else {
       existingRecords.push({
         id: recordId,
-        knowledgeId: material.knowledge.id,
+        knowledgeId: recordKnowledgeId,
+        ...(pagesRead !== undefined ? { pagesRead } : {}),
         ...(material.book ? { bookId: material.book.id } : {}),
         title: material.knowledge.title,
         category: material.knowledge.category,
@@ -5258,7 +5274,7 @@ export class WorldEngine {
         sourceUrl: material.sourceUrl,
         acquiredWorldMinute: this.state.calendar.elapsedWorldMinutes,
         understanding,
-        summary: material.knowledge.knowledge.slice(0, 2).join(' '),
+        summary: material.knowledge.knowledge.slice(0, 2).join(' ').slice(0, 700),
         concepts: material.knowledge.concepts.slice(0, 12),
         practiceCount: 0,
         sharedCount: 0,
@@ -5278,6 +5294,7 @@ export class WorldEngine {
     visitor.studyQuanta = Math.min(SECRET_LIBRARY_STUDY_QUANTA_V18, visitor.studyQuanta + 1);
     if (!visitor.learnedKnowledgeIds.includes(material.knowledge.id)) {
       visitor.learnedKnowledgeIds.push(material.knowledge.id);
+      visitor.learnedKnowledgeIds = visitor.learnedKnowledgeIds.slice(-32);
     }
     agent.lastAction = 'reflect';
     agent.lastMeaningfulEventAt = now;
@@ -8580,7 +8597,11 @@ export class WorldEngine {
       let best:
         | { place: WorldPlace; pressure: number; distance: number }
         | undefined;
-      for (const place of localPlaces) {
+      const candidates = [...new Map([...localPlaces, ...Object.values(this.state.places).filter(
+        place => (agent.knownPlaceIds ?? []).includes(place.id) &&
+          Math.hypot(place.mapX - agent.position.x, place.mapY - agent.position.y) <= 12,
+      )].map(place => [place.id, place])).values()];
+      for (const place of candidates) {
         if (
           !kinds.includes(place.kind) ||
           this.pathBetween(agent.locationId, place.id) === undefined
@@ -8771,7 +8792,7 @@ export class WorldEngine {
       ? agent.homeId
       : this.localPlace(
           agent,
-          ['quiet_space', 'meadow', 'forest', 'shore'],
+          ['quiet_space', 'meadow', 'forest', 'shore', 'river', 'lake'],
           agent.homeId,
         );
 
@@ -8889,13 +8910,17 @@ export class WorldEngine {
       if (
         population.species === CENTURY_HUMPBACK_SPECIES ||
         population.count <= 0 ||
-        !this.state.places[population.habitatId]
+        !this.state.places[population.habitatId] ||
+        (population.habitatId !== agent.locationId && !(agent.knownPlaceIds ?? []).includes(population.habitatId))
       ) {
         continue;
       }
       const route = this.pathBetween(agent.locationId, population.habitatId);
       if (!route) continue;
-      const distance = Math.max(0, route.length - 1);
+      const distance = route.slice(1).reduce((sum, id, index) => {
+        const from = this.state.places[route[index]], to = this.state.places[id];
+        return sum + Math.hypot(to.mapX - from.mapX, to.mapY - from.mapY);
+      }, 0);
       const candidate = {
         population,
         score:
@@ -9101,6 +9126,11 @@ export class WorldEngine {
     agent.plan = undefined;
 
     const activeWeapon = this.v15WeaponForAgent(agent);
+    if (target.species === 'fish' && availableBoat(this.state, agent) &&
+        startBoatFishing(this.state, agent, target.id, this.rng.next(), this.rng.next())) {
+      this.recordAgentEvent(agent, now, 'agent.boat.departed', { purpose: 'fishing', locationId: agent.locationId });
+      return;
+    }
     const activeWeaponItemId = v15.equipmentByAgentId[agent.id]?.weaponItemId;
     const yieldBySpecies: Record<WildlifeSpecies, number> = {
       rabbit: 0.11,
@@ -9114,16 +9144,19 @@ export class WorldEngine {
       wraith: 0.04,
       century_humpback: 0,
     };
+    const fishingKnowledge = target.species === 'fish'
+      ? this.state.v18?.secretLibrary.knowledgeByAgentId[agent.id]?.find(
+          record => record.knowledgeId === 'fishing-handline-and-habitat',
+        )?.understanding ?? 0 : 0;
     const successChance = clamp01(
-      0.13 +
+      0.13 + fishingKnowledge * 0.16 +
         agent.skills.hunting * 0.39 +
         agent.personality.riskTolerance * 0.09 +
         agent.life.physiology.strength * 0.13 +
         agent.life.physiology.endurance * 0.09 +
         (agent.progression?.combatMastery ?? 0) * 0.11 +
-        activeWeapon.effectiveness * 0.24 +
-        activeWeapon.reach * 0.08 +
-        activeWeapon.reliability * 0.05 +
+        (target.species === 'fish' ? 0 : activeWeapon.effectiveness * 0.24 +
+          activeWeapon.reach * 0.08 + activeWeapon.reliability * 0.05) +
         environment.safetySupport * 0.07 -
         agent.mind.emotions.fear * 0.18 -
         target.alertness * 0.31 -
@@ -9429,10 +9462,15 @@ export class WorldEngine {
           const rightLocal =
             settlementId && right.settlementId === settlementId ? 0 : 1;
           if (leftLocal !== rightLocal) return leftLocal - rightLocal;
-          const leftDistance =
-            this.pathBetween(agent.locationId, left.id)?.length ?? Number.MAX_SAFE_INTEGER;
-          const rightDistance =
-            this.pathBetween(agent.locationId, right.id)?.length ?? Number.MAX_SAFE_INTEGER;
+          const routeDistance = (placeId: string) => {
+            const route = this.pathBetween(agent.locationId, placeId);
+            return route ? route.slice(1).reduce((sum, id, index) => {
+              const from = this.state.places[route[index]], to = this.state.places[id];
+              return sum + Math.hypot(to.mapX - from.mapX, to.mapY - from.mapY);
+            }, 0) : Number.POSITIVE_INFINITY;
+          };
+          const leftDistance = routeDistance(left.id);
+          const rightDistance = routeDistance(right.id);
           const recalledDifference = learnedSiteAdjustment(agent, 'gather', right.id) -
             learnedSiteAdjustment(agent, 'gather', left.id);
           return leftDistance - rightDistance + recalledDifference * 1.5 || left.id.localeCompare(right.id);
@@ -9446,10 +9484,9 @@ export class WorldEngine {
       break;
     }
     if (!gatheringPlace) {
-      // Look from a familiar junction first. Do not silently replace urgently needed food with fuel.
-      const meetingPlace = knownMeetingPlace(this.state, agent);
-      if (meetingPlace && this.travelBeforeAction(agent, meetingPlace, 'gather', now)) return;
-      this.performReflect(agent, now);
+      // The chosen gathering goal can require surveying a new source. Existing
+      // useful supplies still take precedence over searching for a missing one.
+      this.performExplore(agent, now);
       return;
     }
     if (this.travelBeforeAction(agent, gatheringPlace.id, 'gather', now)) {
@@ -9583,6 +9620,16 @@ export class WorldEngine {
 
   private performWork(agent: AgentState, now: number): void {
     if (this.tryPerformHumanConstructionWork(agent, now)) return;
+    const boatSite = boatWorkSite(this.state, agent);
+    if (boatSite && this.rng.next() < 0.15 + agent.personality.curiosity * 0.35) {
+      if (this.travelBeforeAction(agent, boatSite, 'work', now)) return;
+      if (workOnBoat(this.state, agent)) {
+        agent.lastAction = 'work';
+        agent.lastMeaningfulEventAt = now;
+        this.recordAgentEvent(agent, now, 'agent.boat.worked', { locationId: boatSite, materialsAndLaborRequired: true });
+        return;
+      }
+    }
     const workshopId = this.localPlace(agent, ['workshop'], 'workshop');
     if (this.travelBeforeAction(agent, workshopId, 'work', now)) return;
     this.tryAdventureMarketTrade(agent, now);
@@ -9874,6 +9921,10 @@ export class WorldEngine {
 
   private performExplore(agent: AgentState, now: number): void {
     observeLocalPlacesV20(this.state, agent);
+    if (availableBoat(this.state, agent) && startBoatExploration(this.state, agent, this.rng.next())) {
+      this.recordAgentEvent(agent, now, 'agent.boat.departed', { purpose: 'exploration', locationId: agent.locationId });
+      return;
+    }
     const known = new Set(agent.knownPlaceIds ?? []);
     const livelihood = ensureLivelihoodV18(this.state, agent);
     const targetFrontier = residentExplorationTarget(
@@ -10139,6 +10190,7 @@ export class WorldEngine {
       agent.knownPlaceIds = [
         ...new Set([...(agent.knownPlaceIds ?? []), discoveredRegionId]),
       ];
+      if (this.youngChildMayTravelTo(agent, discoveredRegionId)) this.moveAgent(agent, discoveredRegionId);
       syncAdventureEconomyV19(this.state);
       if (!livelihood.mappedPlaceIds.includes(discoveredRegionId)) {
         livelihood.mappedPlaceIds.push(discoveredRegionId);
@@ -10178,28 +10230,10 @@ export class WorldEngine {
       this.lawValue('frontier_expansion', 1);
     const currentStage = this.state.growth.stage;
     const nextStage = currentStage + 1;
-    const worldMinutes = this.state.calendar.elapsedWorldMinutes;
-
-    // The first three regions are the local founding ecology (meadow, forest,
-    // shore). Beyond them, the world deliberately remains geographically
-    // closed during the ten-year Genesis bootstrap. Residents can still
-    // walk, explore locally and learn survival; they simply do not explode
-    // the frontier into dozens of biomes before civilization exists.
-    if (nextStage > WORLD_EXPANSIONS.length && worldMinutes < GENESIS_ACTIVE_WORLD_MINUTES) {
-      this.state.growth.explorationProgress = Math.min(
-        0.98,
-        this.state.growth.explorationProgress + progressGain * 0.035,
-      );
-      return undefined;
-    }
-
-    // Distant frontier discovery is intentionally slower than local mapping.
-    // This is pacing, not a population hard-cap: sufficiently curious future
-    // residents can still expand without a scripted maximum.
-    const distantFrontierMultiplier =
-      currentStage >= WORLD_EXPANSIONS.length ? 0.18 : 1;
-    const frontierDifficulty =
-      1 + Math.max(0, currentStage - WORLD_EXPANSIONS.length) * 0.11;
+    // Exploration consumes effort, not a fixed list of biomes or a ten-year lock.
+    // Established worlds retain slower survey effort without prescribing distance.
+    const distantFrontierMultiplier = currentStage >= 3 ? 0.18 : 1;
+    const frontierDifficulty = 1 + Math.max(0, currentStage - 3) * 0.11;
     this.state.growth.explorationProgress = clamp01(
       this.state.growth.explorationProgress +
         (progressGain * expansionRate * distantFrontierMultiplier) / frontierDifficulty,
@@ -10208,9 +10242,7 @@ export class WorldEngine {
       return undefined;
     }
 
-    const expansion =
-      WORLD_EXPANSIONS.find((candidate) => candidate.stage === nextStage) ??
-      this.createProceduralExpansion(nextStage, now, agent);
+    const expansion = this.createProceduralExpansion(nextStage, now, agent);
     if(!expansion)return undefined;
 
     this.state.places[expansion.place.id] = {
@@ -12501,32 +12533,9 @@ export class WorldEngine {
     now: number,
     explorer: AgentState,
   ): WorldExpansionDefinition | undefined {
-    const proceduralBiomes: readonly WorldBiome[] = [
-      'mountains',
-      'lake',
-      'river',
-      'swamp',
-      'ancient_ruins',
-      'forest',
-      'plains',
-      'coast',
-    ];
-    const biomeRoll = Math.floor(this.rng.next() * proceduralBiomes.length);
-    const firstMonsterFrontier =
-      stage >= 5 &&
-      (stage - 5) % 3 === 0 &&
-      !Object.values(this.state.wildlife).some(
-        (population) => population.isMonster && population.count > 0,
-      );
-    const monsterBiomes: readonly WorldBiome[] = [
-      'forest',
-      'mountains',
-      'swamp',
-      'ancient_ruins',
-    ];
-    let biome = firstMonsterFrontier
-      ? monsterBiomes[(stage + biomeRoll) % monsterBiomes.length]
-      : proceduralBiomes[(stage + biomeRoll) % proceduralBiomes.length];
+    const site = localSurveySite(this.state, explorer, stage, this.rng.next());
+    if (!site) return undefined;
+    const biome = site.biome;
     const kindByBiome: Record<WorldBiome, WorldPlaceKind> = {
       settlement: 'village',
       plains: 'meadow',
@@ -12544,9 +12553,6 @@ export class WorldEngine {
         REGION_NAME_PREFIXES.length
     ];
     const regionId = `region_${stage}`;
-    const site = surveyFrontier(this.state,frontierSiteV20(this.state, explorer, stage),biome,firstMonsterFrontier?monsterBiomes:[biome]);
-    if(!site)return undefined;
-    biome=site.biome;
     const suffixes = REGION_NAME_SUFFIXES[biome];
     const suffix = suffixes[stage % suffixes.length];
     const mapX = site.x;
@@ -12616,6 +12622,8 @@ export class WorldEngine {
         discoveredAt: now,
       },
     );
+    // Keep the existing physical ground; surveying does not create a new lake/forest.
+    place.geographyVersion = 1;
     // Ancient ruins are a monster habitat, not a generic bird recovery zone.
     // A biome without a compatible ordinary species starts without ordinary
     // wildlife instead of assigning a knowingly incompatible population.
@@ -15494,6 +15502,12 @@ export class WorldEngine {
     }
     if (agent.locationId === locationId && !agent.movement) return;
 
+    if (availableBoat(this.state, agent) || Object.values(this.state.v15?.items ?? {}).some(i=>i.boat?.journey?.originPlaceId===agent.locationId)) {
+      const direct = this.pathBetween(agent.locationId, locationId);
+      const waterShortcut = !direct || direct.length > 3;
+      if (waterShortcut && startBoatTravel(this.state, agent, locationId, agent.lastDecision?.action ?? 'walk',
+          this.rng.next(), (a,b)=>this.pathBetween(a,b)!==undefined)) return;
+    }
     const path = this.pathBetween(agent.locationId, locationId);
     if (!path || path.slice(1).some(id => !mayKnowPlaceV20(agent, id, this.state))) {
       // Water and disconnected territory are physical boundaries. A resident
@@ -15542,8 +15556,19 @@ export class WorldEngine {
     this.finishSecretLibraryAdmissions(minute, this.state.now);
     while (minute < end - PHYSICAL_TIME_EPSILON) {
       const next = Math.min(end, ...ensureWorldV18State(this.state).secretLibrary.visitors.map(admissionDeadline).filter(t => t > minute));
+      const arrivedByBoat = new Set<string>();
+      for (const arrival of advanceBoats(this.state, next-minute, minute)) {
+        arrivedByBoat.add(arrival.agentId);
+        const resident = this.state.agents[arrival.agentId];
+        this.moveResidentLocationIndex(resident, arrival.fromPlaceId, arrival.toPlaceId);
+        this.routePathCache?.clear();
+        if (arrival.discovered && this.state.geography) this.state.geography.revision++;
+        observeLocalPlacesV20(this.state, resident);
+        this.recordAgentEvent(resident, this.state.now, 'agent.boat.arrived', {...arrival});
+        if (arrival.onwardPlaceId && resident.life.alive) this.moveAgent(resident, arrival.onwardPlaceId);
+      }
       for (const agent of Object.values(this.state.agents)) {
-        if (!canResidentAct(agent) || !agent.movement) continue;
+        if (!canResidentAct(agent) || !agent.movement || agent.movement.boatId || arrivedByBoat.has(agent.id)) continue;
         this.advanceAgentMovement(agent, next - minute, minute);
       }
       minute = next;

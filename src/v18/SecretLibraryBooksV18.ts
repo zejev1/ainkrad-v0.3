@@ -1,3 +1,4 @@
+import { HISTORICAL_SOURCES } from './HistoricalSourceCorpus';
 /**
  * Ainkrad v18 — Secret Library real human books catalogue.
  *
@@ -76,6 +77,15 @@ export interface RealHumanBookV18 {
 }
 
 export const REAL_HUMAN_BOOKS_V18: RealHumanBookV18[] = [
+  ...HISTORICAL_SOURCES.map((source): RealHumanBookV18 => ({
+    id: `historical:${source.id}`, title: source.title, originalTitle: source.page,
+    author: 'Авторы Энциклопедического словаря Брокгауза и Ефрона',
+    approximateYear: source.year, culture: 'Россия',
+    category: source.category === 'biology' ? 'natural_science' : source.category,
+    originalLanguage: 'русский', description: 'Подлинный исторический текст; доступен для последовательного чтения в библиотеке.',
+    subjects: [...source.concepts], removable: false,
+    externalLookup: { workTitle: source.page, author: 'Брокгауз и Ефрон' },
+  })),
   {
     id: 'euclid-elements',
     title: 'Начала',

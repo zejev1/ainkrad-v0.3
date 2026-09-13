@@ -1,3 +1,4 @@
+import { HUMAN_KNOWLEDGE_CUTOFF_YEAR } from './HistoricalReading';
 import { hasGiftV20 } from '../v20/DivineGiftsV20';
 import type { GenesisDomain } from '../v15/GenesisBootstrap';
 import { rebuildWorldRoutes } from '../world/WorldNavigation';
@@ -41,6 +42,8 @@ export interface SecretLibraryVisitorV18 {
   readingMinutes?: number;
   wordsRead?: number;
   lastStudyWorldMinute?: number;
+  pendingKnowledgeId?: string;
+  pendingReadWords?: number;
   accessYear: number;
   status: SecretLibraryVisitorStatusV18;
   selectedWorldMinute: number;
@@ -68,6 +71,7 @@ export interface SecretLibraryKnowledgeRecordV18 {
   practiceCount: number;
   sharedCount: number;
   learnedFromAgentId?: string;
+  pagesRead?: number;
   lastPracticedWorldMinute?: number;
   lastSharedWorldMinute?: number;
 }
@@ -237,6 +241,10 @@ function repairedVisitor(
       ),
     ),
     learnedKnowledgeIds: stringArray(value.learnedKnowledgeIds, 32),
+    ...(typeof value.pendingKnowledgeId === 'string' ? {
+      pendingKnowledgeId: value.pendingKnowledgeId,
+      pendingReadWords: Math.max(0, finiteNumber(value.pendingReadWords, 0)),
+    } : {}),
     ...(typeof value.arrivedWorldMinute === 'number'
       ? { arrivedWorldMinute: finiteNumber(value.arrivedWorldMinute, 0) }
       : {}),
@@ -290,6 +298,7 @@ function repairedKnowledgeRecord(
     understanding: clamp01(finiteNumber(value.understanding, 0.25)),
     summary: stringValue(value.summary, title).slice(0, 800),
     concepts: stringArray(value.concepts ?? value.practicalDomains, 16),
+    ...(value.pagesRead !== undefined ? { pagesRead: nonNegativeInteger(value.pagesRead) } : {}),
     practiceCount: nonNegativeInteger(value.practiceCount),
     sharedCount: nonNegativeInteger(value.sharedCount),
     ...(stringValue(value.learnedFromAgentId)
@@ -513,23 +522,33 @@ export function secretLibraryStudyMaterialV18(
   accessYear: number,
   studyQuantum: number,
   learnedKnowledgeIds: readonly string[],
+  readBookPages?: Readonly<Record<string, number>>,
 ): SecretLibraryStudyMaterialV18 {
-  if (HUMAN_KNOWLEDGE_V18.length === 0) {
+  const allowedKnowledge = HUMAN_KNOWLEDGE_V18.filter(entry => entry.knownByYear <= HUMAN_KNOWLEDGE_CUTOFF_YEAR);
+  if (allowedKnowledge.length === 0) {
     throw new Error('Secret Library human knowledge catalogue is empty.');
   }
   const start = Math.floor(
-    stableUnit(`${agentId}:${accessYear}:${studyQuantum}`) * HUMAN_KNOWLEDGE_V18.length,
+    stableUnit(`${agentId}:${accessYear}:${studyQuantum}`) * allowedKnowledge.length,
   );
-  let knowledge = HUMAN_KNOWLEDGE_V18[start];
-  for (let offset = 0; offset < HUMAN_KNOWLEDGE_V18.length; offset += 1) {
-    const candidate = HUMAN_KNOWLEDGE_V18[(start + offset) % HUMAN_KNOWLEDGE_V18.length];
-    if (!learnedKnowledgeIds.includes(candidate.id)) {
+  let knowledge = allowedKnowledge[start];
+  for (let offset = 0; offset < allowedKnowledge.length; offset += 1) {
+    const candidate = allowedKnowledge[(start + offset) % allowedKnowledge.length];
+    const pageMatch = candidate.id.match(/^(.*):page:(\d+)$/u);
+    const priorPage = pageMatch ? (Number(pageMatch[2]) === 2 ? pageMatch[1] : `${pageMatch[1]}:page:${Number(pageMatch[2]) - 1}`) : undefined;
+    const pageNumber = pageMatch ? Number(pageMatch[2]) : 1;
+    const nextBookPage = candidate.sourceBookId && readBookPages ?
+      (readBookPages[candidate.sourceBookId] ?? 0) + 1 : undefined;
+    const eligible = nextBookPage !== undefined ? pageNumber === nextBookPage :
+      !learnedKnowledgeIds.includes(candidate.id) && (!priorPage || learnedKnowledgeIds.includes(priorPage));
+    if (eligible) {
       knowledge = candidate;
       break;
     }
   }
   const book = REAL_HUMAN_BOOKS_V18.find((candidate) =>
-    categoryMatchesBook(knowledge.category, candidate),
+    candidate.approximateYear <= HUMAN_KNOWLEDGE_CUTOFF_YEAR &&
+      (knowledge.sourceBookId ? candidate.id === knowledge.sourceBookId : !candidate.id.startsWith('historical:') && categoryMatchesBook(knowledge.category, candidate)),
   );
   const query = book
     ? `${book.externalLookup.workTitle} ${book.externalLookup.author}`
@@ -538,10 +557,10 @@ export function secretLibraryStudyMaterialV18(
     knowledge,
     book,
     domain: genesisDomainForLibraryCategoryV18(knowledge.category),
-    sourceTitle: book
+    sourceTitle: knowledge.sourceUrl ? knowledge.historicalSource : book
       ? `${book.title} — ${book.author}`
       : knowledge.historicalSource,
-    sourceUrl:
+    sourceUrl: knowledge.sourceUrl ??
       `https://en.wikisource.org/wiki/Special:Search?search=${encodeURIComponent(query)}`,
   };
 }
@@ -754,10 +773,13 @@ export function shareSecretLibraryKnowledgeV18(input: {
     existing.understanding = reinforced;
     existing.learnedFromAgentId ??= speakerId;
   } else if (heardUnderstanding >= 0.04) {
+    // Hearing a concept is not reading the speaker's pages or living their practice.
+    const { pagesRead: _pages, lastPracticedWorldMinute: _practice, lastSharedWorldMinute: _shared,
+      bookId, ...spokenRecord } = speakerRecord;
     records.push({
-      ...speakerRecord,
+      ...spokenRecord,
       id: `oral:${listenerId}:${knowledgeId}:${world.calendar.elapsedWorldMinutes}`,
-      bookId: speakerRecord.bookId,
+      ...(bookId ? { bookId } : {}),
       sourceTitle: `${speakerRecord.sourceTitle}; устно от ${speaker.name}`,
       acquiredWorldMinute: world.calendar.elapsedWorldMinutes,
       understanding: heardUnderstanding,
@@ -765,8 +787,7 @@ export function shareSecretLibraryKnowledgeV18(input: {
       practiceCount: 0,
       sharedCount: 0,
       learnedFromAgentId: speakerId,
-      lastPracticedWorldMinute: undefined,
-      lastSharedWorldMinute: undefined,
+
     });
     v18.secretLibrary.knowledgeByAgentId[listenerId] = records.slice(
       -SECRET_LIBRARY_MAX_KNOWLEDGE_PER_AGENT_V18,

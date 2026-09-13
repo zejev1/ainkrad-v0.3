@@ -216,6 +216,8 @@ export interface AgentPositionState extends WorldPoint2D {
 }
 
 export interface AgentMovementState {
+  /** Occupancy of a real vessel; never permits walking through water. */
+  boatId?: string;
   targetPlaceId: string;
   purpose: AgentActionKind;
   waypoints: WorldPoint2D[];
@@ -630,6 +632,16 @@ export interface V15WorldItemState {
   description: string;
   /** A physical copy refers to one complete text stored once in the world. */
   bookId?: string;
+  /** Physical construction progress; not a skill or an instant reading reward. */
+  boat?: {
+    laborMinutes: number;
+    requiredLaborMinutes: number;
+    lastWorkedMinute: number;
+    completed: boolean;
+    condition?: number;
+    position?: WorldPoint2D;
+    journey?: import('../v21/BoatNavigation').BoatJourney;
+  };
 }
 
 export interface V15SmithingKnowledgeState {

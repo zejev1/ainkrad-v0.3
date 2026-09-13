@@ -37,11 +37,15 @@ export function residentExplorationTarget(
     known.has(planned.id) &&
     !EXCLUDED_TARGET_KINDS.has(planned.kind) &&
     (planned.settlementId !== homeSettlementId || WILDERNESS_KINDS.has(planned.kind)) &&
+    Math.hypot(planned.mapX - agent.position.x, planned.mapY - agent.position.y) < 40 &&
     canReach(planned.id)
   ) {
     return planned.id;
   }
 
+  // Surveying the surroundings is a choice alongside revisiting known places.
+  // It grants no knowledge and does not move the resident by itself.
+  if (choiceRoll !== undefined && choiceRoll < 0.55) return agent.locationId;
   const mapped = new Set(mappedPlaceIds);
   const candidates = [...known]
     .map((id) => world.places[id])
@@ -60,9 +64,7 @@ export function residentExplorationTarget(
           : 0;
       const wildernessRank = WILDERNESS_KINDS.has(place.kind) ? 1 : 0;
       const unmappedRank = mapped.has(place.id) ? 0 : 1;
-      const distance = home
-        ? Math.hypot(place.mapX - home.mapX, place.mapY - home.mapY)
-        : 0;
+      const distance = Math.hypot(place.mapX - agent.position.x, place.mapY - agent.position.y);
       const bearing = home
         ? Math.atan2(place.mapY - home.mapY, place.mapX - home.mapX)
         : 0;
@@ -82,7 +84,7 @@ export function residentExplorationTarget(
               ? agent.personality.resilience * 0.12
               : 0;
       return outsideRank * 1.2 + wildernessRank * 0.42 + unmappedRank * 0.9 +
-        Math.min(0.8, distance / 90) + directionalFit * 0.36 + terrainFit;
+        -Math.log1p(distance) * 0.9 + directionalFit * 0.36 + terrainFit;
   };
   candidates.sort((left, right) => score(right) - score(left) || left.id.localeCompare(right.id));
   if (candidates.length === 0) return agent.locationId;

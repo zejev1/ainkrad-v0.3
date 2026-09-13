@@ -366,7 +366,7 @@ app.innerHTML = `
   <div class="ainkrad-app">
     <header class="world-header">
       <div>
-        <p class="eyebrow">v0.3.21.10.2</p>
+        <p class="eyebrow">v0.3.21.10.4</p>
         <h1 id="world-title">Мир · уровень 1</h1>
       </div>
 
@@ -2408,7 +2408,7 @@ function renderMap(frame: Readonly<LiveWorldFrame>): void {
   const occupancy = new Map<string, AgentState[]>();
   for (const agent of agents) {
     const residents = occupancy.get(agent.locationId) ?? [];
-    residents.push(agent);
+    if (!agent.movement?.boatId) residents.push(agent);
     occupancy.set(agent.locationId, residents);
   }
 
@@ -2444,6 +2444,7 @@ function renderMap(frame: Readonly<LiveWorldFrame>): void {
     avatar.classList.toggle('is-selected', agent.id === selectedAgentId);
     avatar.setAttribute('aria-pressed', String(agent.id === selectedAgentId));
     avatar.classList.toggle('is-moving', isMoving);
+    avatar.classList.toggle('is-sailing', Boolean(agent.movement?.boatId));
     avatar.classList.toggle(
       'is-ambient',
       !isMoving && agent.lastAction !== 'rest',
@@ -2478,7 +2479,7 @@ function renderMap(frame: Readonly<LiveWorldFrame>): void {
     const actionBubble = avatar.querySelector<HTMLElement>('.action-bubble');
     if (actionBubble) {
       const visibleAction = agent.movement?.purpose ?? agent.lastAction;
-      actionBubble.textContent = visibleAction
+      actionBubble.textContent = agent.movement?.boatId ? '🛶' : visibleAction
         ? actionIcons[visibleAction]
         : '•';
     }

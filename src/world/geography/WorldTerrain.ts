@@ -63,10 +63,6 @@ export function repairWorldTerrain(world:WorldState):boolean {
     const biome=f.homelandBiomes[0],kind=biome==='forest'?'forest':biome==='mountains'?'mountains':biome==='swamp'?'swamp':'meadow';
     anchors.push({id:'foundation_'+race,...homelandCenterForWorld(world,race as AgentRace),kind,radius:12});
   }
-  // The founding shore exists physically before residents discover it.
-  // Reserving its bank grants no place knowledge or route to any resident.
-  anchors.push({id:'foundation_shore',x:92,y:88,kind:'shore',radius:2.5});
-  anchors.push({id:'foundation_forest',x:50,y:12,kind:'forest',radius:2});
   anchors.sort((a,b)=>a.id.localeCompare(b.id));
   const seed=hash(world.id+':terrain:'+String(world.epoch??1));
   const foundation:TerrainFoundation={version:1,epoch:world.epoch??1,seed,key:'',anchors};foundation.key='terrain-v1:'+hash(JSON.stringify(foundation));

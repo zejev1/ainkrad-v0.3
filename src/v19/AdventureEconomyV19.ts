@@ -1152,7 +1152,9 @@ export function tryAdventureMarketTradeV19(
       0.4,
       market.treasuryCoin / Math.max(0.05, unitPrice),
     );
-    const coin = quantity * unitPrice;
+    // Division followed by multiplication can exceed the balance by one ULP.
+    // Debit and credit the same bounded amount, never mint a rounding shortfall.
+    const coin = Math.min(market.treasuryCoin, quantity * unitPrice);
     if (quantity > 0.001 && coin > 0.001) {
       profile.carriedGoods[commodity] = Math.max(0, carried - quantity);
       market.commodityStocks[commodity] =

@@ -70,6 +70,8 @@ export function projectedResidentPosition(
   const phase = residentPhase(agent.id);
   const mobility = agent.life.physiology.mobility;
 
+  if(movement?.boatId)return {...agent.position};
+
   if (!movement) {
     const place = world.places[agent.locationId];
     const anchorX = place?.mapX ?? agent.position.x;

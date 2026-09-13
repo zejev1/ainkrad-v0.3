@@ -1,3 +1,6 @@
+import { REAL_HUMAN_BOOKS_V18 } from './SecretLibraryBooksV18';
+import { HISTORICAL_SOURCES } from './HistoricalSourceCorpus';
+import { HUMAN_KNOWLEDGE_CUTOFF_YEAR } from './HistoricalReading';
 /**
  * Ainkrad v18 — Secret Library External Knowledge Gateway
  *
@@ -48,6 +51,12 @@ export interface SecretLibrarySearchResultV18 {
   title: string;
   snippet: string;
   sourceUrl: string;
+}
+
+export function approvedHistoricalTitle(pageTitle: string): boolean {
+  const title = pageTitle.trim().replace(/_/g, ' ');
+  return REAL_HUMAN_BOOKS_V18.some(book => book.approximateYear <= HUMAN_KNOWLEDGE_CUTOFF_YEAR &&
+    [book.externalLookup.workTitle, book.originalTitle, book.title].some(candidate => candidate?.replace(/_/g, ' ') === title));
 }
 
 const WIKISOURCE_HOSTS_V18: Record<
@@ -205,7 +214,7 @@ export async function searchRealHumanTextsV18(
 
   const host = getWikisourceHostV18(language);
 
-  return (data.query?.search ?? []).map((entry) => ({
+  return (data.query?.search ?? []).filter(entry => approvedHistoricalTitle(entry.title)).map((entry) => ({
     title: entry.title,
 
     snippet: htmlToReadableTextV18(
@@ -241,6 +250,16 @@ export async function fetchRealHumanTextV18(
     );
   }
 
+  if (!approvedHistoricalTitle(cleanTitle)) {
+    throw new Error('Для этой редакции не подтверждена дата до 1901 года.');
+  }
+  // Verified originals remain available offline and cannot acquire modern
+  // supplements through changes to a live wiki page.
+  const cached = HISTORICAL_SOURCES.find(source => source.page === cleanTitle);
+  if (cached && language === 'ru') return {
+    source: 'wikisource', language, title: cached.page, sourceUrl: cached.sourceUrl,
+    text: cached.paragraphs.join('\n\n'), fetchedAtRealTime: Date.now(),
+  };
   const url = buildApiUrlV18(language, {
     action: 'parse',
     page: cleanTitle,
@@ -291,6 +310,9 @@ export async function fetchRealHumanTextV18(
     );
   }
 
+  if (!approvedHistoricalTitle(data.parse.title ?? cleanTitle)) {
+    throw new Error('Источник перенаправил запрос на непроверенное произведение.');
+  }
   let readableText =
     htmlToReadableTextV18(data.parse.text);
 

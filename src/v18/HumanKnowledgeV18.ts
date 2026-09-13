@@ -1,3 +1,4 @@
+import { HISTORICAL_READING_MATERIALS } from './HistoricalReading';
 /**
  * Ainkrad v18 — Human Knowledge Library
  *
@@ -44,6 +45,8 @@ export interface HumanKnowledgeEntryV18 {
    * из которой известно это знание.
    */
   historicalSource: string;
+  sourceUrl?: string;
+  sourceBookId?: string;
 
   /**
    * Приблизительная дата, когда человечество
@@ -75,6 +78,7 @@ export interface HumanKnowledgeEntryV18 {
  * настоящих человеческих знаний.
  */
 export const HUMAN_KNOWLEDGE_V18: HumanKnowledgeEntryV18[] = [
+  ...HISTORICAL_READING_MATERIALS,
   {
     id: 'agriculture-three-field-rotation',
     title: 'Трёхпольная система земледелия',

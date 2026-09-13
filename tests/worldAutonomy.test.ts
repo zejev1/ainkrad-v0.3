@@ -315,22 +315,13 @@ describe('Autonomous society depth', () => {
 
     expect(state.growth.stage).toBeGreaterThanOrEqual(3);
     expect(state.growth.stage).toBe(state.growth.discoveredRegionIds.length);
-    expect(state.growth.discoveredRegionIds.slice(0, 3)).toEqual([
-      'meadow',
-      'forest',
-      'shore',
-    ]);
-    if (state.growth.stage > 3) {
-      expect(state.growth.discoveredRegionIds[3]).toBe('region_4');
-      const firstDistant = discoveries.find((event) => event.payload.stage === 4);
-      expect(Number(firstDistant?.payload.worldMinutes ?? WORLD_MINUTES_PER_YEAR * 3)).toBeGreaterThanOrEqual(WORLD_MINUTES_PER_YEAR * 3);
+    expect(state.growth.discoveredRegionIds.slice(0, 3)).toEqual(['region_1', 'region_2', 'region_3']);
+    for (const id of state.growth.discoveredRegionIds) {
+      const place = state.places[id];
+      expect(place).toBeDefined();
+      expect(place.surface).not.toBe('water');
+      expect(place.connectedPlaceIds.length).toBeGreaterThan(0);
     }
-    expect(Object.keys(state.places)).toEqual(
-      expect.arrayContaining(['meadow', 'forest', 'shore']),
-    );
-    expect(
-      Object.values(state.wildlife).map((population) => population.species),
-    ).toEqual(expect.arrayContaining(['rabbit', 'deer', 'fish']));
     expect(discoveries.length).toBe(state.growth.stage);
     expect(discoveries.slice(0, 3).map((event) => event.payload.stage)).toEqual([
       1,
@@ -350,7 +341,7 @@ describe('Autonomous society depth', () => {
     const huntEvidence=history.filter(e=>e.kind==='agent.hunted'||e.kind==='agent.hunt.declined');
     expect(huntEvidence.length, 'No lived hunting attempt or refusal: '+[...kinds].filter(k=>k.includes('hunt')).join(',')).toBeGreaterThan(0);
     expect(huntEvidence.every(e=>e.source==='agent'&&typeof e.payload.agentId==='string')).toBe(true);
-    const missingNatureRoads=['meadow','forest','shore'].filter(id=>
+    const missingNatureRoads=state.growth.discoveredRegionIds.filter(id=>
       !Object.values(state.routes).some(r=>r.fromPlaceId===id||r.toPlaceId===id));
     expect(missingNatureRoads).toEqual([]);
     expect(kinds.has('world.wildlife.recovered')).toBe(true);

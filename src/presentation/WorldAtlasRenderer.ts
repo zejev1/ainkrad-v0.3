@@ -20,6 +20,17 @@ export class WorldAtlasRenderer {
     this.shapes=document.createElementNS(SVG,'g');this.svg.append(this.shapes);ground.replaceChildren(this.raster.canvas,this.svg);towns.replaceChildren();
   }
   render(world:Readonly<WorldState>,camera:Readonly<WorldMapCamera>):void {
+    const vessels=document.createDocumentFragment();
+    for(const item of Object.values(world.v15?.items??{}).filter(i=>i.boat?.completed).slice(0,120)) {
+      const place=item.locationId?world.places[item.locationId]:undefined;
+      const position=item.boat?.position??(place?{x:place.mapX,y:place.mapY}:undefined);
+      if(!position||!camera.visible(position.x,position.y)||camera.pixelsPerUnit<20)continue;
+      const p=camera.point(position.x,position.y),marker=document.createElement('span');
+      marker.className='atlas-boat';marker.dataset.boatId=item.id;marker.textContent='🛶';
+      marker.title=item.name+(item.boat?.journey?' · в пути':' · у берега');
+      marker.style.left=p.x+'%';marker.style.top=p.y+'%';vessels.append(marker);
+    }
+    this.towns.replaceChildren(vessels);
     this.index.update(world);
     const cameraKey=[this.index.revision,camera.x,camera.y,camera.pixelsPerUnit,camera.width,camera.height].join(':');
     if(cameraKey!==this.terrainKey) {this.paintTerrain(camera,world);this.terrainKey=cameraKey;}
