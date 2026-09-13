@@ -10092,8 +10092,28 @@ export class WorldEngine {
           continue;
         }
       }
+      const homePlaces = settlement.memberPlaceIds
+        .map((placeId) => this.state.places[placeId])
+        .filter((place): place is WorldPlace => place?.kind === 'home');
+      const homeCapacity = homePlaces.reduce(
+        (sum, place) => sum + place.capacity,
+        0,
+      );
+      // A genuine housing shortage stays salient. Residents still have to
+      // choose workshop labour and independently accept the project, but the
+      // engine must not sample that choice on only one arbitrary day each
+      // season and miss every real opportunity.
+      const housingReserve = Math.max(10, Math.ceil(residents.length * 0.25));
+      const needsHome = residents.length + housingReserve > homeCapacity;
+      const housingMaterialsReady = humanSettlement && needsHome &&
+        selectHumanHouseRecipeV21(
+          economy,
+          ensureSettlementResourcesV16(this.state, settlement.id),
+        ) !== undefined;
+      const decisionCooldownQuanta = housingMaterialsReady ? 1 : 24;
       if (economy.lastMaterialProjectDecisionWorldMinute !== undefined &&
-        worldMinutes - economy.lastMaterialProjectDecisionWorldMinute < 24 * V15_SIMULATION_QUANTUM_WORLD_MINUTES) continue;
+        worldMinutes - economy.lastMaterialProjectDecisionWorldMinute <
+          decisionCooldownQuanta * V15_SIMULATION_QUANTUM_WORLD_MINUTES) continue;
       const workers = this.shuffled(
         residents.filter(
           (agent) =>
@@ -10118,17 +10138,6 @@ export class WorldEngine {
         (placeId) => this.state.places[placeId]?.kind === 'workshop',
       ) ?? settlement.centerPlaceId;
 
-      const homePlaces = settlement.memberPlaceIds
-        .map((placeId) => this.state.places[placeId])
-        .filter((place): place is WorldPlace => place?.kind === 'home');
-      const homeCapacity = homePlaces.reduce(
-        (sum, place) => sum + place.capacity,
-        0,
-      );
-      // Households maintain a proportional reserve, so a growing settlement
-      // does not wait for literal homelessness before preparing family space.
-      const housingReserve = Math.max(10, Math.ceil(residents.length * 0.25));
-      const needsHome = residents.length + housingReserve > homeCapacity;
       const neededFarmingTools = Math.max(1, Math.ceil(residents.length / 8));
       const neededConstructionTools = Math.max(
         1,

@@ -281,7 +281,9 @@ function utterancesForTopic(
     questions: readonly string[],
   ): string => [
     pick(openings, seed, 'opening'),
-    pick(details, seed, 'detail'),
+    knowledge && learned && details.includes(learned)
+      ? learned
+      : pick(details, seed, 'detail'),
     pick(questions, seed, 'question'),
   ].filter(Boolean).join(' ');
 
