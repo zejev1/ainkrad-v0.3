@@ -30,11 +30,7 @@ export function learnedActionAdjustment(context: Readonly<ResidentLearningContex
     const relevance=(m.placeId===agent.locationId ? 1 : 0.7)/(1+ageYears*0.12);
     const belief=clamp(predictedEffect(m,problem)/0.08,-1,1);
     const transferConfidence=m.problem===problem ? m.confidence : Math.min(0.35,m.confidence);
-    // Repeated confirmation is memory, not an endlessly growing reason to do
-    // the same thing. After a method is well established its decision weight
-    // tapers, leaving room for other personally plausible solutions.
-    const saturation = m.trials <= 8 ? 1 : Math.max(0.22, 8 / m.trials);
-    sum += belief*transferConfidence*relevance*saturation; weight+=relevance;
+    sum += belief*transferConfidence*relevance; weight+=relevance;
   }
   return clamp(sum/Math.max(1,weight)*0.32,-0.32,0.32);
 }

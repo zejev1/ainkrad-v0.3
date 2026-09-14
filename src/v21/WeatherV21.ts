@@ -112,7 +112,7 @@ export function worldWeatherV21(
     severity,
     comfort,
     comfortLabel,
-    outdoorDecisionPenalty: severity * 0.28,
+    outdoorDecisionPenalty: severity * 0.72,
     walkingScale: Math.max(0.48, 1 - severity * 0.46),
     safetyModifier: -severity * 0.24,
     habitatModifier: kind === 'rain' || kind === 'snow'
