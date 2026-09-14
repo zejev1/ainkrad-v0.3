@@ -1,10 +1,10 @@
-import type { AgentState, V21BodyState, WorldPlaceKind, WorldState } from '../world/types';
+import type { AgentState, V21BodyState, WorldPlaceKind, WorldState, WorldV21State } from '../world/types';
 import { cancelLearningAttempt } from '../world/learning/ResidentLearning';
 import { ensureEmbodiedWorldV21 } from './EmbodiedWorldV21';
 import { worldWeatherV21 } from './WeatherV21';
 
-// Sleep is a body constraint, not a Cardinal decision. All expensive context is
-// captured once when sleep begins; sleeping itself is only a timestamp check.
+// Sleep is a body constraint, not a Cardinal decision. Expensive context is
+// captured once when sleep begins; sleeping itself is a timestamp comparison.
 const SIX_HOURS = 6 * 60;
 const FATIGUE_SIGNAL_THRESHOLD = 0.10;
 const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
@@ -24,8 +24,16 @@ type SleepAwareBody = V21BodyState & {
   lastFatigueSignalPercent?: number;
 };
 
+type SleepAwareWorldV21 = WorldV21State & {
+  nextSleepWakeWorldMinute?: number;
+};
+
+function sleepWorld(world: Readonly<WorldState>): SleepAwareWorldV21 | undefined {
+  return world.v21 as SleepAwareWorldV21 | undefined;
+}
+
 function existingSleepBody(world: Readonly<WorldState>, agentId: string): SleepAwareBody | undefined {
-  return world.v21?.bodiesByAgentId?.[agentId] as SleepAwareBody | undefined;
+  return sleepWorld(world)?.bodiesByAgentId?.[agentId] as SleepAwareBody | undefined;
 }
 
 /** Hot-path lookup: O(1) once the embodied world exists. */
@@ -131,15 +139,23 @@ export function startBodySleepV21(
   // Weather/equipment/comfort are captured once; no recomputation while sleeping.
   const quality = sleepQualityV21(world, agent, forced);
   const now = world.calendar.elapsedWorldMinutes;
+  const wakesAtWorldMinute = now + SIX_HOURS;
   body.sleep = {
     status: 'sleeping',
     startedWorldMinute: now,
-    wakesAtWorldMinute: now + SIX_HOURS,
+    wakesAtWorldMinute,
     forced,
     quality,
     targetEnergy: quality,
     placeId: agent.locationId,
   };
+  const v21 = sleepWorld(world);
+  if (v21) {
+    v21.nextSleepWakeWorldMinute = Math.min(
+      v21.nextSleepWakeWorldMinute ?? Number.POSITIVE_INFINITY,
+      wakesAtWorldMinute,
+    );
+  }
   resetInterruptedActivity(world, agent);
   agent.lastAction = 'rest';
   return true;
@@ -163,43 +179,44 @@ export function advanceBodySleepV21(world: WorldState, agent: AgentState): boole
   if (!body.sleep && agent.energy <= 0) startBodySleepV21(world, agent, true);
   if (!body.sleep) return false;
   if (world.calendar.elapsedWorldMinutes < body.sleep.wakesAtWorldMinute) return true;
-  wakeBodyAtV21(agent, body);
-  return false;
+  wakeDueSleepingBodiesV21(world, world.calendar.elapsedWorldMinutes);
+  return isBodySleepingV21(world, agent.id);
+}
+
+/** O(1) read used to partition physical time exactly at the next wake. */
+export function nextBodyWakeWorldMinuteV21(world: Readonly<WorldState>): number | undefined {
+  return sleepWorld(world)?.nextSleepWakeWorldMinute;
 }
 
 /**
- * Continuous-clock wake processing. One linear scan per physical segment,
- * no events, logging, cloning, RNG or cognition.
+ * Runs only when the cached next wake deadline is reached. It scans bodies once,
+ * wakes everybody due, and recomputes the next deadline. No logs, clones or RNG.
  */
 export function wakeDueSleepingBodiesV21(world: WorldState, throughWorldMinute: number): number {
-  const bodies = world.v21?.bodiesByAgentId;
-  if (!bodies) return 0;
+  const v21 = sleepWorld(world);
+  if (!v21 || v21.nextSleepWakeWorldMinute === undefined ||
+      v21.nextSleepWakeWorldMinute > throughWorldMinute) return 0;
+
   let woke = 0;
-  for (const [agentId, rawBody] of Object.entries(bodies)) {
+  let nextWake = Number.POSITIVE_INFINITY;
+  for (const [agentId, rawBody] of Object.entries(v21.bodiesByAgentId)) {
     const body = rawBody as SleepAwareBody;
     const sleep = body.sleep;
-    if (!sleep || sleep.wakesAtWorldMinute > throughWorldMinute) continue;
-    const agent = world.agents[agentId];
-    if (!agent?.life.alive) {
-      body.sleep = undefined;
-      continue;
+    if (!sleep) continue;
+    if (sleep.wakesAtWorldMinute <= throughWorldMinute) {
+      const agent = world.agents[agentId];
+      if (agent?.life.alive) {
+        wakeBodyAtV21(agent, body);
+        woke += 1;
+      } else {
+        body.sleep = undefined;
+      }
+    } else {
+      nextWake = Math.min(nextWake, sleep.wakesAtWorldMinute);
     }
-    wakeBodyAtV21(agent, body);
-    woke += 1;
   }
+  v21.nextSleepWakeWorldMinute = Number.isFinite(nextWake) ? nextWake : undefined;
   return woke;
-}
-
-/** Nearest physical wake boundary; read-only and allocation-free apart from iteration. */
-export function nextBodyWakeWorldMinuteV21(world: Readonly<WorldState>): number | undefined {
-  const bodies = world.v21?.bodiesByAgentId;
-  if (!bodies) return undefined;
-  let nearest = Number.POSITIVE_INFINITY;
-  for (const rawBody of Object.values(bodies)) {
-    const wake = (rawBody as SleepAwareBody).sleep?.wakesAtWorldMinute;
-    if (wake !== undefined && wake < nearest) nearest = wake;
-  }
-  return Number.isFinite(nearest) ? nearest : undefined;
 }
 
 export function bodySleepStateV21(
