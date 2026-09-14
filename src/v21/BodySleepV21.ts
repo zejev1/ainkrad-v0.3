@@ -3,7 +3,8 @@ import { cancelLearningAttempt } from '../world/learning/ResidentLearning';
 import { ensureEmbodiedWorldV21 } from './EmbodiedWorldV21';
 import { worldWeatherV21 } from './WeatherV21';
 
-// Body sleep is physiology: it constrains execution without choosing the resident's intentions.
+// Sleep is a body constraint, not a Cardinal decision. All expensive context is
+// captured once when sleep begins; sleeping itself is only a timestamp check.
 const SIX_HOURS = 6 * 60;
 const FATIGUE_SIGNAL_THRESHOLD = 0.10;
 const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
@@ -23,12 +24,18 @@ type SleepAwareBody = V21BodyState & {
   lastFatigueSignalPercent?: number;
 };
 
+function existingSleepBody(world: Readonly<WorldState>, agentId: string): SleepAwareBody | undefined {
+  return world.v21?.bodiesByAgentId?.[agentId] as SleepAwareBody | undefined;
+}
+
+/** Hot-path lookup: O(1) once the embodied world exists. */
 function sleepBody(world: WorldState, agent: Readonly<AgentState>): SleepAwareBody {
-  const state = ensureEmbodiedWorldV21(world);
-  return state.bodiesByAgentId[agent.id] as SleepAwareBody;
+  return existingSleepBody(world, agent.id) ??
+    (ensureEmbodiedWorldV21(world).bodiesByAgentId[agent.id] as SleepAwareBody);
 }
 
 function hasSleepingKit(world: Readonly<WorldState>, agent: Readonly<AgentState>): boolean {
+  // Inventory is scanned once at sleep start, never while asleep.
   return Object.values(world.v15?.items ?? {}).some((item) => {
     if (item.ownerAgentId !== agent.id) return false;
     const text = `${item.name} ${item.description}`.toLowerCase();
@@ -77,6 +84,10 @@ function resetInterruptedActivity(world: WorldState, agent: AgentState): void {
   cancelLearningAttempt(agent, world.calendar.elapsedWorldMinutes);
 }
 
+export function isBodySleepingV21(world: Readonly<WorldState>, agentId: string): boolean {
+  return existingSleepBody(world, agentId)?.sleep?.status === 'sleeping';
+}
+
 export function bodyFatigueSignalPercentV21(
   world: WorldState,
   agent: Readonly<AgentState>,
@@ -93,7 +104,7 @@ export function bodyFatigueSignalPercentV21(
   return body.lastFatigueSignalPercent;
 }
 
-/** Body signal only: it raises the salience of sleep without choosing it for the mind. */
+/** Body signal only: it raises sleep salience without choosing for the mind. */
 export function bodyFatigueDecisionBoostV21(world: WorldState, agent: Readonly<AgentState>): number {
   const signal = bodyFatigueSignalPercentV21(world, agent);
   if (signal === undefined || signal <= 0) return 0;
@@ -116,6 +127,8 @@ export function startBodySleepV21(
   if (!agent.life.alive) return false;
   const body = sleepBody(world, agent);
   if (body.sleep?.status === 'sleeping') return true;
+
+  // Weather/equipment/comfort are captured once; no recomputation while sleeping.
   const quality = sleepQualityV21(world, agent, forced);
   const now = world.calendar.elapsedWorldMinutes;
   body.sleep = {
@@ -132,10 +145,16 @@ export function startBodySleepV21(
   return true;
 }
 
-/**
- * Physical gate executed before ordinary cognition. At zero energy the body
- * collapses where it is. While sleeping, ordinary decisions cannot run.
- */
+function wakeBodyAtV21(agent: AgentState, body: SleepAwareBody): void {
+  const sleep = body.sleep;
+  if (!sleep) return;
+  agent.energy = Math.max(agent.energy, sleep.targetEnergy);
+  agent.stress = clamp01(agent.stress - (0.05 + sleep.quality * 0.1));
+  body.sleep = undefined;
+  if (agent.energy > FATIGUE_SIGNAL_THRESHOLD) body.lastFatigueSignalPercent = undefined;
+}
+
+/** Physical gate used at semantic decisions. O(1) for an existing body. */
 export function advanceBodySleepV21(world: WorldState, agent: AgentState): boolean {
   if (!agent.life.alive) return false;
   const body = sleepBody(world, agent);
@@ -143,22 +162,49 @@ export function advanceBodySleepV21(world: WorldState, agent: AgentState): boole
 
   if (!body.sleep && agent.energy <= 0) startBodySleepV21(world, agent, true);
   if (!body.sleep) return false;
-
-  const now = world.calendar.elapsedWorldMinutes;
-  if (now < body.sleep.wakesAtWorldMinute) return true;
-
-  const quality = body.sleep.quality;
-  agent.energy = Math.max(agent.energy, body.sleep.targetEnergy);
-  agent.stress = clamp01(agent.stress - (0.05 + quality * 0.1));
-  body.sleep = undefined;
-  if (agent.energy > FATIGUE_SIGNAL_THRESHOLD) body.lastFatigueSignalPercent = undefined;
+  if (world.calendar.elapsedWorldMinutes < body.sleep.wakesAtWorldMinute) return true;
+  wakeBodyAtV21(agent, body);
   return false;
 }
 
+/**
+ * Continuous-clock wake processing. One linear scan per physical segment,
+ * no events, logging, cloning, RNG or cognition.
+ */
+export function wakeDueSleepingBodiesV21(world: WorldState, throughWorldMinute: number): number {
+  const bodies = world.v21?.bodiesByAgentId;
+  if (!bodies) return 0;
+  let woke = 0;
+  for (const [agentId, rawBody] of Object.entries(bodies)) {
+    const body = rawBody as SleepAwareBody;
+    const sleep = body.sleep;
+    if (!sleep || sleep.wakesAtWorldMinute > throughWorldMinute) continue;
+    const agent = world.agents[agentId];
+    if (!agent?.life.alive) {
+      body.sleep = undefined;
+      continue;
+    }
+    wakeBodyAtV21(agent, body);
+    woke += 1;
+  }
+  return woke;
+}
+
+/** Nearest physical wake boundary; read-only and allocation-free apart from iteration. */
+export function nextBodyWakeWorldMinuteV21(world: Readonly<WorldState>): number | undefined {
+  const bodies = world.v21?.bodiesByAgentId;
+  if (!bodies) return undefined;
+  let nearest = Number.POSITIVE_INFINITY;
+  for (const rawBody of Object.values(bodies)) {
+    const wake = (rawBody as SleepAwareBody).sleep?.wakesAtWorldMinute;
+    if (wake !== undefined && wake < nearest) nearest = wake;
+  }
+  return Number.isFinite(nearest) ? nearest : undefined;
+}
+
 export function bodySleepStateV21(
-  world: WorldState,
+  world: Readonly<WorldState>,
   agentId: string,
 ): BodySleepStateV21 | undefined {
-  const body = ensureEmbodiedWorldV21(world).bodiesByAgentId[agentId] as SleepAwareBody | undefined;
-  return body?.sleep;
+  return existingSleepBody(world, agentId)?.sleep;
 }
