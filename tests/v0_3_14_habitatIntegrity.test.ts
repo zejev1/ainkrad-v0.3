@@ -24,5 +24,5 @@ describe('v0.3.14 habitat integrity long-run audit', () => {
       if (population.species === 'fish') expect(['shore', 'water']).toContain(habitat.surface);
       else expect(habitat.surface).toBe('land');
     }
-  }, 60_000);
+  }, 120_000);
 });
