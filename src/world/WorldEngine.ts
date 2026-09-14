@@ -60,6 +60,7 @@ import {
   studyFoundingPrimerV21,
 } from '../v21/FoundingPrimerV21';
 import { worldWeatherV21 } from '../v21/WeatherV21';
+import { advanceBodySleepV21, bodyFatigueDecisionBoostV21, bodyFatigueMobilityScaleV21, startBodySleepV21 } from '../v21/BodySleepV21';
 import {
   advanceEmbodiedWorldV21,
   assertEmbodiedWorldV21,
@@ -7268,6 +7269,8 @@ export class WorldEngine {
     now: number,
   ): void {
     if (!canResidentAct(agent)) return;
+    // The body, not Cardinal, can suspend cognition when physically exhausted.
+    if (advanceBodySleepV21(this.state, agent)) return;
     // Territorial danger is evaluated while the resident is physically
     // present, before a new route can make that presence disappear. A person
     // travelling between places is not treated as having reached the target;
@@ -7829,6 +7832,7 @@ export class WorldEngine {
           agent.stress * 0.42 +
           Math.max(0, 0.2 - agent.resources) * 2.4 +
           (1 - body.recovery) * 0.22 +
+          bodyFatigueDecisionBoostV21(this.state, agent) +
           goalBoost('recover'),
       },
       {
@@ -8101,15 +8105,8 @@ export class WorldEngine {
       };
     }
 
-    // Severe physiological pressure is a constraint, not a central script.
-    if (agent.energy < 0.12) {
-      return {
-        action: 'rest',
-        dominantAction: 'rest',
-        consideredActionCount: 1,
-        openness: 0,
-      };
-    }
+    // Between 10% and 1% the body warns and slows down, but the mind may
+    // still ignore fatigue. At 0% advanceBodySleepV21 physically suspends action.
     if (resourceSecurity < 0.16) {
       const survivalChoices = scores
         .filter(
@@ -8776,6 +8773,9 @@ export class WorldEngine {
 
   private performRest(agent: AgentState, now: number): void {
     if (this.travelBeforeAction(agent, agent.homeId, 'rest', now)) return;
+    // Below 10% a voluntary rest becomes real six-hour sleep. The resident
+    // chose to sleep; only collapse at zero is compulsory.
+    if (agent.energy <= 0.1 && startBodySleepV21(this.state, agent, false)) return;
     agent.energy = clamp01(
       agent.energy +
         (0.18 + agent.life.physiology.recovery * 0.14) *
@@ -15612,6 +15612,7 @@ export class WorldEngine {
     const mobilityScale =
       (0.8 + agent.life.physiology.mobility * 0.4) *
       bodyMobilityScaleV21(this.state, agent.id) *
+      bodyFatigueMobilityScaleV21(agent) *
       exposedWeatherScale *
       (hasDivineGiftV19(this.state, agent.id, 'demon_king_hero') ? 5 : 1);
     const movementBudget =
