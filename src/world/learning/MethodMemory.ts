@@ -30,7 +30,11 @@ export function learnedActionAdjustment(context: Readonly<ResidentLearningContex
     const relevance=(m.placeId===agent.locationId ? 1 : 0.7)/(1+ageYears*0.12);
     const belief=clamp(predictedEffect(m,problem)/0.08,-1,1);
     const transferConfidence=m.problem===problem ? m.confidence : Math.min(0.35,m.confidence);
-    sum += belief*transferConfidence*relevance; weight+=relevance;
+    // Repetition is evidence, but hundreds of confirmations must not become
+    // a permanent behavioural lock. Keep the established behaviour unchanged
+    // for ordinary histories; only very over-rehearsed methods taper.
+    const saturation = m.trials <= 120 ? 1 : Math.max(0.2, 120 / m.trials);
+    sum += belief*transferConfidence*relevance*saturation; weight+=relevance;
   }
   return clamp(sum/Math.max(1,weight)*0.32,-0.32,0.32);
 }
@@ -65,4 +69,3 @@ function knowledgeTrialAdvice(context: Readonly<ResidentLearningContext>, agent:
     candidateIds.has(k.knowledgeId)&&problemSubjects[problem].includes(k.category));
   return understood.length ? Math.min(0.045,understood.reduce((n,k)=>n+k.understanding,0)*0.025) : 0;
 }
-

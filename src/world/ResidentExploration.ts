@@ -24,6 +24,16 @@ export function residentExplorationTarget(
   mappedPlaceIds: readonly string[] = [],
   choiceRoll?: number,
 ): string {
+  // Repair a stale persisted dungeon plan before normal exploration target
+  // selection. Goblins/orcs are not adventure-candidate peoples in v19, but
+  // older saves could retain a dungeon_expedition plan and keep reselecting it.
+  if (
+    agent.plan?.kind === 'dungeon_expedition' &&
+    !['human', 'elf', 'dwarf'].includes(agent.race ?? 'human')
+  ) {
+    (agent as AgentState).plan = undefined;
+  }
+
   const known = new Set(agent.knownPlaceIds ?? []);
   known.add(agent.locationId);
   known.add(agent.homeId);
@@ -43,9 +53,20 @@ export function residentExplorationTarget(
     return planned.id;
   }
 
-  // Surveying the surroundings is a choice alongside revisiting known places.
-  // It grants no knowledge and does not move the resident by itself.
-  if (choiceRoll !== undefined && choiceRoll < 0.55) return agent.locationId;
+  // Local surveying remains normal early behaviour. But if a resident has
+  // spent many recent attempts looping on the same distress/recovery pattern,
+  // an independently chosen explore action should no longer collapse back into
+  // staying in exactly the same place. This only unlocks a target the resident
+  // already knows and can physically reach below.
+  const recentLearning = agent.learning?.recent ?? [];
+  const recentDistressLoop = recentLearning.length >= 12 &&
+    recentLearning.slice(-12).filter((attempt) =>
+      attempt.problem === 'distress' &&
+      ['rest', 'relax', 'reflect'].includes(attempt.action),
+    ).length >= 9;
+  if (!recentDistressLoop && choiceRoll !== undefined && choiceRoll < 0.55) {
+    return agent.locationId;
+  }
   const mapped = new Set(mappedPlaceIds);
   const candidates = [...known]
     .map((id) => world.places[id])
