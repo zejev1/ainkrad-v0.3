@@ -16,8 +16,8 @@ jobs:
           ref: fix/body-sleep-cycle
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-      - name: Patch WorldEngine sleep physiology hooks
+          node-version: 22
+      - name: Patch optimized body sleep integration
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -33,107 +33,77 @@ jobs:
             s=s.replace(old,new,1)
 
           once(
-          "import { worldWeatherV21 } from '../v21/WeatherV21';\n",
-          "import { worldWeatherV21 } from '../v21/WeatherV21';\nimport { advanceBodySleepV21, bodyFatigueDecisionBoostV21, bodyFatigueMobilityScaleV21, startBodySleepV21 } from '../v21/BodySleepV21';\n",
-          'sleep import')
+          "import { advanceBodySleepV21, bodyFatigueDecisionBoostV21, bodyFatigueMobilityScaleV21, startBodySleepV21 } from '../v21/BodySleepV21';\n",
+          "import { advanceBodySleepV21, bodyFatigueDecisionBoostV21, bodyFatigueMobilityScaleV21, isBodySleepingV21, nextBodyWakeWorldMinuteV21, startBodySleepV21, wakeDueSleepingBodiesV21 } from '../v21/BodySleepV21';\n",
+          'sleep optimized import')
 
           once(
-          "    if (!canResidentAct(agent)) return;\n",
-          "    if (!canResidentAct(agent)) return;\n    // The body, not Cardinal, can suspend cognition when physically exhausted.\n    if (advanceBodySleepV21(this.state, agent)) return;\n",
-          'stepAgent sleep gate')
+          "      const segmentWorldMinutes = Math.min(\n        remainingWorldMinutes,\n        untilBoundary,\n      );\n      this.advancePhysicalMovementForWorldMinutes(segmentWorldMinutes);",
+          "      let segmentWorldMinutes = Math.min(\n        remainingWorldMinutes,\n        untilBoundary,\n      );\n      const segmentStartWorldMinute = clock.simulatedWorldMinutes + clock.pendingWorldMinutes;\n      wakeDueSleepingBodiesV21(this.state, segmentStartWorldMinute);\n      const nextWakeWorldMinute = nextBodyWakeWorldMinuteV21(this.state);\n      if (nextWakeWorldMinute !== undefined &&\n          nextWakeWorldMinute > segmentStartWorldMinute + PHYSICAL_TIME_EPSILON &&\n          nextWakeWorldMinute < segmentStartWorldMinute + segmentWorldMinutes - PHYSICAL_TIME_EPSILON) {\n        segmentWorldMinutes = nextWakeWorldMinute - segmentStartWorldMinute;\n      }\n      this.advancePhysicalMovementForWorldMinutes(segmentWorldMinutes);",
+          'partition physical time at wake')
 
           once(
-          "      bodyMobilityScaleV21(this.state, agent.id) *\n      exposedWeatherScale *",
-          "      bodyMobilityScaleV21(this.state, agent.id) *\n      bodyFatigueMobilityScaleV21(agent) *\n      exposedWeatherScale *",
-          'fatigue mobility')
+          "      this.state.calendar.elapsedWorldMinutes =\n        clock.simulatedWorldMinutes + clock.pendingWorldMinutes;\n\n      if (clock.pendingWorldMinutes + PHYSICAL_TIME_EPSILON < quantum) {",
+          "      this.state.calendar.elapsedWorldMinutes =\n        clock.simulatedWorldMinutes + clock.pendingWorldMinutes;\n      wakeDueSleepingBodiesV21(this.state, this.state.calendar.elapsedWorldMinutes);\n\n      if (clock.pendingWorldMinutes + PHYSICAL_TIME_EPSILON < quantum) {",
+          'wake at exact physical boundary')
 
           once(
-          "          (1 - body.recovery) * 0.22 +\n          goalBoost('recover'),",
-          "          (1 - body.recovery) * 0.22 +\n          bodyFatigueDecisionBoostV21(this.state, agent) +\n          goalBoost('recover'),",
-          'fatigue decision signal')
+          "      for (const agent of livingAgents) {\n        this.applyPassiveNeeds(agent, effectiveEnvironment);\n      }",
+          "      for (const agent of livingAgents) {\n        // Sleeping bodies bypass hunger/stress/cognition work for this semantic\n        // boundary. A zero-energy body that collapses here is also blocked from\n        // all later work in the same boundary.\n        if (advanceBodySleepV21(this.state, agent)) continue;\n        this.applyPassiveNeeds(agent, effectiveEnvironment);\n        if (agent.energy <= 0) advanceBodySleepV21(this.state, agent);\n      }",
+          'skip passive needs while sleeping')
 
           once(
-          "    // Severe physiological pressure is a constraint, not a central script.\n    if (agent.energy < 0.12) {\n      return {\n        action: 'rest',\n        dominantAction: 'rest',\n        consideredActionCount: 1,\n        openness: 0,\n      };\n    }\n",
-          "    // Between 10% and 1% the body warns and slows down, but the mind may\n    // still ignore fatigue. At 0% advanceBodySleepV21 physically suspends action.\n",
-          'remove forced rest below 12 percent')
+          "        if (!deliberatingAgentIds.has(agent.id)) {\n          this.continueOrdinaryLifeBetweenDeliberations(agent, effectiveEnvironment);\n        }",
+          "        if (!deliberatingAgentIds.has(agent.id) && !isBodySleepingV21(this.state, agent.id)) {\n          this.continueOrdinaryLifeBetweenDeliberations(agent, effectiveEnvironment);\n        }",
+          'skip routine life while sleeping')
 
           once(
-          "  private performRest(agent: AgentState, now: number): void {\n    if (this.travelBeforeAction(agent, agent.homeId, 'rest', now)) return;\n    agent.energy = clamp01(",
-          "  private performRest(agent: AgentState, now: number): void {\n    if (this.travelBeforeAction(agent, agent.homeId, 'rest', now)) return;\n    // Below 10% a voluntary rest becomes real six-hour sleep. The resident\n    // chose to sleep; only collapse at zero is compulsory.\n    if (agent.energy <= 0.1 && startBodySleepV21(this.state, agent, false)) return;\n    agent.energy = clamp01(",
-          'voluntary sleep')
+          "      if (!agent || !hasLibraryAdmission(this.state, agent, id)) continue;\n      if (agent.locationId === id && !agent.movement) {",
+          "      if (!agent || !hasLibraryAdmission(this.state, agent, id) ||\n          isBodySleepingV21(this.state, agent.id)) continue;\n      if (agent.locationId === id && !agent.movement) {",
+          'skip library study while sleeping')
 
           p.write_text(s)
           PY
-      - name: Add focused tests
+      - name: Keep home sleep fully restorative
         run: |
-          cat > tests/v0_3_22_bodySleep.test.ts <<'TS'
-          import { describe, expect, it } from 'vitest';
-          import { advanceBodySleepV21, bodyFatigueDecisionBoostV21, bodyFatigueMobilityScaleV21, bodySleepStateV21, startBodySleepV21 } from '../src/v21/BodySleepV21';
-          import type { AgentState, WorldState } from '../src/world/types';
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('src/v21/BodySleepV21.ts')
+          s=p.read_text()
+          old="  if (ownHome) return clamp01(0.96 + recovery * 0.04 - weatherPenalty * 0.15);"
+          new="  if (ownHome) return 1;"
+          if old in s:
+            s=s.replace(old,new,1)
+          p.write_text(s)
+          PY
+      - name: Add focused sleep performance tests
+        run: |
+          cat >> tests/v0_3_22_bodySleep.test.ts <<'TS'
 
-          function agent(overrides: Partial<AgentState> = {}): AgentState {
-            return {
-              id:'a',name:'A',origin:'native',race:'human',energy:0.1,stress:0.2,resources:0.8,socialDrive:0.5,
-              personality:{sociability:.5,diligence:.5,curiosity:.5,generosity:.5,resilience:.5,riskTolerance:.5},
-              life:{bornAt:0,ageYears:24,lifespanYears:80,stage:'adult',alive:true,health:1,physiology:{strength:.6,endurance:.6,mobility:.6,recovery:.6},generation:0,parentIds:[],childIds:[]},
-              mind:{identityId:'a',continuity:1,autonomy:1,memoryCoherence:1,emotions:{joy:.5,fear:0,grief:0,awe:0,hope:.5},values:{care:.5,freedom:.5,knowledge:.5,tradition:.5,ambition:.5},beliefs:{worldTrust:.5,divinePresence:0,fate:0,afterlife:0}},
-              needs:{belonging:.7,purpose:.7},skills:{gathering:.1,hunting:.1,craft:.1,social:.1,exploration:.1},goal:{kind:'recover',strength:.5,since:0},
-              homeId:'home',locationId:'home',position:{x:0,y:0,layerId:'surface'},lastMeaningfulEventAt:0,
-              ...overrides,
-            };
-          }
-          function world(a:AgentState):WorldState {
-            return {id:'w',now:0,revision:0,rulesVersion:'ainkrad-world-rules-0.3.19',calendar:{elapsedWorldMinutes:0},agents:{a},relationships:{},places:{home:{id:'home',name:'Home',kind:'home',capacity:4,biome:'settlement',mapX:0,mapY:0,connectedPlaceIds:[],fertility:1,danger:0,surface:'land'}},routes:{},wildlife:{},settlements:{},growth:{stage:0,explorationProgress:0,lastExpansionAt:0,discoveredRegionIds:[],frontierSequence:0},population:{nextAgentSequence:2,births:0,deaths:0},environment:{resourcePool:1,resourceRegenerationRate:1,socialOpportunity:1,safetySupport:1,habitatSupport:1},cosmology:{mysteryLevel:0,omenCount:0,traditions:[],deities:{}},governance:{constitutionVersion:'ainkrad-constitution-0.3.19',authorityRevision:0,protectedPersonhoodDomains:['identity','memory','agency','values','relationships'],laws:{}},determinism:{rngState:1,eventSequence:0}} as unknown as WorldState;
-          }
-
-          describe('body-driven sleep',()=>{
-            it('warns progressively below ten percent without forcing a choice',()=>{
-              const a=agent({energy:.1}),w=world(a);
-              const first=bodyFatigueDecisionBoostV21(w,a);
-              a.energy=.05;
-              const later=bodyFatigueDecisionBoostV21(w,a);
-              expect(first).toBeGreaterThan(0);
-              expect(later).toBeGreaterThan(first);
-              expect(bodyFatigueMobilityScaleV21(a)).toBeLessThan(.5);
-              expect(bodySleepStateV21(w,a.id)).toBeUndefined();
-            });
-            it('collapses at zero and wakes after six world-hours',()=>{
+          describe('body sleep cost discipline',()=>{
+            it('does no repeated work while sleep deadline is unchanged',()=>{
               const a=agent({energy:0}),w=world(a);
-              expect(advanceBodySleepV21(w,a)).toBe(true);
-              const sleep=bodySleepStateV21(w,a.id)!;
-              expect(sleep.forced).toBe(true);
-              expect(sleep.wakesAtWorldMinute-sleep.startedWorldMinute).toBe(360);
-              w.calendar.elapsedWorldMinutes=359;
-              expect(advanceBodySleepV21(w,a)).toBe(true);
-              w.calendar.elapsedWorldMinutes=360;
-              expect(advanceBodySleepV21(w,a)).toBe(false);
-              expect(a.energy).toBeGreaterThan(0);
-            });
-            it('home sleep restores more than forced outdoor collapse',()=>{
-              const homeAgent=agent({energy:.05}),homeWorld=world(homeAgent);
-              startBodySleepV21(homeWorld,homeAgent,false);
-              const homeTarget=bodySleepStateV21(homeWorld,'a')!.targetEnergy;
-              const fieldAgent=agent({energy:0,locationId:'field',position:{x:1,y:1,layerId:'surface'}});
-              const fieldWorld=world(fieldAgent);
-              fieldWorld.places.field={id:'field',name:'Field',kind:'commons',capacity:5,biome:'plains',mapX:1,mapY:1,connectedPlaceIds:[],fertility:.5,danger:.1,surface:'land'};
-              advanceBodySleepV21(fieldWorld,fieldAgent);
-              const fieldTarget=bodySleepStateV21(fieldWorld,'a')!.targetEnergy;
-              expect(homeTarget).toBeGreaterThanOrEqual(.95);
-              expect(fieldTarget).toBeLessThanOrEqual(.6);
-              expect(homeTarget).toBeGreaterThan(fieldTarget);
+              advanceBodySleepV21(w,a);
+              const first=bodySleepStateV21(w,'a')!;
+              expect(first.wakesAtWorldMinute).toBe(360);
+              for(let minute=1;minute<360;minute+=17){
+                w.calendar.elapsedWorldMinutes=minute;
+                expect(advanceBodySleepV21(w,a)).toBe(true);
+                expect(bodySleepStateV21(w,'a')!.wakesAtWorldMinute).toBe(360);
+              }
             });
           });
           TS
       - name: Typecheck and focused tests
         run: |
-          npm ci
+          npm ci --no-audit --no-fund
           npm run typecheck
           npx vitest run tests/v0_3_22_bodySleep.test.ts
-      - name: Commit generated patch
+      - name: Commit generated optimization
         run: |
           git config user.name zejev1
           git config user.email 128316040+zejev1@users.noreply.github.com
-          git add src/world/WorldEngine.ts tests/v0_3_22_bodySleep.test.ts
+          git add src/world/WorldEngine.ts src/v21/BodySleepV21.ts tests/v0_3_22_bodySleep.test.ts
           if git diff --cached --quiet; then exit 0; fi
-          git commit -m "fix: add body-driven six-hour sleep cycle"
+          git commit -m "perf: integrate exact low-cost body sleep"
           git push origin HEAD:fix/body-sleep-cycle
