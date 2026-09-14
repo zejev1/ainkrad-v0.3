@@ -43,9 +43,10 @@ export function residentExplorationTarget(
     return planned.id;
   }
 
-  // Surveying the surroundings is a choice alongside revisiting known places.
-  // It grants no knowledge and does not move the resident by itself.
-  if (choiceRoll !== undefined && choiceRoll < 0.55) return agent.locationId;
+  // Once a resident has independently chosen exploration, do not silently
+  // turn most of those choices into staying at the same place. Local surveying
+  // is resolved by the exploration action itself; target selection should pick
+  // a real, known and physically reachable nearby destination when one exists.
   const mapped = new Set(mappedPlaceIds);
   const candidates = [...known]
     .map((id) => world.places[id])
@@ -53,6 +54,8 @@ export function residentExplorationTarget(
       (place): place is WorldPlace =>
         Boolean(place) &&
         !EXCLUDED_TARGET_KINDS.has(place.kind) &&
+        place.id !== agent.locationId &&
+        Math.hypot(place.mapX - agent.position.x, place.mapY - agent.position.y) <= 40 &&
         canReach(place.id),
     );
 
