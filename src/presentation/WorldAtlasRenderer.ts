@@ -4,6 +4,7 @@ import {TerrainRaster} from './TerrainRaster';
 import {paintRegionalFeatures} from './TerrainFeatures';
 import { clipMapPolygon,clipMapSegment,type WorldMapCamera } from './WorldMapCamera';
 import { WorldAtlasIndex,atlasLevel } from './WorldAtlasIndex';
+import { shouldPaintAtlasAreaOverlay } from './WorldAtlasOverlayPolicy';
 import type { WorldState } from '../world/types';
 
 const SVG='http://www.w3.org/2000/svg';
@@ -72,10 +73,11 @@ export class WorldAtlasRenderer {
     const level=atlasLevel(camera.pixelsPerUnit),fragment=document.createDocumentFragment();
     const areas=this.index.visibleAreas(camera).sort((a,b)=>(order[a.kind]??0)-(order[b.kind]??0)||a.id.localeCompare(b.id));
     for(const area of areas) {
-      if(model&&area.id.startsWith('ocean_ainkrad:'))continue;
-      // Continuous terrain supplies these biomes. Old survey extents remain
-      // in the save, but must not paint a flat mountain oval over a forest town.
-      if(model&&['forest','mountains','swamp','meadow'].includes(area.kind))continue;
+      // Continuous terrain already owns natural surface rendering, including
+      // water. Legacy/survey polygons stay in state for knowledge/boundaries
+      // but cannot repaint the viewport when clipping turns a containing
+      // polygon into a screen-sized rectangle at a particular zoom.
+      if(!shouldPaintAtlasAreaOverlay(area.kind,Boolean(model)))continue;
       const polygon=clipMapPolygon(area.polygon.map(p=>camera.point(p.x,p.y)));
       if(polygon.length<3)continue;
       const d='M'+polygon.map(p=>p.x.toFixed(4)+' '+p.y.toFixed(4)).join('L')+'Z';
