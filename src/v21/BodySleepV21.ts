@@ -3,6 +3,7 @@ import { cancelLearningAttempt } from '../world/learning/ResidentLearning';
 import { ensureEmbodiedWorldV21 } from './EmbodiedWorldV21';
 import { worldWeatherV21 } from './WeatherV21';
 
+// Body sleep is physiology: it constrains execution without choosing the resident's intentions.
 const SIX_HOURS = 6 * 60;
 const FATIGUE_SIGNAL_THRESHOLD = 0.10;
 const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
