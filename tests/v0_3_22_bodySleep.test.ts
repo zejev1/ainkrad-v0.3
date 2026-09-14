@@ -54,3 +54,17 @@ describe('body-driven sleep',()=>{
     expect(homeTarget).toBeGreaterThan(fieldTarget);
   });
 });
+
+describe('body sleep cost discipline',()=>{
+  it('does no repeated work while sleep deadline is unchanged',()=>{
+    const a=agent({energy:0}),w=world(a);
+    advanceBodySleepV21(w,a);
+    const first=bodySleepStateV21(w,'a')!;
+    expect(first.wakesAtWorldMinute).toBe(360);
+    for(let minute=1;minute<360;minute+=17){
+      w.calendar.elapsedWorldMinutes=minute;
+      expect(advanceBodySleepV21(w,a)).toBe(true);
+      expect(bodySleepStateV21(w,'a')!.wakesAtWorldMinute).toBe(360);
+    }
+  });
+});

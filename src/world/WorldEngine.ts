@@ -60,7 +60,7 @@ import {
   studyFoundingPrimerV21,
 } from '../v21/FoundingPrimerV21';
 import { worldWeatherV21 } from '../v21/WeatherV21';
-import { advanceBodySleepV21, bodyFatigueDecisionBoostV21, bodyFatigueMobilityScaleV21, startBodySleepV21 } from '../v21/BodySleepV21';
+import { advanceBodySleepV21, bodyFatigueDecisionBoostV21, bodyFatigueMobilityScaleV21, isBodySleepingV21, nextBodyWakeWorldMinuteV21, startBodySleepV21, wakeDueSleepingBodiesV21 } from '../v21/BodySleepV21';
 import {
   advanceEmbodiedWorldV21,
   assertEmbodiedWorldV21,
@@ -4958,10 +4958,18 @@ export class WorldEngine {
         PHYSICAL_TIME_EPSILON,
         quantum - clock.pendingWorldMinutes,
       );
-      const segmentWorldMinutes = Math.min(
+      let segmentWorldMinutes = Math.min(
         remainingWorldMinutes,
         untilBoundary,
       );
+      const segmentStartWorldMinute = clock.simulatedWorldMinutes + clock.pendingWorldMinutes;
+      wakeDueSleepingBodiesV21(this.state, segmentStartWorldMinute);
+      const nextWakeWorldMinute = nextBodyWakeWorldMinuteV21(this.state);
+      if (nextWakeWorldMinute !== undefined &&
+          nextWakeWorldMinute > segmentStartWorldMinute + PHYSICAL_TIME_EPSILON &&
+          nextWakeWorldMinute < segmentStartWorldMinute + segmentWorldMinutes - PHYSICAL_TIME_EPSILON) {
+        segmentWorldMinutes = nextWakeWorldMinute - segmentStartWorldMinute;
+      }
       this.advancePhysicalMovementForWorldMinutes(segmentWorldMinutes);
       clock.pendingWorldMinutes += segmentWorldMinutes;
       remainingWorldMinutes = Math.max(
@@ -4970,6 +4978,7 @@ export class WorldEngine {
       );
       this.state.calendar.elapsedWorldMinutes =
         clock.simulatedWorldMinutes + clock.pendingWorldMinutes;
+      wakeDueSleepingBodiesV21(this.state, this.state.calendar.elapsedWorldMinutes);
 
       if (clock.pendingWorldMinutes + PHYSICAL_TIME_EPSILON < quantum) {
         continue;
@@ -5031,7 +5040,12 @@ export class WorldEngine {
       // becomes large. This preserves individual agency while avoiding the old
       // O(population × 60 decisions/year) mobile freeze at x10.
       for (const agent of livingAgents) {
+        // Sleeping bodies bypass hunger/stress/cognition work for this semantic
+        // boundary. A zero-energy body that collapses here is also blocked from
+        // all later work in the same boundary.
+        if (advanceBodySleepV21(this.state, agent)) continue;
         this.applyPassiveNeeds(agent, effectiveEnvironment);
+        if (agent.energy <= 0) advanceBodySleepV21(this.state, agent);
       }
       const cohortSize =
         livingAgents.length <= 96
@@ -5058,7 +5072,7 @@ export class WorldEngine {
       );
       const deliberatingAgentIds = new Set(agents.map((agent) => agent.id));
       for (const agent of livingAgents) {
-        if (!deliberatingAgentIds.has(agent.id)) {
+        if (!deliberatingAgentIds.has(agent.id) && !isBodySleepingV21(this.state, agent.id)) {
           this.continueOrdinaryLifeBetweenDeliberations(agent, effectiveEnvironment);
         }
       }
@@ -5177,7 +5191,8 @@ export class WorldEngine {
     const studying = new Set<string>();
     for (const visitor of ensureWorldV18State(this.state).secretLibrary.visitors) {
       const agent = this.state.agents[visitor.agentId], id = libraryIdOf(visitor);
-      if (!agent || !hasLibraryAdmission(this.state, agent, id)) continue;
+      if (!agent || !hasLibraryAdmission(this.state, agent, id) ||
+          isBodySleepingV21(this.state, agent.id)) continue;
       if (agent.locationId === id && !agent.movement) {
         if (visitor.status !== 'studying') noteLibraryArrival(this.state, agent, this.state.calendar.elapsedWorldMinutes);
         this.performSecretLibraryStudyV18(agent, visitor, now);

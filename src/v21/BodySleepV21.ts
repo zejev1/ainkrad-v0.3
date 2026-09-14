@@ -69,7 +69,7 @@ function sleepQualityV21(
   const kit = hasSleepingKit(world, agent);
   const weatherPenalty = (1 - weather.comfort) * (sheltered ? 0.04 : 0.18);
 
-  if (ownHome) return clamp01(0.96 + recovery * 0.04 - weatherPenalty * 0.15);
+  if (ownHome) return 1;
   if (sheltered) return clamp01(0.86 + recovery * 0.1 - weatherPenalty);
   if (kit) return clamp01(0.91 + recovery * 0.09 - weatherPenalty * 0.45);
   if (forced) {
