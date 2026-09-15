@@ -774,6 +774,10 @@ export interface V16RaceFamilyOpportunityState {
   voluntaryIntimacyChoices: number;
   voluntaryChildChoices: number;
   birthsSinceTracking: number;
+  /** New receipts distinguish the candidate pool from actual opportunities.
+   * eligiblePairChecks is the legacy cumulative pre-window candidate count. */
+  scheduledPairChecks?: number;
+  evaluatedPairChecks?: number;
 }
 
 export interface V16LocalFamilyOpportunityState {
@@ -788,6 +792,12 @@ export interface V16LocalFamilyOpportunityState {
   voluntaryIntimacyChoices: number;
   voluntaryChildChoices: number;
   birthsSinceTracking: number;
+  /** New receipts distinguish the candidate pool from actual opportunities.
+   * eligiblePairChecks is the legacy cumulative pre-window candidate count. */
+  scheduledPairChecks?: number;
+  evaluatedPairChecks?: number;
+  /** Stable round-robin cursor; no per-couple lifetime history is required. */
+  lastConsideredPairId?: string;
 }
 
 export type V16SettlementPracticeKind =

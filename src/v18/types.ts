@@ -142,6 +142,21 @@ export type V18LivelihoodStage =
  * assigned by Cardinal or by a settlement quota, and a resident may change it
  * when another path becomes more important to them.
  */
+export interface V18ExplorationEvidence {
+  sinceWorldMinute: number;
+  choices: number;
+  journeyAttempts: number;
+  journeysStarted: number;
+  failedRoutes: number;
+  arrivals: number;
+  surveys: number;
+  newlyMapped: number;
+  campRests: number;
+  provisionsTaken: number;
+  practicalLessons: number;
+  pendingTargetPlaceId?: string;
+}
+
 export interface V18LivelihoodState {
   agentId: string;
   primary: V18LivelihoodKind;
@@ -156,6 +171,7 @@ export interface V18LivelihoodState {
   mappedPlaceIds: string[];
   longJourneyCount: number;
   defensePracticeCount: number;
+  explorationEvidence?: V18ExplorationEvidence;
 }
 
 export interface V18PlanetaryGeographyState {

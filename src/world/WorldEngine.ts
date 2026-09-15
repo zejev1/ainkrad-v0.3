@@ -9,6 +9,8 @@ import {localSurveySite} from './geography/LocalExploration';
 import {residentChoiceCandidates} from './ResidentChoice';
 import { residentDecisionReflection } from './ResidentDecisionReflection';
 import { residentExplorationTarget } from './ResidentExploration';
+import { residentOpportunityWindow } from './ResidentOpportunityWindow';
+import { explorationEvidence, recordExplorationArrival } from './ResidentExplorationEvidence';
 import {bindWorldTerrain,assertTerrainFoundation,homelandCenterForWorld,terrainWalkingScale} from './geography/WorldTerrain';
 import { assertPlaceGeography } from './WorldGeographyValidation';
 import type { WorldTimeExecution } from './WorldTimeExecution';
@@ -5035,47 +5037,16 @@ export class WorldEngine {
       this.buildResidentDecisionIndexes(livingAgents);
       // v15 separates stored resources from the renewable production base.
       this.advanceV15RenewableResources(elapsedWorldMinutes);
-      // Bodies, hunger and health keep advancing for everybody. Expensive
-      // deliberation is distributed across stable rotating cohorts once a city
-      // becomes large. This preserves individual agency while avoiding the old
-      // O(population × 60 decisions/year) mobile freeze at x10.
+      // One lived-action opportunity per resident per canonical quantum.
+      // Population may change the CPU cost, never the amount of life a
+      // descendant gets before ageing. The runtime yields between quanta;
+      // indexes/caches optimize work without dropping resident opportunities.
       for (const agent of livingAgents) {
-        // Sleeping bodies bypass hunger/stress/cognition work for this semantic
-        // boundary. A zero-energy body that collapses here is also blocked from
-        // all later work in the same boundary.
         if (advanceBodySleepV21(this.state, agent)) continue;
         this.applyPassiveNeeds(agent, effectiveEnvironment);
         if (agent.energy <= 0) advanceBodySleepV21(this.state, agent);
       }
-      const cohortSize =
-        livingAgents.length <= 96
-          ? 1
-          : livingAgents.length <= 240
-            ? 2
-            : livingAgents.length <= 480
-              ? 4
-              : livingAgents.length <= 960
-                ? 6
-                : livingAgents.length <= 1_600
-                  ? 8
-                  : 10;
-      const scheduleTick = Math.max(0, Math.floor(this.v15ScheduleTick(now)));
-      const cohortSlot = scheduleTick % cohortSize;
-      const agents = this.shuffled(
-        livingAgents.filter((agent, index) => {
-          const urgent =
-            agent.energy < 0.18 ||
-            agent.stress > 0.86 ||
-            agent.resources < 0.025;
-          return urgent || index % cohortSize === cohortSlot;
-        }),
-      );
-      const deliberatingAgentIds = new Set(agents.map((agent) => agent.id));
-      for (const agent of livingAgents) {
-        if (!deliberatingAgentIds.has(agent.id) && !isBodySleepingV21(this.state, agent.id)) {
-          this.continueOrdinaryLifeBetweenDeliberations(agent, effectiveEnvironment);
-        }
-      }
+      const agents = this.shuffled(livingAgents);
       this.beginSecretLibraryYearV18(livingAgents, now);
       const residentsStudyingInLibrary = this.advanceSecretLibraryVisitorsV18(now);
       for (const agent of agents) {
@@ -6816,6 +6787,23 @@ export class WorldEngine {
       }
     }
 
+    if (lessonGained > 0 && mapped.domain === 'survival' &&
+        (livedAction === 'explore' || livedAction === 'walk') && !agent.movement) {
+      const teacher = instructorId ? this.state.agents[instructorId] : undefined;
+      const practicalCeiling = lessonSource === 'genesis' ? 0.8 : teacher?.skills.exploration ?? 0;
+      const gained = Math.min(0.006, lessonGained * 0.5,
+        Math.max(0, practicalCeiling - agent.skills.exploration));
+      if (gained > 0) {
+        agent.skills.exploration = clamp01(agent.skills.exploration + gained);
+        explorationEvidence(this.state, agent).practicalLessons += 1;
+        const livelihood = ensureLivelihoodV18(this.state, agent);
+        // mentorIds names resident entities; Genesis is recorded by the lesson receipt.
+        if (teacher && instructorId && !livelihood.mentorIds.includes(instructorId)) {
+          livelihood.mentorIds = [...livelihood.mentorIds, instructorId].slice(-32);
+        }
+      }
+    }
+
     if (practice.gained > 0 || lessonGained > 0) {
       profile.verifiedLearningSessions += lessonGained > 0 ? 1 : 0;
       // Knowledge state and counters retain every verified session. The
@@ -7571,31 +7559,6 @@ export class WorldEngine {
     );
   }
 
-  /** Large worlds rotate expensive goal deliberation, but residents do not
-   * stop sleeping or sharing an ordinary household between those decisions.
-   * This advances only bodily/social continuity; it never selects a goal,
-   * partner, journey, fight or child for the resident. */
-  private continueOrdinaryLifeBetweenDeliberations(
-    agent: AgentState,
-    environment: WorldEnvironment,
-  ): void {
-    if (agent.movement || !this.canAccessHomeSettlementStores(agent)) return;
-    agent.energy = clamp01(
-      agent.energy + 0.01 + agent.life.physiology.recovery * 0.006,
-    );
-    agent.needs.belonging = clamp01(
-      agent.needs.belonging + 0.004 + agent.socialDrive * 0.003,
-    );
-    agent.needs.purpose = clamp01(
-      agent.needs.purpose + agent.personality.diligence * 0.0025,
-    );
-    agent.stress = clamp01(
-      agent.stress -
-        environment.safetySupport *
-          (0.0025 + agent.personality.resilience * 0.002),
-    );
-  }
-
   private updateGoal(agent: AgentState, now: number): void {
     const resourceSecurity = this.v15EffectiveResourceSecurity(agent);
     const scores: Array<{ kind: AgentGoalKind; strength: number }> = [
@@ -8065,7 +8028,7 @@ export class WorldEngine {
     }
     if (body.mobility < 0.24 || body.strength < 0.2) {
       for (const item of scores) {
-        if (['hunt', 'explore'].includes(item.action)) item.score = -1;
+        if (['hunt', 'explore'].includes(item.action)) item.score = Number.NEGATIVE_INFINITY;
       }
       const rest = scores.find((item) => item.action === 'rest');
       if (rest) rest.score += 0.36;
@@ -8105,12 +8068,12 @@ export class WorldEngine {
       }
     }
 
-    // A traveller who has nearly exhausted carried provisions chooses the
-    // concrete journey home before hunger becomes lethal. Shared stores still
-    // never teleport: performRest starts and completes the physical route.
+    // A traveller can recover in camp when food remains. Only actual supply
+    // shortage needs a physical resupply trip; a half-full pack is not a
+    // permanent command to abandon a resident's exploration plan.
     if (
       !this.canAccessHomeSettlementStores(agent) &&
-      (agent.resources < 0.3 || rhythm.satiety < 0.38 || agent.energy < 0.24)
+      (agent.resources < 0.12 || rhythm.satiety < 0.25 || agent.energy < 0.24)
     ) {
       return {
         action: 'rest',
@@ -8742,7 +8705,8 @@ export class WorldEngine {
       this.canAccessHomeSettlementStores(agent) &&
       destination?.settlementId !== homeSettlementId;
     if (leavesHomeSettlement && agent.resources < 0.42) {
-      this.drawV15HomeSettlementRation(agent, 0.42 - agent.resources);
+      const drawn = this.drawV15HomeSettlementRation(agent, 0.42 - agent.resources);
+      if (intendedAction === 'explore') explorationEvidence(this.state, agent).provisionsTaken += drawn;
     }
     this.moveAgent(agent, destinationId);
     if (agent.locationId === destinationId && !agent.movement) {
@@ -8758,7 +8722,16 @@ export class WorldEngine {
       return false;
     }
 
-    if (agent.movement?.targetPlaceId === destinationId) {
+    if (agent.movement?.targetPlaceId !== destinationId) {
+      // A selected destination is not proof that a route actually started.
+      // Do not charge travel effort or award exploration practice on failure.
+      agent.lastAction = 'reflect';
+      this.recordAgentEvent(agent, now, 'agent.travel.unavailable', {
+        fromPlaceId: agent.locationId, destinationId, intendedAction,
+      });
+      return true;
+    }
+    if (agent.movement.targetPlaceId === destinationId) {
       agent.movement.purpose = intendedAction;
       const rhythm = ensureLifeRhythmV18(this.state, agent);
       rhythm.pendingArrivalAction = intendedAction;
@@ -8787,6 +8760,25 @@ export class WorldEngine {
   }
 
   private performRest(agent: AgentState, now: number): void {
+    const rhythm = ensureLifeRhythmV18(this.state, agent);
+    const canCamp = !agent.movement && !this.canAccessHomeSettlementStores(agent) &&
+      this.state.places[agent.locationId]?.surface !== 'water' &&
+      agent.resources >= 0.12 && rhythm.satiety >= 0.25;
+    if (canCamp) {
+      if (agent.energy <= 0.1 && startBodySleepV21(this.state, agent, false)) return;
+      const survival = this.v15World().knowledgeByAgentId[agent.id]?.survival ?? 0;
+      agent.energy = clamp01(agent.energy +
+        (0.12 + agent.life.physiology.recovery * 0.09 + survival * 0.025) *
+        bodyRecoveryScaleV21(this.state, agent.id));
+      agent.stress = clamp01(agent.stress - 0.04 - agent.personality.resilience * 0.02);
+      agent.lastAction = 'rest';
+      explorationEvidence(this.state, agent).campRests += 1;
+      this.recordAgentEvent(agent, now, 'agent.camp.rested', {
+        locationId: agent.locationId, energy: agent.energy,
+        carriedProvisions: agent.resources, sharedStoresAccessed: false,
+      });
+      return;
+    }
     if (this.travelBeforeAction(agent, agent.homeId, 'rest', now)) return;
     // Below 10% a voluntary rest becomes real six-hour sleep. The resident
     // chose to sleep; only collapse at zero is compulsory.
@@ -9948,9 +9940,30 @@ export class WorldEngine {
     });
   }
 
+  private beginExplorationJourney(agent: AgentState, destinationId: string, now: number): boolean {
+    const evidence = explorationEvidence(this.state, agent);
+    evidence.journeyAttempts += 1;
+    this.travelBeforeAction(agent, destinationId, 'explore', now, 'explore');
+    if (agent.movement?.targetPlaceId !== destinationId) {
+      evidence.failedRoutes += 1;
+      agent.plan = undefined;
+      return false;
+    }
+    evidence.journeysStarted += 1;
+    evidence.pendingTargetPlaceId = destinationId;
+    return true;
+  }
+
   private performExplore(agent: AgentState, now: number): void {
+    const evidence = explorationEvidence(this.state, agent);
+    evidence.choices += 1;
     observeLocalPlacesV20(this.state, agent);
     if (availableBoat(this.state, agent) && startBoatExploration(this.state, agent, this.rng.next())) {
+      // The boat has just departed from this physical shore, not yet arrived.
+      evidence.provisionsTaken += this.drawV15HomeSettlementRation(agent, Math.max(0, 0.42 - agent.resources));
+      evidence.journeyAttempts += 1;
+      evidence.journeysStarted += 1;
+      evidence.pendingTargetPlaceId = agent.movement?.targetPlaceId;
       this.recordAgentEvent(agent, now, 'agent.boat.departed', { purpose: 'exploration', locationId: agent.locationId });
       return;
     }
@@ -10014,8 +10027,8 @@ export class WorldEngine {
           startedAt: agent.plan?.startedAt ?? now,
           expiresAt: now + 96,
         };
-        this.moveAgent(agent, entranceId);
-        agent.energy = clamp01(agent.energy - 0.026);
+        if (!this.beginExplorationJourney(agent, entranceId, now)) return;
+        agent.energy = clamp01(agent.energy - 0.018);
         agent.resources = clamp01(agent.resources - 0.006);
         agent.lastAction = 'explore';
         agent.lastMeaningfulEventAt = now;
@@ -10120,17 +10133,6 @@ export class WorldEngine {
       });
       return;
     }
-    if (!livelihood.mappedPlaceIds.includes(targetFrontier)) {
-      livelihood.mappedPlaceIds.push(targetFrontier);
-      livelihood.mappedPlaceIds = livelihood.mappedPlaceIds.slice(-256);
-      recordLivelihoodPracticeV18(this.state, agent, {
-        action: 'explore',
-        placeId: agent.locationId,
-        choiceRoll: this.rng.next(),
-        professionHint: 'cartographer',
-        amount: 0.7,
-      });
-    }
     if (agent.locationId !== targetFrontier) {
       const route = this.pathBetween(agent.locationId, targetFrontier);
       const routeDistance = (route ?? []).slice(0, -1).reduce(
@@ -10143,16 +10145,6 @@ export class WorldEngine {
       );
       const startsLongJourney =
         routeDistance >= 80 && agent.plan?.kind !== 'explore_frontier';
-      if (startsLongJourney) {
-        livelihood.longJourneyCount += 1;
-        recordLivelihoodPracticeV18(this.state, agent, {
-          action: 'explore',
-          placeId: agent.locationId,
-          choiceRoll: this.rng.next(),
-          professionHint: 'adventurer',
-          amount: 1.4,
-        });
-      }
       agent.plan = {
         kind: 'explore_frontier',
         targetPlaceId: targetFrontier,
@@ -10164,8 +10156,18 @@ export class WorldEngine {
       // collapsed exponentially and residents circled their city forever.
       // The movement itself still takes time and remains interruptible by
       // physiology and later resident decisions.
-      this.moveAgent(agent, targetFrontier);
-      agent.energy = clamp01(agent.energy - 0.024);
+      if (!this.beginExplorationJourney(agent, targetFrontier, now)) return;
+      if (startsLongJourney) {
+        livelihood.longJourneyCount += 1;
+        recordLivelihoodPracticeV18(this.state, agent, {
+          action: 'explore',
+          placeId: agent.locationId,
+          choiceRoll: this.rng.next(),
+          professionHint: 'adventurer',
+          amount: 1.4,
+        });
+      }
+      agent.energy = clamp01(agent.energy - 0.016);
       agent.resources = clamp01(agent.resources - 0.004);
       agent.skills.exploration = clamp01(agent.skills.exploration + 0.001);
       agent.needs.purpose = clamp01(agent.needs.purpose + 0.005);
@@ -10182,6 +10184,21 @@ export class WorldEngine {
         locationId: agent.locationId,
       });
       return;
+    }
+    // Mapping is earned here, at a physical survey, never when selecting
+    // a destination or glimpsing a newly generated frontier from afar.
+    evidence.surveys += 1;
+    if (!livelihood.mappedPlaceIds.includes(targetFrontier)) {
+      livelihood.mappedPlaceIds.push(targetFrontier);
+      evidence.newlyMapped += 1;
+      livelihood.mappedPlaceIds = livelihood.mappedPlaceIds.slice(-256);
+      recordLivelihoodPracticeV18(this.state, agent, {
+        action: 'explore',
+        placeId: agent.locationId,
+        choiceRoll: this.rng.next(),
+        professionHint: 'cartographer',
+        amount: 0.7,
+      });
     }
     agent.plan = undefined;
     agent.energy = clamp01(agent.energy - 0.04);
@@ -10219,19 +10236,15 @@ export class WorldEngine {
       agent.knownPlaceIds = [
         ...new Set([...(agent.knownPlaceIds ?? []), discoveredRegionId]),
       ];
-      if (this.youngChildMayTravelTo(agent, discoveredRegionId)) this.moveAgent(agent, discoveredRegionId);
       syncAdventureEconomyV19(this.state);
-      if (!livelihood.mappedPlaceIds.includes(discoveredRegionId)) {
-        livelihood.mappedPlaceIds.push(discoveredRegionId);
-        livelihood.mappedPlaceIds = livelihood.mappedPlaceIds.slice(-256);
+      if (this.youngChildMayTravelTo(agent, discoveredRegionId)) {
+        agent.plan = {
+          kind: 'explore_frontier', targetPlaceId: discoveredRegionId,
+          startedAt: now, expiresAt: now + 48,
+        };
+        this.beginExplorationJourney(agent, discoveredRegionId, now);
       }
-      recordLivelihoodPracticeV18(this.state, agent, {
-        action: 'explore',
-        placeId: discoveredRegionId,
-        choiceRoll: this.rng.next(),
-        professionHint: 'cartographer',
-        amount: 1.8,
-      });
+
     }
 
     agent.lastAction = 'explore';
@@ -12725,6 +12738,9 @@ export class WorldEngine {
       // recorded during the previous Ainkrad year. An extinct population
       // cannot return merely because its former members once ate.
       if (population.isMonster) {
+        // Discovering reachable food is not resurrection. Reproduction needs
+        // living parents; any future recolonization must be a separate event.
+        if (population.count <= 0) continue;
         const hasReachablePrey =
           this.monsterPreyCandidates(population).length > 0;
         const recentlyFed =
@@ -13515,7 +13531,7 @@ export class WorldEngine {
       for (const [settlementId, localCandidates] of [
         ...candidatesBySettlement.entries(),
       ].sort(([left], [right]) => left.localeCompare(right))) {
-        recordRaceOpportunityCheckV16(
+        const raceOpportunity = recordRaceOpportunityCheckV16(
           this.state,
           selectedRace,
           localCandidates.length,
@@ -13528,8 +13544,6 @@ export class WorldEngine {
         );
         const localRaceResidentCount = this.residentCountByHomeRace?.get(`${settlementId}\u0000${selectedRace}`) ?? 0;
         // Fertility belongs to consenting adults, never to a settlement-wide quota.
-        const localBirthLimit = Number.POSITIVE_INFINITY;
-        let localBirths = 0;
         // Only a rotating, population-proportional share of couples reaches a
         // physical family opportunity in one two-month window. This avoids
         // repeatedly evaluating every historic acquaintance while every pair
@@ -13538,23 +13552,22 @@ export class WorldEngine {
           localCandidates.length,
           Math.max(8, Math.ceil(localRaceResidentCount * 0.2)),
         );
-        const candidateOffset =
-          localCandidates.length === 0
-            ? 0
-            : scheduleTick % localCandidates.length;
+        const window = residentOpportunityWindow(
+          localCandidates,
+          ({ a, b }) => relationshipKey(a.id, b.id),
+          maximumCandidateChecks,
+          localOpportunity.lastConsideredPairId,
+        );
+        localOpportunity.lastConsideredPairId = window.afterKey;
+        raceOpportunity.scheduledPairChecks =
+          (raceOpportunity.scheduledPairChecks ?? 0) + window.candidates.length;
+        localOpportunity.scheduledPairChecks =
+          (localOpportunity.scheduledPairChecks ?? 0) + window.candidates.length;
 
-        for (
-          let candidateIndex = 0;
-          candidateIndex < maximumCandidateChecks &&
-          localBirths < localBirthLimit;
-          candidateIndex += 1
-        ) {
-          const candidate =
-            localCandidates[
-              (candidateOffset + candidateIndex) % localCandidates.length
-            ];
-          const { a, b, relationship } = candidate;
+        for (const { a, b, relationship } of window.candidates) {
           if (!this.canConsiderChildDecision(a, b, now)) continue;
+          raceOpportunity.evaluatedPairChecks = (raceOpportunity.evaluatedPairChecks ?? 0) + 1;
+          localOpportunity.evaluatedPairChecks = (localOpportunity.evaluatedPairChecks ?? 0) + 1;
 
           ensureAgentV15State(this.state, a);
           ensureAgentV15State(this.state, b);
@@ -13730,7 +13743,6 @@ export class WorldEngine {
             selectedRace,
             'birth',
           );
-          localBirths += 1;
         }
       }
     }
@@ -15593,6 +15605,7 @@ export class WorldEngine {
         this.routePathCache?.clear();
         if (arrival.discovered && this.state.geography) this.state.geography.revision++;
         observeLocalPlacesV20(this.state, resident);
+        recordExplorationArrival(this.state, resident);
         this.recordAgentEvent(resident, this.state.now, 'agent.boat.arrived', {...arrival});
         if (arrival.onwardPlaceId && resident.life.alive) this.moveAgent(resident, arrival.onwardPlaceId);
       }
@@ -15675,6 +15688,7 @@ export class WorldEngine {
           agent.movement = undefined;
           noteLibraryArrival(this.state, agent, arrivalMinute);
           observeLocalPlacesV20(this.state, agent);
+          recordExplorationArrival(this.state, agent);
         }
         continue;
       }

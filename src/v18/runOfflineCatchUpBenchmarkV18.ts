@@ -1,3 +1,4 @@
+import { passesReproductiveAgeHealthV22, strongestPracticedKindV22 } from './LifeContinuityDiagnosticsV22';
 import { InMemoryAppendOnlyLog } from '../persistence/AppendOnlyLog';
 import { LiveWorldRuntime } from '../runtime/LiveWorldRuntime';
 import { InMemoryWorldStore } from '../world/InMemoryWorldStore';
@@ -104,9 +105,7 @@ for (const agent of livingResidents) {
     for (const [kind, practice] of Object.entries(livelihood.practiceByKind)) {
       totalPracticeByKind[kind] = (totalPracticeByKind[kind] ?? 0) + practice;
     }
-    const strongest = Object.entries(livelihood.practiceByKind).sort(
-      (left, right) => right[1] - left[1] || left[0].localeCompare(right[0]),
-    )[0]?.[0] ?? 'none';
+    const strongest = strongestPracticedKindV22(livelihood.practiceByKind);
     strongestPracticeCounts[strongest] =
       (strongestPracticeCounts[strongest] ?? 0) + 1;
   }
@@ -146,8 +145,7 @@ for (const agent of livingResidents) {
   sexCounts[sex] = (sexCounts[sex] ?? 0) + 1;
   if (
     agent.life.stage === 'adult' &&
-    agent.life.ageYears <= 55 &&
-    agent.life.health >= 0.4
+    passesReproductiveAgeHealthV22(agent)
   ) {
     const key = `${race}:${sex}`;
     reproductiveAdultCounts[key] = (reproductiveAdultCounts[key] ?? 0) + 1;

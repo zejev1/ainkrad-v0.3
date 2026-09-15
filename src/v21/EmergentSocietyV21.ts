@@ -537,8 +537,14 @@ export function marketUnitPriceV21(
   settlementId: string,
   commodity: V19CommodityKind,
 ): number {
-  const society = repairEmergentSocietyV21(world, economy);
   const key = marketKey(settlementId, commodity);
+  const cached = economy.emergentSociety?.marketPricesByKey?.[key];
+  if (cached && world.calendar.elapsedWorldMinutes - cached.updatedWorldMinute < WORLD_MINUTES_PER_YEAR / 12) {
+    // A cached price is a read, not a reason to repair every resident's whole
+    // education/contract history for every comparator in a commodity sort.
+    return cached.unitPrice ?? BASE_PRICE[commodity];
+  }
+  const society = repairEmergentSocietyV21(world, economy);
   const old = society.marketPricesByKey[key];
   if (
     !old ||

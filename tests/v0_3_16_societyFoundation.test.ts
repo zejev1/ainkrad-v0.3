@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   allowedActionsForAgeV16,
   ensureSettlementRelationV16,
@@ -529,7 +529,15 @@ describe('v0.3.17 physically grounded hostile ecology', () => {
     const store = new InMemoryWorldStore();
     await store.initializeWorld(raw);
     const world = await WorldEngine.open({ worldId: raw.id, store });
-    await world.advanceCanonicalTimeTo(WORLD_MINUTES_PER_YEAR);
+    // Hold this fixture's geography fixed: an isolated-food-chain assertion
+    // must not depend on whether residents discover a new prey habitat nearby.
+    // Live frontier discovery is covered by the world autonomy tests.
+    const growth = vi.spyOn(world as any, 'advanceWorldGrowth').mockReturnValue(undefined);
+    try {
+      await world.advanceCanonicalTimeTo(WORLD_MINUTES_PER_YEAR);
+    } finally {
+      growth.mockRestore();
+    }
 
     const state = world.snapshot();
     const history = await store.history(raw.id);

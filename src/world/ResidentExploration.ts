@@ -64,10 +64,15 @@ export function residentExplorationTarget(
       attempt.problem === 'distress' &&
       ['rest', 'relax', 'reflect'].includes(attempt.action),
     ).length >= 9;
-  if (!recentDistressLoop && choiceRoll !== undefined && choiceRoll < 0.55) {
+  const mapped = new Set(mappedPlaceIds);
+  const current = world.places[agent.locationId];
+  // A first local survey is useful. An already surveyed home/field must not
+  // swallow 55% of every later generation's independently chosen exploration.
+  // Resurveying remains a weighted candidate below, not a compulsory exit.
+  if (!recentDistressLoop && current && !EXCLUDED_TARGET_KINDS.has(current.kind) &&
+      !mapped.has(current.id) && choiceRoll !== undefined && choiceRoll < 0.55) {
     return agent.locationId;
   }
-  const mapped = new Set(mappedPlaceIds);
   const candidates = [...known]
     .map((id) => world.places[id])
     .filter(
