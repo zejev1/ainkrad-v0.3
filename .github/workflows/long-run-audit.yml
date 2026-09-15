@@ -1,0 +1,32 @@
+name: Ainkrad Long Run Audit
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/long-run-audit.yml'
+      - 'src/v18/runOfflineCatchUpBenchmarkV18.ts'
+      - 'package.json'
+
+permissions:
+  contents: read
+
+jobs:
+  long-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: 20 year checkpoint
+        run: npm run audit:v18-offline -- 20 intervene long-run-20y
+      - name: 50 year checkpoint
+        run: npm run audit:v18-offline -- 50 intervene long-run-50y
+      - name: 100 year checkpoint
+        run: npm run audit:v18-offline -- 100 intervene long-run-100y
