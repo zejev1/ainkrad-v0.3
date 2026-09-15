@@ -228,6 +228,7 @@ export interface AgentMovementState {
 }
 
 export interface AgentState {
+  cartography?: import('./ResidentCartography').ResidentMapNotes;
   /** Lived attempts, predictions and revisable methods; absent in legacy saves. */
   learning?: import('./learning/index').ResidentLearningState;
   knownPlaceIds?: string[];
@@ -1085,6 +1086,7 @@ export interface WorldV21State {
 }
 
 export interface WorldState {
+  cartography?: import('./ResidentCartography').WorldCartography;
   terrain?: TerrainFoundation;
   oceanExploration?: import('./geography/OceanExploration').OceanExplorationState;
   id: string;

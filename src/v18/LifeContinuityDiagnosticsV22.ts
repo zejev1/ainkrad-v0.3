@@ -38,7 +38,7 @@ export function lifeContinuityDiagnosticsV22(world: Readonly<WorldState>) {
     exploration: Record<string, number>;
   }> = {};
   const receiptFields = ['choices', 'journeyAttempts', 'journeysStarted', 'failedRoutes',
-    'arrivals', 'surveys', 'newlyMapped', 'campRests', 'practicalLessons', 'provisionsTaken'] as const;
+    'arrivals', 'surveys', 'newlyMapped', 'frontierSearches', 'campRests', 'practicalLessons', 'provisionsTaken'] as const;
   const newReceipts: Record<string, number> = Object.fromEntries(receiptFields.map(k => [k, 0]));
   let trackedResidents = 0;
   const professions: Record<string, number> = {};
@@ -61,7 +61,7 @@ export function lifeContinuityDiagnosticsV22(world: Readonly<WorldState>) {
     if (receipt) {
       trackedResidents++; g.trackedResidents++;
       for (const field of receiptFields) {
-        g.exploration[field] += receipt[field]; newReceipts[field] += receipt[field];
+        g.exploration[field] += receipt[field] ?? 0; newReceipts[field] += receipt[field] ?? 0;
       }
     }
     if (!a.life.alive) continue;
@@ -105,6 +105,11 @@ export function lifeContinuityDiagnosticsV22(world: Readonly<WorldState>) {
     moving: living.filter(a => a.movement).length,
     places: Object.keys(world.places).length, settlements: Object.keys(world.settlements).length,
     family, professions, strongestPractice,
+    settlementMaps: world.cartography ? Object.fromEntries(Object.entries(world.cartography.bySettlementId).map(([id, map]) => [id, {
+      revision: map.revision, knownPoints: Object.keys(map.points).length,
+      surveyedPoints: Object.values(map.points).filter(point => point.surveyedRevision !== undefined).length,
+      reportedRoutes: Object.keys(map.routes).length,
+    }])) : null,
     explorationTracking: trackedResidents ? { trackedResidents, ...Object.fromEntries(Object.entries(newReceipts).map(([k, n]) => [k, round(n)])) } : null,
     byRaceGeneration: Object.fromEntries(Object.entries(byRaceGeneration).sort(([a], [b]) => a.localeCompare(b)).map(([key, g]) => [key, {
       ...g,

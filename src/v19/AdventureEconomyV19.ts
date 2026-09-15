@@ -414,7 +414,7 @@ export function ensureAdventurerV19(
   world: WorldState,
   agentId: string,
 ): V19AdventurerState {
-  const state = syncAdventureEconomyV19(world);
+  const state = world.v19?.adventureEconomy ?? repairAdventureEconomyV19(world);
   return (state.adventurersByAgentId[agentId] ??= emptyAdventurer(agentId));
 }
 
@@ -1065,7 +1065,7 @@ export function tryAdventureMarketTradeV19(
   if (physicalSettlementId !== settlementId || !world.settlements[settlementId]) {
     return undefined;
   }
-  const state = syncAdventureEconomyV19(world);
+  const state = world.v19?.adventureEconomy ?? repairAdventureEconomyV19(world);
   const profile = state.adventurersByAgentId[agent.id];
   if (!profile) return undefined;
   if (

@@ -1,3 +1,5 @@
+import { residentKnownPath, invalidateResidentNavigation } from './ResidentNavigation';
+import { consultSettlementMap, residentSurveyedPlaceIds, recordResidentSurvey, recordResidentRouteArrival, assertResidentCartography } from './ResidentCartography';
 import {applyOceanDecision} from './geography/OceanGeographyPolicy';
 import {assertOceanExploration,type OceanDecision} from './geography/OceanExploration';
 import { consumeReadingWords } from '../v18/HistoricalReading';
@@ -360,6 +362,8 @@ function progressionFromAgent(agent: Readonly<AgentState>): NonNullable<AgentSta
 const ROUTINE_AGENT_EVENT_KINDS = new Set([
   'agent.travel.started',
   'agent.travel.paused',
+  'agent.travel.unavailable',
+  'agent.camp.rested',
   'agent.rested',
   'agent.relaxed',
   'agent.walked',
@@ -2850,6 +2854,7 @@ function assertWorldState(value: unknown): asserts value is WorldState {
     if (state.rulesVersion === WORLD_RULES_VERSION) {
       assertWorldV19State(state as unknown as WorldState);
       assertEmbodiedWorldV21(state as unknown as WorldState);
+      assertResidentCartography(state as unknown as WorldState);
     }
   }
 
@@ -4380,6 +4385,7 @@ export class WorldEngine {
     | Map<string, Map<string, string[]>>
     | undefined;
   private residentsByLocation: Map<string, AgentState[]> | undefined;
+  private relationshipKeysByResident?: Map<string, Set<string>>;
   private residentCountByHomeSettlement: Map<string, number> | undefined;
   private residentCountByHomeRace: Map<string, number> | undefined;
   private agricultureKnowledgeByHomeSettlement:
@@ -4775,6 +4781,7 @@ export class WorldEngine {
         this.state.places = places;
         this.state.terrain = undefined;
         this.state.oceanExploration = undefined;
+        this.state.cartography = undefined;
         this.state.geography = undefined;
         this.state.routes = rebuildWorldRoutes(places);
         this.state.settlements = rebuildSettlementProjection(places, {}, resetAt);
@@ -5028,6 +5035,9 @@ export class WorldEngine {
       this.advanceMonsterFeeding(now);
       this.advanceAgingAndMortality(now, elapsedWorldMinutes);
       advanceEmbodiedWorldV21(this.state);
+      // Dungeon ecology/discovery is a world service, not a side effect of
+      // repeatedly looking up a resident wallet at every local trade.
+      syncAdventureEconomyV19(this.state);
       const livingAgents = Object.values(this.state.agents)
         .filter((agent) => agent.life.alive)
         .sort((left, right) => left.id.localeCompare(right.id));
@@ -5087,6 +5097,7 @@ export class WorldEngine {
       } finally {
         this.resourceProjectionDirty = false;
         this.residentsByLocation = undefined;
+        this.relationshipKeysByResident = undefined;
         this.residentCountByHomeSettlement = undefined;
         this.residentCountByHomeRace = undefined;
         this.agricultureKnowledgeByHomeSettlement = undefined;
@@ -5108,6 +5119,7 @@ export class WorldEngine {
     if (ensureElfLibraryV20(this.state)) {
       repairCompactSettlementLayout(this.state);
       this.routePathCache?.clear();
+      invalidateResidentNavigation(this.state);
     }
     this.finishSecretLibraryAdmissions(minute, now);
     const library = ensureWorldV18State(this.state).secretLibrary;
@@ -6309,6 +6321,7 @@ export class WorldEngine {
         this.committedSignalCache = undefined;
         this.routePathCache = undefined;
         this.residentsByLocation = undefined;
+        this.relationshipKeysByResident = undefined;
         this.residentCountByHomeSettlement = undefined;
         this.residentCountByHomeRace = undefined;
         this.placesBySettlement = undefined;
@@ -7037,11 +7050,9 @@ export class WorldEngine {
       ? this.state.settlements[homeSettlementId]
       : undefined;
     const settlementResidents = homeSettlementId
-      ? Object.values(this.state.agents).filter(
-          (candidate) =>
-            candidate.life.alive &&
-            this.homeSettlementId(candidate) === homeSettlementId,
-        ).length
+      ? this.residentCountByHomeSettlement?.get(homeSettlementId) ??
+        Object.values(this.state.agents).filter(candidate => candidate.life.alive &&
+          this.homeSettlementId(candidate) === homeSettlementId).length
       : 0;
     const settlementHomeCapacity = homeSettlement
       ? homeSettlement.memberPlaceIds
@@ -7334,6 +7345,7 @@ export class WorldEngine {
       return;
     }
     observeLocalPlacesV20(this.state, agent);
+    consultSettlementMap(this.state, agent);
     this.updateGoal(agent, now);
 
     const localAgents = this.agentsAtLocation(agent.locationId);
@@ -8327,6 +8339,7 @@ export class WorldEngine {
   }
 
   private buildResidentDecisionIndexes(agents: readonly AgentState[]): void {
+    this.relationshipKeysByResident = undefined;
     const byLocation = new Map<string, AgentState[]>();
     const bySettlement = new Map<string, number>();
     const bySettlementRace = new Map<string, number>();
@@ -8375,11 +8388,10 @@ export class WorldEngine {
   }
 
   private agentsAtLocation(locationId: string): AgentState[] {
-    const indexed = this.residentsByLocation?.get(locationId);
-    if (indexed) return indexed;
-    return Object.values(this.state.agents).filter(
-      (agent) => agent.life.alive && agent.locationId === locationId,
-    );
+    const candidates = this.residentsByLocation
+      ? this.residentsByLocation.get(locationId) ?? []
+      : Object.values(this.state.agents);
+    return candidates.filter(agent => agent.life.alive && !agent.movement && agent.locationId === locationId);
   }
 
   private moveResidentLocationIndex(
@@ -8593,7 +8605,7 @@ export class WorldEngine {
       for (const place of candidates) {
         if (
           !kinds.includes(place.kind) ||
-          this.pathBetween(agent.locationId, place.id) === undefined
+          residentKnownPath(this.state, agent, place.id) === undefined
         ) {
           continue;
         }
@@ -8621,7 +8633,7 @@ export class WorldEngine {
       const settlement = this.state.settlements[settlementId];
       if (
         settlement?.centerPlaceId &&
-        this.pathBetween(agent.locationId, settlement.centerPlaceId)
+        residentKnownPath(this.state, agent, settlement.centerPlaceId)
       ) {
         return settlement.centerPlaceId;
       }
@@ -8640,7 +8652,7 @@ export class WorldEngine {
     );
     if (
       familyAtHome &&
-      this.pathBetween(agent.locationId, agent.homeId) !== undefined
+      residentKnownPath(this.state, agent, agent.homeId) !== undefined
     ) {
       return agent.homeId;
     }
@@ -8936,7 +8948,7 @@ export class WorldEngine {
       ) {
         continue;
       }
-      const route = this.pathBetween(agent.locationId, population.habitatId);
+      const route = residentKnownPath(this.state, agent, population.habitatId);
       if (!route) continue;
       const distance = route.slice(1).reduce((sum, id, index) => {
         const from = this.state.places[route[index]], to = this.state.places[id];
@@ -9475,7 +9487,7 @@ export class WorldEngine {
             place.surface !== 'water' &&
             sourceKinds[material](place) &&
             (place.id === agent.locationId || (agent.knownPlaceIds ?? []).includes(place.id)) &&
-            this.pathBetween(agent.locationId, place.id) !== undefined,
+            residentKnownPath(this.state, agent, place.id) !== undefined,
         )
         .sort((left, right) => {
           const leftLocal =
@@ -9484,7 +9496,7 @@ export class WorldEngine {
             settlementId && right.settlementId === settlementId ? 0 : 1;
           if (leftLocal !== rightLocal) return leftLocal - rightLocal;
           const routeDistance = (placeId: string) => {
-            const route = this.pathBetween(agent.locationId, placeId);
+            const route = residentKnownPath(this.state, agent, placeId);
             return route ? route.slice(1).reduce((sum, id, index) => {
               const from = this.state.places[route[index]], to = this.state.places[id];
               return sum + Math.hypot(to.mapX - from.mapX, to.mapY - from.mapY);
@@ -9972,8 +9984,8 @@ export class WorldEngine {
     const targetFrontier = residentExplorationTarget(
       this.state,
       agent,
-      (placeId) => this.pathBetween(agent.locationId, placeId) !== undefined,
-      livelihood.mappedPlaceIds,
+      (placeId) => residentKnownPath(this.state, agent, placeId) !== undefined,
+      residentSurveyedPlaceIds(this.state, agent),
       this.rng.next(),
     );
     if (!this.youngChildMayTravelTo(agent, targetFrontier)) {
@@ -9994,7 +10006,7 @@ export class WorldEngine {
       const reachableDungeons = Object.values(adventure.dungeonsById)
         .map((dungeon) => ({
           dungeon,
-          route: this.pathBetween(agent.locationId, dungeon.entrancePlaceId),
+          route: residentKnownPath(this.state, agent, dungeon.entrancePlaceId),
         }))
         .filter(
           (candidate): candidate is {
@@ -10134,7 +10146,7 @@ export class WorldEngine {
       return;
     }
     if (agent.locationId !== targetFrontier) {
-      const route = this.pathBetween(agent.locationId, targetFrontier);
+      const route = residentKnownPath(this.state, agent, targetFrontier);
       const routeDistance = (route ?? []).slice(0, -1).reduce(
         (sum, placeId, index) =>
           sum +
@@ -10187,11 +10199,11 @@ export class WorldEngine {
     }
     // Mapping is earned here, at a physical survey, never when selecting
     // a destination or glimpsing a newly generated frontier from afar.
-    evidence.surveys += 1;
-    if (!livelihood.mappedPlaceIds.includes(targetFrontier)) {
-      livelihood.mappedPlaceIds.push(targetFrontier);
+    if (recordResidentSurvey(this.state, agent, targetFrontier)) {
+      evidence.surveys += 1;
+      if (!livelihood.mappedPlaceIds.includes(targetFrontier)) livelihood.mappedPlaceIds.push(targetFrontier);
       evidence.newlyMapped += 1;
-      livelihood.mappedPlaceIds = livelihood.mappedPlaceIds.slice(-256);
+      livelihood.mappedPlaceIds = livelihood.mappedPlaceIds.slice(-128);
       recordLivelihoodPracticeV18(this.state, agent, {
         action: 'explore',
         placeId: agent.locationId,
@@ -10199,6 +10211,8 @@ export class WorldEngine {
         professionHint: 'cartographer',
         amount: 0.7,
       });
+    } else {
+      evidence.frontierSearches = (evidence.frontierSearches ?? 0) + 1;
     }
     agent.plan = undefined;
     agent.energy = clamp01(agent.energy - 0.04);
@@ -10395,13 +10409,13 @@ export class WorldEngine {
         .filter(
           (settlement) =>
             settlement.id !== currentSettlementId &&
-            this.pathBetween(agent.locationId, settlement.centerPlaceId) !== undefined,
+            residentKnownPath(this.state, agent, settlement.centerPlaceId) !== undefined,
         )
         .map((settlement) => {
           const center = this.state.places[settlement.centerPlaceId];
           const distance = Math.max(
             0,
-            (this.pathBetween(agent.locationId, settlement.centerPlaceId)?.length ?? 1) - 1,
+            (residentKnownPath(this.state, agent, settlement.centerPlaceId)?.length ?? 1) - 1,
           );
           const score =
             willingness * 0.34 +
@@ -14772,7 +14786,7 @@ export class WorldEngine {
   }
 
   private performBond(a: AgentState, b: AgentState, now: number): void {
-    this.moveAgent(a, b.locationId);
+    if (!a.life.alive || !b.life.alive || a.movement || b.movement || a.locationId !== b.locationId) return;
     const key = relationshipKey(a.id, b.id);
     const relationship = this.relationshipFor(a, b, now);
     const accepted =
@@ -14784,6 +14798,12 @@ export class WorldEngine {
           b.mind.values.care * 0.12 -
           relationship.conflict * 0.25,
       );
+    if (this.relationshipKeysByResident) {
+      for (const id of [a.id, b.id]) {
+        const keys = this.relationshipKeysByResident.get(id) ?? new Set<string>();
+        keys.add(key); this.relationshipKeysByResident.set(id, keys);
+      }
+    }
     this.state.relationships[key] = {
       ...relationship,
       trust: clamp01(relationship.trust + (accepted ? 0.025 : 0.004)),
@@ -14834,26 +14854,6 @@ export class WorldEngine {
   }
 
   private performPray(agent: AgentState, now: number): void {
-    const sacredPlaces = [
-      ...(this.placesByKind?.get('ruins') ?? []),
-      ...(this.placesByKind?.get('quiet_space') ?? []),
-    ];
-    let nearestSacred:
-      | { place: WorldPlace; distance: number }
-      | undefined;
-    for (const place of sacredPlaces) {
-      if (!(agent.knownPlaceIds ?? []).includes(place.id) || this.pathBetween(agent.locationId, place.id) === undefined) continue;
-      const distance = Math.hypot(
-        place.mapX - agent.position.x,
-        place.mapY - agent.position.y,
-      );
-      if (!nearestSacred || distance < nearestSacred.distance) {
-        nearestSacred = { place, distance };
-      }
-    }
-    const sacredPlaceId =
-      nearestSacred?.place.id ??
-      this.localPlace(agent, ['quiet_space'], agent.homeId);
     // Residents can speak to a deity where they actually are, including home.
     // A sacred place is optional, not a long mandatory journey before every prayer.
     const resonance =
@@ -14875,7 +14875,7 @@ export class WorldEngine {
       subject: this.rng.next(),
       deity: this.rng.next(),
       wording: this.rng.next(),
-    });
+    }, this.relationshipsForResident(agent.id));
     const prayerIsMeaningful = prayer.importance >= 0.62;
     if (prayerIsMeaningful) {
       this.stageMemory({
@@ -15019,7 +15019,7 @@ export class WorldEngine {
   }
 
   private performHelp(a: AgentState, b: AgentState, now: number): void {
-    this.moveAgent(a, b.locationId);
+    if (!a.life.alive || !b.life.alive || a.movement || b.movement || a.locationId !== b.locationId) return;
     const key = relationshipKey(a.id, b.id);
     const current = this.relationshipFor(a, b, now);
     if (current.trust > 0.25) {
@@ -15223,7 +15223,7 @@ export class WorldEngine {
   }
 
   private interact(a: AgentState, b: AgentState, now: number): void {
-    if (a.locationId !== b.locationId) return;
+    if (!a.life.alive || !b.life.alive || a.movement || b.movement || a.locationId !== b.locationId) return;
     const key = relationshipKey(a.id, b.id);
     const current = this.relationshipFor(a, b, now);
 
@@ -15257,6 +15257,12 @@ export class WorldEngine {
     };
 
     this.state.relationships[key] = next;
+    if (sentiment > 0.18 && next.trust > 0.25) {
+      sharePlaceKnowledgeV20(this.state, a, b);
+      sharePlaceKnowledgeV20(this.state, b, a);
+      consultSettlementMap(this.state, a);
+      consultSettlementMap(this.state, b);
+    }
     // Visible evidence can provoke awe or fear without assigning a religion.
     if (hasGiftV20(this.state, a.id, 'marked')) {
       b.mind.emotions.awe = clamp01(b.mind.emotions.awe + 0.06);
@@ -15479,6 +15485,21 @@ export class WorldEngine {
     this.recordRelationshipEvent(next, sentiment, now);
   }
 
+  private relationshipsForResident(agentId: string): RelationshipState[] {
+    if (!this.relationshipKeysByResident) {
+      const index = new Map<string, Set<string>>();
+      for (const [key, relationship] of Object.entries(this.state.relationships)) {
+        for (const id of [relationship.agentA, relationship.agentB]) {
+          const keys = index.get(id) ?? new Set<string>();
+          keys.add(key); index.set(id, keys);
+        }
+      }
+      this.relationshipKeysByResident = index;
+    }
+    return [...(this.relationshipKeysByResident.get(agentId) ?? [])]
+      .map(key => this.state.relationships[key]).filter(Boolean);
+  }
+
   private relationshipFor(a: AgentState, b: AgentState, now: number): RelationshipState {
     const key = relationshipKey(a.id, b.id);
     const ids = [a.id, b.id].sort();
@@ -15500,6 +15521,13 @@ export class WorldEngine {
     sentiment: number,
     now: number,
   ): void {
+    if (this.relationshipKeysByResident) {
+      const key = relationshipKey(relationship.agentA, relationship.agentB);
+      for (const id of [relationship.agentA, relationship.agentB]) {
+        const keys = this.relationshipKeysByResident.get(id) ?? new Set<string>();
+        keys.add(key); this.relationshipKeysByResident.set(id, keys);
+      }
+    }
     const pair = `${relationship.agentA}::${relationship.agentB}`;
     let stableSlot = 0;
     for (let index = 0; index < pair.length; index += 1) {
@@ -15544,12 +15572,12 @@ export class WorldEngine {
     if (agent.locationId === locationId && !agent.movement) return;
 
     if (availableBoat(this.state, agent) || Object.values(this.state.v15?.items ?? {}).some(i=>i.boat?.journey?.originPlaceId===agent.locationId)) {
-      const direct = this.pathBetween(agent.locationId, locationId);
+      const direct = residentKnownPath(this.state, agent, locationId);
       const waterShortcut = !direct || direct.length > 3;
       if (waterShortcut && startBoatTravel(this.state, agent, locationId, agent.lastDecision?.action ?? 'walk',
           this.rng.next(), (a,b)=>this.pathBetween(a,b)!==undefined)) return;
     }
-    const path = this.pathBetween(agent.locationId, locationId);
+    const path = residentKnownPath(this.state, agent, locationId);
     if (!path || path.slice(1).some(id => !mayKnowPlaceV20(agent, id, this.state))) {
       // Water and disconnected territory are physical boundaries. A resident
       // never receives an implicit teleport just because an action chose it.
@@ -15603,6 +15631,7 @@ export class WorldEngine {
         const resident = this.state.agents[arrival.agentId];
         this.moveResidentLocationIndex(resident, arrival.fromPlaceId, arrival.toPlaceId);
         this.routePathCache?.clear();
+        invalidateResidentNavigation(this.state);
         if (arrival.discovered && this.state.geography) this.state.geography.revision++;
         observeLocalPlacesV20(this.state, resident);
         recordExplorationArrival(this.state, resident);
@@ -15686,6 +15715,7 @@ export class WorldEngine {
             if (route) route.completedTraversals = (route.completedTraversals ?? 0) + 1;
           }
           agent.movement = undefined;
+          recordResidentRouteArrival(this.state, agent, movement.routeIds ?? [], arrivalMinute);
           noteLibraryArrival(this.state, agent, arrivalMinute);
           observeLocalPlacesV20(this.state, agent);
           recordExplorationArrival(this.state, agent);
@@ -15705,12 +15735,13 @@ export class WorldEngine {
       this.state.settlements,
       0,
     );
-    repairCompactSettlementLayout(this.state);
-    this.state.routes = rebuildWorldRoutes(
-      this.state.places,
-      this.state.routes,
-    );
+    // The geometry migration already rebuilds and reconciles routes when it
+    // changes physical places. Never perform that expensive work twice.
+    if (!repairCompactSettlementLayout(this.state)) {
+      this.state.routes = rebuildWorldRoutes(this.state.places, this.state.routes);
+    }
     this.routePathCache?.clear();
+    invalidateResidentNavigation(this.state);
   }
 
   private lawValue(

@@ -1,6 +1,7 @@
 import { WORLD_MINUTES_PER_YEAR } from '../world/WorldClock';
 import type {
   AgentState,
+  RelationshipState,
   DivineContactKind,
   DivineGiftKind,
   WorldState,
@@ -796,6 +797,7 @@ function settlementForAgent(
 function relatedPeople(
   world: Readonly<WorldState>,
   agent: Readonly<AgentState>,
+  relationships?: readonly RelationshipState[],
 ): Array<{ person: AgentState; relationship: string; closeness: number }> {
   const people = new Map<
     string,
@@ -809,7 +811,7 @@ function relatedPeople(
     const parent = world.agents[parentId];
     if (parent) people.set(parent.id, { person: parent, relationship: 'родитель', closeness: 0.86 });
   }
-  for (const relationship of Object.values(world.relationships)) {
+  for (const relationship of relationships ?? Object.values(world.relationships)) {
     if (relationship.agentA !== agent.id && relationship.agentB !== agent.id) continue;
     const otherId = relationship.agentA === agent.id
       ? relationship.agentB
@@ -887,11 +889,12 @@ function buildPrayerCandidates(
   world: Readonly<WorldState>,
   agent: Readonly<AgentState>,
   settlement: ReturnType<typeof settlementForAgent>,
+  relationships?: readonly RelationshipState[],
 ): {
   candidates: PrayerCandidate[];
   evidence: Omit<V19PrayerEvidence, 'facts' | 'targetRelationship' | 'targetAlive'>;
 } {
-  const related = relatedPeople(world, agent);
+  const related = relatedPeople(world, agent, relationships);
   const sick = related
     .filter(({ person }) => person.life.alive && person.life.health < 0.68)
     .sort((left, right) =>
@@ -1188,12 +1191,13 @@ export function recordContextualPrayerV19(
   world: WorldState,
   agent: AgentState,
   rolls: Readonly<ContextualPrayerRollsV19>,
+  relationships?: readonly RelationshipState[],
 ): V19PrayerRecord {
   const v19 = ensureWorldV19State(world);
   const agency = v19.divineAgency;
   const profile = ensureAgentDivineAgencyV19(world, agent.id);
   const settlement = settlementForAgent(world, agent);
-  const built = buildPrayerCandidates(world, agent, settlement);
+  const built = buildPrayerCandidates(world, agent, settlement, relationships);
   const sequence = agency.nextPrayerSequence++;
   const candidate = [...built.candidates]
     .sort(

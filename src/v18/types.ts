@@ -151,6 +151,8 @@ export interface V18ExplorationEvidence {
   arrivals: number;
   surveys: number;
   newlyMapped: number;
+  /** Searching beyond an already charted site is not drawing that map again. */
+  frontierSearches?: number;
   campRests: number;
   provisionsTaken: number;
   practicalLessons: number;

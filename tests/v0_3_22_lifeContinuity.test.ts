@@ -202,7 +202,8 @@ describe('exploration is a prepared physical journey, not a map label', () => {
   it('does not charge travel effort or record a successful journey when routing fails', async () => {
     const { inner, world, a, frontier } = await travelFixture();
     a.resources = 0.6;
-    vi.spyOn(inner, 'pathBetween').mockReturnValue(undefined);
+    // Exercise a real disconnected graph rather than mock the old global planner.
+    world.routes = {};
     const priorEnergy = a.energy;
     const priorSkill = a.skills.exploration;
     expect(inner.beginExplorationJourney(a, frontier.id, 1)).toBe(false);

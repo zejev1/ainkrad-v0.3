@@ -1,3 +1,4 @@
+import { indexedBuildings } from './PhysicalNavigationQueries';
 import { buildingSize, buildingLocalPoint, buildingPolygon, buildingsHaveClearance, polygonsOverlap } from './BuildingFootprints';
 import { organicHomeLot, organicStreetPath, organicLotAddress } from './OrganicSettlementStreets';
 import type { WorldPlace, WorldPoint2D } from './types';
@@ -32,7 +33,7 @@ export function routeAroundBuildings(
 ): WorldPoint2D[] | undefined {
   const minX = Math.min(...path.map(p => p.x)) - 0.12, maxX = Math.max(...path.map(p => p.x)) + 0.12;
   const minY = Math.min(...path.map(p => p.y)) - 0.12, maxY = Math.max(...path.map(p => p.y)) + 0.12;
-  const buildings = Object.values(places).filter(p => p.id !== fromId && p.id !== toId && buildingRadius(p) > 0 &&
+  const buildings = (indexedBuildings(places, { minX: minX - .16, maxX: maxX + .16, minY: minY - .16, maxY: maxY + .16 }) ?? Object.values(places)).filter(p => p.id !== fromId && p.id !== toId && buildingRadius(p) > 0 &&
     p.mapX >= minX-.16 && p.mapX <= maxX+.16 && p.mapY >= minY-.16 && p.mapY <= maxY+.16);
   const clear = (a: WorldPoint2D, b: WorldPoint2D) => !buildings.some(p => segmentEntersBuilding(a, b, p));
   if (path.slice(1).every((p, i) => clear(path[i], p))) return path;
