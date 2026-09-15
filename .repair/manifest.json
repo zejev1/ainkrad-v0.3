@@ -1,0 +1,19 @@
+{
+  "docs/life-continuity-repair-2026-09-15.md": "b54039431ca4764b1aad30c99a8ebe74a325075c558a6e02bf01d22ec8fbfc52",
+  "src/v18/LifeContinuityDiagnosticsV22.ts": "e495594d74dd777a12850598310d6ec62d63e0fb443ca40044e7a954ed2471cd",
+  "src/v18/runLifeContinuityAuditV22.ts": "9342da786b28b5e40414b68652ade30151a2a8dc72257a57bca5c3d42f9713ba",
+  "src/v18/runOfflineCatchUpBenchmarkV18.ts": "e9c1f61c7995b3d5ec9c0d9a4392b755ef048a62a2bd01cf72af2520872cbc52",
+  "src/v18/types.ts": "e55729380d49d23482db65941db422806ade324f9e7d53f2d923c6882d908e4c",
+  "src/v19/AdventureEconomyV19.ts": "3f60647845e4f86af808d1f110ea6c7a77b44d87e8c8684d6b560bd030483991",
+  "src/v21/EmergentSocietyV21.ts": "9c646917cea115a50d936acd9d26219de5e7fd08f9902f5b59456d60e9e42dad",
+  "src/world/ResidentChoice.ts": "6e5062591ca1efafc385e9b84432a261aad83934aad29bb29d341ac628fda684",
+  "src/world/ResidentExploration.ts": "84f22eb244c83ec442b85422acac1370d89745ee9095e1743079b4f9798ea89d",
+  "src/world/ResidentExplorationEvidence.ts": "5e56481b09e0ae205cbd3262a3bf4e2eee69183458c7eb18b1c6b9e086747a5a",
+  "src/world/ResidentOpportunityWindow.ts": "49cfbf809d131bb0c8ba48896b09a26040bd1bf97c7940a95283b42bd3fc65bc",
+  "src/world/WorldEngine.ts": "1dd03a498c59b27a8830e9b9794d45c09299cbfcf958ba404b097c66407db959",
+  "src/world/types.ts": "d389c3877d0d14867dcbbeaab0e2566c9f6ae8bfa68527614f838c8160b8cba9",
+  "tests/v0_3_16_societyFoundation.test.ts": "7396aeb134d19190e2f8fd38029394ca687009955e6fc4d4586d3a35f871cb34",
+  "tests/v0_3_19_adventureEconomy.test.ts": "ab22d03aea464275ca77c48223872db18f33a4964b6f3aa1fb1fb0048462b5a2",
+  "tests/v0_3_22_lifeContinuity.test.ts": "30eaf7a29bda388659ed69a2576aa98c3990b5e5911d455a79046363c2a0abad",
+  "tests/v0_3_22_lifeDiagnostics.test.ts": "28cf59eea4cbde3d4d9ddde63b58f9940fd0fabb221778c4ccdb60731b877508"
+}
