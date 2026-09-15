@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   assertAdventureEconomyV19,
+  ensureAdventurerV19,
   chooseDungeonExpeditionV19,
   resolveDungeonExpeditionV19,
   syncAdventureEconomyV19,
@@ -217,4 +218,40 @@ describe('v0.3.19 autonomous dungeons, ranks and carried economy', () => {
     expect(chooseDungeonExpeditionV19(state, resident, [dungeonId], 0)).toBeUndefined();
     expect(state.v19!.adventureEconomy.adventurersByAgentId[resident.id]).toBeUndefined();
   });
+});
+
+
+describe('physical storage acceptance before a commodity sale', () => {
+  it.each(['food', 'wood', 'stone', 'metal', 'fuel', 'meat', 'herbs'] as const)(
+    'keeps unsold %s with the resident and conserves paid coin', async commodity => {
+      const { state, resident } = await preparedWorld(`market-capacity-${commodity}`);
+      const settlementId = state.places[resident.homeId].settlementId!;
+      resident.locationId = resident.homeId; resident.movement = undefined;
+      const adventure = syncAdventureEconomyV19(state);
+      const profile = ensureAdventurerV19(state, resident.id);
+      const market = adventure.settlementMarketsById[settlementId];
+      const economy = ensureSettlementEconomyV16(state, settlementId);
+      const material = commodity === 'meat' || commodity === 'herbs' ? 'food' : commodity;
+      const conversion = commodity === 'meat' ? 0.72 : commodity === 'herbs' ? 0.22 : 1;
+      economy.stocks[material] = economy.storageCapacity[material] - 0.02;
+      profile.carriedGoods = { [commodity]: 1 };
+      profile.artifactIds = [];
+      profile.coinBalance = 0;
+      market.treasuryCoin = 10;
+      const tx = tryAdventureMarketTradeV19(state, resident, settlementId, 0);
+      expect(tx?.kind).toBe('commodity_sale');
+      expect(tx!.quantity).toBeCloseTo(0.02 / conversion, 10);
+      expect(economy.stocks[material]).toBeCloseTo(economy.storageCapacity[material], 10);
+      expect(profile.carriedGoods[commodity]).toBeCloseTo(1 - tx!.quantity!, 10);
+      expect(profile.coinBalance + market.treasuryCoin).toBeCloseTo(10, 12);
+      state.calendar.elapsedWorldMinutes += 31 * 24 * 60;
+      const goods = profile.carriedGoods[commodity];
+      const coins = profile.coinBalance;
+      const next = tryAdventureMarketTradeV19(state, resident, settlementId, 0);
+      expect(next).toBeUndefined();
+      expect(profile.carriedGoods[commodity]).toBe(goods);
+      expect(profile.coinBalance).toBe(coins);
+      expect(economy.stocks[material]).toBeLessThanOrEqual(economy.storageCapacity[material] + 1e-9);
+    },
+  );
 });

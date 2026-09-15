@@ -1,6 +1,7 @@
 import {connectLocalWaters} from './LocalDrainage';
 import {naturalRiverCourse,nearestRiverPoint} from './RiverCourses';
 import {pointInPolygon} from '../BuildingFootprints';
+import {PreparedPolygonQuery} from '../PreparedPolygonQuery';
 import type {WorldPoint2D} from '../types';
 import {continentOutline,ridges,reliefHeight,climate} from './ContinentalRelief';
 import {drainTerrain,terrainGridPoint} from './DrainageNetwork';
@@ -21,16 +22,18 @@ export class TerrainModel {
   readonly rivers:FeatureIndex<RiverReach>;readonly anchors:FeatureIndex<TerrainFoundation['anchors'][number]>;
   readonly riverPolygons:WorldPoint2D[][];
   readonly polygons:FeatureIndex<WorldPoint2D[]>;
+  private readonly landQueries:PreparedPolygonQuery[];
   constructor(readonly foundation:TerrainFoundation) {
     // Model caches must not adopt a new recipe key while retaining old grids.
     this.foundation=structuredClone(foundation);foundation=this.foundation;
     this.outline=continentOutline(foundation);this.ranges=ridges(foundation);
     this.landOutlines=[this.outline,...(foundation.offshore??[]).map(land=>land.outline)];
+    this.landQueries=this.landOutlines.map(poly=>new PreparedPolygonQuery(poly));
     const outer=[{x:-200000,y:-100075},{x:200375,y:-100075},{x:200375,y:100075},{x:-200000,y:100075}];
     // Even-odd ocean with a land hole; the connecting edge lies in the sea.
     this.ocean=[...outer,outer[0],...this.landOutlines.flatMap(poly=>[poly[0],...poly.slice(1),poly[0],outer[0]])];
     const raw=new Float64Array(N*N);this.land=new Uint8Array(N*N);
-    for(let i=0;i<N*N;i++){const p=terrainGridPoint(i);this.land[i]=Number(pointInPolygon(p,this.outline));raw[i]=this.land[i]?reliefHeight(p.x,p.y,foundation,this.ranges):0;}
+    for(let i=0;i<N*N;i++){const p=terrainGridPoint(i);this.land[i]=Number(this.landQueries[0].contains(p));raw[i]=this.land[i]?reliefHeight(p.x,p.y,foundation,this.ranges):0;}
     const drainage=drainTerrain(raw,this.land,foundation);this.heights=drainage.heights;this.reaches=drainage.reaches;
     connectLocalWaters(foundation,drainage.parent,this.heights,this.land,this.reaches);
     for(const reach of this.reaches)reach.points=naturalRiverCourse(reach,foundation);
@@ -38,7 +41,7 @@ export class TerrainModel {
     this.riverPolygons=this.reaches.map(riverPolygon);this.polygons=new FeatureIndex(this.riverPolygons,p=>featureBounds(p));
     this.anchors=new FeatureIndex(foundation.anchors,a=>({minX:a.x-a.radius-8,minY:a.y-a.radius-8,maxX:a.x+a.radius+8,maxY:a.y+a.radius+8}),32);
   }
-  isLand(point:WorldPoint2D):boolean {return this.landOutlines.some(poly=>pointInPolygon(point,poly));}
+  isLand(point:WorldPoint2D):boolean {return this.landQueries.some(query=>query.contains(point));}
   elevation(x:number,y:number):number {
     const land=this.foundation.offshore?.find(p=>Math.abs(x-p.center.x)<=p.radius&&Math.abs(y-p.center.y)<=p.radius&&pointInPolygon({x,y},p.outline));
     if(land){

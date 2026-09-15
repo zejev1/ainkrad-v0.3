@@ -1,6 +1,6 @@
 import type { AgentState, V21BodyState, WorldPlaceKind, WorldState, WorldV21State } from '../world/types';
 import { cancelLearningAttempt } from '../world/learning/ResidentLearning';
-import { ensureEmbodiedWorldV21 } from './EmbodiedWorldV21';
+import { ensureAgentEmbodiedWorldV21 } from './EmbodiedWorldV21';
 import { worldWeatherV21 } from './WeatherV21';
 
 // Sleep is a body constraint, not a Cardinal decision. Expensive context is
@@ -39,7 +39,7 @@ function existingSleepBody(world: Readonly<WorldState>, agentId: string): SleepA
 /** Hot-path lookup: O(1) once the embodied world exists. */
 function sleepBody(world: WorldState, agent: Readonly<AgentState>): SleepAwareBody {
   return existingSleepBody(world, agent.id) ??
-    (ensureEmbodiedWorldV21(world).bodiesByAgentId[agent.id] as SleepAwareBody);
+    (ensureAgentEmbodiedWorldV21(world, agent.id).bodiesByAgentId[agent.id] as SleepAwareBody);
 }
 
 function hasSleepingKit(world: Readonly<WorldState>, agent: Readonly<AgentState>): boolean {

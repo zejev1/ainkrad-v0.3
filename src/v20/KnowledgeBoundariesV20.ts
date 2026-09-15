@@ -1,3 +1,4 @@
+import { shareResidentCartography } from '../world/ResidentCartography';
 import { hasLibraryAdmission, isSecretLibrary } from '../v21/LibraryAdmissions';
 import type { AgentState, WorldPlace, WorldState } from '../world/types';
 import { routeIdBetween } from '../world/WorldNavigation';
@@ -22,7 +23,8 @@ export function observeLocalPlacesV20(world: Readonly<WorldState>, agent: AgentS
     if (place && mayKnowPlaceV20(agent, id, world) &&
         Math.hypot(place.mapX - agent.position.x, place.mapY - agent.position.y) <= LOCAL_TRAIL_NOTICE_RADIUS_V20) known.add(id);
   }
-  agent.knownPlaceIds = [...known];
+  const nextKnown = [...known];
+  if (!agent.knownPlaceIds || nextKnown.length !== agent.knownPlaceIds.length || nextKnown.some((id, i) => id !== agent.knownPlaceIds![i])) agent.knownPlaceIds = nextKnown;
   const dungeon = world.v19?.adventureEconomy.dungeonsById[`dungeon:${agent.locationId}`];
   if (dungeon && !agent.movement) agent.knownDungeonIds = [...new Set([...(agent.knownDungeonIds ?? []), dungeon.id])];
 }
@@ -35,6 +37,7 @@ export function sharePlaceKnowledgeV20(world: Readonly<WorldState>, speaker: Rea
   }
   listener.knownPlaceIds = [...known];
   listener.knownDungeonIds = [...new Set([...(listener.knownDungeonIds ?? []), ...(speaker.knownDungeonIds ?? [])])];
+  shareResidentCartography(world, speaker, listener);
 }
 
 export function removeUnsurveyedHomelandLinksV20(world: WorldState): void {

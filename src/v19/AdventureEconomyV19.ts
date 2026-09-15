@@ -235,8 +235,12 @@ function syncIntoState(
   }
   const existingCount = Object.keys(state.dungeonsById).length;
   if (existingCount >= MAX_DUNGEONS_V19) return;
+  // Same physical-presence rule, one O(residents + places) pass instead of
+  // allocating/scanning the entire population once per candidate place.
+  const occupiedPlaces = new Set(Object.values(world.agents)
+    .filter(agent => agent.life.alive && !agent.movement).map(agent => agent.locationId));
   const candidates = Object.values(world.places)
-    .filter(place => eligibleDungeonEntrance(place) && Object.values(world.agents).some(agent => agent.life.alive && !agent.movement && agent.locationId === place.id))
+    .filter(place => eligibleDungeonEntrance(place) && occupiedPlaces.has(place.id))
     .sort(
       (left, right) =>
         (left.discoveredAt ?? 0) - (right.discoveredAt ?? 0) ||
@@ -410,7 +414,7 @@ export function ensureAdventurerV19(
   world: WorldState,
   agentId: string,
 ): V19AdventurerState {
-  const state = syncAdventureEconomyV19(world);
+  const state = world.v19?.adventureEconomy ?? repairAdventureEconomyV19(world);
   return (state.adventurersByAgentId[agentId] ??= emptyAdventurer(agentId));
 }
 
@@ -1061,7 +1065,7 @@ export function tryAdventureMarketTradeV19(
   if (physicalSettlementId !== settlementId || !world.settlements[settlementId]) {
     return undefined;
   }
-  const state = syncAdventureEconomyV19(world);
+  const state = world.v19?.adventureEconomy ?? repairAdventureEconomyV19(world);
   const profile = state.adventurersByAgentId[agent.id];
   if (!profile) return undefined;
   if (
@@ -1147,10 +1151,22 @@ export function tryAdventureMarketTradeV19(
       settlementId,
       commodity,
     );
+    const storedMaterial = commodity === 'meat' || commodity === 'herbs'
+      ? 'food'
+      : commodity === 'food' || commodity === 'wood' || commodity === 'stone' ||
+        commodity === 'metal' || commodity === 'fuel' ? commodity : undefined;
+    const storageConversion = commodity === 'meat' ? 0.72 : commodity === 'herbs' ? 0.22 : 1;
+    const storageRoom = storedMaterial
+      ? Math.max(0, economy.storageCapacity[storedMaterial] - economy.stocks[storedMaterial]) / storageConversion
+      : Infinity;
+    // A full warehouse declines the excess before any money or goods move.
+    // Keep unsold provisions with their owner; never discard stock afterward
+    // merely to make the physical-capacity validator pass.
     const quantity = Math.min(
       carried,
       0.4,
       market.treasuryCoin / Math.max(0.05, unitPrice),
+      storageRoom,
     );
     // Division followed by multiplication can exceed the balance by one ULP.
     // Debit and credit the same bounded amount, never mint a rounding shortfall.
@@ -1167,16 +1183,8 @@ export function tryAdventureMarketTradeV19(
       profile.lastTradeWorldMinute = world.calendar.elapsedWorldMinutes;
       state.totalTradeVolume += coin;
       agent.resources = clamp01(agent.resources - Math.min(0.12, quantity * 0.2));
-      if (
-        commodity === 'food' ||
-        commodity === 'wood' ||
-        commodity === 'stone' ||
-        commodity === 'metal' ||
-        commodity === 'fuel'
-      ) {
-        economy.stocks[commodity] += quantity;
-      } else if (commodity === 'meat' || commodity === 'herbs') {
-        economy.stocks.food += quantity * (commodity === 'meat' ? 0.72 : 0.22);
+      if (storedMaterial) {
+        economy.stocks[storedMaterial] += quantity * storageConversion;
       }
       recordCarriedTrade(
         world,

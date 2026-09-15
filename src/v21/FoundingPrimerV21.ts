@@ -6,7 +6,7 @@ import type {
   WorldState,
 } from '../world/types';
 import { WORLD_MINUTES_PER_YEAR } from '../world/WorldClock';
-import { ensureEmbodiedWorldV21 } from './EmbodiedWorldV21';
+import { ensureAgentEmbodiedWorldV21 } from './EmbodiedWorldV21';
 
 export const FOUNDING_PRIMER_ID_V21 = 'artifact:founding-primer-v21';
 export const FOUNDING_PRIMER_BOOK_ID_V21 = 'book:founding-primer-v21';
@@ -203,7 +203,7 @@ export function studyFoundingPrimerV21(
     : undefined;
   if (!book?.pages.length) return noStudy;
 
-  const knowledge = ensureEmbodiedWorldV21(world)
+  const knowledge = ensureAgentEmbodiedWorldV21(world, agent.id)
     .appliedKnowledgeByAgentId[agent.id];
   const now = world.calendar.elapsedWorldMinutes;
   if (

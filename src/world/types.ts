@@ -228,6 +228,7 @@ export interface AgentMovementState {
 }
 
 export interface AgentState {
+  cartography?: import('./ResidentCartography').ResidentMapNotes;
   /** Lived attempts, predictions and revisable methods; absent in legacy saves. */
   learning?: import('./learning/index').ResidentLearningState;
   knownPlaceIds?: string[];
@@ -774,6 +775,10 @@ export interface V16RaceFamilyOpportunityState {
   voluntaryIntimacyChoices: number;
   voluntaryChildChoices: number;
   birthsSinceTracking: number;
+  /** New receipts distinguish the candidate pool from actual opportunities.
+   * eligiblePairChecks is the legacy cumulative pre-window candidate count. */
+  scheduledPairChecks?: number;
+  evaluatedPairChecks?: number;
 }
 
 export interface V16LocalFamilyOpportunityState {
@@ -788,6 +793,12 @@ export interface V16LocalFamilyOpportunityState {
   voluntaryIntimacyChoices: number;
   voluntaryChildChoices: number;
   birthsSinceTracking: number;
+  /** New receipts distinguish the candidate pool from actual opportunities.
+   * eligiblePairChecks is the legacy cumulative pre-window candidate count. */
+  scheduledPairChecks?: number;
+  evaluatedPairChecks?: number;
+  /** Stable round-robin cursor; no per-couple lifetime history is required. */
+  lastConsideredPairId?: string;
 }
 
 export type V16SettlementPracticeKind =
@@ -1075,6 +1086,7 @@ export interface WorldV21State {
 }
 
 export interface WorldState {
+  cartography?: import('./ResidentCartography').WorldCartography;
   terrain?: TerrainFoundation;
   oceanExploration?: import('./geography/OceanExploration').OceanExplorationState;
   id: string;

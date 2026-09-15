@@ -153,6 +153,31 @@ export function createEmbodiedWorldV21(world: Readonly<WorldState>): WorldV21Sta
   return state;
 }
 
+/** An action touches its own bodies/items, not a migration of the entire world.
+ * Full repair still runs at load and embodied-world advancement boundaries. */
+export function ensureAgentEmbodiedWorldV21(world: WorldState, agentId?: string): WorldV21State {
+  const state = (world.v21 ??= createEmbodiedWorldV21(world));
+  state.bodiesByAgentId ??= {};
+  state.appliedKnowledgeByAgentId ??= {};
+  state.itemPhysicsByItemId ??= {};
+  state.materialCatalog ??= structuredClone(MATERIAL_CATALOG);
+  state.childSupervisionByChildId ??= {};
+  const agent = agentId ? world.agents[agentId] : undefined;
+  if (agent?.life.alive) {
+    state.bodiesByAgentId[agent.id] ??= emptyBody(world, agent);
+    const knowledge = (state.appliedKnowledgeByAgentId[agent.id] ??= emptyKnowledge(agent.id));
+    knowledge.homeTheory ??= 0;
+    knowledge.familyTheory ??= 0;
+    knowledge.weatherTheory ??= 0;
+    knowledge.foundingPrimerLessons ??= 0;
+    knowledge.foundingPrimerPageIndex ??= 0;
+    knowledge.foundingPrimerWordOffset ??= 0;
+    knowledge.foundingPrimerWordsRead ??= 0;
+    knowledge.foundingPrimerCompletedReadings ??= 0;
+  }
+  return state;
+}
+
 export function ensureEmbodiedWorldV21(world: WorldState): WorldV21State {
   const state = (world.v21 ??= createEmbodiedWorldV21(world));
   state.version = EMBODIED_WORLD_VERSION_V21;
@@ -260,7 +285,7 @@ export function recordDeferredChildTripV21(
   world: WorldState,
   child: Readonly<AgentState>,
 ): void {
-  const state = ensureEmbodiedWorldV21(world);
+  const state = ensureAgentEmbodiedWorldV21(world, child.id);
   const record: V21ChildSupervisionState =
     (state.childSupervisionByChildId[child.id] ??= {
       childId: child.id,
@@ -308,7 +333,7 @@ export function recordTraumaV21(
   discriminator: string,
 ): void {
   if (severityInput <= 0 || !agent.life.alive) return;
-  const state = ensureEmbodiedWorldV21(world);
+  const state = ensureAgentEmbodiedWorldV21(world, agent.id);
   const body = state.bodiesByAgentId[agent.id] ??= emptyBody(world, agent);
   const roll = stableUnit(`${world.id}:${agent.id}:${discriminator}:${body.nextWoundSequence}`);
   const kinds: V21WoundKind[] = source === 'monster' || source === 'wildlife'
@@ -345,7 +370,7 @@ export function recordEmbodiedReadingV21(
   knowledgeId: string,
   understanding: number,
 ): void {
-  const state = ensureEmbodiedWorldV21(world);
+  const state = ensureAgentEmbodiedWorldV21(world, agent.id);
   const knowledge = state.appliedKnowledgeByAgentId[agent.id] ??= emptyKnowledge(agent.id);
   const gain = clamp01(understanding) * (0.003 + stableUnit(knowledgeId) * 0.003);
   if (category === 'medicine') {
@@ -366,10 +391,10 @@ export function recordCarePracticeV21(
   caregiver: Readonly<AgentState>,
   patient: Readonly<AgentState>,
 ): { treated: boolean; improvement: number } {
-  if (caregiver.locationId !== patient.locationId || !patient.life.alive) {
+  if (caregiver.locationId !== patient.locationId || caregiver.movement || patient.movement || !caregiver.life.alive || !patient.life.alive) {
     return { treated: false, improvement: 0 };
   }
-  const state = ensureEmbodiedWorldV21(world);
+  const state = ensureAgentEmbodiedWorldV21(world, caregiver.id);
   const body = state.bodiesByAgentId[patient.id] ??= emptyBody(world, patient);
   const knowledge = state.appliedKnowledgeByAgentId[caregiver.id] ??= emptyKnowledge(caregiver.id);
   const wound = [...body.wounds].sort(
@@ -418,10 +443,16 @@ export function recordItemUseV21(
   actorId?: string,
 ): void {
   if (!itemId || !world.v15?.items[itemId]) return;
-  const state = ensureEmbodiedWorldV21(world);
+  const state = ensureAgentEmbodiedWorldV21(world, actorId);
   const item = world.v15.items[itemId];
   const physics = state.itemPhysicsByItemId[itemId] ??=
     emptyItemPhysics(item);
+  if (item.bookId && !physics.materials.leather) {
+    const bookPhysics = emptyItemPhysics(item);
+    physics.materials = bookPhysics.materials;
+    physics.massKg = bookPhysics.massKg;
+    physics.edge = bookPhysics.edge;
+  }
   const toughness = Object.entries(physics.materials).reduce(
     (sum, [kind, share]) => sum +
       (state.materialCatalog[kind as V21PhysicalMaterialKind]?.toughness ?? 0.2) * (share ?? 0),
@@ -449,7 +480,7 @@ export function recordMaterialPracticeV21(
   amount: number,
 ): void {
   if (amount <= 0 || !world.agents[agentId]?.life.alive) return;
-  const state = ensureEmbodiedWorldV21(world);
+  const state = ensureAgentEmbodiedWorldV21(world, agentId);
   const knowledge = state.appliedKnowledgeByAgentId[agentId] ??= emptyKnowledge(agentId);
   knowledge.materialPractice = clamp01(
     knowledge.materialPractice + Math.min(0.006, amount * 0.0015),
