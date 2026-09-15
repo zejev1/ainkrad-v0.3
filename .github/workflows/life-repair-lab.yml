@@ -1,34 +1,86 @@
-name: Life repair workspace
+name: Life repair validation and isolated branch
 on:
   push:
     branches: [work/life-repair-lab-20260915]
     paths: [.github/workflows/life-repair-lab.yml]
 permissions:
   contents: read
+concurrency:
+  group: life-repair-publish-20260915
+  cancel-in-progress: false
 jobs:
-  workspace:
+  verify:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: sources
     steps:
       - uses: actions/checkout@v4
         with:
           ref: b3bfd24aaff1a80c54abd3bfdc370395dc85631e
+          path: sources
           persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: inputs
+          persist-credentials: false
+      - name: Apply exact locally tested file contents
+        run: python3 ../inputs/.repair/apply-verified.py .
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - name: Install locked development dependencies
+          cache-dependency-path: sources/package-lock.json
+      - name: Install locked dependencies
         run: npm ci --no-audit --no-fund
-      - name: Package tracked source and dependencies, never credentials
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Targeted regression tests
+        run: npm test -- tests/v0_3_22_lifeContinuity.test.ts tests/v0_3_22_lifeDiagnostics.test.ts tests/v0_3_19_adventureEconomy.test.ts tests/v0_3_16_societyFoundation.test.ts
+      - name: Production build
+        run: npm run build
+      - name: Reproduce independent 20-year controls
         run: |
-          mkdir -p /tmp/life-repair-workspace
-          git archive --format=tar HEAD -o /tmp/life-repair-workspace/source.tar
-          tar -czf /tmp/life-repair-workspace/dependencies.tar.gz node_modules
-          git rev-parse HEAD > /tmp/life-repair-workspace/SOURCE_SHA.txt
+          mkdir -p /tmp/life-repair-controls
+          node --import tsx src/v18/runLifeContinuityAuditV22.ts life-repair-control-a 10,20 | tee /tmp/life-repair-controls/control-a.jsonl
+          node --import tsx src/v18/runLifeContinuityAuditV22.ts life-repair-control-b 10,20 | tee /tmp/life-repair-controls/control-b.jsonl
       - uses: actions/upload-artifact@v4
         with:
-          name: life-repair-workspace
-          path: /tmp/life-repair-workspace/
-          retention-days: 2
-          compression-level: 0
+          name: life-repair-controls
+          path: /tmp/life-repair-controls/
+          retention-days: 14
+  publish-isolated-branch:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: sources
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: b3bfd24aaff1a80c54abd3bfdc370395dc85631e
+          path: sources
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: inputs
+          persist-credentials: false
+      - name: Apply the same verified bytes to a clean baseline
+        run: python3 ../inputs/.repair/apply-verified.py .
+      - name: Publish fix branch only, never main or an existing branch
+        run: |
+          set -euo pipefail
+          branch=fix/life-continuity-20260915
+          existing=$(git ls-remote --heads origin "refs/heads/$branch")
+          test -z "$existing" || { echo 'Refusing to overwrite an existing repair branch'; exit 1; }
+          git config core.hooksPath /dev/null
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix: preserve resident opportunities, exploration continuity and physical trade capacity'
+          git push origin "HEAD:refs/heads/$branch"
+          git rev-parse HEAD
