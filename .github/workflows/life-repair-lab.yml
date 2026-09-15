@@ -1,0 +1,34 @@
+name: Life repair workspace
+on:
+  push:
+    branches: [work/life-repair-lab-20260915]
+    paths: [.github/workflows/life-repair-lab.yml]
+permissions:
+  contents: read
+jobs:
+  workspace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: b3bfd24aaff1a80c54abd3bfdc370395dc85631e
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install locked development dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Package tracked source and dependencies, never credentials
+        run: |
+          mkdir -p /tmp/life-repair-workspace
+          git archive --format=tar HEAD -o /tmp/life-repair-workspace/source.tar
+          tar -czf /tmp/life-repair-workspace/dependencies.tar.gz node_modules
+          git rev-parse HEAD > /tmp/life-repair-workspace/SOURCE_SHA.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: life-repair-workspace
+          path: /tmp/life-repair-workspace/
+          retention-days: 2
+          compression-level: 0
