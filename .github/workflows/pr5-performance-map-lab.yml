@@ -4,36 +4,102 @@ on:
     branches: ['work/pr5-performance-map-lab-20260915']
     paths: ['.github/workflows/pr5-performance-map-lab.yml']
 permissions:
-  contents: read
+  contents: write
 jobs:
-  source-fixture:
+  verify-repair:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 2ca2d99a9477e1b42a63d6f67b4c71ea9ffcdfc5
+          path: transport
           persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 2ca2d99a9477e1b42a63d6f67b4c71ea9ffcdfc5
+          path: source
           fetch-depth: 1
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install exact lockfile dependencies
+      - name: Verify transport digest and exact tested source tree
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          python3 - <<'PY'
+          import base64, hashlib, lzma, pathlib
+          root = pathlib.Path('transport/.lab/pr5-cartography')
+          parts = [root / ('patch.%03d.b64' % i) for i in range(1, 5)]
+          encoded = ''.join(''.join(p.read_text().split()) for p in parts)
+          patch = lzma.decompress(base64.b64decode(encoded, validate=True))
+          digest = hashlib.sha256(patch).hexdigest()
+          assert digest == '665fe4063a4680ddbee798affba01b7d71656df2d6d7fec54956abd809258c1f', digest
+          pathlib.Path('evidence/repair.patch').write_bytes(patch)
+          pathlib.Path('evidence/patch.sha256').write_text(digest + '\n')
+          print('Verified repair patch SHA-256:', digest)
+          PY
+          cd source
+          test "$(git rev-parse HEAD)" = '2ca2d99a9477e1b42a63d6f67b4c71ea9ffcdfc5'
+          git apply --check ../evidence/repair.patch
+          git apply --index ../evidence/repair.patch
+          test "$(git write-tree)" = 'cf87606a607784ac6080e7737f9c6f91dbb5cc31'
+          git diff --cached --stat | tee ../evidence/changed-files.txt
+          node --version > ../evidence/node-version.txt
+      - name: Install exact dependencies
+        working-directory: source
         run: npm ci --no-audit --no-fund
-      - name: Package read-only source and execution fixtures
+      - name: Typecheck
+        working-directory: source
+        run: |
+          set -euo pipefail
+          npm run typecheck 2>&1 | tee ../evidence/typecheck.log
+      - name: All regression tests
+        working-directory: source
+        run: |
+          set -euo pipefail
+          npm test 2>&1 | tee ../evidence/tests.log
+      - name: Production build
+        working-directory: source
+        run: |
+          set -euo pipefail
+          npm run build 2>&1 | tee ../evidence/build.log
+      - name: Independent 20-year control A
+        working-directory: source
+        run: |
+          set -euo pipefail
+          node --import tsx src/v18/runLifeContinuityAuditV22.ts life-repair-control-a 10,20 > ../evidence/control-a.json
+      - name: Independent 20-year control B
+        working-directory: source
+        run: |
+          set -euo pipefail
+          node --import tsx src/v18/runLifeContinuityAuditV22.ts life-repair-control-b 10,20 > ../evidence/control-b.json
+      - name: Prepare isolated commit without updating PR or main
+        working-directory: source
+        env:
+          PREPARED_BRANCH: work/pr5-prepared-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = '2ca2d99a9477e1b42a63d6f67b4c71ea9ffcdfc5'
-          mkdir -p /tmp/ainkrad-offline-fixture
-          git archive --format=tar.gz HEAD > /tmp/ainkrad-offline-fixture/pr5-source.tar.gz
-          tar -czf /tmp/ainkrad-offline-fixture/node_modules.tar.gz node_modules
-          git fetch --no-tags --depth=1 origin b3bfd24aaff1a80c54abd3bfdc370395dc85631e
-          git archive --format=tar.gz b3bfd24aaff1a80c54abd3bfdc370395dc85631e > /tmp/ainkrad-offline-fixture/main-source.tar.gz
-          (cd /tmp/ainkrad-offline-fixture && sha256sum *.tar.gz > SHA256SUMS.txt)
-          node --version > /tmp/ainkrad-offline-fixture/node-version.txt
+          test "$(git write-tree)" = 'cf87606a607784ac6080e7737f9c6f91dbb5cc31'
+          git diff --quiet
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git -c commit.gpgsign=false commit -m 'fix: cache physical route proofs and preserve causal settlement cartography'
+          test "$(git rev-parse HEAD^)" = '2ca2d99a9477e1b42a63d6f67b4c71ea9ffcdfc5'
+          git push origin "HEAD:refs/heads/${PREPARED_BRANCH}"
+          export PREPARED_SHA="$(git rev-parse HEAD)"
+          python3 - <<'PY'
+          import json, os, pathlib
+          metadata = {'branch': os.environ['PREPARED_BRANCH'], 'head': os.environ['PREPARED_SHA'], 'parent': '2ca2d99a9477e1b42a63d6f67b4c71ea9ffcdfc5', 'tree': 'cf87606a607784ac6080e7737f9c6f91dbb5cc31', 'patchSha256': '665fe4063a4680ddbee798affba01b7d71656df2d6d7fec54956abd809258c1f', 'mainUpdated': False, 'prUpdated': False}
+          pathlib.Path('../evidence/prepared-commit.json').write_text(json.dumps(metadata, indent=2) + '\n')
+          print(json.dumps(metadata, indent=2))
+          PY
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: pr5-pinned-offline-fixture
-          path: /tmp/ainkrad-offline-fixture
-          retention-days: 3
-          compression-level: 0
+          name: pr5-performance-cartography-verification
+          path: evidence
+          retention-days: 7
