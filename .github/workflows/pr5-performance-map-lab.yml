@@ -1,0 +1,39 @@
+name: PR5 performance and local maps lab
+on:
+  push:
+    branches: ['work/pr5-performance-map-lab-20260915']
+    paths: ['.github/workflows/pr5-performance-map-lab.yml']
+permissions:
+  contents: read
+jobs:
+  source-fixture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 2ca2d99a9477e1b42a63d6f67b4c71ea9ffcdfc5
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install exact lockfile dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Package read-only source and execution fixtures
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '2ca2d99a9477e1b42a63d6f67b4c71ea9ffcdfc5'
+          mkdir -p /tmp/ainkrad-offline-fixture
+          git archive --format=tar.gz HEAD > /tmp/ainkrad-offline-fixture/pr5-source.tar.gz
+          tar -czf /tmp/ainkrad-offline-fixture/node_modules.tar.gz node_modules
+          git fetch --no-tags --depth=1 origin b3bfd24aaff1a80c54abd3bfdc370395dc85631e
+          git archive --format=tar.gz b3bfd24aaff1a80c54abd3bfdc370395dc85631e > /tmp/ainkrad-offline-fixture/main-source.tar.gz
+          (cd /tmp/ainkrad-offline-fixture && sha256sum *.tar.gz > SHA256SUMS.txt)
+          node --version > /tmp/ainkrad-offline-fixture/node-version.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pr5-pinned-offline-fixture
+          path: /tmp/ainkrad-offline-fixture
+          retention-days: 3
+          compression-level: 0
