@@ -52,15 +52,11 @@ jobs:
           echo '76bc4bb1e172466715fef2d3045f691697ec9972a0571b30769d5f929db9e178  /tmp/f2-supplement.tar.gz' | sha256sum -c -
           tar -xzf /tmp/f2-supplement.tar.gz
 
-          printf '\n' >> ci/f2-fix-overlay.patch
-          git apply --check ci/f2-fix-overlay.patch
-          git apply ci/f2-fix-overlay.patch
-          printf '\n' >> ci/f2-fix-overlay2.patch
-          git apply --check ci/f2-fix-overlay2.patch
-          git apply ci/f2-fix-overlay2.patch
-          printf '\n' >> ci/f2-fix-overlay3.patch
-          git apply --check ci/f2-fix-overlay3.patch
-          git apply ci/f2-fix-overlay3.patch
+          for patch in ci/f2-fix-overlay.patch ci/f2-fix-overlay2.patch ci/f2-fix-overlay3.patch ci/f2-fix-overlay4.patch; do
+            printf '\n' >> "$patch"
+            git apply --check "$patch"
+            git apply "$patch"
+          done
 
       - name: Setup Node 22
         uses: actions/setup-node@v4
