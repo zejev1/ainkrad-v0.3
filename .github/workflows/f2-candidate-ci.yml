@@ -1,0 +1,59 @@
+name: F2 Candidate CI
+
+on:
+  push:
+    branches:
+      - ci/f2-candidate-20260916
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout temporary F2 validation branch
+        uses: actions/checkout@v4
+
+      - name: Reconstruct and apply exact F2 candidate patch
+        shell: bash
+        run: |
+          cat \
+            ci/f2-patch/part-00.b64 \
+            ci/f2-patch/part-01.b64 \
+            ci/f2-patch/part-02a.b64 \
+            ci/f2-patch/part-02b.b64 \
+            ci/f2-patch/part-02c.b64 \
+            ci/f2-patch/part-02d.b64 \
+            ci/f2-patch/part-02e.b64 \
+            ci/f2-patch/part-02f.b64 \
+            ci/f2-patch/part-02g.b64 \
+            ci/f2-patch/part-02h1.b64 \
+            ci/f2-patch/part-02h2.b64 \
+            ci/f2-patch/part-02i.b64 \
+            > /tmp/f2.patch.gz.b64
+          base64 -d /tmp/f2.patch.gz.b64 > /tmp/f2.patch.gz
+          gunzip -c /tmp/f2.patch.gz > /tmp/f2.patch
+          git apply --check /tmp/f2.patch
+          git apply /tmp/f2.patch
+          git status --short
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Vitest
+        run: npm run test
+
+      - name: Vite production build
+        run: npm run build
