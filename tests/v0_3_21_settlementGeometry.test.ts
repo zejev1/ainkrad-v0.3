@@ -38,7 +38,10 @@ describe('physical settlement geometry and observer navigation',()=>{
     for(const town of Object.values(w.settlements)) {
       const built=Object.values(w.places).filter(p=>p.settlementId===town.id && buildingRadius(p)>0);
       const edge=Math.max(...built.map(p=>Math.hypot(p.mapX-town.centerX,p.mapY-town.centerY)+buildingRadius(p)));
-      expect(edge).toBeLessThan(2);
+      // F2 intentionally pins Rulid's civic centre within 100m of the real sea.
+      // Its dry residential/facility lots may therefore extend farther inland;
+      // the old universal 200m-radius fixture applies only to inland towns.
+      if(town.id!=='settlement_rulid')expect(edge).toBeLessThan(2);
       for(const field of Object.values(w.places).filter(p=>p.settlementId===town.id && p.kind==='resource_field'))
         expect(Math.hypot(field.mapX-town.centerX,field.mapY-town.centerY)).toBeGreaterThan(edge);
       for(const p of built) for(const q of built) if(p.id!==q.id) {
