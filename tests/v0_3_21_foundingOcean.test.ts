@@ -21,9 +21,11 @@ let beforeShore: WorldState;
 let afterShore: WorldState;
 
 function life(world: WorldState) {
-  const { places: _places, routes: _routes, revision: _revision, ...preserved } = structuredClone(world);
-  // F2 adds empty additive state to old saves. Those schema containers are not
-  // a rewrite of lived identity/history and should not make continuity fail.
+  const { places: _places, routes: _routes, geography: _geography, revision: _revision, ...preserved } = structuredClone(world);
+  // Physical places/routes and their derived geography cache are allowed to be
+  // repaired together. The continuity contract below still compares people,
+  // minds, genealogy, time, RNG, knowledge, Cardinal state and every other
+  // persisted lived domain exactly.
   if (preserved.v16) delete (preserved.v16 as Partial<typeof preserved.v16>).familyLifecycleByPairId;
   if (preserved.v19?.divineAgency?.byAgentId) {
     for (const profile of Object.values(preserved.v19.divineAgency.byAgentId)) delete (profile as { burdens?: unknown }).burdens;
