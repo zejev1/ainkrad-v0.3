@@ -1,0 +1,17 @@
+diff --git a/tests/v0_3_16_societyFoundation.test.ts b/tests/v0_3_16_societyFoundation.test.ts
+index 9590a90..67f4808 100644
+--- a/tests/v0_3_16_societyFoundation.test.ts
++++ b/tests/v0_3_16_societyFoundation.test.ts
+@@ -834,6 +834,12 @@ describe('v0.3.16 material settlements and death aftermath', () => {
+       place.connectedPlaceIds = place.connectedPlaceIds.map(id => id === oldCenterId ? newCenterId : id);
+     for (const agent of Object.values(raw.agents)) if (agent.locationId === oldCenterId) agent.locationId = newCenterId;
+     for (const item of Object.values(raw.v15!.items)) if (item.locationId === oldCenterId) item.locationId = newCenterId;
++    for (const evidence of Object.values(raw.v16!.residentEvidenceByAgentId)) {
++      if (evidence.placeVisitCounts[oldCenterId] !== undefined) {
++        evidence.placeVisitCounts[newCenterId] = (evidence.placeVisitCounts[newCenterId] ?? 0) + evidence.placeVisitCounts[oldCenterId];
++        delete evidence.placeVisitCounts[oldCenterId];
++      }
++    }
+     settlementB.centerX = centerB.mapX; settlementB.centerY = centerB.mapY;
+     centerA.connectedPlaceIds.push(centerB.id);
+     centerB.connectedPlaceIds.push(centerA.id);
