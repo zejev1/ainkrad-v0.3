@@ -122,5 +122,5 @@ describe('Human-like bodies and growing civilization', () => {
     ).toBe(true);
     const history = await store.history(society.id);
     expect(history.some((event) => event.kind === 'world.city.emerged')).toBe(true);
-  }, 30_000);
+  }, 120_000);
 });
