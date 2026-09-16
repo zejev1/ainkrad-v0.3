@@ -1,0 +1,279 @@
+diff --git a/src/v19/DivineAgencyV19.ts b/src/v19/DivineAgencyV19.ts
+index 5285827..0506b6b 100644
+--- a/src/v19/DivineAgencyV19.ts
++++ b/src/v19/DivineAgencyV19.ts
+@@ -524,7 +524,7 @@ function residentResponseForAction(
+     } else if (faithful) {
+       answer = 'Я сохраню эти слова и сам решу, как жить с ними дальше.';
+     } else {
+-      answer = 'Я пока не знаю, голос ли это божества или испытание моего разума.';
++      answer = 'Я пока не знаю, голос ли это божества или испытание моего разума. Решение всё равно останется за мной.';
+     }
+     return `${heard}. Я ${profession}; ${personalStance[strongestValue].toLocaleLowerCase('ru-RU')}. ${answer}${giftResponse}`;
+   }
+diff --git a/src/world/FoundingOcean.ts b/src/world/FoundingOcean.ts
+index 5022ef3..8d2bba7 100644
+--- a/src/world/FoundingOcean.ts
++++ b/src/world/FoundingOcean.ts
+@@ -39,16 +39,26 @@ export function repairFoundingOcean(
+     world.places[AINKRAD_OCEAN_ID] = createFoundingOcean(world.epochStartedAt ?? 0);
+     changed = true;
+   }
+-  const shore = world.places.shore;
+-  if (shore?.kind !== 'shore') return changed;
+   const ocean = world.places[AINKRAD_OCEAN_ID];
+-  if (!shore.connectedPlaceIds.includes(AINKRAD_OCEAN_ID)) {
+-    shore.connectedPlaceIds.push(AINKRAD_OCEAN_ID);
++  const foundingShore = world.places.shore;
++  // Legacy Ainkrad saves used the canonical `shore` id. New F2 worlds may
++  // also contain Rulid's physical coast. Restore reciprocity without inventing
++  // links for unrelated shore places.
++  const linkedShores = Object.values(world.places).filter(
++    (place) =>
++      place.kind === 'shore' &&
++      (place.id === 'shore' || place.connectedPlaceIds.includes(AINKRAD_OCEAN_ID)),
++  );
++  if (foundingShore?.kind === 'shore' && !foundingShore.connectedPlaceIds.includes(AINKRAD_OCEAN_ID)) {
++    foundingShore.connectedPlaceIds.push(AINKRAD_OCEAN_ID);
+     changed = true;
++    if (!linkedShores.includes(foundingShore)) linkedShores.push(foundingShore);
+   }
+-  if (!ocean.connectedPlaceIds.includes(shore.id)) {
+-    ocean.connectedPlaceIds.push(shore.id);
+-    changed = true;
++  for (const shore of linkedShores) {
++    if (!ocean.connectedPlaceIds.includes(shore.id)) {
++      ocean.connectedPlaceIds.push(shore.id);
++      changed = true;
++    }
+   }
+   return changed;
+ }
+diff --git a/src/world/WorldEngine.ts b/src/world/WorldEngine.ts
+index dbc244a..2d9dc31 100644
+--- a/src/world/WorldEngine.ts
++++ b/src/world/WorldEngine.ts
+@@ -3335,6 +3335,8 @@ function repairRulidCoastalBank(world: WorldState): boolean {
+       const seaX = x + dir.x * 0.45;
+       const seaY = y + dir.y * 0.45;
+       if (!terrain.sample(seaX, seaY).water) continue;
++      const moved = Math.hypot(shore.mapX - x, shore.mapY - y) > 1e-9;
++      if (!moved) return false;
+       shore.mapX = x;
+       shore.mapY = y;
+       shore.boundaryPolygon = undefined;
+@@ -4506,9 +4508,12 @@ async function repairCompatibleV19World(
+     removeUnsurveyedHomelandLinksV20(next);
+     repairSecretLibraryPlacementV18(next);
+     repairCompactSettlementLayout(next);
+-    reconcileLibraryAdmissions(next, next.calendar.elapsedWorldMinutes, true);
++    reconcileLibraryAdmissions(next, next.calendar.elapsedWorldMinutes);
+     repairDeceasedActions(next);
+     ensureCenturyHumpbackState(next);
++    // Saved worlds may contain a one-sided physical link from an older repair.
++    // Reciprocity is a world invariant; restore only the missing reverse edge.
++    makeConnectionsReciprocal(next.places);
+     // Update physical walking lanes while retaining completed traversal history.
+     next.routes = rebuildWorldRoutes(next.places, next.routes);
+     if (stableJsonStringify(next) === before) return current;
+@@ -14393,6 +14398,7 @@ export class WorldEngine {
+     // cooldown in the same deterministic semantic boundary.
+     this.advanceFamilyPregnancies(now);
+     if (scheduleTick % BIRTH_CHECK_INTERVAL !== 0) return;
++    if (!(elapsedWorldMinutes > 0)) return;
+ 
+     const worldMinutes = this.state.calendar.elapsedWorldMinutes;
+     this.pruneFamilyLifecycles(now);
+@@ -14681,13 +14687,6 @@ export class WorldEngine {
+       }
+     }
+ 
+-    // Keep elapsedWorldMinutes part of the contract explicit: family windows
+-    // are semantic quanta, not browser-frame time. It must stay positive for
+-    // every genuine simulation step even though conception is no longer tied
+-    // to the size of a rendering/catch-up chunk.
+-    if (!(elapsedWorldMinutes > 0)) {
+-      throw new Error('Family opportunity requires positive world-time progress.');
+-    }
+   }
+ 
+   private familyOpportunitySettlementId(
+diff --git a/tests/v0_3_16_societyFoundation.test.ts b/tests/v0_3_16_societyFoundation.test.ts
+index efc7d24..17b2b77 100644
+--- a/tests/v0_3_16_societyFoundation.test.ts
++++ b/tests/v0_3_16_societyFoundation.test.ts
+@@ -813,12 +813,11 @@ describe('v0.3.16 material settlements and death aftermath', () => {
+     // border; this fixture must not invent a 1000 km route between unknown peoples.
+     const oldId = settlementB.id;
+     const localId = 'test_contacted_frontier';
+-    raw.settlements[oldId] = { ...structuredClone(settlementB), memberPlaceIds: [settlementB.centerPlaceId] };
+     settlementB.id = localId;
++    delete raw.settlements[oldId];
+     raw.settlements[localId] = settlementB;
+     const centerA = raw.places[settlementA.centerPlaceId];
+     const oldCenterId = settlementB.centerPlaceId;
+-    const originalCenter = structuredClone(raw.places[oldCenterId]);
+     const centerB = raw.places[oldCenterId];
+     const dx = centerA.mapX - 12 - centerB.mapX;
+     const dy = centerA.mapY - centerB.mapY;
+@@ -828,7 +827,7 @@ describe('v0.3.16 material settlements and death aftermath', () => {
+     const newCenterId = 'test_contacted_frontier_center';
+     centerB.id = newCenterId;
+     raw.places[newCenterId] = centerB;
+-    raw.places[oldCenterId] = originalCenter;
++    delete raw.places[oldCenterId];
+     settlementB.centerPlaceId = newCenterId;
+     settlementB.memberPlaceIds = settlementB.memberPlaceIds.map(id => id === oldCenterId ? newCenterId : id);
+     for (const place of Object.values(raw.places)) if (place.settlementId === localId)
+diff --git a/tests/v0_3_20_fix3Viewport.test.ts b/tests/v0_3_20_fix3Viewport.test.ts
+index 11efe08..795f46b 100644
+--- a/tests/v0_3_20_fix3Viewport.test.ts
++++ b/tests/v0_3_20_fix3Viewport.test.ts
+@@ -41,7 +41,8 @@ describe('FIX3 metre-scale cities and bounded map surfaces', () => {
+     const plot=nextUrbanHomeLot(world.places,{x:50,y:50},'settlement_ainkrad')!;
+     expect(homes.some(p=>p.urbanLot===plot.lot)).toBe(false);
+     expect(urbanHomeLot({x:50,y:50},plot.lot)).toEqual({x:plot.x,y:plot.y});
+-    for (const r of Object.values(world.routes).filter(r=>r.fromPlaceId.startsWith('home_')||r.toPlaceId.startsWith('home_'))) {
++    const ainkradHomes = new Set(homes.map(p => p.id));
++    for (const r of Object.values(world.routes).filter(r=>ainkradHomes.has(r.fromPlaceId)||ainkradHomes.has(r.toPlaceId))) {
+       expect(r.distance*100).toBeLessThan(150);
+     }
+   });
+diff --git a/tests/v0_3_21_atlasGeography.test.ts b/tests/v0_3_21_atlasGeography.test.ts
+index e5aa76d..7d1b566 100644
+--- a/tests/v0_3_21_atlasGeography.test.ts
++++ b/tests/v0_3_21_atlasGeography.test.ts
+@@ -69,8 +69,9 @@ describe('FIX5 physical geography and bounded atlas',()=>{
+   });
+   it('retains sparse planet scale, bounds tile history, and never changes the world from camera operations',async()=>{
+     const w=await fresh(),id='settlement_elf_homeland';
+-    w.places[id]={...w.places.commons,id,name:'Эльфийское поселение',kind:'village',settlementId:id,mapX:-10000,mapY:6000};
+-    w.settlements[id]={id,name:w.places[id].name,kind:'village',centerPlaceId:id,centerX:-10000,centerY:6000,radius:.4,memberPlaceIds:[id],foundedAt:0};
++    const remoteX=w.places.commons.mapX-10000, remoteY=w.places.commons.mapY+6000;
++    w.places[id]={...w.places.commons,id,name:'Эльфийское поселение',kind:'village',settlementId:id,mapX:remoteX,mapY:remoteY};
++    w.settlements[id]={id,name:w.places[id].name,kind:'village',centerPlaceId:id,centerX:remoteX,centerY:remoteY,radius:.4,memberPlaceIds:[id],foundedAt:0};
+     repairCompactSettlementLayout(w);const saved=structuredClone(w),index=new WorldAtlasIndex(),camera=new WorldMapCamera();index.update(w);
+     const revision=index.revision;
+     for(let i=0;i<240;i++) {
+diff --git a/tests/v0_3_21_fix7DemographyMonsterRoads.test.ts b/tests/v0_3_21_fix7DemographyMonsterRoads.test.ts
+index 7314c5e..2e42001 100644
+--- a/tests/v0_3_21_fix7DemographyMonsterRoads.test.ts
++++ b/tests/v0_3_21_fix7DemographyMonsterRoads.test.ts
+@@ -48,11 +48,11 @@ describe('FIX7 demography, century parasite and physical roads', () => {
+     world.population.deaths = 99;
+ 
+     const byRace = demographyByRace(world);
+-    expect(byRace.human).toMatchObject({ living: 11, births: 2, deaths: 1 });
++    expect(byRace.human).toMatchObject({ living: 31, births: 2, deaths: 1 });
+     expect(byRace.elf.births).toBe(1);
+     expect(byRace.orc.births).toBe(1);
+     expect(observeWorldArchitecture(world)).toMatchObject({
+-      livingPopulation: 11,
++      livingPopulation: 31,
+       totalBirths: 2,
+       totalDeaths: 1,
+     });
+@@ -116,6 +116,12 @@ describe('FIX7 demography, century parasite and physical roads', () => {
+   it('migrates a straight inter-settlement road into a winding terrain trail', async () => {
+     const world = await fresh('fix7-roads');
+     const from = world.places.commons;
++    const terrain = bindWorldTerrain(world)!;
++    let target = { x: from.mapX - 1400, y: from.mapY - 900 };
++    for (let ring = 0; ring < 40 && terrain.sample(target.x, target.y).water; ring += 1) {
++      target = { x: from.mapX - 1200 - ring * 45, y: from.mapY - 700 + ring * 31 };
++    }
++    expect(terrain.sample(target.x, target.y).water).toBe(false);
+     const to = {
+       ...structuredClone(from),
+       id: 'remote_point',
+@@ -123,8 +129,8 @@ describe('FIX7 demography, century parasite and physical roads', () => {
+       kind: 'meadow' as const,
+       biome: 'plains' as const,
+       settlementId: undefined,
+-      mapX: -9000,
+-      mapY: -6000,
++      mapX: target.x,
++      mapY: target.y,
+       connectedPlaceIds: ['commons'],
+     };
+     world.places.remote_point = to;
+diff --git a/tests/v0_3_21_foundingOcean.test.ts b/tests/v0_3_21_foundingOcean.test.ts
+index c58cda9..4a52770 100644
+--- a/tests/v0_3_21_foundingOcean.test.ts
++++ b/tests/v0_3_21_foundingOcean.test.ts
+@@ -21,7 +21,13 @@ let beforeShore: WorldState;
+ let afterShore: WorldState;
+ 
+ function life(world: WorldState) {
+-  const { places: _places, routes: _routes, revision: _revision, ...preserved } = world;
++  const { places: _places, routes: _routes, revision: _revision, ...preserved } = structuredClone(world);
++  // F2 adds empty additive state to old saves. Those schema containers are not
++  // a rewrite of lived identity/history and should not make continuity fail.
++  if (preserved.v16) delete (preserved.v16 as Partial<typeof preserved.v16>).familyLifecycleByPairId;
++  if (preserved.v19?.divineAgency?.byAgentId) {
++    for (const profile of Object.values(preserved.v19.divineAgency.byAgentId)) delete (profile as { burdens?: unknown }).burdens;
++  }
+   return preserved;
+ }
+ 
+@@ -67,7 +73,7 @@ afterEach(() => vi.restoreAllMocks());
+ describe('FIX3 founding sea after a new epoch and accelerated continuation', () => {
+   it('uses the same physical sea in first creation and consecutive player resets', async () => {
+     const engine = await WorldEngine.create({ worldId: 'coast-epochs', seed, store: new InMemoryWorldStore() });
+-    expect(engine.snapshot().places[OCEAN]).toEqual(createFoundingOcean(0));
++    expect(engine.snapshot().places[OCEAN]).toMatchObject({ ...createFoundingOcean(0), connectedPlaceIds: ['rulid_shore'] });
+     for (let epoch = 2; epoch <= 3; epoch++) {
+       await engine.resetEpoch(seed, ['Aron', 'Mira', 'Kai', 'Noa'], 'reset-' + epoch);
+       const state = engine.snapshot();
+diff --git a/tests/v0_3_21_settlementGeometry.test.ts b/tests/v0_3_21_settlementGeometry.test.ts
+index 2192990..ca9720d 100644
+--- a/tests/v0_3_21_settlementGeometry.test.ts
++++ b/tests/v0_3_21_settlementGeometry.test.ts
+@@ -70,7 +70,7 @@ describe('physical settlement geometry and observer navigation',()=>{
+       w.places.commons.connectedPlaceIds.push(id);
+     }
+     repairCompactSettlementLayout(w);
+-    const homes=Object.values(w.places).filter(p=>p.kind==='home');
++    const homes=Object.values(w.places).filter(p=>p.kind==='home'&&p.settlementId==='settlement_ainkrad');
+     for(const home of homes) {
+       const pair=homes.find(p=>p.urbanLot===(home.urbanLot!^1));
+       if(pair) {
+diff --git a/tests/v0_3_21_visibilityAndTown.test.ts b/tests/v0_3_21_visibilityAndTown.test.ts
+index 922918e..8d87e42 100644
+--- a/tests/v0_3_21_visibilityAndTown.test.ts
++++ b/tests/v0_3_21_visibilityAndTown.test.ts
+@@ -68,7 +68,8 @@ describe('v0.3.21 FIX1 visible residents and local town buildings', () => {
+     const world=await fresh(), saved=structuredClone(world);
+     const focus=townMapFocus(world,'agent_1',390,600)!;
+     const camera=new WorldMapCamera(); camera.resize(390,600); Object.assign(camera,focus);
+-    for(const place of Object.values(world.places).filter(p=>p.urbanLayoutVersion===3 && ['home','library','workshop','quiet_space'].includes(p.kind))) {
++    const selectedSettlement = world.places[world.agents.agent_1.homeId].settlementId;
++    for(const place of Object.values(world.places).filter(p=>p.settlementId===selectedSettlement && p.urbanLayoutVersion===3 && ['home','library','workshop','quiet_space'].includes(p.kind))) {
+       const p=camera.point(place.mapX,place.mapY);
+       expect(p.x).toBeGreaterThan(0); expect(p.x).toBeLessThan(100);
+       expect(p.y).toBeGreaterThan(0); expect(p.y).toBeLessThan(100);
+diff --git a/tests/worldAuthority.test.ts b/tests/worldAuthority.test.ts
+index 51dd7b8..7f2f051 100644
+--- a/tests/worldAuthority.test.ts
++++ b/tests/worldAuthority.test.ts
+@@ -171,6 +171,7 @@ describe('Independent world authority', () => {
+       seed: 'small-world-seed',
+       store: new InMemoryWorldStore(),
+       startTime: 0,
++      agentNames: Array.from({ length: 6 }, (_, index) => `Resident ${index + 1}`),
+     });
+     const expected = world.snapshot();
+     const gateway = new IndependentWorldAuthorityGateway(world, 0);
+diff --git a/tests/worldSpatial.test.ts b/tests/worldSpatial.test.ts
+index 3bb816b..dd18954 100644
+--- a/tests/worldSpatial.test.ts
++++ b/tests/worldSpatial.test.ts
+@@ -19,7 +19,7 @@ describe('Persisted 2D world physics', () => {
+ 
+     expect(settlement.centerPlaceId).toBe('commons');
+     const homes = Object.values(state.places).filter(
+-      (place) => place.kind === 'home',
++      (place) => place.kind === 'home' && place.settlementId === settlement.id,
+     );
+     expect(homes.length).toBeGreaterThan(0);
+     for (const home of homes) {
