@@ -18,7 +18,7 @@ jobs:
       - name: Checkout temporary F2 validation branch
         uses: actions/checkout@v4
 
-      - name: Reconstruct and apply exact F2 candidate patch
+      - name: Reconstruct and verify exact F2 candidate patch
         shell: bash
         run: |
           cat \
@@ -26,17 +26,23 @@ jobs:
             ci/f2-patch/part-01.b64 \
             ci/f2-patch/part-02a.b64 \
             ci/f2-patch/part-02b.b64 \
-            ci/f2-patch/part-02c.b64 \
+            ci/f2-patch/part-02c1-fixed.b64 \
+            ci/f2-patch/part-02c2-fixed.b64 \
             ci/f2-patch/part-02d.b64 \
-            ci/f2-patch/part-02e.b64 \
+            ci/f2-patch/part-02e1-fixed.b64 \
+            ci/f2-patch/part-02e2-fixed.b64 \
             ci/f2-patch/part-02f.b64 \
-            ci/f2-patch/part-02g.b64 \
+            ci/f2-patch/part-02g1-fixed.b64 \
+            ci/f2-patch/part-02g2-fixed.b64 \
             ci/f2-patch/part-02h1.b64 \
-            ci/f2-patch/part-02h2.b64 \
+            ci/f2-patch/part-02h2-fixed.b64 \
             ci/f2-patch/part-02i.b64 \
             > /tmp/f2.patch.gz.b64
+          echo 'e0c3d02d3986d9c92a145d4bce1c6e91855da8a38e5f9901bb1f29f310744998  /tmp/f2.patch.gz.b64' | sha256sum -c -
           base64 -d /tmp/f2.patch.gz.b64 > /tmp/f2.patch.gz
+          echo 'eed1c9ba583bd564b1b1d67a56d61e1ab5bbd910044076454d64668451c42469  /tmp/f2.patch.gz' | sha256sum -c -
           gunzip -c /tmp/f2.patch.gz > /tmp/f2.patch
+          echo '6676640a5ca9e18bf3dd50124aadd68ea87d049446d0e05116fb9d297fb53be9  /tmp/f2.patch' | sha256sum -c -
           git apply --check /tmp/f2.patch
           git apply /tmp/f2.patch
           git status --short
