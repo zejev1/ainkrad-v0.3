@@ -23,14 +23,32 @@ let afterShore: WorldState;
 function life(world: WorldState) {
   const { places: _places, routes: _routes, geography: _geography, revision: _revision, ...preserved } = structuredClone(world);
   // Physical places/routes and their derived geography cache are allowed to be
-  // repaired together. The continuity contract below still compares people,
-  // minds, genealogy, time, RNG, knowledge, Cardinal state and every other
-  // persisted lived domain exactly.
+  // repaired together. Missing v21 item physics is also an additive derived
+  // projection of an already-persisted v15 item, so it is checked separately
+  // below: every pre-existing physics record must remain exact and every new
+  // physics record must correspond to an item that already existed in v15.
+  if (preserved.v21) delete (preserved.v21 as Partial<typeof preserved.v21>).itemPhysicsByItemId;
+  // The continuity contract still compares people, minds, genealogy, time,
+  // RNG, knowledge, Cardinal state and every other persisted lived domain.
   if (preserved.v16) delete (preserved.v16 as Partial<typeof preserved.v16>).familyLifecycleByPairId;
   if (preserved.v19?.divineAgency?.byAgentId) {
     for (const profile of Object.values(preserved.v19.divineAgency.byAgentId)) delete (profile as { burdens?: unknown }).burdens;
   }
   return preserved;
+}
+
+function expectItemPhysicsContinuity(repaired: WorldState, old: WorldState) {
+  const before = old.v21?.itemPhysicsByItemId ?? {};
+  const after = repaired.v21?.itemPhysicsByItemId ?? {};
+  for (const [itemId, physics] of Object.entries(before)) {
+    expect(after[itemId]).toEqual(physics);
+  }
+  for (const itemId of Object.keys(after)) {
+    if (before[itemId]) continue;
+    // Startup repair may materialize missing physics only for a real item that
+    // was already in the old save. It may not fabricate an unrelated item.
+    expect(old.v15?.items[itemId]).toBeDefined();
+  }
 }
 
 async function oldSave(snapshot: WorldState) {
@@ -95,6 +113,7 @@ describe('FIX3 founding sea after a new epoch and accelerated continuation', () 
     const engine = await WorldEngine.open({ worldId, store });
     const repaired = engine.snapshot();
     expect(life(repaired)).toEqual(life(old));
+    expectItemPhysicsContinuity(repaired, old);
     expect(repaired.revision).toBe(old.revision + 1);
     expect(repaired.places.shore).toBeUndefined();
     expect(repaired.routes).toEqual(old.routes);
@@ -117,6 +136,7 @@ describe('FIX3 founding sea after a new epoch and accelerated continuation', () 
     const engine = await WorldEngine.open({ worldId, store });
     const repaired = engine.snapshot();
     expect(life(repaired)).toEqual(life(old));
+    expectItemPhysicsContinuity(repaired, old);
     expect(repaired.routes).toEqual(old.routes);
     expect(repaired.places.shore).toEqual(old.places.shore);
     expect(repaired.places[OCEAN].connectedPlaceIds).toEqual(['shore']);
@@ -198,6 +218,7 @@ describe('FIX3 founding sea after a new epoch and accelerated continuation', () 
     expect(recordedExperience).toBeGreaterThan(0);
     const restored = await LiveWorldRuntime.create(options);
     expect(life(restored.worldSnapshot())).toEqual(life(old));
+    expectItemPhysicsContinuity(restored.worldSnapshot(), old);
     expect(await rows(dbName, 'stream_records')).toEqual(journal);
     const backups = await rows(dbName, RECOVERY_STORE) as WorldRecovery[];
     expect(backups.some(b => b.state.revision === old.revision && JSON.stringify(b.state) === JSON.stringify(old))).toBe(true);
