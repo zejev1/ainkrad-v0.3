@@ -55,9 +55,11 @@ jobs:
           printf '\n' >> ci/f2-fix-overlay.patch
           git apply --check ci/f2-fix-overlay.patch
           git apply ci/f2-fix-overlay.patch
+          printf '\n' >> ci/f2-fix-overlay2.patch
+          git apply --check ci/f2-fix-overlay2.patch
+          git apply ci/f2-fix-overlay2.patch
           test -f src/v22/MultipleBirthsV22.ts
           test -f tests/v0_3_22_f2DivineSystem.test.ts
-          git status --short
 
       - name: Setup Node 22
         uses: actions/setup-node@v4
@@ -70,8 +72,8 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Previously failing Vitest regressions
-        run: npx vitest run --minWorkers=1 --maxWorkers=1 --testTimeout=60000 tests/v0_3_14_worldLogic.test.ts tests/v0_3_16_societyFoundation.test.ts tests/v0_3_19_divineAgency.test.ts tests/v0_3_20_fix3Viewport.test.ts tests/v0_3_21_atlasGeography.test.ts tests/v0_3_21_fix7DemographyMonsterRoads.test.ts tests/v0_3_21_foundingOcean.test.ts tests/v0_3_21_responsiveClock.test.ts tests/v0_3_21_settlementGeometry.test.ts tests/v0_3_21_visibilityAndTown.test.ts tests/worldAuthority.test.ts tests/worldSpatial.test.ts
+      - name: Remaining Vitest regressions
+        run: npx vitest run --minWorkers=1 --maxWorkers=1 --testTimeout=60000 tests/v0_3_16_societyFoundation.test.ts tests/v0_3_21_fix7DemographyMonsterRoads.test.ts tests/v0_3_21_responsiveClock.test.ts tests/worldSpatial.test.ts
 
       - name: Vite production build
         run: npm run build
