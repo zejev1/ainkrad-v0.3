@@ -52,6 +52,7 @@ jobs:
           echo '76bc4bb1e172466715fef2d3045f691697ec9972a0571b30769d5f929db9e178  /tmp/f2-supplement.tar.gz' | sha256sum -c -
           tar -xzf /tmp/f2-supplement.tar.gz
 
+          printf '\n' >> ci/f2-fix-overlay.patch
           git apply --check ci/f2-fix-overlay.patch
           git apply ci/f2-fix-overlay.patch
           test -f src/v22/MultipleBirthsV22.ts
