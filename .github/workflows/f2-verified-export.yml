@@ -28,7 +28,7 @@ jobs:
           jq -e '.head_sha == "2507067f17ad0eb634dbe3711f885a6fafc07ce8" and .status == "completed" and .conclusion == "success"' "$RUNNER_TEMP/f2-export/verified-run.json"
           gh api repos/zejev1/ainkrad-v0.3/actions/runs/35143320672/jobs > "$RUNNER_TEMP/f2-export/verified-jobs.json"
           jq -e '[.jobs[].steps[] | select(.name == "Typecheck" or .name == "Vitest full suite" or .name == "Vite production build")] | length == 3 and all(.conclusion == "success")' "$RUNNER_TEMP/f2-export/verified-jobs.json"
-          gh api repos/zejev1/ainkrad-v0.3/actions/jobs/104952989430/logs > "$RUNNER_TEMP/f2-export/validation.log"
+          curl --fail --location --silent --show-error -H "Authorization: Bearer $GH_TOKEN" https://api.github.com/repos/zejev1/ainkrad-v0.3/actions/jobs/104952989430/logs > "$RUNNER_TEMP/f2-export/validation.log"
       - name: Reconstruct using the exact script that passed CI
         working-directory: candidate
         shell: bash
