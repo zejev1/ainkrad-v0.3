@@ -34,15 +34,20 @@ function spreadFoundingHumanSettlements(
   const unit = (suffix:string) =>
     hash(`${world.id}:epoch:${world.epoch ?? 1}:human-foundations:${suffix}`) / 0x1_0000_0000;
   const mirror = unit('mirror') < 0.5 ? -1 : 1;
-  const northSouthJitter = (unit('latitude') - 0.5) * 1_200;
-  const westJitterA = (unit('ainkrad-x') - 0.5) * 1_200;
-  const westJitterZ = (unit('zakkaria-x') - 0.5) * 1_200;
-  const rulidY = (unit('rulid-y') - 0.5) * 1_600;
+  const northSouthJitter = (unit('latitude') - 0.5) * 800;
+  const westJitterA = (unit('ainkrad-x') - 0.5) * 800;
+  const westJitterZ = (unit('zakkaria-x') - 0.5) * 800;
+  const rulidY = (unit('rulid-y') - 0.5) * 1_400;
 
+  // These points sit well inside the persisted continental outline instead of
+  // relying on settlement anchors to pull a thin peninsula underneath them.
+  // The resulting triangle is still continent-scale: every side stays above
+  // ~3,500 km while leaving kilometres of dry survey room around both western
+  // foundations.
   const targets: Record<(typeof FOUNDING_HUMAN_SETTLEMENTS)[number],WorldPoint2D> = {
     settlement_ainkrad: {
-      x: -36_000 + westJitterA,
-      y: mirror * (-20_000 + northSouthJitter),
+      x: -32_000 + westJitterA,
+      y: mirror * (-18_000 + northSouthJitter),
     },
     settlement_rulid: {
       // ContinentalRelief keeps the original eastern sea at x > 96.
@@ -51,8 +56,8 @@ function spreadFoundingHumanSettlements(
       y: rulidY,
     },
     settlement_zakkaria: {
-      x: -36_000 + westJitterZ,
-      y: mirror * (20_000 + northSouthJitter),
+      x: -32_000 + westJitterZ,
+      y: mirror * (18_000 + northSouthJitter),
     },
   };
 
@@ -61,21 +66,30 @@ function spreadFoundingHumanSettlements(
     const town = world.settlements[settlementId];
     const center = world.places[town.centerPlaceId];
     if (!center) continue;
+    const originalCenter = {x:center.mapX,y:center.mapY};
     const target = targets[settlementId];
-    const dx = target.x - center.mapX;
-    const dy = target.y - center.mapY;
+    const dx = target.x - originalCenter.x;
+    const dy = target.y - originalCenter.y;
     if (Math.hypot(dx,dy) < 1e-9) continue;
 
     for (const place of Object.values(world.places)) {
       if (place.settlementId !== settlementId) continue;
       const before = {x:place.mapX,y:place.mapY};
-      const after = {x:place.mapX + dx,y:place.mapY + dy};
-      // Rulid's dedicated shore must stay at the sea-facing edge instead of
-      // carrying its old ~3 km inland offset with the rest of the settlement.
-      if (settlementId === 'settlement_rulid' && place.id === 'rulid_shore') {
-        after.x = 95.7;
-        after.y = target.y;
+      const local = {x:place.mapX-originalCenter.x,y:place.mapY-originalCenter.y};
+      let after = {x:place.mapX + dx,y:place.mapY + dy};
+
+      if (settlementId === 'settlement_rulid') {
+        if (place.id === 'rulid_shore') {
+          // Dry launch bank roughly 30 m from the fixed east-sea boundary.
+          after = {x:95.7,y:target.y};
+        } else if (place.id !== center.id) {
+          // Rulid is a coastal town: all civic/residential offsets must point
+          // inland (west), otherwise the old local +X layout puts its commons
+          // and ten homes directly into the ocean and silently drops routes.
+          after = {x:target.x-Math.abs(local.x),y:target.y+local.y};
+        }
       }
+
       place.mapX = after.x;
       place.mapY = after.y;
       delete place.boundaryPolygon;
@@ -92,13 +106,14 @@ function spreadFoundingHumanSettlements(
     delete town.layoutVersion;
     delete town.layoutSignature;
 
-    // Fresh founders are stationary here. Keep their physical coordinates with
-    // their homes when the whole founding settlement is translated.
+    // This branch only runs during creation/reset before lived history. Align
+    // stationary founders with their translated homes, including Rulid's
+    // reflected inland layout. Existing worlds never enter this branch.
     for (const agent of Object.values(world.agents)) {
       const home = world.places[agent.homeId];
       if (home?.settlementId !== settlementId || agent.movement) continue;
-      agent.position.x += dx;
-      agent.position.y += dy;
+      agent.position.x = home.mapX;
+      agent.position.y = home.mapY;
     }
   }
   return changed;
@@ -115,6 +130,16 @@ function invalidateRulidLayoutForCoast(world:WorldState):void {
     delete place.urbanLayoutVersion;
     delete place.urbanLot;
     if(place.kind!=='shore')delete place.boundaryPolygon;
+  }
+}
+
+function alignFreshFoundersWithHomes(world:WorldState):void {
+  for(const agent of Object.values(world.agents)) {
+    if(agent.movement || agent.locationId!==agent.homeId)continue;
+    const home=world.places[agent.homeId];
+    if(!home || !FOUNDING_HUMAN_SETTLEMENTS.includes(home.settlementId as any))continue;
+    agent.position.x=home.mapX;
+    agent.position.y=home.mapY;
   }
 }
 
@@ -142,6 +167,7 @@ export function repairCompactSettlementLayout(world:WorldState):boolean {
       moved.set(id,{before:{x:place.mapX,y:place.mapY},after:point});
       place.mapX=point.x;place.mapY=point.y;place.urbanLayoutVersion=3;
     });
+    alignFreshFoundersWithHomes(world);
   }
 
   const geographyChanged=finishWorldGeography(world);
