@@ -7,7 +7,7 @@ import { buildingRadius, nextUrbanHomeLot, segmentEntersBuilding, dryBuildingPlo
 import { settlementOptions } from '../src/presentation/SettlementPicker';
 import { settlementMapFocus, residentMapFocus } from '../src/presentation/WorldMapFocus';
 import { rebuildWorldRoutes, routeIdBetween } from '../src/world/WorldNavigation';
-import { homelandCenterForWorld } from '../src/world/geography/WorldTerrain';
+import { homelandCenterForWorld, terrainPlotIsDry } from '../src/world/geography/WorldTerrain';
 import type { AgentRace, WorldPlace } from '../src/world/types';
 
 const fresh=async()=> (await WorldEngine.create({worldId:'geometry',seed:'streets',store:new InMemoryWorldStore()})).snapshot();
@@ -15,10 +15,16 @@ describe('physical settlement geometry and observer navigation',()=>{
   it('migrates different homelands internally, preserving IDs and long geographical separation',async()=>{
     const w=await fresh(),model=w.places.home_agent_1;
     for(const race of ['elf','orc','dwarf'] as AgentRace[]) {
-      // Use each people's already-persisted terrain foundation instead of
-      // fabricating a coordinate relative to Ainkrad. F2 moved the three human
-      // lines across the continent, so "commons - 10,000" may now be ocean.
-      const homeland=homelandCenterForWorld(w,race),id='settlement_'+race,x=homeland.x,y=homeland.y;
+      // Each real homeland is already occupied in a fresh F2 world. Put this
+      // synthetic stale-layout fixture nearby on a broad persisted dry patch,
+      // instead of stacking a second town directly on top of the live one.
+      const homeland=homelandCenterForWorld(w,race);
+      const center=Array.from({length:24},(_,i)=>{
+        const angle=i*Math.PI*2/24;
+        return {x:homeland.x+Math.cos(angle)*6,y:homeland.y+Math.sin(angle)*6};
+      }).find(point=>terrainPlotIsDry(w.places,point,2.2));
+      expect(center).toBeDefined();
+      const id='settlement_'+race,x=center!.x,y=center!.y;
       w.places[id]={...w.places.commons,id,name:race,kind:'village',settlementId:id,mapX:x,mapY:y,connectedPlaceIds:[]};
       w.settlements[id]={id,name:race,kind:'village',centerPlaceId:id,centerX:x,centerY:y,radius:17,memberPlaceIds:[],foundedAt:0};
       for(let j=0;j<10;j++) {
