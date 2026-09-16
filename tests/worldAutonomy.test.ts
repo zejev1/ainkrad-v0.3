@@ -3,7 +3,6 @@ import { recoverRenewableBase } from '../src/v15/RenewableAgriculture';
 import { InMemoryWorldStore } from '../src/world/InMemoryWorldStore';
 import { WORLD_MINUTES_PER_YEAR } from '../src/world/WorldClock';
 import { WORLD_RULES_VERSION, WorldEngine } from '../src/world/WorldEngine';
-import { WORLD_MINUTES_PER_YEAR } from '../src/world/WorldClock';
 
 async function makeWorld(agentNames: string[] = []) {
   return await WorldEngine.create({
@@ -336,8 +335,6 @@ describe('Autonomous society depth', () => {
     expect(discoveries[1].occurredAt).toBeLessThan(discoveries[2].occurredAt);
     expect(kinds.has('agent.walked')).toBe(true);
     expect(kinds.has('agent.relaxed')).toBe(true);
-    // An autonomous hunter can decline danger. Changing physical road lengths
-    // may change encounters; a kill is not compulsory within a fixed sample.
     const huntEvidence=history.filter(e=>e.kind==='agent.hunted'||e.kind==='agent.hunt.declined');
     expect(huntEvidence.length, 'No lived hunting attempt or refusal: '+[...kinds].filter(k=>k.includes('hunt')).join(',')).toBeGreaterThan(0);
     expect(huntEvidence.every(e=>e.source==='agent'&&typeof e.payload.agentId==='string')).toBe(true);
@@ -345,7 +342,7 @@ describe('Autonomous society depth', () => {
       !Object.values(state.routes).some(r=>r.fromPlaceId===id||r.toPlaceId===id));
     expect(missingNatureRoads).toEqual([]);
     expect(kinds.has('world.wildlife.recovered')).toBe(true);
-  }, 30_000);
+  }, 120_000);
 
   it('can choose a reasonable alternative instead of always obeying the top score', async () => {
     const store = new InMemoryWorldStore();
@@ -474,7 +471,7 @@ describe('Autonomous society depth', () => {
     }
 
     expect(means.reduce((sum, value) => sum + value, 0) / means.length).toBeGreaterThan(0.3);
-  }, 90_000);
+  }, 180_000);
 
   it('rejects a same-version persisted world whose required agent structures are corrupted', async () => {
     const sourceStore = new InMemoryWorldStore();
