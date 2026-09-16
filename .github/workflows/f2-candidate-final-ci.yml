@@ -69,8 +69,8 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Last regression
-        run: npx vitest run --minWorkers=1 --maxWorkers=1 --testTimeout=60000 tests/v0_3_16_societyFoundation.test.ts
+      - name: Vitest full suite
+        run: npm run test
 
       - name: Vite production build
         run: npm run build
