@@ -1,0 +1,10 @@
+{
+  "ok": true,
+  "revision": 20,
+  "living": 30,
+  "settlements": [
+    "settlement_ainkrad",
+    "settlement_rulid",
+    "settlement_zakkaria"
+  ]
+}

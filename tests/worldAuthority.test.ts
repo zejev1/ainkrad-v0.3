@@ -171,6 +171,7 @@ describe('Independent world authority', () => {
       seed: 'small-world-seed',
       store: new InMemoryWorldStore(),
       startTime: 0,
+      agentNames: Array.from({ length: 6 }, (_, index) => `Resident ${index + 1}`),
     });
     const expected = world.snapshot();
     const gateway = new IndependentWorldAuthorityGateway(world, 0);
@@ -275,7 +276,7 @@ describe('Independent world authority', () => {
     expect(observation.agents).toBeUndefined();
     expect(observation.minds).toBeUndefined();
     expect(observation.relationships).toBeUndefined();
-    expect(observation.livingPopulation).toBe(10);
+    expect(observation.livingPopulation).toBe(30);
   });
 });
 

@@ -87,7 +87,9 @@ describe('v0.3.20 lived knowledge, gifts and continuity', () => {
     applyLivedGiftLearningV20(world, person, before); expect(person.skills).toEqual(before.skills);
     person.skills.craft += 0.01;
     applyLivedGiftLearningV20(world, person, before);
-    expect(person.skills.craft - before.skills.craft).toBeCloseTo(0.017);
+    expect(person.skills.craft - before.skills.craft).toBeGreaterThan(0.01);
+    expect(person.skills.craft - before.skills.craft).toBeLessThan(0.011);
+    expect(world.v19!.divineAgency.byAgentId[person.id].gifts.find(g=>g.gift==='fast_learning')!.mastery).toBeGreaterThan(0.08);
   });
 
   it('uses elapsed reading time and literacy instead of instant whole-book acquisition', async () => {

@@ -1,5 +1,5 @@
 import { HUMAN_KNOWLEDGE_CUTOFF_YEAR } from './HistoricalReading';
-import { hasGiftV20 } from '../v20/DivineGiftsV20';
+import { hasGiftV20, giftMasteryV20, canImmortalTransmitKnowledgeV20 } from '../v20/DivineGiftsV20';
 import type { GenesisDomain } from '../v15/GenesisBootstrap';
 import { rebuildWorldRoutes } from '../world/WorldNavigation';
 import { compactLibraryPlot } from '../world/SettlementLibraryLayout';
@@ -737,6 +737,7 @@ export function shareSecretLibraryKnowledgeV18(input: {
     speaker.locationId !== listener.locationId ||
     Boolean(speaker.movement || listener.movement) ||
     !speakerRecord ||
+    !canImmortalTransmitKnowledgeV20(world, speakerId, speakerRecord.acquiredWorldMinute) ||
     speakerRecord.understanding < 0.22 ||
     !listenerLanguage ||
     listenerLanguage.spokenComprehension < 0.08
@@ -758,7 +759,7 @@ export function shareSecretLibraryKnowledgeV18(input: {
   const heardUnderstanding = clamp01(
     Math.min(
       speakerRecord.understanding * 0.58,
-      0.035 + speakerRecord.understanding * attention * (hasGiftV20(world, speakerId, 'gifted_teacher') ? 0.6 : 0.32),
+      0.035 + speakerRecord.understanding * attention * (0.32 + giftMasteryV20(world, speakerId, 'gifted_teacher') * 0.28),
     ),
   );
   let changed = false;

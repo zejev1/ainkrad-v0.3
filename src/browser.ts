@@ -13,7 +13,7 @@ import { mapDetail, mapScaleBar, mapEntityDepth } from './presentation/WorldMapV
 import { residentLearningSummary } from './presentation/ResidentLearningView';
 import { townMapFocus, residentMapFocus, settlementMapFocus } from './presentation/WorldMapFocus';
 import { createWorldMapProjection } from './presentation/WorldMapProjection';
-import { GIFT_CATALOG_V20 } from './v20/DivineGiftsV20';
+import { GIFT_CATALOG_V20, DIVINE_BURDEN_CATALOG_V22, EXCEPTIONAL_ABILITIES_V22, giftIsHeritableV20, giftMasteryV20 } from './v20/DivineGiftsV20';
 import './browser.css';
 import './presentation/world-map-visuals.css';
 import './presentation/world-atlas.css';
@@ -56,6 +56,7 @@ import type {
   AgentState,
   DivineContactKind,
   DivineGiftKind,
+  DivineBurdenKind,
   RelationshipState,
   WildlifeSpecies,
   WorldPlaceKind,
@@ -508,6 +509,7 @@ app.innerHTML = `
             <div><dt>Дело жизни</dt><dd id="resident-profession">—</dd></div>
             <div><dt>Приключения</dt><dd id="resident-adventure">—</dd></div>
             <div><dt>Сильный навык</dt><dd id="resident-skill">—</dd></div>
+            <div><dt>Дары / способности / кара</dt><dd id="resident-divine">—</dd></div>
             <div><dt>Мысль</dt><dd id="resident-choice">—</dd></div>
             <div><dt>Личный опыт</dt><dd id="resident-learning">—</dd></div>
           </dl>
@@ -699,14 +701,28 @@ app.innerHTML = `
           <label>Ваши слова или смысл знака
             <textarea id="divine-message" maxlength="480" rows="4" placeholder="Искра услышит это только при выбранном контакте…"></textarea>
           </label>
-          <label>Дар <small>(необязательно)</small>
+          <label>Дар / способность <small>(необязательно)</small>
             <select id="divine-gift">
-              <option value="">Без дара</option>
-              ${Object.entries(GIFT_CATALOG_V20).map(([id, entry]) => `<option value="${id}">${entry[0]}</option>`).join('')}
+              <option value="">Без дара или способности</option>
+              <optgroup label="Дары — потенциал развивается практикой">
+                ${Object.entries(GIFT_CATALOG_V20).filter(([id]) => !(EXCEPTIONAL_ABILITIES_V22 as readonly string[]).includes(id)).map(([id, entry]) => `<option value="${id}">${entry[0]}</option>`).join('')}
+              </optgroup>
+              <optgroup label="Исключительные способности — не наследуются">
+                ${Object.entries(GIFT_CATALOG_V20).filter(([id]) => (EXCEPTIONAL_ABILITIES_V22 as readonly string[]).includes(id)).map(([id, entry]) => `<option value="${id}">${entry[0]}</option>`).join('')}
+              </optgroup>
             </select>
           </label>
           <label id="divine-legacy-label" hidden>Дар для наследования
             <select id="divine-legacy-gift"></select>
+          </label>
+          <label>Кара / проклятие <small>(необязательно)</small>
+            <select id="divine-burden">
+              <option value="">Без кары</option>
+              ${Object.entries(DIVINE_BURDEN_CATALOG_V22).map(([id, entry]) => `<option value="${id}">${entry[0]}</option>`).join('')}
+            </select>
+          </label>
+          <label id="divine-lineage-curse-label" hidden>
+            <input id="divine-lineage-curse" type="checkbox" /> Передать проклятие роду
           </label>
           <p class="divine-audience__gift-note" id="divine-gift-note"></p>
           <p class="divine-audience__choice-note">Дар не меняет профессию, характер или судьбу. Приказ не отнимает свободу воли. Священником или героем Искра может стать только через собственную жизнь и признание окружающих.</p>
@@ -797,6 +813,7 @@ const residentTraits = requiredElement<HTMLElement>('resident-traits');
 const residentProfession = requiredElement<HTMLElement>('resident-profession');
 const residentAdventure = requiredElement<HTMLElement>('resident-adventure');
 const residentSkill = requiredElement<HTMLElement>('resident-skill');
+const residentDivine = requiredElement<HTMLElement>('resident-divine');
 const residentChoice = requiredElement<HTMLElement>('resident-choice');
 const residentLearning = requiredElement<HTMLElement>('resident-learning');
 const mapDistance = requiredElement<HTMLElement>('map-distance');
@@ -861,6 +878,8 @@ const divineReligionName = requiredElement<HTMLInputElement>('divine-religion-na
 const divineMessage = requiredElement<HTMLTextAreaElement>('divine-message');
 const divineContactKind = requiredElement<HTMLSelectElement>('divine-contact-kind');
 const divineGift = requiredElement<HTMLSelectElement>('divine-gift');
+const divineBurden = requiredElement<HTMLSelectElement>('divine-burden');
+const divineLineageCurse = requiredElement<HTMLInputElement>('divine-lineage-curse');
 const divineGiftNote = requiredElement<HTMLElement>('divine-gift-note');
 const divineAudienceStatus = requiredElement<HTMLElement>('divine-audience-status');
 const divineAudienceGrant = requiredElement<HTMLButtonElement>('divine-audience-grant');
@@ -1251,6 +1270,24 @@ function selectedDivineGift(): DivineGiftKind | undefined {
     : undefined;
 }
 
+function selectedDivineBurden(): DivineBurdenKind | undefined {
+  return Object.keys(DIVINE_BURDEN_CATALOG_V22).includes(divineBurden.value)
+    ? divineBurden.value as DivineBurdenKind
+    : undefined;
+}
+
+function updateDivineBurdenNote(): void {
+  const burden = selectedDivineBurden();
+  requiredElement<HTMLElement>('divine-lineage-curse-label').hidden = !burden;
+  if (burden) {
+    divineGift.value = '';
+    updateDivineGiftNote();
+    divineGiftNote.textContent = DIVINE_BURDEN_CATALOG_V22[burden][1];
+  } else {
+    divineLineageCurse.checked = false;
+  }
+}
+
 function selectedDivineContactKind(): DivineContactKind | undefined {
   return ['message', 'revelation', 'command', 'request', 'warning', 'vision', 'sign'].includes(
     divineContactKind.value,
@@ -1261,10 +1298,15 @@ function selectedDivineContactKind(): DivineContactKind | undefined {
 
 function updateDivineGiftNote(): void {
   const gift = selectedDivineGift();
+  if (gift && divineBurden.value) {
+    divineBurden.value = '';
+    divineLineageCurse.checked = false;
+    requiredElement<HTMLElement>('divine-lineage-curse-label').hidden = true;
+  }
   const legacy = requiredElement<HTMLSelectElement>('divine-legacy-gift');
   requiredElement<HTMLElement>('divine-legacy-label').hidden = gift !== 'legacy';
   const gifts = lastFrame?.world.v19?.divineAgency.byAgentId[selectedAgentId ?? '']?.gifts ?? [];
-  legacy.replaceChildren(...gifts.filter(g => g.gift !== 'legacy').map(g => new Option(GIFT_CATALOG_V20[g.gift][0], g.gift)));
+  legacy.replaceChildren(...gifts.filter(g => giftIsHeritableV20(g.gift)).map(g => new Option(GIFT_CATALOG_V20[g.gift][0], g.gift)));
   divineGiftNote.textContent = gift
     ? divineGiftDescriptions[gift]
     : 'Можно передать только слова, предупреждение, просьбу, видение или знак — без дара.';
@@ -1909,7 +1951,24 @@ function updateSelection(): void {
   }
   residentSkill.textContent = strongestSkill(selected);
   const divineProfile = lastFrame.world.v19?.divineAgency.byAgentId[selected.id];
-  const giftCount = divineProfile?.gifts.length ?? 0;
+  const gifts = divineProfile?.gifts ?? [];
+  const burdens = divineProfile?.burdens ?? [];
+  const divineParts = [
+    ...gifts.map((grant) => {
+      const label = GIFT_CATALOG_V20[grant.gift][0];
+      if ((EXCEPTIONAL_ABILITIES_V22 as readonly string[]).includes(grant.gift)) {
+        return grant.gift === 'phoenix' && (grant.triggerCount ?? 0) > 0
+          ? `${label} · исчерпана`
+          : label;
+      }
+      return `${label} · ${Math.round(giftMasteryV20(lastFrame!.world, selected.id, grant.gift) * 100)}%`;
+    }),
+    ...burdens.map((burden) =>
+      `${DIVINE_BURDEN_CATALOG_V22[burden.burden][0]} · ${Math.round(burden.intensity * 100)}%${burden.lineage ? ' · родовое' : ''}`,
+    ),
+  ];
+  residentDivine.textContent = divineParts.length ? divineParts.join(' · ') : 'нет';
+  const giftCount = gifts.length;
   const contactCount = divineProfile?.contacts.length ?? 0;
   privateAudienceOpen.disabled =
     clockPanel.continuity.targetWorldMinutes !== undefined;
@@ -3057,6 +3116,7 @@ function renderCardinalConsole(): void {
     const deathCauseLabels: Record<string, string> = {
       old_age: 'СТАРОСТЬ',
       illness: 'ЗДОРОВЬЕ',
+      childbirth: 'РОДЫ',
       deprivation: 'ИСТОЩЕНИЕ',
       catastrophe: 'КАТАСТРОФА',
       wildlife: 'ДИКАЯ ФАУНА',
@@ -3175,6 +3235,7 @@ type LiveWorldWorkerPayload =
       agentId: string;
       authorized: boolean;
       giftGranted?: boolean;
+      burdenApplied?: boolean;
       contactRecorded?: boolean;
       interpretation?: V19DivineInterpretation;
       residentResponse?: string;
@@ -3257,6 +3318,7 @@ residentDetailsOpen.addEventListener('click', () => {
 });
 privateAudienceOpen.addEventListener('click', () => openPrivateDivineAudience());
 divineGift.addEventListener('change', updateDivineGiftNote);
+divineBurden.addEventListener('change', updateDivineBurdenNote);
 divineContactKind.addEventListener('change', updateDivineContactRequirements);
 prayerInboxOpen.addEventListener('click', openPrayerInbox);
 prayerInboxClose.addEventListener('click', closePrayerInbox);
@@ -3282,6 +3344,7 @@ divineAudience.addEventListener('click', (event) => {
 divineAudienceForm.addEventListener('submit', (event) => {
   event.preventDefault();
   const gift = selectedDivineGift();
+  const burden = selectedDivineBurden();
   const contactKind = selectedDivineContactKind();
   const message = divineMessage.value.trim();
   if (
@@ -3289,7 +3352,7 @@ divineAudienceForm.addEventListener('submit', (event) => {
     !lastFrame ||
     !selectedAgentId ||
     !divineDeityName.value.trim() ||
-    (!gift && !contactKind) ||
+    (!gift && !burden && !contactKind) ||
     (contactKind && !message)
   ) return;
   divineAudienceRequestPending = true;
@@ -3306,6 +3369,8 @@ divineAudienceForm.addEventListener('submit', (event) => {
     religionName: divineReligionName.value.trim() || undefined,
     message: message || undefined,
     gift,
+    burden,
+    lineageCurse: Boolean(burden && divineLineageCurse.checked),
     contactKind,
     relatedPrayerId: activePrayerId,
     inheritanceGift: gift === 'legacy' ? requiredElement<HTMLSelectElement>('divine-legacy-gift').value : undefined,
@@ -3447,7 +3512,7 @@ liveWorldWorker.addEventListener(
       divineAudienceRequestPending = false;
       divineAudienceGrant.disabled = false;
       divineAudienceStatus.textContent = event.data.authorized
-        ? `${event.data.giftGranted ? 'Дар получен. ' : ''}${event.data.contactRecorded ? 'Контакт состоялся. ' : ''}${event.data.residentResponse ? `Искра отвечает: «${event.data.residentResponse}»` : 'Действие завершено.'}`
+        ? `${event.data.giftGranted ? 'Дар получен. ' : ''}${event.data.burdenApplied ? 'Кара наложена. ' : ''}${event.data.contactRecorded ? 'Контакт состоялся. ' : ''}${event.data.residentResponse ? `Искра отвечает: «${event.data.residentResponse}»` : 'Действие завершено.'}`
         : `Аудиенция не завершена: ${event.data.reason}`;
       return;
     }

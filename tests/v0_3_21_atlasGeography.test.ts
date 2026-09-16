@@ -69,8 +69,9 @@ describe('FIX5 physical geography and bounded atlas',()=>{
   });
   it('retains sparse planet scale, bounds tile history, and never changes the world from camera operations',async()=>{
     const w=await fresh(),id='settlement_elf_homeland';
-    w.places[id]={...w.places.commons,id,name:'Эльфийское поселение',kind:'village',settlementId:id,mapX:-10000,mapY:6000};
-    w.settlements[id]={id,name:w.places[id].name,kind:'village',centerPlaceId:id,centerX:-10000,centerY:6000,radius:.4,memberPlaceIds:[id],foundedAt:0};
+    const remoteX=w.places.commons.mapX-10000, remoteY=w.places.commons.mapY+6000;
+    w.places[id]={...w.places.commons,id,name:'Эльфийское поселение',kind:'village',settlementId:id,mapX:remoteX,mapY:remoteY};
+    w.settlements[id]={id,name:w.places[id].name,kind:'village',centerPlaceId:id,centerX:remoteX,centerY:remoteY,radius:.4,memberPlaceIds:[id],foundedAt:0};
     repairCompactSettlementLayout(w);const saved=structuredClone(w),index=new WorldAtlasIndex(),camera=new WorldMapCamera();index.update(w);
     const revision=index.revision;
     for(let i=0;i<240;i++) {

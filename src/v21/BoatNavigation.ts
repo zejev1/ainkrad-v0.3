@@ -2,7 +2,7 @@ import {recordOceanPassage} from '../world/geography/OceanExploration';
 import type { AgentActionKind, AgentState, V15WorldItemState, WorldBiome, WorldPoint2D, WorldState } from '../world/types';
 import { routeIdBetween } from '../world/WorldNavigation';
 import { worldWeatherV21 } from './WeatherV21';
-import { BOAT_KNOWLEDGE_ID, maritimeUnderstanding } from './MaritimePractice';
+import { BOAT_KNOWLEDGE_ID, maritimeUnderstanding, vesselCapabilitiesV22, vesselDesignV22 } from './MaritimePractice';
 import { courseLength, fishingCourse, pointDistance, sailingCourse, surveyLanding } from './SailingRoutes';
 import { recordPhysicalGoodsV21 } from './EconomySystemV21';
 
@@ -36,20 +36,25 @@ function carriedLoad(world:Readonly<WorldState>, agentId:string):number {
 }
 
 export function availableBoat(world:Readonly<WorldState>,agent:Readonly<AgentState>):Vessel|undefined {
-  return Object.values(world.v15?.items??{}).find(item=>item.boat?.completed&&!item.boat.journey&&
-    item.ownerAgentId===agent.id&&item.locationId===agent.locationId) as Vessel|undefined;
+  const rank=(item:V15WorldItemState)=>vesselDesignV22(item)==='coastal_ship'?2:vesselDesignV22(item)==='sailing_boat'?1:0;
+  return Object.values(world.v15?.items??{}).filter(item=>item.boat?.completed&&!item.boat.journey&&
+    item.ownerAgentId===agent.id&&item.locationId===agent.locationId)
+    .sort((a,b)=>rank(b)-rank(a)||b.quality-a.quality)[0] as Vessel|undefined;
 }
 
 function residentAcceptsVoyage(world:Readonly<WorldState>,agent:Readonly<AgentState>,boat:Vessel,roll:number):boolean {
   const weather=worldWeatherV21(world),understanding=maritimeUnderstanding(world,agent.id,BOAT_KNOWLEDGE_ID);
+  const capabilities=vesselCapabilitiesV22(boat);
   if(!agent.life.alive||agent.life.ageYears<18||agent.movement||agent.energy<.18||agent.life.health<.3||
-    (boat.boat.condition??1)<.3||understanding<.35||carriedLoad(world,agent.id)>300||weather.kind==='storm')return false;
-  return roll<clamp(.3+agent.personality.curiosity*.2+agent.personality.riskTolerance*.35+understanding*.2-weather.severity*.45);
+    (boat.boat.condition??1)<.3||understanding<.35||carriedLoad(world,agent.id)>capabilities.cargoKg)return false;
+  if(weather.kind==='storm'&&capabilities.seaworthiness<.66)return false;
+  return roll<clamp(.3+agent.personality.curiosity*.2+agent.personality.riskTolerance*.35+understanding*.2+
+    capabilities.seaworthiness*.12-weather.severity*(.5-capabilities.seaworthiness*.22));
 }
 
 function launch(world:WorldState,agent:AgentState,boat:Vessel,course:WorldPoint2D[],purpose:AgentActionKind,
   destinationPlaceId:string,extra:Partial<BoatJourney>={}):boolean {
-  if(course.length<3||courseLength(course)>60)return false;
+  if(course.length<3||courseLength(course)>vesselCapabilitiesV22(boat).range)return false;
   const minute=world.calendar.elapsedWorldMinutes;
   boat.boat.position={x:agent.position.x,y:agent.position.y};
   boat.boat.condition??=1;
@@ -72,7 +77,7 @@ export function startBoatFishing(world:WorldState,agent:AgentState,populationId:
 
 export function startBoatExploration(world:WorldState,agent:AgentState,roll:number):boolean {
   const boat=availableBoat(world,agent);if(!boat||!residentAcceptsVoyage(world,agent,boat,roll))return false;
-  const landing=surveyLanding(world,agent.position,roll);if(!landing)return false;
+  const landing=surveyLanding(world,agent.position,roll,Math.min(90,vesselCapabilitiesV22(boat).range*.25));if(!landing)return false;
   return launch(world,agent,boat,landing.course,'explore',agent.locationId,{landing:{point:landing.point,biome:landing.biome}});
 }
 
@@ -84,10 +89,12 @@ export function startBoatTravel(world:WorldState,agent:AgentState,targetId:strin
   // the boat is still physically at the bank. A traveller is never collected.
   for(const item of Object.values(world.v15?.items??{})) {
     const j=item.boat?.journey;
-    if(!j||j.purpose==='hunt'||j.landing||j.returning||j.startedWorldMinute!==world.calendar.elapsedWorldMinutes||
-      j.travelledDistance>0||j.originPlaceId!==agent.locationId||j.occupantIds.length>=2||
+    const vessel=item.boat?item as Vessel:undefined;
+    const capabilities=vessel?vesselCapabilitiesV22(vessel):undefined;
+    if(!j||!capabilities||j.purpose==='hunt'||j.landing||j.returning||j.startedWorldMinute!==world.calendar.elapsedWorldMinutes||
+      j.travelledDistance>0||j.originPlaceId!==agent.locationId||j.occupantIds.length>=capabilities.passengers||
       (j.onwardPlaceId??j.destinationPlaceId)!==targetId||j.occupantIds.includes(agent.id)||
-      j.occupantIds.reduce((n,id)=>n+carriedLoad(world,id),0)+carriedLoad(world,agent.id)>300)continue;
+      j.occupantIds.reduce((n,id)=>n+carriedLoad(world,id),0)+carriedLoad(world,agent.id)>capabilities.cargoKg)continue;
     if(roll>clamp(.35+agent.personality.riskTolerance*.45-worldWeatherV21(world).severity*.3))return false;
     j.occupantIds.push(agent.id);
     agent.movement={boatId:item.id,targetPlaceId:j.destinationPlaceId,purpose,waypoints:j.waypoints,nextWaypointIndex:1,
@@ -99,7 +106,7 @@ export function startBoatTravel(world:WorldState,agent:AgentState,targetId:strin
     (p.id===targetId||dryPath(p.id,targetId))).sort((a,b)=>pointDistance(bankPoint(world,a.id),bankPoint(world,targetId))-
       pointDistance(bankPoint(world,b.id),bankPoint(world,targetId))).slice(0,8);
   for(const bank of banks) {
-    const course=sailingCourse(world,agent.position,bankPoint(world,bank.id));
+    const course=sailingCourse(world,agent.position,bankPoint(world,bank.id),vesselCapabilitiesV22(boat).range);
     if(course&&launch(world,agent,boat,course,purpose,bank.id,bank.id===targetId?{}:{onwardPlaceId:targetId}))return true;
   }
   return false;
@@ -161,6 +168,7 @@ function arrive(world:WorldState,boat:Vessel):BoatArrival[] {
     arrivals.push({agentId:id,fromPlaceId,toPlaceId:destination,boatId:boat.id,discovered,fishCaught:id===j.pilotId?fishCaught:0,
       returned:j.returning,...(j.onwardPlaceId?{onwardPlaceId:j.onwardPlaceId}:{})});
   }
+  boat.boat.designExperience=Math.min(1,(boat.boat.designExperience??0)+Math.min(.12,j.travelledDistance/220)+(discovered?.025:0));
   delete boat.boat.journey;return arrivals;
 }
 
@@ -180,9 +188,11 @@ export function advanceBoats(world:WorldState,elapsed:number,startMinute:number)
         if(!pilot){for(const id of j.occupantIds){const a=world.agents[id];if(a)delete a.movement;}delete boat.boat.journey;delete boat.locationId;break;}
         j.pilotId=pilot.id;turnBack(world,boat);
       }
-      if(weather.kind==='storm'||pilot.energy<.12||(boat.boat.condition??1)<.2)turnBack(world,boat);
+      const capabilities=vesselCapabilitiesV22(boat);
+      if((weather.kind==='storm'&&capabilities.seaworthiness<.72)||pilot.energy<.12||(boat.boat.condition??1)<.2)turnBack(world,boat);
       const available=Math.min(end-minute,10-(minute%10));
-      const speed=.5*(.6+pilot.life.physiology.endurance*.4)*(1-weather.severity*.55);
+      const designSpeed=vesselDesignV22(boat)==='coastal_ship'?.72:vesselDesignV22(boat)==='sailing_boat'?.62:.5;
+      const speed=designSpeed*(.6+pilot.life.physiology.endurance*.4)*(1-weather.severity*(.62-capabilities.seaworthiness*.3));
       const point=boat.boat.position!,next=j.waypoints[j.nextWaypointIndex];
       if(!next)throw new Error('Boat route lost a physical waypoint.');
       const distance=pointDistance(point,next);
@@ -194,7 +204,7 @@ export function advanceBoats(world:WorldState,elapsed:number,startMinute:number)
         point.x+=(next.x-point.x)*t;point.y+=(next.y-point.y)*t;j.travelledDistance+=step;
         for(const id of j.occupantIds){const a=world.agents[id];if(a){a.position={...point,layerId:'surface'};if(a.movement)a.movement.nextWaypointIndex=j.nextWaypointIndex;}}
       }
-      boat.boat.condition=clamp((boat.boat.condition??1)-duration*(weather.kind==='storm'?.0004:.00002));
+      boat.boat.condition=clamp((boat.boat.condition??1)-duration*(weather.kind==='storm'?.0004*(1-capabilities.seaworthiness*.72):.00002));
       pilot.energy=clamp(pilot.energy-duration*.00012);
       minute+=duration;j.lastAdvancedWorldMinute=minute;
       recordOceanPassage(world,item.id,j,point,minute);

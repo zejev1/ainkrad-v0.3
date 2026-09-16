@@ -1,4 +1,4 @@
-import { GIFT_CATALOG_V20 } from '../v20/DivineGiftsV20';
+import { GIFT_CATALOG_V20, DIVINE_BURDEN_CATALOG_V22 } from '../v20/DivineGiftsV20';
 import { createStableId } from '../core/stableId';
 import { stableJsonStringify } from '../core/stableJson';
 import type { WorldMutationResult } from '../world/WorldEngine';
@@ -9,6 +9,7 @@ import {
 import type {
   DivineContactKind,
   DivineGiftKind,
+  DivineBurdenKind,
   WorldEntryRole,
   WorldState,
 } from '../world/types';
@@ -51,6 +52,8 @@ export interface PrivateDivineAudienceRequest {
   message?: string;
   gift?: DivineGiftKind;
   inheritanceGift?: DivineGiftKind;
+  burden?: DivineBurdenKind;
+  lineageCurse?: boolean;
   contactKind?: DivineContactKind;
   relatedPrayerId?: string;
   requestedAt: number;
@@ -108,6 +111,8 @@ export interface WorldEntryTarget {
     operationId: string,
     expectedWorldRevision: number,
     inheritanceGift?: DivineGiftKind,
+    burden?: DivineBurdenKind,
+    lineageCurse?: boolean,
   ): Promise<WorldMutationResult>;
 }
 
@@ -276,13 +281,17 @@ export class IndependentWorldEntryGateway {
       !/^[a-zA-Z0-9][a-zA-Z0-9_-]{2,63}$/.test(request.deityId) ||
       !request.deityName.trim() ||
       request.deityName.length > 64 ||
-      (!request.gift && !request.contactKind) ||
+      (!request.gift && !request.burden && !request.contactKind) ||
+      Boolean(request.gift && request.burden) ||
       (request.contactKind && !request.message?.trim()) ||
       (request.message !== undefined && request.message.length > 480) ||
       (request.religionName !== undefined &&
         (!request.religionName.trim() || request.religionName.length > 64)) ||
       (request.gift !== undefined &&
         !Object.hasOwn(GIFT_CATALOG_V20, request.gift)) ||
+      (request.burden !== undefined &&
+        !Object.hasOwn(DIVINE_BURDEN_CATALOG_V22, request.burden)) ||
+      (request.lineageCurse !== undefined && typeof request.lineageCurse !== 'boolean') ||
       (request.contactKind !== undefined &&
         !['message', 'revelation', 'command', 'request', 'warning', 'vision', 'sign'].includes(request.contactKind)) ||
       (request.relatedPrayerId !== undefined && !relatedPrayer) ||
@@ -306,6 +315,8 @@ export class IndependentWorldEntryGateway {
         request.requestId,
         expectedWorld.revision,
         request.inheritanceGift,
+        request.burden,
+        request.lineageCurse,
       );
     } catch (error) {
       if (

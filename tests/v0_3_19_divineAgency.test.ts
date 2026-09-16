@@ -111,7 +111,8 @@ describe('v0.3.19 independent divine agency', () => {
     expect(result.interpretation).not.toBe('direct_contact');
     expect(identityAndLifeChoice(resident)).toEqual(before);
     expect(livelihood.primary).toBe('farmer');
-    expect(resident.progression?.level).toBe(100);
+    expect(resident.progression?.level).toBeLessThan(100);
+    expect(state.v19!.divineAgency.byAgentId[resident.id].gifts[0].mastery).toBeCloseTo(0.06);
     expect(resident.privateDivineCalling).toBeUndefined();
   });
 

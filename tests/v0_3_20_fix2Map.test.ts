@@ -42,7 +42,7 @@ describe('FIX2 city scale and walking streets', () => {
       for (let i=1;i<route.waypoints.length;i++) expect(obstacles.some(p=>
         segmentEntersBuilding(route.waypoints[i-1],route.waypoints[i],p))).toBe(false);
     }
-    expect(Object.values(routes).filter(r=> r.fromPlaceId.startsWith('home_') || r.toPlaceId.startsWith('home_'))).toHaveLength(10);
+    expect(Object.values(routes).filter(r=> r.fromPlaceId.startsWith('home_') || r.toPlaceId.startsWith('home_'))).toHaveLength(30);
   });
 
   it('upgrades old walking routes without changing residents, history, time, RNG or completed traversals', async () => {

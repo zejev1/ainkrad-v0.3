@@ -1,8 +1,10 @@
 import { WORLD_MINUTES_PER_YEAR } from '../world/WorldClock';
 import type {
   AgentState,
+  RelationshipState,
   DivineContactKind,
   DivineGiftKind,
+  DivineBurdenKind,
   WorldState,
 } from '../world/types';
 import type {
@@ -10,6 +12,7 @@ import type {
   V19DeityRelationshipState,
   V19DivineContactRecord,
   V19DivineGiftGrant,
+  V19DivineBurdenGrant,
   V19DivineInterpretation,
   V19PrayerEmotion,
   V19PrayerEvidence,
@@ -27,11 +30,12 @@ import {
 
 export const WORLD_RULES_VERSION_V19 = 'ainkrad-world-rules-0.3.19';
 export const WORLD_V19_SCHEMA_VERSION = 'v19' as const;
-import { GIFT_CATALOG_V20, hasGiftV20 } from '../v20/DivineGiftsV20';
+import { GIFT_CATALOG_V20, DIVINE_BURDEN_CATALOG_V22, hasGiftV20, giftMasteryV20, initialGiftMasteryV20, giftIsHeritableV20 } from '../v20/DivineGiftsV20';
 
 export const DIVINE_AGENCY_VERSION_V19 = 'divine-agency-v19' as const;
 
 export const DIVINE_GIFTS_V19 = Object.keys(GIFT_CATALOG_V20) as DivineGiftKind[];
+export const DIVINE_BURDENS_V22 = Object.keys(DIVINE_BURDEN_CATALOG_V22) as DivineBurdenKind[];
 
 export const DIVINE_CONTACT_KINDS_V19: readonly DivineContactKind[] = [
   'message',
@@ -84,6 +88,7 @@ function emptyAgentState(agentId: string): V19AgentDivineAgencyState {
   return {
     agentId,
     gifts: [],
+    burdens: [],
     contacts: [],
     deityRelationships: [],
     significantPrayers: [],
@@ -111,6 +116,8 @@ function legacyCallingToV19(
       ),
       delivery: 'direct',
       interpretation: 'direct_contact',
+      mastery: initialGiftMasteryV20(legacy.gift),
+      practiceCount: 0,
     });
   }
   const contactId = `legacy-contact:${legacy.audienceId}`;
@@ -247,12 +254,19 @@ function sanitizeAgentProfile(
 ): V19AgentDivineAgencyState {
   profile.agentId = agent.id;
   profile.gifts ??= [];
+  profile.burdens ??= [];
   profile.contacts ??= [];
   profile.deityRelationships ??= [];
   profile.significantPrayers ??= [];
   profile.totalPrayerCount ??= 0;
   legacyCallingToV19(world, agent, profile);
+  for (const grant of profile.gifts) {
+    grant.mastery = clamp01(grant.mastery ?? initialGiftMasteryV20(grant.gift));
+    grant.practiceCount = Math.max(0, Math.trunc(grant.practiceCount ?? 0));
+    grant.triggerCount = Math.max(0, Math.trunc(grant.triggerCount ?? 0));
+  }
   profile.gifts = profile.gifts.slice(-MAX_DIVINE_GIFTS_PER_AGENT_V19);
+  profile.burdens = profile.burdens.slice(-MAX_DIVINE_GIFTS_PER_AGENT_V19);
   profile.contacts = profile.contacts.slice(-MAX_DIVINE_CONTACTS_PER_AGENT_V19);
   profile.deityRelationships = profile.deityRelationships
     .filter((relationship) => relationship.deityId.trim())
@@ -332,25 +346,13 @@ export function divineGiftActionAffinityV19(
   action: string,
 ): number {
   let boost = 0;
-  if (hasDivineGiftV19(world, agentId, 'healing_touch') && action === 'help') {
-    boost += 0.1;
-  }
-  if (hasDivineGiftV19(world, agentId, 'genius_inventor')) {
-    if (action === 'work') boost += 0.055;
-    if (action === 'explore' || action === 'reflect') boost += 0.035;
-  }
-  if (
-    hasDivineGiftV19(world, agentId, 'crowd_charisma') &&
-    action === 'socialize'
-  ) {
-    boost += 0.055;
-  }
-  if (hasDivineGiftV19(world, agentId, 'might')) {
-    if (action === 'hunt' || action === 'help') boost += 0.035;
-  }
-  if (hasDivineGiftV19(world, agentId, 'demon_king_hero')) {
-    if (['hunt', 'explore', 'help'].includes(action)) boost += 0.06;
-  }
+  const mastery = (kind: DivineGiftKind) => giftMasteryV20(world, agentId, kind);
+  if (action === 'help') boost += 0.1 * mastery('healing_touch');
+  if (action === 'work') boost += 0.055 * mastery('genius_inventor');
+  if (action === 'explore' || action === 'reflect') boost += 0.035 * mastery('genius_inventor');
+  if (action === 'socialize') boost += 0.055 * mastery('crowd_charisma');
+  if (action === 'hunt' || action === 'help') boost += 0.035 * mastery('might');
+  if (['hunt', 'explore', 'help'].includes(action)) boost += 0.06 * mastery('demon_king_hero');
   return Math.min(0.12, boost);
 }
 
@@ -358,26 +360,43 @@ export function applyPersistentDivineGiftEffectsV19(
   world: WorldState,
   agent: AgentState,
 ): void {
-  // Longevity affects ageing; never roll the death threshold forward on every tick.
-  if (hasDivineGiftV19(world, agent.id, 'might')) {
+  // A grant is potential.  Floors rise with lived mastery instead of jumping
+  // to 95-100% on the instant the deity presses a button.
+  const might = giftMasteryV20(world, agent.id, 'might');
+  if (might > 0) {
     agent.life.physiology.strength = Math.max(
-      0.96,
+      0.5 + might * 0.46,
       agent.life.physiology.strength,
     );
     agent.life.physiology.endurance = Math.max(
-      0.92,
+      0.48 + might * 0.44,
       agent.life.physiology.endurance,
     );
   }
-  if (hasGiftV20(world, agent.id, 'agility')) agent.life.physiology.mobility = Math.max(agent.life.physiology.mobility, 0.95);
-  if (hasGiftV20(world, agent.id, 'tireless')) agent.life.physiology.endurance = Math.max(agent.life.physiology.endurance, 0.98);
-  if (hasDivineGiftV19(world, agent.id, 'demon_king_hero')) {
-    agent.life.physiology = {
-      strength: 1,
-      endurance: 1,
-      mobility: 1,
-      recovery: 1,
-    };
+  const agility = giftMasteryV20(world, agent.id, 'agility');
+  if (agility > 0) {
+    agent.life.physiology.mobility = Math.max(
+      agent.life.physiology.mobility,
+      0.5 + agility * 0.45,
+    );
+  }
+  const tireless = giftMasteryV20(world, agent.id, 'tireless');
+  if (tireless > 0) {
+    agent.life.physiology.endurance = Math.max(
+      agent.life.physiology.endurance,
+      0.5 + tireless * 0.48,
+    );
+  }
+  const hero = giftMasteryV20(world, agent.id, 'demon_king_hero');
+  if (hero > 0) {
+    agent.life.physiology.strength = Math.max(agent.life.physiology.strength, 0.52 + hero * 0.48);
+    agent.life.physiology.endurance = Math.max(agent.life.physiology.endurance, 0.52 + hero * 0.48);
+    agent.life.physiology.mobility = Math.max(agent.life.physiology.mobility, 0.5 + hero * 0.5);
+    agent.life.physiology.recovery = Math.max(agent.life.physiology.recovery, 0.5 + hero * 0.5);
+    if (agent.progression) {
+      agent.progression.combatMastery = Math.max(agent.progression.combatMastery, hero * 0.9);
+      agent.progression.sacredArts = Math.max(agent.progression.sacredArts, hero * 0.45);
+    }
   }
 }
 
@@ -505,7 +524,7 @@ function residentResponseForAction(
     } else if (faithful) {
       answer = 'Я сохраню эти слова и сам решу, как жить с ними дальше.';
     } else {
-      answer = 'Я пока не знаю, голос ли это божества или испытание моего разума.';
+      answer = 'Я пока не знаю, голос ли это божества или испытание моего разума. Решение всё равно останется за мной.';
     }
     return `${heard}. Я ${profession}; ${personalStance[strongestValue].toLocaleLowerCase('ru-RU')}. ${answer}${giftResponse}`;
   }
@@ -554,6 +573,8 @@ export interface DivineActionV19Input {
   religionName?: string;
   gift?: DivineGiftKind;
   inheritanceGift?: DivineGiftKind;
+  burden?: DivineBurdenKind;
+  lineageCurse?: boolean;
   contactKind?: DivineContactKind;
   message?: string;
   relatedPrayerId?: string;
@@ -564,6 +585,7 @@ export interface DivineActionV19Input {
 export interface DivineActionV19Result {
   actionId: string;
   giftGranted: boolean;
+  burdenApplied: boolean;
   contactRecorded: boolean;
   interpretation: V19DivineInterpretation;
   residentResponse: string;
@@ -577,9 +599,18 @@ export function applyDivineActionV19(
   if (!agent?.life.alive) {
     throw new Error(`Living divine-action resident ${input.agentId} was not found.`);
   }
+  if (input.gift && input.burden) {
+    throw new Error('Одна божественная операция не может одновременно быть даром и карой.');
+  }
   const profile = ensureAgentDivineAgencyV19(world, agent.id);
+  profile.burdens ??= [];
   if (input.gift === 'legacy' && (!input.inheritanceGift || input.inheritanceGift === 'legacy' ||
-      !profile.gifts.some(grant => grant.gift === input.inheritanceGift))) throw new Error('Наследие требует выбрать один уже полученный дар.');
+      !profile.gifts.some(grant => grant.gift === input.inheritanceGift))) {
+    throw new Error('Наследие требует выбрать один уже полученный дар.');
+  }
+  if (input.inheritanceGift && !giftIsHeritableV20(input.inheritanceGift)) {
+    throw new Error('Выбранный дар или способность не может передаваться по наследству.');
+  }
   const relationship = ensureDeityRelationshipV19(
     world,
     agent.id,
@@ -596,7 +627,7 @@ export function applyDivineActionV19(
   const alreadyHadGift = input.gift
     ? profile.gifts.some((grant) => grant.gift === input.gift)
     : false;
-  const response = residentResponseForAction(
+  let response = residentResponseForAction(
     world,
     agent,
     input.deityName,
@@ -605,9 +636,17 @@ export function applyDivineActionV19(
     input.contactKind,
     input.message,
     interpretation,
-  ).slice(0, 480);
-  let giftGranted = false;
+  );
+  if (input.burden) {
+    const [name, description] = DIVINE_BURDEN_CATALOG_V22[input.burden];
+    response += input.contactKind && input.contactKind !== 'sign'
+      ? ` Я понял, что на мне кара «${name}»: ${description}`
+      : ` Со мной происходит тяжёлая перемена: ${description.toLocaleLowerCase('ru-RU')} Источник мне неизвестен.`;
+    if (input.lineageCurse) response += ' Я не знаю, коснётся ли эта тень моих потомков.';
+  }
+  response = response.slice(0, 480);
 
+  let giftGranted = false;
   if (input.gift && !alreadyHadGift) {
     const grant: V19DivineGiftGrant = {
       id: `gift:${input.operationId}`,
@@ -624,40 +663,51 @@ export function applyDivineActionV19(
       interpretation,
       residentResponse: response,
       ...(input.relatedPrayerId ? { relatedPrayerId: input.relatedPrayerId } : {}),
+      mastery: initialGiftMasteryV20(input.gift),
+      practiceCount: 0,
     };
     profile.gifts.push(grant);
     profile.gifts = profile.gifts.slice(-MAX_DIVINE_GIFTS_PER_AGENT_V19);
     giftGranted = true;
 
-    const progression = (agent.progression ??= {
+    // A grant creates potential only.  It must never max sacred arts, body,
+    // profession or combat mastery at award time.  Binary immortality is the
+    // single exception in kind, not in stats: it changes mortality/reproduction
+    // rules but still does not write personality or vocation.
+    agent.progression ??= {
       level: 1,
       experience: 0,
       objectControlAuthority: 0,
       systemControlAuthority: 0,
       combatMastery: 0,
       sacredArts: 0,
-    });
-    if (input.gift === 'might') {
-      agent.life.physiology.strength = Math.max(0.96, agent.life.physiology.strength);
-      agent.life.physiology.endurance = Math.max(0.92, agent.life.physiology.endurance);
-    } else if (input.gift === 'healing_touch') {
-      progression.sacredArts = Math.max(0.95, progression.sacredArts);
-    } else if (input.gift === 'demon_king_hero') {
-      agent.life.health = 1;
-      agent.energy = 1;
-      agent.life.physiology = {
-        strength: 1,
-        endurance: 1,
-        mobility: 1,
-        recovery: 1,
-      };
-      agent.skills.hunting = 1;
-      agent.skills.craft = 1;
-      agent.skills.exploration = 1;
-      progression.experience = Math.max(progression.experience, 99 * 99 * 24);
-      progression.level = 100;
-      progression.combatMastery = 1;
+    };
+  }
+
+  let burdenApplied = false;
+  if (input.burden) {
+    let burden = profile.burdens.find((entry) => entry.burden === input.burden);
+    if (burden) {
+      burden.intensity = clamp01(burden.intensity + 0.15);
+      burden.lineage ||= Boolean(input.lineageCurse);
+      burden.residentResponse = response;
+      burden.relatedPrayerId ??= input.relatedPrayerId;
+    } else {
+      burden = {
+        id: `burden:${input.operationId}`,
+        burden: input.burden,
+        deityId: input.deityId,
+        deityName: input.deityName,
+        grantedWorldMinute: input.worldMinute,
+        intensity: 0.35,
+        lineage: Boolean(input.lineageCurse),
+        residentResponse: response,
+        ...(input.relatedPrayerId ? { relatedPrayerId: input.relatedPrayerId } : {}),
+      } satisfies V19DivineBurdenGrant;
+      profile.burdens.push(burden);
+      profile.burdens = profile.burdens.slice(-MAX_DIVINE_GIFTS_PER_AGENT_V19);
     }
+    burdenApplied = true;
   }
 
   let contactRecorded = false;
@@ -698,17 +748,21 @@ export function applyDivineActionV19(
   } else if (interpretation === 'natural_cause') {
     relationship.doubt = clamp01(relationship.doubt + 0.025);
   }
+  if (input.burden) {
+    relationship.fear = clamp01(relationship.fear + 0.08);
+    relationship.trust = clamp01(relationship.trust - 0.025);
+  }
 
   agent.mind.emotions.awe = clamp01(
     agent.mind.emotions.awe +
       (interpretation === 'direct_contact' ? 0.14 : interpretation === 'miracle' ? 0.08 : 0.025),
   );
   agent.mind.emotions.fear = clamp01(
-    agent.mind.emotions.fear + (interpretation === 'frightening' ? 0.1 : 0),
+    agent.mind.emotions.fear + (input.burden ? 0.08 : interpretation === 'frightening' ? 0.1 : 0),
   );
   agent.mind.emotions.hope = clamp01(
     agent.mind.emotions.hope +
-      (['direct_contact', 'miracle', 'luck'].includes(interpretation) ? 0.06 : 0.01),
+      (input.burden ? -0.035 : ['direct_contact', 'miracle', 'luck'].includes(interpretation) ? 0.06 : 0.01),
   );
   agent.mind.beliefs.divinePresence = clamp01(
     agent.mind.beliefs.divinePresence +
@@ -729,6 +783,7 @@ export function applyDivineActionV19(
       interventionId: input.operationId,
       respondedWorldMinute: input.worldMinute,
       ...(input.gift ? { gift: input.gift } : {}),
+      ...(input.burden ? { burden: input.burden, lineageCurse: Boolean(input.lineageCurse) } : {}),
       ...(input.contactKind ? { contactKind: input.contactKind } : {}),
       interpretation,
       residentResponse: response,
@@ -751,6 +806,7 @@ export function applyDivineActionV19(
   return {
     actionId: input.operationId,
     giftGranted,
+    burdenApplied,
     contactRecorded,
     interpretation,
     residentResponse: response,
@@ -796,6 +852,7 @@ function settlementForAgent(
 function relatedPeople(
   world: Readonly<WorldState>,
   agent: Readonly<AgentState>,
+  relationships?: readonly RelationshipState[],
 ): Array<{ person: AgentState; relationship: string; closeness: number }> {
   const people = new Map<
     string,
@@ -809,7 +866,7 @@ function relatedPeople(
     const parent = world.agents[parentId];
     if (parent) people.set(parent.id, { person: parent, relationship: 'родитель', closeness: 0.86 });
   }
-  for (const relationship of Object.values(world.relationships)) {
+  for (const relationship of relationships ?? Object.values(world.relationships)) {
     if (relationship.agentA !== agent.id && relationship.agentB !== agent.id) continue;
     const otherId = relationship.agentA === agent.id
       ? relationship.agentB
@@ -887,11 +944,12 @@ function buildPrayerCandidates(
   world: Readonly<WorldState>,
   agent: Readonly<AgentState>,
   settlement: ReturnType<typeof settlementForAgent>,
+  relationships?: readonly RelationshipState[],
 ): {
   candidates: PrayerCandidate[];
   evidence: Omit<V19PrayerEvidence, 'facts' | 'targetRelationship' | 'targetAlive'>;
 } {
-  const related = relatedPeople(world, agent);
+  const related = relatedPeople(world, agent, relationships);
   const sick = related
     .filter(({ person }) => person.life.alive && person.life.health < 0.68)
     .sort((left, right) =>
@@ -1188,19 +1246,32 @@ export function recordContextualPrayerV19(
   world: WorldState,
   agent: AgentState,
   rolls: Readonly<ContextualPrayerRollsV19>,
+  relationships?: readonly RelationshipState[],
 ): V19PrayerRecord {
   const v19 = ensureWorldV19State(world);
   const agency = v19.divineAgency;
   const profile = ensureAgentDivineAgencyV19(world, agent.id);
   const settlement = settlementForAgent(world, agent);
-  const built = buildPrayerCandidates(world, agent, settlement);
+  const built = buildPrayerCandidates(world, agent, settlement, relationships);
   const sequence = agency.nextPrayerSequence++;
+  // Prayer is about lived concerns, not a single permanently dominant family
+  // relation. Repeating the same topic/subject receives a small recency penalty;
+  // genuinely urgent illness/war/danger still wins because its base score is
+  // much larger. This keeps children important without turning every adult's
+  // prayer history into the same child-focused template forever.
+  const recentOwn = agency.recentPrayers
+    .filter((prayer) => prayer.npcId === agent.id)
+    .slice(-6);
+  const candidateScore = (candidate: PrayerCandidate): number => {
+    const repeatedTopic = recentOwn.filter((prayer) => prayer.topic === candidate.topic).length;
+    const repeatedSubject = recentOwn.filter((prayer) => prayer.subject === candidate.subject).length;
+    const urgencyScale = candidate.score >= 1.15 ? 0.35 : candidate.score >= 0.9 ? 0.65 : 1;
+    const repetitionPenalty = urgencyScale * Math.min(0.34, repeatedTopic * 0.07 + repeatedSubject * 0.11);
+    return candidate.score - repetitionPenalty +
+      stableUnit(`${agent.id}:${candidate.topic}:${candidate.subject}:${sequence}:${rolls.subject}`) * 0.12;
+  };
   const candidate = [...built.candidates]
-    .sort(
-      (left, right) =>
-        right.score + stableUnit(`${agent.id}:${right.topic}:${sequence}:${rolls.subject}`) * 0.12 -
-        (left.score + stableUnit(`${agent.id}:${left.topic}:${sequence}:${rolls.subject}`) * 0.12),
-    )[0];
+    .sort((left, right) => candidateScore(right) - candidateScore(left))[0];
   const deity = selectPrayerDeity(world, agent, profile, rolls.deity);
   const desperation = clamp01(
     Math.max(
@@ -1408,6 +1479,7 @@ export function assertWorldV19State(world: Readonly<WorldState>): void {
     }
     if (
       profile.gifts.length > MAX_DIVINE_GIFTS_PER_AGENT_V19 ||
+      profile.burdens.length > MAX_DIVINE_GIFTS_PER_AGENT_V19 ||
       profile.contacts.length > MAX_DIVINE_CONTACTS_PER_AGENT_V19 ||
       profile.deityRelationships.length > MAX_DEITY_RELATIONSHIPS_PER_AGENT_V19 ||
       profile.significantPrayers.length > MAX_SIGNIFICANT_PRAYERS_PER_AGENT_V19
@@ -1428,6 +1500,23 @@ export function assertWorldV19State(world: Readonly<WorldState>): void {
         gift.grantedWorldMinute > world.calendar.elapsedWorldMinutes
       ) {
         throw new Error(`World v19 gift ${gift.id} has invalid time.`);
+      }
+      assertUnit(gift.mastery ?? initialGiftMasteryV20(gift.gift), `World v19 gift ${gift.id}.mastery`);
+      if (!Number.isInteger(gift.practiceCount ?? 0) || (gift.practiceCount ?? 0) < 0) {
+        throw new Error(`World v19 gift ${gift.id} has invalid practice count.`);
+      }
+      if (!Number.isInteger(gift.triggerCount ?? 0) || (gift.triggerCount ?? 0) < 0) {
+        throw new Error(`World v19 gift ${gift.id} has invalid trigger count.`);
+      }
+    }
+    for (const burden of profile.burdens) {
+      assertText(burden.id, `World v19 burden ${agentId}.id`, 160);
+      if (!DIVINE_BURDENS_V22.includes(burden.burden)) {
+        throw new Error(`World v19 burden ${burden.id} has an invalid kind.`);
+      }
+      assertUnit(burden.intensity, `World v19 burden ${burden.id}.intensity`);
+      if (typeof burden.lineage !== 'boolean' || !Number.isFinite(burden.grantedWorldMinute) || burden.grantedWorldMinute < 0 || burden.grantedWorldMinute > world.calendar.elapsedWorldMinutes) {
+        throw new Error(`World v19 burden ${burden.id} is invalid.`);
       }
     }
     for (const contact of profile.contacts) {

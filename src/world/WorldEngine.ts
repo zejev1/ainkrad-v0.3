@@ -1,3 +1,5 @@
+import { residentKnownPath, invalidateResidentNavigation } from './ResidentNavigation';
+import { consultSettlementMap, residentSurveyedPlaceIds, recordResidentSurvey, recordResidentRouteArrival, assertResidentCartography } from './ResidentCartography';
 import {applyOceanDecision} from './geography/OceanGeographyPolicy';
 import {assertOceanExploration,type OceanDecision} from './geography/OceanExploration';
 import { consumeReadingWords } from '../v18/HistoricalReading';
@@ -9,6 +11,8 @@ import {localSurveySite} from './geography/LocalExploration';
 import {residentChoiceCandidates} from './ResidentChoice';
 import { residentDecisionReflection } from './ResidentDecisionReflection';
 import { residentExplorationTarget } from './ResidentExploration';
+import { residentOpportunityWindow } from './ResidentOpportunityWindow';
+import { explorationEvidence, recordExplorationArrival } from './ResidentExplorationEvidence';
 import {bindWorldTerrain,assertTerrainFoundation,homelandCenterForWorld,terrainWalkingScale} from './geography/WorldTerrain';
 import { assertPlaceGeography } from './WorldGeographyValidation';
 import type { WorldTimeExecution } from './WorldTimeExecution';
@@ -36,7 +40,7 @@ import {
   createCenturyHumpbackState,
   ensureCenturyHumpbackState,
 } from './CenturyHumpback';
-import { hasGiftV20, learningFactorV20, canReadLibraryV20, giftLearningSnapshotV20, applyLivedGiftLearningV20 } from '../v20/DivineGiftsV20';
+import { hasGiftV20, learningFactorV20, canReadLibraryV20, giftLearningSnapshotV20, applyLivedGiftLearningV20, giftMasteryV20, practiceGiftV20, isImmortalV20, giftInheritanceChanceV20, inheritedGiftMasteryV20, giftIsHeritableV20, burdenIntensityV22, triggerPhoenixV22 } from '../v20/DivineGiftsV20';
 import {
   HUMAN_HOUSE_RECIPES_V21,
   humanConstructionLaborV21,
@@ -69,6 +73,7 @@ import {
   bodyRecoveryScaleV21,
   careActionAffinityV21,
   createEmbodiedWorldV21,
+  ensureAgentEmbodiedWorldV21,
   ensureEmbodiedWorldV21,
   recordCarePracticeV21,
   recordDeferredChildTripV21,
@@ -78,6 +83,13 @@ import {
   recordTraumaV21,
   youngChildMayTravelToV21,
 } from '../v21/EmbodiedWorldV21';
+import {
+  choosePregnancyMultiplicityV22,
+  maternalChildbirthMortalityRiskV22,
+  maternalPostpartumHealthLossV22,
+  newbornMultipleHealthPenaltyV22,
+  type BirthMultiplicityV22,
+} from '../v22/MultipleBirthsV22';
 import { stableJsonStringify } from '../core/stableJson';
 import { SeededRng } from '../utils/rng';
 import {
@@ -223,6 +235,7 @@ import {
   divineGiftActionAffinityV19,
   DIVINE_CONTACT_KINDS_V19,
   DIVINE_GIFTS_V19,
+  DIVINE_BURDENS_V22,
   ensureWorldV19State,
   hasDivineGiftV19,
   recordContextualPrayerV19,
@@ -266,6 +279,7 @@ import type {
   AgentDeathCause,
   DivineContactKind,
   DivineGiftKind,
+  DivineBurdenKind,
   AgentGoalKind,
   AgentLifeStage,
   AgentPhysiologyState,
@@ -287,6 +301,7 @@ import type {
   WorldSettlementState,
   WorldState,
   WorldV15State,
+  V16FamilyLifecycleState,
   V16MaterialKind,
   V15WeaponKind,
   WildlifePopulation,
@@ -310,6 +325,9 @@ export const WORLD_CONSTITUTION_VERSION = 'ainkrad-constitution-0.3.19';
 export { WORLD_TICKS_PER_YEAR } from './WorldClock';
 const MIN_ADULT_AGE = 18;
 const BIRTH_CHECK_INTERVAL = 12;
+const FAMILY_MEETING_EXPIRY_WORLD_MINUTES = WORLD_MINUTES_PER_YEAR * 1.5;
+const FAMILY_INTENT_EXPIRY_WORLD_MINUTES = WORLD_MINUTES_PER_YEAR * 3;
+const FAMILY_GESTATION_WORLD_MINUTES = WORLD_MINUTES_PER_YEAR * 0.75;
 const LEGACY_WORLD_TICKS_PER_YEAR = 96;
 const V15_SIMULATION_QUANTUM_WORLD_MINUTES = WORLD_MINUTES_PER_YEAR / 60;
 const V15_MAX_DEATH_TELEMETRY = 512;
@@ -358,6 +376,8 @@ function progressionFromAgent(agent: Readonly<AgentState>): NonNullable<AgentSta
 const ROUTINE_AGENT_EVENT_KINDS = new Set([
   'agent.travel.started',
   'agent.travel.paused',
+  'agent.travel.unavailable',
+  'agent.camp.rested',
   'agent.rested',
   'agent.relaxed',
   'agent.walked',
@@ -1543,7 +1563,7 @@ function assertWorldState(value: unknown): asserts value is WorldState {
     }
     if (
       life.deathCause !== undefined &&
-      !['old_age', 'illness', 'deprivation', 'catastrophe', 'wildlife', 'monster', 'war'].includes(
+      !['old_age', 'illness', 'childbirth', 'deprivation', 'catastrophe', 'wildlife', 'monster', 'war'].includes(
         life.deathCause as AgentDeathCause,
       )
     ) {
@@ -2396,6 +2416,128 @@ function assertWorldState(value: unknown): asserts value is WorldState {
       }
     }
 
+    const familyLifecycles = asRecord(
+      v16.familyLifecycleByPairId,
+      'World v16 familyLifecycleByPairId',
+    );
+    const pregnantResidents = new Set<string>();
+    for (const [pairId, rawLifecycle] of Object.entries(familyLifecycles)) {
+      const lifecycle = asRecord(
+        rawLifecycle,
+        `World v16 family lifecycle ${pairId}`,
+      );
+      if (
+        requiredString(lifecycle.id, `World v16 family lifecycle ${pairId}.id`) !== pairId ||
+        requiredString(lifecycle.pairId, `World v16 family lifecycle ${pairId}.pairId`) !== pairId
+      ) {
+        throw new Error(`World v16 family lifecycle ${pairId} is stored under the wrong key.`);
+      }
+      const agentAId = requiredString(
+        lifecycle.agentAId,
+        `World v16 family lifecycle ${pairId}.agentAId`,
+      );
+      const agentBId = requiredString(
+        lifecycle.agentBId,
+        `World v16 family lifecycle ${pairId}.agentBId`,
+      );
+      if (
+        agentAId === agentBId ||
+        !agentKeys.has(agentAId) ||
+        !agentKeys.has(agentBId) ||
+        relationshipKey(agentAId, agentBId) !== pairId
+      ) {
+        throw new Error(`World v16 family lifecycle ${pairId} references an invalid pair.`);
+      }
+      const race = lifecycle.race;
+      if (!SAPIENT_RACES.includes(race as AgentRace)) {
+        throw new Error(`World v16 family lifecycle ${pairId}.race is invalid.`);
+      }
+      const settlementId = requiredString(
+        lifecycle.settlementId,
+        `World v16 family lifecycle ${pairId}.settlementId`,
+      );
+      if (!settlementKeys.has(settlementId)) {
+        throw new Error(`World v16 family lifecycle ${pairId} references a missing settlement.`);
+      }
+      const meetingPlaceId = requiredString(
+        lifecycle.meetingPlaceId,
+        `World v16 family lifecycle ${pairId}.meetingPlaceId`,
+      );
+      if (!placeKeys.has(meetingPlaceId)) {
+        throw new Error(`World v16 family lifecycle ${pairId} references a missing meeting place.`);
+      }
+      if (
+        lifecycle.stage !== 'meeting' &&
+        lifecycle.stage !== 'intending' &&
+        lifecycle.stage !== 'pregnant'
+      ) {
+        throw new Error(`World v16 family lifecycle ${pairId}.stage is invalid.`);
+      }
+      for (const timeField of [
+        'createdWorldMinute',
+        'lastAffirmedWorldMinute',
+        'lastPhysicalMeetingWorldMinute',
+        'lastIntimacyWorldMinute',
+        'conceptionWorldMinute',
+        'dueWorldMinute',
+      ] as const) {
+        const rawTime = lifecycle[timeField];
+        if (rawTime === undefined) continue;
+        const time = finiteNumber(
+          rawTime,
+          `World v16 family lifecycle ${pairId}.${timeField}`,
+        );
+        if (time < 0 || time > elapsedWorldMinutes + FAMILY_GESTATION_WORLD_MINUTES) {
+          throw new Error(`World v16 family lifecycle ${pairId}.${timeField} is invalid.`);
+        }
+      }
+      if (
+        (lifecycle.lastAffirmedWorldMinute as number) <
+        (lifecycle.createdWorldMinute as number)
+      ) {
+        throw new Error(`World v16 family lifecycle ${pairId} has reversed intent time.`);
+      }
+      if (lifecycle.expectedChildCount !== undefined) {
+        const expectedChildCount = nonNegativeInteger(
+          lifecycle.expectedChildCount,
+          `World v16 family lifecycle ${pairId}.expectedChildCount`,
+        );
+        if (expectedChildCount < 1 || expectedChildCount > 4) {
+          throw new Error(`World v16 family lifecycle ${pairId}.expectedChildCount must be 1..4.`);
+        }
+      }
+      if (lifecycle.stage === 'pregnant') {
+        const pregnantAgentId = requiredString(
+          lifecycle.pregnantAgentId,
+          `World v16 family lifecycle ${pairId}.pregnantAgentId`,
+        );
+        if (
+          pregnantAgentId !== agentAId &&
+          pregnantAgentId !== agentBId
+        ) {
+          throw new Error(`World v16 family lifecycle ${pairId} has invalid pregnant resident.`);
+        }
+        if ((agents[pregnantAgentId] as AgentState).sex !== 'female') {
+          throw new Error(`World v16 family lifecycle ${pairId} pregnancy must belong to a female resident.`);
+        }
+        if (pregnantResidents.has(pregnantAgentId)) {
+          throw new Error(`World v16 resident ${pregnantAgentId} has overlapping pregnancies.`);
+        }
+        pregnantResidents.add(pregnantAgentId);
+        const conception = finiteNumber(
+          lifecycle.conceptionWorldMinute,
+          `World v16 family lifecycle ${pairId}.conceptionWorldMinute`,
+        );
+        const due = finiteNumber(
+          lifecycle.dueWorldMinute,
+          `World v16 family lifecycle ${pairId}.dueWorldMinute`,
+        );
+        if (due <= conception) {
+          throw new Error(`World v16 family lifecycle ${pairId} has invalid gestation.`);
+        }
+      }
+    }
+
     const settlementEvidenceById = asRecord(
       v16.settlementEvidenceById,
       'World v16 settlementEvidenceById',
@@ -2848,6 +2990,7 @@ function assertWorldState(value: unknown): asserts value is WorldState {
     if (state.rulesVersion === WORLD_RULES_VERSION) {
       assertWorldV19State(state as unknown as WorldState);
       assertEmbodiedWorldV21(state as unknown as WorldState);
+      assertResidentCartography(state as unknown as WorldState);
     }
   }
 
@@ -3088,6 +3231,129 @@ function foundingPlaceDefaults(
     mapX: layout.center.x + dx * cosine - dy * sine,
     mapY: layout.center.y + dx * sine + dy * cosine,
   };
+}
+
+
+interface FoundingHumanSettlementSpec {
+  id: 'settlement_ainkrad' | 'settlement_rulid' | 'settlement_zakkaria';
+  name: string;
+  prefix: '' | 'rulid_' | 'zakkaria_';
+  coastal: boolean;
+  layout: FoundingSettlementLayout;
+}
+
+const DEFAULT_HUMAN_FOUNDER_NAMES = [
+  'Арон', 'Мира', 'Кай', 'Ноа', 'Илан', 'Рин', 'Лея', 'Дарен', 'Сора', 'Талия',
+  'Эрен', 'Майя', 'Теон', 'Ливия', 'Сайр', 'Нора', 'Рен', 'Илла', 'Марк', 'Элира',
+  'Кален', 'Селия', 'Орен', 'Мираэль', 'Тавен', 'Рия', 'Дален', 'Лора', 'Нейл', 'Сари',
+] as const;
+
+/** Three independent human seed communities. Rulid is always coastal; all
+ * three centres form an equilateral triangle with a seeded random heading and
+ * side length, so no community begins with privileged knowledge of another. */
+function drawThreeHumanFoundingSettlements(rng: SeededRng): FoundingHumanSettlementSpec[] {
+  const side = rng.between(12_000, 16_000);
+  const coast = { x: rng.between(48, 58), y: rng.between(-45, 45) };
+  const heading = Math.PI + rng.between(-0.22, 0.22);
+  const orientation = rng.next() < 0.5 ? 1 : -1;
+  const point = (angle: number) => ({
+    x: coast.x + Math.cos(angle) * side,
+    y: coast.y + Math.sin(angle) * side,
+  });
+  const layout = (center: WorldPoint2D): FoundingSettlementLayout => ({
+    center,
+    rotation: rng.between(-Math.PI, Math.PI),
+    stretchX: rng.between(0.82, 1.18),
+    stretchY: rng.between(0.82, 1.18),
+  });
+  return [
+    { id: 'settlement_ainkrad', name: 'Айнкрад', prefix: '', coastal: false, layout: layout(point(heading)) },
+    { id: 'settlement_rulid', name: 'Рулид', prefix: 'rulid_', coastal: true, layout: { center: coast, rotation: rng.between(-0.08, 0.08), stretchX: rng.between(0.9, 1.08), stretchY: rng.between(0.9, 1.08) } },
+    { id: 'settlement_zakkaria', name: 'Заккария', prefix: 'zakkaria_', coastal: false, layout: layout(point(heading + orientation * Math.PI / 3)) },
+  ];
+}
+
+function localFoundingPoint(layout: Readonly<FoundingSettlementLayout>, dx: number, dy: number): WorldPoint2D {
+  const cosine = Math.cos(layout.rotation);
+  const sine = Math.sin(layout.rotation);
+  const sx = dx * layout.stretchX;
+  const sy = dy * layout.stretchY;
+  return { x: layout.center.x + sx * cosine - sy * sine, y: layout.center.y + sx * sine + sy * cosine };
+}
+
+function addSecondaryHumanSettlementPlaces(
+  places: Record<string, WorldPlace>,
+  spec: Readonly<FoundingHumanSettlementSpec>,
+  foundedAt: number,
+  founderCount: number,
+): void {
+  if (spec.id === 'settlement_ainkrad') return;
+  const p = spec.prefix;
+  const ids = {
+    center: `${p}center`, commons: `${p}commons`, field: `${p}resource_field`,
+    workshop: `${p}workshop`, quiet: `${p}quiet_space`, outskirts: `${p}outskirts`, shore: `${p}shore`,
+  };
+  const mk = (id: string, name: string, kind: WorldPlaceKind, capacity: number, dx: number, dy: number, fertility: number, connections: string[], surface: 'land'|'shore'='land') => {
+    const point = localFoundingPoint(spec.layout, dx, dy);
+    places[id] = createPlace(id, name, kind, capacity, {
+      biome: kind === 'resource_field' ? 'plains' : kind === 'shore' ? 'coast' : 'settlement',
+      mapX: point.x, mapY: point.y, connectedPlaceIds: connections,
+      fertility, danger: kind === 'outskirts' || kind === 'shore' ? 0.08 : 0.04,
+      surface, settlementId: spec.id, discoveredAt: foundedAt,
+    });
+  };
+  mk(ids.center, spec.name, 'village', Math.max(20, founderCount * 2), 0, 0, 0.65, [ids.commons, ids.outskirts]);
+  mk(ids.commons, `Площадь и рынок ${spec.name}`, 'commons', Math.max(20, founderCount * 2), 1.2, 0.5, 0.58, [ids.center, ids.field, ids.workshop, ids.quiet]);
+  mk(ids.field, `Поля и фермы ${spec.name}`, 'resource_field', Math.max(12, founderCount), -5.6, 2.2, 0.76, [ids.commons]);
+  mk(ids.workshop, `Мастерская ${spec.name}`, 'workshop', Math.max(10, founderCount), 2.4, 1.2, 0.30, [ids.commons]);
+  mk(ids.quiet, `Тихий сад ${spec.name}`, 'quiet_space', Math.max(8, founderCount), -1.8, -2.2, 0.62, [ids.commons]);
+  mk(ids.outskirts, `Окраина ${spec.name}`, 'outskirts', Math.max(16, founderCount * 2), 7.5, -1.5, 0.52, [ids.center, ...(spec.coastal ? [ids.shore] : [])]);
+  if (spec.coastal) {
+    mk(ids.shore, `Берег ${spec.name}`, 'shore', Math.max(14, founderCount), 31.5, -0.5, 0.22, [ids.outskirts, 'ocean_ainkrad'], 'shore');
+    if (places.ocean_ainkrad) places.ocean_ainkrad.connectedPlaceIds.push(ids.shore);
+  }
+}
+
+function repairRulidCoastalBank(world: WorldState): boolean {
+  const shore = world.places.rulid_shore;
+  const center = world.places.rulid_center;
+  if (!shore || !center) return false;
+  const terrain = bindWorldTerrain(world);
+  if (!terrain) return false;
+  // Find a real land cell with water less than 0.6 map units seaward. This is
+  // derived from the persisted terrain recipe once at world creation/reset,
+  // not recomputed during ordinary simulation ticks.
+  const directions = [
+    { x: 1, y: 0 }, { x: 0.98, y: 0.2 }, { x: 0.98, y: -0.2 },
+    { x: 0.92, y: 0.38 }, { x: 0.92, y: -0.38 },
+  ];
+  for (const dir of directions) {
+    for (let distance = 2; distance <= 70; distance += 0.2) {
+      const x = center.mapX + dir.x * distance;
+      const y = center.mapY + dir.y * distance;
+      if (terrain.sample(x, y).water) continue;
+      const seaX = x + dir.x * 0.45;
+      const seaY = y + dir.y * 0.45;
+      if (!terrain.sample(seaX, seaY).water) continue;
+      const moved = Math.hypot(shore.mapX - x, shore.mapY - y) > 1e-9;
+      if (!moved) return false;
+      shore.mapX = x;
+      shore.mapY = y;
+      shore.boundaryPolygon = undefined;
+      // The coast moved after the terrain foundation was frozen. Mark natural
+      // geometry dirty so the same creation/reset transaction rebuilds the
+      // shoreline polygon and geography signature at the new physical bank.
+      shore.geographyVersion = undefined;
+      return true;
+    }
+  }
+  return false;
+}
+
+function secondaryHomePoint(spec: Readonly<FoundingHumanSettlementSpec>, index: number): WorldPoint2D {
+  const angle = (index / 10) * Math.PI * 2 + 0.31;
+  const radius = 3.5 + (index % 3) * 1.15;
+  return localFoundingPoint(spec.layout, Math.cos(angle) * radius, Math.sin(angle) * radius);
 }
 
 function mainSettlement(
@@ -4206,7 +4472,7 @@ async function migrateV18WorldToV19(
 }
 
 const V19_ADDITIVE_SCHEMA_REPAIR_OPERATION_ID =
-  'migration:v21-demography-monster-roads-fix7-2026-09-13';
+  'migration:v22-family-lifecycle-cartography-perf-2026-09-15';
 
 async function repairCompatibleV19World(
   store: WorldStore,
@@ -4217,7 +4483,7 @@ async function repairCompatibleV19World(
     from: WORLD_RULES_VERSION,
     to: WORLD_RULES_VERSION,
     mode: 'same_version_additive_schema_repair',
-    schemaRevision: '2026-09-13-demography-monster-roads-fix7',
+    schemaRevision: '2026-09-15-family-lifecycle-cartography-perf',
   });
   let current = persisted;
 
@@ -4245,9 +4511,12 @@ async function repairCompatibleV19World(
     removeUnsurveyedHomelandLinksV20(next);
     repairSecretLibraryPlacementV18(next);
     repairCompactSettlementLayout(next);
-    reconcileLibraryAdmissions(next, next.calendar.elapsedWorldMinutes, true);
+    reconcileLibraryAdmissions(next, next.calendar.elapsedWorldMinutes);
     repairDeceasedActions(next);
     ensureCenturyHumpbackState(next);
+    // Saved worlds may contain a one-sided physical link from an older repair.
+    // Reciprocity is a world invariant; restore only the missing reverse edge.
+    makeConnectionsReciprocal(next.places);
     // Update physical walking lanes while retaining completed traversal history.
     next.routes = rebuildWorldRoutes(next.places, next.routes);
     if (stableJsonStringify(next) === before) return current;
@@ -4255,7 +4524,7 @@ async function repairCompatibleV19World(
     await store.checkpointWorld?.(current.id, current.revision, 'before-additive-schema-migration');
     next.revision = current.revision + 1;
     const migrationEvent: WorldEvent = {
-      eventId: `migration:${next.id}:v21-demography-monster-roads-fix7-2026-09-13:revision:${current.revision}`,
+      eventId: `migration:${next.id}:v22-family-lifecycle-cartography-perf-2026-09-15:revision:${current.revision}`,
       worldId: next.id,
       kind: 'world.migrated',
       source: 'system',
@@ -4378,6 +4647,10 @@ export class WorldEngine {
     | Map<string, Map<string, string[]>>
     | undefined;
   private residentsByLocation: Map<string, AgentState[]> | undefined;
+  private relationshipKeysByResident?: Map<string, Set<string>>;
+  private familyLifecyclesByAgentId:
+    | Map<string, V16FamilyLifecycleState[]>
+    | undefined;
   private residentCountByHomeSettlement: Map<string, number> | undefined;
   private residentCountByHomeRace: Map<string, number> | undefined;
   private agricultureKnowledgeByHomeSettlement:
@@ -4416,61 +4689,73 @@ export class WorldEngine {
     }
 
     const rng = new SeededRng(options.seed);
+    const useThreeHumanSeeds = options.agentNames === undefined || (options.agentNames?.length ?? 0) >= 30;
     const names = options.agentNames?.map(toRussianWorldNameV18) ??
-      ['Арон', 'Мира', 'Кай', 'Ноа', 'Илан', 'Рин', 'Лея', 'Дарен', 'Сора', 'Талия'];
-    const foundingLayout = drawFoundingSettlementLayout(rng);
+      [...DEFAULT_HUMAN_FOUNDER_NAMES];
+    const humanSeedSettlements = useThreeHumanSeeds
+      ? drawThreeHumanFoundingSettlements(rng)
+      : [{ id: 'settlement_ainkrad', name: 'Айнкрад', prefix: '', coastal: false, layout: drawFoundingSettlementLayout(rng) } satisfies FoundingHumanSettlementSpec];
+    const foundingLayout = humanSeedSettlements[0].layout;
     const initialPlace = (id: string, kind: WorldPlaceKind, homeIndex = 0) =>
       foundingPlaceDefaults(placeMigrationDefaults({ id, kind }, homeIndex), foundingLayout);
+    const foundingHumanCount = useThreeHumanSeeds ? 10 : names.length;
     const places: Record<string, WorldPlace> = {
       commons: createPlace(
         'commons',
         'Площадь и рынок Айнкрада',
         'commons',
-        Math.max(8, names.length * 2),
+        Math.max(8, foundingHumanCount * 2),
         initialPlace('commons', 'commons'),
       ),
       resource_field: createPlace(
         'resource_field',
         'Поля и фермы Айнкрада',
         'resource_field',
-        Math.max(6, names.length),
+        Math.max(6, foundingHumanCount),
         initialPlace('resource_field', 'resource_field'),
       ),
       workshop: createPlace(
         'workshop',
         'Мастерская Айнкрада',
         'workshop',
-        Math.max(6, names.length),
+        Math.max(6, foundingHumanCount),
         initialPlace('workshop', 'workshop'),
       ),
       quiet_space: createPlace(
         'quiet_space',
         'Тихий сад Айнкрада',
         'quiet_space',
-        Math.max(4, names.length),
+        Math.max(4, foundingHumanCount),
         initialPlace('quiet_space', 'quiet_space'),
       ),
       outskirts: createPlace(
         'outskirts',
         'Окраина Айнкрада',
         'outskirts',
-        Math.max(8, names.length * 2),
+        Math.max(8, foundingHumanCount * 2),
         initialPlace('outskirts', 'outskirts'),
       ),
       ocean_ainkrad: createFoundingOcean(now),
     };
+    for (const spec of humanSeedSettlements.slice(1)) {
+      addSecondaryHumanSettlementPlaces(places, spec, now, 10);
+    }
     const agents: Record<string, AgentState> = {};
 
     names.forEach((name, index) => {
       const id = `agent_${index + 1}`;
       const homeId = `home_${id}`;
-      places[homeId] = createPlace(
-        homeId,
-        `Дом ${name}`,
-        'home',
-        3,
-        initialPlace(homeId, 'home', index),
-      );
+      const settlementSpec = humanSeedSettlements[Math.min(humanSeedSettlements.length - 1, Math.floor(index / 10))];
+      if (settlementSpec.id === 'settlement_ainkrad') {
+        places[homeId] = createPlace(homeId, `Дом ${name}`, 'home', 3, initialPlace(homeId, 'home', index % 10));
+      } else {
+        const homePoint = secondaryHomePoint(settlementSpec, index % 10);
+        places[homeId] = createPlace(homeId, `Дом ${name}`, 'home', 3, {
+          biome: 'settlement', mapX: homePoint.x, mapY: homePoint.y,
+          connectedPlaceIds: [`${settlementSpec.prefix}commons`], fertility: 0.52, danger: 0.03,
+          surface: 'land', settlementId: settlementSpec.id, discoveredAt: now,
+        });
+      }
 
       const personality = {
         sociability: rng.between(0.18, 0.92),
@@ -4625,8 +4910,20 @@ export class WorldEngine {
     state.v19 = createWorldV19State(state, WORLD_RULES_VERSION);
     ensureFoundingPrimerV21(state);
     state.v21 = createEmbodiedWorldV21(state);
+    if (useThreeHumanSeeds && repairRulidCoastalBank(state)) {
+      makeConnectionsReciprocal(state.places);
+      state.routes = rebuildWorldRoutes(state.places, state.routes);
+      state.settlements = rebuildSettlementProjection(state.places, state.settlements, now);
+    }
     repairSecretLibraryPlacementV18(state);
     repairCompactSettlementLayout(state);
+    if (useThreeHumanSeeds && repairRulidCoastalBank(state)) {
+      makeConnectionsReciprocal(state.places);
+      state.routes = rebuildWorldRoutes(state.places, state.routes);
+      state.settlements = rebuildSettlementProjection(state.places, state.settlements, now);
+      // Finalize the moved coast now, not lazily on the next reload.
+      repairCompactSettlementLayout(state);
+    }
     reconcileLibraryAdmissions(state, state.calendar.elapsedWorldMinutes, true);
 
     for (const resident of Object.values(state.agents)) observeLocalPlacesV20(state, resident);
@@ -4710,7 +5007,11 @@ export class WorldEngine {
         const priorSequence = this.state.determinism.eventSequence;
         const rng = new SeededRng(`${seed}:epoch:${nextEpoch}`);
         const names = founderNames.map(toRussianWorldNameV18);
-        const foundingLayout = drawFoundingSettlementLayout(rng);
+        const useThreeHumanSeeds = names.length >= 30;
+        const humanSeedSettlements = useThreeHumanSeeds
+          ? drawThreeHumanFoundingSettlements(rng)
+          : [{ id: 'settlement_ainkrad', name: 'Айнкрад', prefix: '', coastal: false, layout: drawFoundingSettlementLayout(rng) } satisfies FoundingHumanSettlementSpec];
+        const foundingLayout = humanSeedSettlements[0].layout;
         const initialPlace = (id: string, kind: WorldPlaceKind, homeIndex = 0) =>
           foundingPlaceDefaults(placeMigrationDefaults({ id, kind }, homeIndex), foundingLayout);
         const places: Record<string, WorldPlace> = {
@@ -4721,11 +5022,22 @@ export class WorldEngine {
           outskirts: createPlace('outskirts', 'Окраина Айнкрада', 'outskirts', Math.max(16, names.length * 2), initialPlace('outskirts', 'outskirts')),
           ocean_ainkrad: createFoundingOcean(resetAt),
         };
+        for (const spec of humanSeedSettlements.slice(1)) addSecondaryHumanSettlementPlaces(places, spec, resetAt, 10);
         const agents: Record<string, AgentState> = {};
         names.forEach((name, index) => {
           const id = `epoch_${nextEpoch}_agent_${index + 1}`;
           const homeId = `home_${id}`;
-          places[homeId] = createPlace(homeId, `Дом ${name}`, 'home', 3, initialPlace(homeId, 'home', index));
+          const settlementSpec = humanSeedSettlements[Math.min(humanSeedSettlements.length - 1, Math.floor(index / 10))];
+          if (settlementSpec.id === 'settlement_ainkrad') {
+            places[homeId] = createPlace(homeId, `Дом ${name}`, 'home', 3, initialPlace(homeId, 'home', index % 10));
+          } else {
+            const homePoint = secondaryHomePoint(settlementSpec, index % 10);
+            places[homeId] = createPlace(homeId, `Дом ${name}`, 'home', 3, {
+              biome: 'settlement', mapX: homePoint.x, mapY: homePoint.y,
+              connectedPlaceIds: [`${settlementSpec.prefix}commons`], fertility: 0.52, danger: 0.03,
+              surface: 'land', settlementId: settlementSpec.id, discoveredAt: resetAt,
+            });
+          }
           const personality = {
             sociability: rng.between(0.25, 0.9), diligence: rng.between(0.25, 0.9), curiosity: rng.between(0.25, 0.9),
             generosity: rng.between(0.25, 0.9), resilience: rng.between(0.35, 0.92), riskTolerance: rng.between(0.22, 0.86),
@@ -4773,6 +5085,7 @@ export class WorldEngine {
         this.state.places = places;
         this.state.terrain = undefined;
         this.state.oceanExploration = undefined;
+        this.state.cartography = undefined;
         this.state.geography = undefined;
         this.state.routes = rebuildWorldRoutes(places);
         this.state.settlements = rebuildSettlementProjection(places, {}, resetAt);
@@ -4802,8 +5115,19 @@ export class WorldEngine {
         );
         ensureFoundingPrimerV21(this.state);
         this.state.v21 = createEmbodiedWorldV21(this.state);
+        if (useThreeHumanSeeds && repairRulidCoastalBank(this.state)) {
+          makeConnectionsReciprocal(this.state.places);
+          this.state.routes = rebuildWorldRoutes(this.state.places, this.state.routes);
+          this.state.settlements = rebuildSettlementProjection(this.state.places, this.state.settlements, resetAt);
+        }
         repairSecretLibraryPlacementV18(this.state);
         repairCompactSettlementLayout(this.state);
+        if (useThreeHumanSeeds && repairRulidCoastalBank(this.state)) {
+          makeConnectionsReciprocal(this.state.places);
+          this.state.routes = rebuildWorldRoutes(this.state.places, this.state.routes);
+          this.state.settlements = rebuildSettlementProjection(this.state.places, this.state.settlements, resetAt);
+          repairCompactSettlementLayout(this.state);
+        }
         this.state.determinism.eventSequence = priorSequence;
         this.rng.restore(rng.snapshot());
 
@@ -5026,6 +5350,9 @@ export class WorldEngine {
       this.advanceMonsterFeeding(now);
       this.advanceAgingAndMortality(now, elapsedWorldMinutes);
       advanceEmbodiedWorldV21(this.state);
+      // Dungeon ecology/discovery is a world service, not a side effect of
+      // repeatedly looking up a resident wallet at every local trade.
+      syncAdventureEconomyV19(this.state);
       const livingAgents = Object.values(this.state.agents)
         .filter((agent) => agent.life.alive)
         .sort((left, right) => left.id.localeCompare(right.id));
@@ -5035,47 +5362,16 @@ export class WorldEngine {
       this.buildResidentDecisionIndexes(livingAgents);
       // v15 separates stored resources from the renewable production base.
       this.advanceV15RenewableResources(elapsedWorldMinutes);
-      // Bodies, hunger and health keep advancing for everybody. Expensive
-      // deliberation is distributed across stable rotating cohorts once a city
-      // becomes large. This preserves individual agency while avoiding the old
-      // O(population × 60 decisions/year) mobile freeze at x10.
+      // One lived-action opportunity per resident per canonical quantum.
+      // Population may change the CPU cost, never the amount of life a
+      // descendant gets before ageing. The runtime yields between quanta;
+      // indexes/caches optimize work without dropping resident opportunities.
       for (const agent of livingAgents) {
-        // Sleeping bodies bypass hunger/stress/cognition work for this semantic
-        // boundary. A zero-energy body that collapses here is also blocked from
-        // all later work in the same boundary.
         if (advanceBodySleepV21(this.state, agent)) continue;
         this.applyPassiveNeeds(agent, effectiveEnvironment);
         if (agent.energy <= 0) advanceBodySleepV21(this.state, agent);
       }
-      const cohortSize =
-        livingAgents.length <= 96
-          ? 1
-          : livingAgents.length <= 240
-            ? 2
-            : livingAgents.length <= 480
-              ? 4
-              : livingAgents.length <= 960
-                ? 6
-                : livingAgents.length <= 1_600
-                  ? 8
-                  : 10;
-      const scheduleTick = Math.max(0, Math.floor(this.v15ScheduleTick(now)));
-      const cohortSlot = scheduleTick % cohortSize;
-      const agents = this.shuffled(
-        livingAgents.filter((agent, index) => {
-          const urgent =
-            agent.energy < 0.18 ||
-            agent.stress > 0.86 ||
-            agent.resources < 0.025;
-          return urgent || index % cohortSize === cohortSlot;
-        }),
-      );
-      const deliberatingAgentIds = new Set(agents.map((agent) => agent.id));
-      for (const agent of livingAgents) {
-        if (!deliberatingAgentIds.has(agent.id) && !isBodySleepingV21(this.state, agent.id)) {
-          this.continueOrdinaryLifeBetweenDeliberations(agent, effectiveEnvironment);
-        }
-      }
+      const agents = this.shuffled(livingAgents);
       this.beginSecretLibraryYearV18(livingAgents, now);
       const residentsStudyingInLibrary = this.advanceSecretLibraryVisitorsV18(now);
       for (const agent of agents) {
@@ -5116,6 +5412,8 @@ export class WorldEngine {
       } finally {
         this.resourceProjectionDirty = false;
         this.residentsByLocation = undefined;
+        this.relationshipKeysByResident = undefined;
+        this.familyLifecyclesByAgentId = undefined;
         this.residentCountByHomeSettlement = undefined;
         this.residentCountByHomeRace = undefined;
         this.agricultureKnowledgeByHomeSettlement = undefined;
@@ -5137,6 +5435,7 @@ export class WorldEngine {
     if (ensureElfLibraryV20(this.state)) {
       repairCompactSettlementLayout(this.state);
       this.routePathCache?.clear();
+      invalidateResidentNavigation(this.state);
     }
     this.finishSecretLibraryAdmissions(minute, now);
     const library = ensureWorldV18State(this.state).secretLibrary;
@@ -6159,6 +6458,8 @@ export class WorldEngine {
     operationId: string,
     expectedWorldRevision: number,
     inheritanceGift?: DivineGiftKind,
+    burden?: DivineBurdenKind,
+    lineageCurse?: boolean,
   ): Promise<WorldMutationResult> {
     if (
       worldId !== this.committedState.id ||
@@ -6169,12 +6470,15 @@ export class WorldEngine {
       !Number.isFinite(now) ||
       !/^[a-zA-Z0-9][a-zA-Z0-9_-]{2,63}$/.test(deityId) ||
       deityName.length > 64 ||
-      (!gift && !contactKind) ||
+      (!gift && !burden && !contactKind) ||
+      Boolean(gift && burden) ||
       (contactKind !== undefined && !message?.trim()) ||
       (message !== undefined && message.length > 480) ||
       (religionName !== undefined &&
         (!religionName.trim() || religionName.length > 64)) ||
       (gift !== undefined && !DIVINE_GIFTS_V19.includes(gift)) ||
+      (burden !== undefined && !DIVINE_BURDENS_V22.includes(burden)) ||
+      (lineageCurse !== undefined && typeof lineageCurse !== 'boolean') ||
       (contactKind !== undefined && !DIVINE_CONTACT_KINDS_V19.includes(contactKind))
     ) {
       throw new Error('Private divine audience is outside the entry gateway envelope.');
@@ -6182,6 +6486,8 @@ export class WorldEngine {
     const fingerprint = stableJsonStringify({
       kind: 'private_divine_action',
       inheritanceGift,
+      burden,
+      lineageCurse,
       worldId,
       agentId,
       deityId,
@@ -6210,6 +6516,7 @@ export class WorldEngine {
           ...(religionName ? { religionName } : {}),
           ...(gift ? { gift } : {}),
           ...(inheritanceGift ? { inheritanceGift } : {}),
+          ...(burden ? { burden, lineageCurse: Boolean(lineageCurse) } : {}),
           ...(contactKind ? { contactKind } : {}),
           ...(message?.trim() ? { message: message.trim() } : {}),
           ...(relatedPrayerId ? { relatedPrayerId } : {}),
@@ -6228,10 +6535,10 @@ export class WorldEngine {
           createdAt: now,
           kind: 'divine_audience',
           summary: contactKind
-            ? `${agent.name} privately received a ${contactKind} from ${deityName}: ${message}${gift ? `; gift: ${gift}` : ''}`
-            : `${agent.name} experienced an unexplained change: ${gift}.`,
+            ? `${agent.name} privately received a ${contactKind} from ${deityName}: ${message}${gift ? `; gift: ${gift}` : ''}${burden ? `; burden: ${burden}${lineageCurse ? ' (lineage)' : ''}` : ''}`
+            : `${agent.name} experienced an unexplained change: ${gift ?? burden}.`,
           importance: 1,
-          valence: result.interpretation === 'frightening' ? -0.32 : 0.42,
+          valence: burden ? -0.48 : result.interpretation === 'frightening' ? -0.32 : 0.42,
           relatedAgentIds: [],
         });
       },
@@ -6338,6 +6645,8 @@ export class WorldEngine {
         this.committedSignalCache = undefined;
         this.routePathCache = undefined;
         this.residentsByLocation = undefined;
+        this.relationshipKeysByResident = undefined;
+        this.familyLifecyclesByAgentId = undefined;
         this.residentCountByHomeSettlement = undefined;
         this.residentCountByHomeRace = undefined;
         this.placesBySettlement = undefined;
@@ -6816,6 +7125,23 @@ export class WorldEngine {
       }
     }
 
+    if (lessonGained > 0 && mapped.domain === 'survival' &&
+        (livedAction === 'explore' || livedAction === 'walk') && !agent.movement) {
+      const teacher = instructorId ? this.state.agents[instructorId] : undefined;
+      const practicalCeiling = lessonSource === 'genesis' ? 0.8 : teacher?.skills.exploration ?? 0;
+      const gained = Math.min(0.006, lessonGained * 0.5,
+        Math.max(0, practicalCeiling - agent.skills.exploration));
+      if (gained > 0) {
+        agent.skills.exploration = clamp01(agent.skills.exploration + gained);
+        explorationEvidence(this.state, agent).practicalLessons += 1;
+        const livelihood = ensureLivelihoodV18(this.state, agent);
+        // mentorIds names resident entities; Genesis is recorded by the lesson receipt.
+        if (teacher && instructorId && !livelihood.mentorIds.includes(instructorId)) {
+          livelihood.mentorIds = [...livelihood.mentorIds, instructorId].slice(-32);
+        }
+      }
+    }
+
     if (practice.gained > 0 || lessonGained > 0) {
       profile.verifiedLearningSessions += lessonGained > 0 ? 1 : 0;
       // Knowledge state and counters retain every verified session. The
@@ -7049,11 +7375,9 @@ export class WorldEngine {
       ? this.state.settlements[homeSettlementId]
       : undefined;
     const settlementResidents = homeSettlementId
-      ? Object.values(this.state.agents).filter(
-          (candidate) =>
-            candidate.life.alive &&
-            this.homeSettlementId(candidate) === homeSettlementId,
-        ).length
+      ? this.residentCountByHomeSettlement?.get(homeSettlementId) ??
+        Object.values(this.state.agents).filter(candidate => candidate.life.alive &&
+          this.homeSettlementId(candidate) === homeSettlementId).length
       : 0;
     const settlementHomeCapacity = homeSettlement
       ? homeSettlement.memberPlaceIds
@@ -7245,7 +7569,10 @@ export class WorldEngine {
           worldMinutes: this.state.calendar.elapsedWorldMinutes,
         },
         parentKind,
-        this.rng.next() * (hasGiftV20(this.state, agent.id, 'discovery_spark') || hasGiftV20(this.state, agent.id, 'genius_inventor') ? 0.65 : 1),
+        this.rng.next() * Math.max(0.65, 1 -
+          giftMasteryV20(this.state, agent.id, 'discovery_spark') * 0.22 -
+          giftMasteryV20(this.state, agent.id, 'genius_inventor') * 0.18) *
+          (1 + burdenIntensityV22(this.state, agent.id, 'misfortune') * 0.16),
         ideaId,
       );
       if (innovation.succeeded && innovation.idea) {
@@ -7346,6 +7673,7 @@ export class WorldEngine {
       return;
     }
     observeLocalPlacesV20(this.state, agent);
+    consultSettlementMap(this.state, agent);
     this.updateGoal(agent, now);
 
     const localAgents = this.agentsAtLocation(agent.locationId);
@@ -7455,6 +7783,36 @@ export class WorldEngine {
         this.performReflect(agent, now);
         break;
       case 'bond': {
+        const familyIntent = this.familyRendezvousForAgent(agent.id);
+        const intendedPartner = familyIntent
+          ? this.familyPartnerFor(familyIntent, agent.id)
+          : undefined;
+        if (
+          familyIntent &&
+          intendedPartner?.life.alive &&
+          !intendedPartner.movement &&
+          intendedPartner.locationId === agent.locationId &&
+          !agent.movement
+        ) {
+          this.performBond(agent, intendedPartner, now);
+          break;
+        }
+        if (
+          familyIntent &&
+          agent.locationId !== familyIntent.meetingPlaceId &&
+          (agent.knownPlaceIds ?? []).includes(familyIntent.meetingPlaceId)
+        ) {
+          if (
+            this.travelBeforeAction(
+              agent,
+              familyIntent.meetingPlaceId,
+              'bond',
+              now,
+            )
+          ) {
+            break;
+          }
+        }
         const target = this.chooseBondTarget(
           agent,
           this.agentsAtLocation(agent.locationId),
@@ -7462,6 +7820,8 @@ export class WorldEngine {
         if (target) {
           this.performBond(agent, target, now);
         } else {
+          // An agreed place is an opportunity, not a command to camp there.
+          // If the partner is absent, ordinary priorities resume next quantum.
           this.performReflect(agent, now);
         }
         break;
@@ -7568,31 +7928,6 @@ export class WorldEngine {
           (0.004 + (1 - agent.personality.resilience) * 0.004) +
         (1 - environment.safetySupport) * 0.012 -
         environment.safetySupport * (0.003 + agent.personality.resilience * 0.002),
-    );
-  }
-
-  /** Large worlds rotate expensive goal deliberation, but residents do not
-   * stop sleeping or sharing an ordinary household between those decisions.
-   * This advances only bodily/social continuity; it never selects a goal,
-   * partner, journey, fight or child for the resident. */
-  private continueOrdinaryLifeBetweenDeliberations(
-    agent: AgentState,
-    environment: WorldEnvironment,
-  ): void {
-    if (agent.movement || !this.canAccessHomeSettlementStores(agent)) return;
-    agent.energy = clamp01(
-      agent.energy + 0.01 + agent.life.physiology.recovery * 0.006,
-    );
-    agent.needs.belonging = clamp01(
-      agent.needs.belonging + 0.004 + agent.socialDrive * 0.003,
-    );
-    agent.needs.purpose = clamp01(
-      agent.needs.purpose + agent.personality.diligence * 0.0025,
-    );
-    agent.stress = clamp01(
-      agent.stress -
-        environment.safetySupport *
-          (0.0025 + agent.personality.resilience * 0.002),
     );
   }
 
@@ -7706,15 +8041,23 @@ export class WorldEngine {
     const huntTarget = allowedActions.has('hunt')
       ? this.previewHuntOpportunity(agent.locationId)
       : undefined;
+    const activeFamilyIntent = this.familyRendezvousForAgent(agent.id);
+    const familyMeetingAvailable = Boolean(
+      activeFamilyIntent &&
+        this.state.places[activeFamilyIntent.meetingPlaceId] &&
+        (agent.knownPlaceIds ?? []).includes(activeFamilyIntent.meetingPlaceId),
+    );
     const bondAvailable =
       allowedActions.has('bond') &&
-      allAgents.some(
-        (other) =>
-          other.id !== agent.id &&
-          other.life.alive &&
-          other.locationId === agent.locationId &&
-          this.canFormIntimateRelationship(agent, other),
-      );
+      (familyMeetingAvailable ||
+        allAgents.some(
+          (other) =>
+            other.id !== agent.id &&
+            other.life.alive &&
+            !other.movement &&
+            other.locationId === agent.locationId &&
+            this.canFormIntimateRelationship(agent, other),
+        ));
     const socialAvailable = socialOpportunityAvailable(
       this.state,
       agent,
@@ -8008,7 +8351,8 @@ export class WorldEngine {
             agent.mind.emotions.hope * 0.18 +
             emotions.joy * 0.12 +
             learnedKnowledgeBoost('bond') +
-            goalBoost('build_family')
+            goalBoost('build_family') +
+            (activeFamilyIntent ? 0.14 : 0)
           : -1,
       },
       {
@@ -8065,7 +8409,7 @@ export class WorldEngine {
     }
     if (body.mobility < 0.24 || body.strength < 0.2) {
       for (const item of scores) {
-        if (['hunt', 'explore'].includes(item.action)) item.score = -1;
+        if (['hunt', 'explore'].includes(item.action)) item.score = Number.NEGATIVE_INFINITY;
       }
       const rest = scores.find((item) => item.action === 'rest');
       if (rest) rest.score += 0.36;
@@ -8105,12 +8449,12 @@ export class WorldEngine {
       }
     }
 
-    // A traveller who has nearly exhausted carried provisions chooses the
-    // concrete journey home before hunger becomes lethal. Shared stores still
-    // never teleport: performRest starts and completes the physical route.
+    // A traveller can recover in camp when food remains. Only actual supply
+    // shortage needs a physical resupply trip; a half-full pack is not a
+    // permanent command to abandon a resident's exploration plan.
     if (
       !this.canAccessHomeSettlementStores(agent) &&
-      (agent.resources < 0.3 || rhythm.satiety < 0.38 || agent.energy < 0.24)
+      (agent.resources < 0.12 || rhythm.satiety < 0.25 || agent.energy < 0.24)
     ) {
       return {
         action: 'rest',
@@ -8364,6 +8708,25 @@ export class WorldEngine {
   }
 
   private buildResidentDecisionIndexes(agents: readonly AgentState[]): void {
+    this.relationshipKeysByResident = undefined;
+    const familyLifecyclesByAgentId = new Map<string, V16FamilyLifecycleState[]>();
+    for (const lifecycle of Object.values(
+      this.state.v16?.familyLifecycleByPairId ?? {},
+    )) {
+      for (const agentId of [lifecycle.agentAId, lifecycle.agentBId]) {
+        const records = familyLifecyclesByAgentId.get(agentId) ?? [];
+        records.push(lifecycle);
+        familyLifecyclesByAgentId.set(agentId, records);
+      }
+    }
+    for (const records of familyLifecyclesByAgentId.values()) {
+      records.sort(
+        (left, right) =>
+          right.lastAffirmedWorldMinute - left.lastAffirmedWorldMinute ||
+          left.pairId.localeCompare(right.pairId),
+      );
+    }
+    this.familyLifecyclesByAgentId = familyLifecyclesByAgentId;
     const byLocation = new Map<string, AgentState[]>();
     const bySettlement = new Map<string, number>();
     const bySettlementRace = new Map<string, number>();
@@ -8412,11 +8775,10 @@ export class WorldEngine {
   }
 
   private agentsAtLocation(locationId: string): AgentState[] {
-    const indexed = this.residentsByLocation?.get(locationId);
-    if (indexed) return indexed;
-    return Object.values(this.state.agents).filter(
-      (agent) => agent.life.alive && agent.locationId === locationId,
-    );
+    const candidates = this.residentsByLocation
+      ? this.residentsByLocation.get(locationId) ?? []
+      : Object.values(this.state.agents);
+    return candidates.filter(agent => agent.life.alive && !agent.movement && agent.locationId === locationId);
   }
 
   private moveResidentLocationIndex(
@@ -8630,7 +8992,7 @@ export class WorldEngine {
       for (const place of candidates) {
         if (
           !kinds.includes(place.kind) ||
-          this.pathBetween(agent.locationId, place.id) === undefined
+          residentKnownPath(this.state, agent, place.id) === undefined
         ) {
           continue;
         }
@@ -8658,7 +9020,7 @@ export class WorldEngine {
       const settlement = this.state.settlements[settlementId];
       if (
         settlement?.centerPlaceId &&
-        this.pathBetween(agent.locationId, settlement.centerPlaceId)
+        residentKnownPath(this.state, agent, settlement.centerPlaceId)
       ) {
         return settlement.centerPlaceId;
       }
@@ -8677,7 +9039,7 @@ export class WorldEngine {
     );
     if (
       familyAtHome &&
-      this.pathBetween(agent.locationId, agent.homeId) !== undefined
+      residentKnownPath(this.state, agent, agent.homeId) !== undefined
     ) {
       return agent.homeId;
     }
@@ -8742,7 +9104,8 @@ export class WorldEngine {
       this.canAccessHomeSettlementStores(agent) &&
       destination?.settlementId !== homeSettlementId;
     if (leavesHomeSettlement && agent.resources < 0.42) {
-      this.drawV15HomeSettlementRation(agent, 0.42 - agent.resources);
+      const drawn = this.drawV15HomeSettlementRation(agent, 0.42 - agent.resources);
+      if (intendedAction === 'explore') explorationEvidence(this.state, agent).provisionsTaken += drawn;
     }
     this.moveAgent(agent, destinationId);
     if (agent.locationId === destinationId && !agent.movement) {
@@ -8758,7 +9121,16 @@ export class WorldEngine {
       return false;
     }
 
-    if (agent.movement?.targetPlaceId === destinationId) {
+    if (agent.movement?.targetPlaceId !== destinationId) {
+      // A selected destination is not proof that a route actually started.
+      // Do not charge travel effort or award exploration practice on failure.
+      agent.lastAction = 'reflect';
+      this.recordAgentEvent(agent, now, 'agent.travel.unavailable', {
+        fromPlaceId: agent.locationId, destinationId, intendedAction,
+      });
+      return true;
+    }
+    if (agent.movement.targetPlaceId === destinationId) {
       agent.movement.purpose = intendedAction;
       const rhythm = ensureLifeRhythmV18(this.state, agent);
       rhythm.pendingArrivalAction = intendedAction;
@@ -8787,6 +9159,25 @@ export class WorldEngine {
   }
 
   private performRest(agent: AgentState, now: number): void {
+    const rhythm = ensureLifeRhythmV18(this.state, agent);
+    const canCamp = !agent.movement && !this.canAccessHomeSettlementStores(agent) &&
+      this.state.places[agent.locationId]?.surface !== 'water' &&
+      agent.resources >= 0.12 && rhythm.satiety >= 0.25;
+    if (canCamp) {
+      if (agent.energy <= 0.1 && startBodySleepV21(this.state, agent, false)) return;
+      const survival = this.v15World().knowledgeByAgentId[agent.id]?.survival ?? 0;
+      agent.energy = clamp01(agent.energy +
+        (0.12 + agent.life.physiology.recovery * 0.09 + survival * 0.025) *
+        bodyRecoveryScaleV21(this.state, agent.id));
+      agent.stress = clamp01(agent.stress - 0.04 - agent.personality.resilience * 0.02);
+      agent.lastAction = 'rest';
+      explorationEvidence(this.state, agent).campRests += 1;
+      this.recordAgentEvent(agent, now, 'agent.camp.rested', {
+        locationId: agent.locationId, energy: agent.energy,
+        carriedProvisions: agent.resources, sharedStoresAccessed: false,
+      });
+      return;
+    }
     if (this.travelBeforeAction(agent, agent.homeId, 'rest', now)) return;
     // Below 10% a voluntary rest becomes real six-hour sleep. The resident
     // chose to sleep; only collapse at zero is compulsory.
@@ -8944,7 +9335,7 @@ export class WorldEngine {
       ) {
         continue;
       }
-      const route = this.pathBetween(agent.locationId, population.habitatId);
+      const route = residentKnownPath(this.state, agent, population.habitatId);
       if (!route) continue;
       const distance = route.slice(1).reduce((sum, id, index) => {
         const from = this.state.places[route[index]], to = this.state.places[id];
@@ -9483,7 +9874,7 @@ export class WorldEngine {
             place.surface !== 'water' &&
             sourceKinds[material](place) &&
             (place.id === agent.locationId || (agent.knownPlaceIds ?? []).includes(place.id)) &&
-            this.pathBetween(agent.locationId, place.id) !== undefined,
+            residentKnownPath(this.state, agent, place.id) !== undefined,
         )
         .sort((left, right) => {
           const leftLocal =
@@ -9492,7 +9883,7 @@ export class WorldEngine {
             settlementId && right.settlementId === settlementId ? 0 : 1;
           if (leftLocal !== rightLocal) return leftLocal - rightLocal;
           const routeDistance = (placeId: string) => {
-            const route = this.pathBetween(agent.locationId, placeId);
+            const route = residentKnownPath(this.state, agent, placeId);
             return route ? route.slice(1).reduce((sum, id, index) => {
               const from = this.state.places[route[index]], to = this.state.places[id];
               return sum + Math.hypot(to.mapX - from.mapX, to.mapY - from.mapY);
@@ -9948,9 +10339,30 @@ export class WorldEngine {
     });
   }
 
+  private beginExplorationJourney(agent: AgentState, destinationId: string, now: number): boolean {
+    const evidence = explorationEvidence(this.state, agent);
+    evidence.journeyAttempts += 1;
+    this.travelBeforeAction(agent, destinationId, 'explore', now, 'explore');
+    if (agent.movement?.targetPlaceId !== destinationId) {
+      evidence.failedRoutes += 1;
+      agent.plan = undefined;
+      return false;
+    }
+    evidence.journeysStarted += 1;
+    evidence.pendingTargetPlaceId = destinationId;
+    return true;
+  }
+
   private performExplore(agent: AgentState, now: number): void {
+    const evidence = explorationEvidence(this.state, agent);
+    evidence.choices += 1;
     observeLocalPlacesV20(this.state, agent);
     if (availableBoat(this.state, agent) && startBoatExploration(this.state, agent, this.rng.next())) {
+      // The boat has just departed from this physical shore, not yet arrived.
+      evidence.provisionsTaken += this.drawV15HomeSettlementRation(agent, Math.max(0, 0.42 - agent.resources));
+      evidence.journeyAttempts += 1;
+      evidence.journeysStarted += 1;
+      evidence.pendingTargetPlaceId = agent.movement?.targetPlaceId;
       this.recordAgentEvent(agent, now, 'agent.boat.departed', { purpose: 'exploration', locationId: agent.locationId });
       return;
     }
@@ -9959,8 +10371,8 @@ export class WorldEngine {
     const targetFrontier = residentExplorationTarget(
       this.state,
       agent,
-      (placeId) => this.pathBetween(agent.locationId, placeId) !== undefined,
-      livelihood.mappedPlaceIds,
+      (placeId) => residentKnownPath(this.state, agent, placeId) !== undefined,
+      residentSurveyedPlaceIds(this.state, agent),
       this.rng.next(),
     );
     if (!this.youngChildMayTravelTo(agent, targetFrontier)) {
@@ -9981,7 +10393,7 @@ export class WorldEngine {
       const reachableDungeons = Object.values(adventure.dungeonsById)
         .map((dungeon) => ({
           dungeon,
-          route: this.pathBetween(agent.locationId, dungeon.entrancePlaceId),
+          route: residentKnownPath(this.state, agent, dungeon.entrancePlaceId),
         }))
         .filter(
           (candidate): candidate is {
@@ -10014,8 +10426,8 @@ export class WorldEngine {
           startedAt: agent.plan?.startedAt ?? now,
           expiresAt: now + 96,
         };
-        this.moveAgent(agent, entranceId);
-        agent.energy = clamp01(agent.energy - 0.026);
+        if (!this.beginExplorationJourney(agent, entranceId, now)) return;
+        agent.energy = clamp01(agent.energy - 0.018);
         agent.resources = clamp01(agent.resources - 0.006);
         agent.lastAction = 'explore';
         agent.lastMeaningfulEventAt = now;
@@ -10120,19 +10532,8 @@ export class WorldEngine {
       });
       return;
     }
-    if (!livelihood.mappedPlaceIds.includes(targetFrontier)) {
-      livelihood.mappedPlaceIds.push(targetFrontier);
-      livelihood.mappedPlaceIds = livelihood.mappedPlaceIds.slice(-256);
-      recordLivelihoodPracticeV18(this.state, agent, {
-        action: 'explore',
-        placeId: agent.locationId,
-        choiceRoll: this.rng.next(),
-        professionHint: 'cartographer',
-        amount: 0.7,
-      });
-    }
     if (agent.locationId !== targetFrontier) {
-      const route = this.pathBetween(agent.locationId, targetFrontier);
+      const route = residentKnownPath(this.state, agent, targetFrontier);
       const routeDistance = (route ?? []).slice(0, -1).reduce(
         (sum, placeId, index) =>
           sum +
@@ -10143,16 +10544,6 @@ export class WorldEngine {
       );
       const startsLongJourney =
         routeDistance >= 80 && agent.plan?.kind !== 'explore_frontier';
-      if (startsLongJourney) {
-        livelihood.longJourneyCount += 1;
-        recordLivelihoodPracticeV18(this.state, agent, {
-          action: 'explore',
-          placeId: agent.locationId,
-          choiceRoll: this.rng.next(),
-          professionHint: 'adventurer',
-          amount: 1.4,
-        });
-      }
       agent.plan = {
         kind: 'explore_frontier',
         targetPlaceId: targetFrontier,
@@ -10164,8 +10555,18 @@ export class WorldEngine {
       // collapsed exponentially and residents circled their city forever.
       // The movement itself still takes time and remains interruptible by
       // physiology and later resident decisions.
-      this.moveAgent(agent, targetFrontier);
-      agent.energy = clamp01(agent.energy - 0.024);
+      if (!this.beginExplorationJourney(agent, targetFrontier, now)) return;
+      if (startsLongJourney) {
+        livelihood.longJourneyCount += 1;
+        recordLivelihoodPracticeV18(this.state, agent, {
+          action: 'explore',
+          placeId: agent.locationId,
+          choiceRoll: this.rng.next(),
+          professionHint: 'adventurer',
+          amount: 1.4,
+        });
+      }
+      agent.energy = clamp01(agent.energy - 0.016);
       agent.resources = clamp01(agent.resources - 0.004);
       agent.skills.exploration = clamp01(agent.skills.exploration + 0.001);
       agent.needs.purpose = clamp01(agent.needs.purpose + 0.005);
@@ -10183,6 +10584,23 @@ export class WorldEngine {
       });
       return;
     }
+    // Mapping is earned here, at a physical survey, never when selecting
+    // a destination or glimpsing a newly generated frontier from afar.
+    if (recordResidentSurvey(this.state, agent, targetFrontier)) {
+      evidence.surveys += 1;
+      if (!livelihood.mappedPlaceIds.includes(targetFrontier)) livelihood.mappedPlaceIds.push(targetFrontier);
+      evidence.newlyMapped += 1;
+      livelihood.mappedPlaceIds = livelihood.mappedPlaceIds.slice(-128);
+      recordLivelihoodPracticeV18(this.state, agent, {
+        action: 'explore',
+        placeId: agent.locationId,
+        choiceRoll: this.rng.next(),
+        professionHint: 'cartographer',
+        amount: 0.7,
+      });
+    } else {
+      evidence.frontierSearches = (evidence.frontierSearches ?? 0) + 1;
+    }
     agent.plan = undefined;
     agent.energy = clamp01(agent.energy - 0.04);
     agent.resources = clamp01(agent.resources - 0.008);
@@ -10193,7 +10611,8 @@ export class WorldEngine {
       0.08 +
         agent.skills.exploration * 0.2 +
         agent.personality.curiosity * 0.18 +
-        agent.personality.riskTolerance * 0.08,
+        agent.personality.riskTolerance * 0.08 -
+        burdenIntensityV22(this.state, agent.id, 'misfortune') * 0.035,
     );
     const resourceDiscovered = this.rng.next() < discoveryChance;
     let discovery = 0;
@@ -10219,19 +10638,15 @@ export class WorldEngine {
       agent.knownPlaceIds = [
         ...new Set([...(agent.knownPlaceIds ?? []), discoveredRegionId]),
       ];
-      if (this.youngChildMayTravelTo(agent, discoveredRegionId)) this.moveAgent(agent, discoveredRegionId);
       syncAdventureEconomyV19(this.state);
-      if (!livelihood.mappedPlaceIds.includes(discoveredRegionId)) {
-        livelihood.mappedPlaceIds.push(discoveredRegionId);
-        livelihood.mappedPlaceIds = livelihood.mappedPlaceIds.slice(-256);
+      if (this.youngChildMayTravelTo(agent, discoveredRegionId)) {
+        agent.plan = {
+          kind: 'explore_frontier', targetPlaceId: discoveredRegionId,
+          startedAt: now, expiresAt: now + 48,
+        };
+        this.beginExplorationJourney(agent, discoveredRegionId, now);
       }
-      recordLivelihoodPracticeV18(this.state, agent, {
-        action: 'explore',
-        placeId: discoveredRegionId,
-        choiceRoll: this.rng.next(),
-        professionHint: 'cartographer',
-        amount: 1.8,
-      });
+
     }
 
     agent.lastAction = 'explore';
@@ -10382,13 +10797,13 @@ export class WorldEngine {
         .filter(
           (settlement) =>
             settlement.id !== currentSettlementId &&
-            this.pathBetween(agent.locationId, settlement.centerPlaceId) !== undefined,
+            residentKnownPath(this.state, agent, settlement.centerPlaceId) !== undefined,
         )
         .map((settlement) => {
           const center = this.state.places[settlement.centerPlaceId];
           const distance = Math.max(
             0,
-            (this.pathBetween(agent.locationId, settlement.centerPlaceId)?.length ?? 1) - 1,
+            (residentKnownPath(this.state, agent, settlement.centerPlaceId)?.length ?? 1) - 1,
           );
           const score =
             willingness * 0.34 +
@@ -12725,6 +13140,9 @@ export class WorldEngine {
       // recorded during the previous Ainkrad year. An extinct population
       // cannot return merely because its former members once ate.
       if (population.isMonster) {
+        // Discovering reachable food is not resurrection. Reproduction needs
+        // living parents; any future recolonization must be a separate event.
+        if (population.count <= 0) continue;
         const hasReachablePrey =
           this.monsterPreyCandidates(population).length > 0;
         const recentlyFed =
@@ -13219,11 +13637,18 @@ export class WorldEngine {
       if (!agent.life.alive) continue;
 
       const previousStage = agent.life.stage;
-      agent.life.ageYears += ageDelta * (previousStage !== 'child' && previousStage !== 'adolescent' && hasGiftV20(this.state, agent.id, 'longevity') ? 0.5 : 1);
-      agent.life.stage = lifeStageForRaceV16(
-        agent.race ?? 'human',
-        agent.life.ageYears,
-      );
+      const previousAgeYears = agent.life.ageYears;
+      const previousHealth = agent.life.health;
+      const immortal = isImmortalV20(this.state, agent.id);
+      const eternalYouth = hasGiftV20(this.state, agent.id, 'eternal_youth');
+      const ageless = immortal || eternalYouth;
+      const longevityMastery = giftMasteryV20(this.state, agent.id, 'longevity');
+      // Chronological age always advances at world speed. Gifts affect the body,
+      // not the calendar or the resident's lived history.
+      agent.life.ageYears += ageDelta;
+      agent.life.stage = ageless
+        ? 'adult'
+        : lifeStageForRaceV16(agent.race ?? 'human', agent.life.ageYears);
       if (agent.life.stage !== previousStage) {
         this.recordAgentEvent(agent, now, 'agent.life.stage_changed', {
           previousStage,
@@ -13243,28 +13668,64 @@ export class WorldEngine {
         Math.max(0, 0.1 - agent.energy) * 0.012;
       const elderAge =
         SAPIENT_RACE_LIFE_PROFILES_V16[agent.race ?? 'human'].elderAtAge;
+      // Longevity slows biological ageing without lying about chronological age.
+      // Immortality caps biological age at a healthy adult band while the lived
+      // age displayed in history can continue for centuries.
+      const biologicalAge = ageless
+        ? Math.min(agent.life.ageYears, elderAge * (immortal ? 0.78 : 0.72))
+        : agent.life.ageYears * (1 - longevityMastery * 0.55);
       const frailty =
-        agent.life.ageYears > elderAge
-          ? ((agent.life.ageYears - elderAge) /
+        biologicalAge > elderAge
+          ? ((biologicalAge - elderAge) /
               Math.max(1, agent.life.lifespanYears - elderAge)) *
             0.0018
           : 0;
+      const frailtyBurden = burdenIntensityV22(this.state, agent.id, 'frailty');
+      const rapidHealing = giftMasteryV20(this.state, agent.id, 'rapid_healing');
+      const robustHealth = giftMasteryV20(this.state, agent.id, 'robust_health');
       const recovery =
         effectiveResourceSecurity > 0.35 && agent.energy > 0.3
           ? (0.0018 + agent.personality.resilience * 0.0014) *
-            agent.life.physiology.recovery
+            agent.life.physiology.recovery *
+            Math.max(0.4, 1 - frailtyBurden * 0.45)
           : 0;
       agent.life.health = clamp01(
         agent.life.health +
-          recovery * (hasGiftV20(this.state, agent.id, 'rapid_healing') ? 2.5 : 1) -
-          deprivation -
+          recovery * (1 + rapidHealing * 1.5) -
+          deprivation * (1 + frailtyBurden * 0.35) -
           frailty * Math.max(0.05, durationScale) -
-          placeDanger * (hasGiftV20(this.state, agent.id, 'robust_health') ? 0.00007 : 0.00022),
+          placeDanger * (0.00022 * (1 - robustHealth * 0.68) + frailtyBurden * 0.00008),
       );
+      if (immortal) agent.life.health = Math.max(agent.life.health, 0.2);
+      // Passive body gifts still grow from lived evidence.  These hooks reuse
+      // the ageing/health pass that already exists; no extra resident scan is
+      // introduced. Longevity samples once per lived birthday, recovery only
+      // when health actually rises, and robust health only after real strain.
+      if (longevityMastery > 0 && Math.floor(agent.life.ageYears) > Math.floor(previousAgeYears)) {
+        practiceGiftV20(this.state, agent.id, 'longevity', 0.006, this.state.calendar.elapsedWorldMinutes);
+      }
+      if (rapidHealing > 0 && agent.life.health > previousHealth + 0.00001) {
+        practiceGiftV20(
+          this.state,
+          agent.id,
+          'rapid_healing',
+          Math.min(0.003, (agent.life.health - previousHealth) * 0.12 + 0.0002),
+          this.state.calendar.elapsedWorldMinutes,
+        );
+      }
+      if (robustHealth > 0 && agent.life.health < previousHealth - 0.00001 && agent.life.health > 0.015) {
+        practiceGiftV20(
+          this.state,
+          agent.id,
+          'robust_health',
+          Math.min(0.0025, (previousHealth - agent.life.health) * 0.1 + 0.00015),
+          this.state.calendar.elapsedWorldMinutes,
+        );
+      }
       agent.life.physiology = racePhysiology(
         agent.race ?? 'human',
         physiologyForAge(
-          agent.life.ageYears,
+          biologicalAge,
           agent.life.lifespanYears,
           agent.life.health,
         ),
@@ -13274,7 +13735,7 @@ export class WorldEngine {
       const ageRatio = agent.life.ageYears / agent.life.lifespanYears;
       const oldAgeChance =
         ageRatio > 0.9 ? Math.pow((ageRatio - 0.9) / 0.1, 2) * 0.014 : 0;
-      if (agent.life.ageYears >= agent.life.lifespanYears) {
+      if (!ageless && agent.life.ageYears >= agent.life.lifespanYears) {
         this.recordDeath(agent, 'old_age', now);
       } else if (agent.life.health <= 0.015) {
         this.recordDeath(
@@ -13283,6 +13744,7 @@ export class WorldEngine {
           now,
         );
       } else if (
+        !ageless &&
         oldAgeChance > 0 &&
         this.rng.next() < clamp01(oldAgeChance * durationScale)
       ) {
@@ -13298,8 +13760,28 @@ export class WorldEngine {
     threat?: DeathThreatContextV15,
   ): void {
     if (!agent.life.alive) return;
-    if (cause !== 'old_age' && hasGiftV20(this.state, agent.id, 'divine_protection') && this.rng.next() < 0.08) {
-      agent.life.health = Math.max(agent.life.health, 0.08);
+    if (isImmortalV20(this.state, agent.id)) {
+      // Immortality is a mortality rule only. It never rewrites identity,
+      // decisions or memories, and chronological age remains intact.
+      agent.life.health = Math.max(agent.life.health, 0.2);
+      agent.energy = Math.max(agent.energy, 0.08);
+      agent.stress = clamp01(agent.stress + 0.06);
+      return;
+    }
+    if (cause !== 'old_age' && triggerPhoenixV22(this.state, agent.id)) {
+      // Phoenix is event-driven and one-shot: no per-tick polling or hidden
+      // dependency. The fatal event happened, but the ability burns itself out.
+      agent.life.health = Math.max(agent.life.health, 0.28);
+      agent.energy = Math.max(agent.energy, 0.16);
+      agent.stress = clamp01(agent.stress + 0.24);
+      this.recordAgentEvent(agent, now, 'agent.divine.phoenix_triggered', { cause });
+      return;
+    }
+    const protectionMastery = giftMasteryV20(this.state, agent.id, 'divine_protection');
+    if (cause !== 'old_age' && protectionMastery > 0 && this.rng.next() < 0.01 + protectionMastery * 0.11) {
+      agent.life.health = Math.max(agent.life.health, 0.08 + protectionMastery * 0.08);
+      practiceGiftV20(this.state, agent.id, 'divine_protection', 0.01, this.state.calendar.elapsedWorldMinutes);
+      this.recordAgentEvent(agent, now, 'agent.divine.protection_triggered', { cause });
       return;
     }
 
@@ -13462,17 +13944,483 @@ export class WorldEngine {
     }
   }
 
+  private familyLifecycleMap(): Record<string, V16FamilyLifecycleState> {
+    const v16 = ensureWorldV16State(this.state);
+    v16.familyLifecycleByPairId ??= {};
+    return v16.familyLifecycleByPairId;
+  }
+
+  private familyIntentForAgent(
+    agentId: string,
+  ): V16FamilyLifecycleState | undefined {
+    const indexed = this.familyLifecyclesByAgentId?.get(agentId);
+    const candidates = indexed ?? Object.values(this.familyLifecycleMap()).filter(
+      (lifecycle) =>
+        lifecycle.agentAId === agentId || lifecycle.agentBId === agentId,
+    );
+    return candidates.find((lifecycle) => {
+      if (lifecycle.stage !== 'intending') return false;
+      const partnerId =
+        lifecycle.agentAId === agentId
+          ? lifecycle.agentBId
+          : lifecycle.agentAId;
+      return this.state.agents[partnerId]?.life.alive === true;
+    });
+  }
+
+  private familyRendezvousForAgent(
+    agentId: string,
+  ): V16FamilyLifecycleState | undefined {
+    const indexed = this.familyLifecyclesByAgentId?.get(agentId);
+    const candidates = indexed ?? Object.values(this.familyLifecycleMap()).filter(
+      (lifecycle) =>
+        lifecycle.agentAId === agentId || lifecycle.agentBId === agentId,
+    );
+    return candidates.find((lifecycle) => {
+      if (lifecycle.stage === 'pregnant') return false;
+      const partnerId =
+        lifecycle.agentAId === agentId
+          ? lifecycle.agentBId
+          : lifecycle.agentAId;
+      return this.state.agents[partnerId]?.life.alive === true;
+    });
+  }
+
+  private familyPartnerFor(
+    lifecycle: Readonly<V16FamilyLifecycleState>,
+    agentId: string,
+  ): AgentState | undefined {
+    const partnerId =
+      lifecycle.agentAId === agentId
+        ? lifecycle.agentBId
+        : lifecycle.agentAId;
+    return this.state.agents[partnerId];
+  }
+
+  private physicallyCoPresent(
+    a: Readonly<AgentState>,
+    b: Readonly<AgentState>,
+  ): boolean {
+    return (
+      a.life.alive &&
+      b.life.alive &&
+      !a.movement &&
+      !b.movement &&
+      a.locationId === b.locationId
+    );
+  }
+
+  private familyDecisionInputs(
+    a: AgentState,
+    b: AgentState,
+    selectedRace: AgentRace,
+  ) {
+    ensureAgentV15State(this.state, a);
+    ensureAgentV15State(this.state, b);
+    const v15 = this.v15World();
+    const aAgency = v15.familyAgencyByAgentId[a.id];
+    const bAgency = v15.familyAgencyByAgentId[b.id];
+    const asFamilyPerson = (
+      agent: AgentState,
+      agency: WorldV15State['familyAgencyByAgentId'][string],
+    ): FamilyPerson => ({
+      id: agent.id,
+      sex: agent.sex === 'female' ? 'female' : 'male',
+      ageYears: agent.life.ageYears,
+      alive: agent.life.alive,
+      health: agent.life.health,
+      stress: agent.stress,
+      resources: agent.resources,
+      personality: {
+        physicalIntimacyInclination: agency.physicalIntimacyInclination,
+        childDesire: agency.childDesire,
+        autonomy: agency.autonomy,
+      },
+      parentIds: [...agent.life.parentIds],
+      childIds: [...agent.life.childIds],
+      ...(agent.life.lastChildWorldMinute === undefined
+        ? {}
+        : { lastChildWorldMinute: agent.life.lastChildWorldMinute }),
+    });
+    const familyA = asFamilyPerson(a, aAgency);
+    const familyB = asFamilyPerson(b, bAgency);
+    const relationship =
+      this.state.relationships[relationshipKey(a.id, b.id)] ??
+      this.relationshipFor(a, b, this.state.now);
+    const attachment = clamp01(
+      relationship.affinity * 0.5 +
+        relationship.trust * 0.28 +
+        relationship.respect * 0.14 -
+        relationship.conflict * 0.16,
+    );
+    const raceProfile = SAPIENT_RACE_LIFE_PROFILES_V16[selectedRace];
+    const context = {
+      worldMinutes: this.state.calendar.elapsedWorldMinutes,
+      relationship: {
+        trust: relationship.trust,
+        affinity: relationship.affinity,
+        respect: relationship.respect,
+        conflict: relationship.conflict,
+        attachment,
+      },
+      householdResourceSecurity: Math.min(
+        this.v15EffectiveResourceSecurity(a),
+        this.v15EffectiveResourceSecurity(b),
+      ),
+      physicalEligibility: {
+        minimumAdultAge:
+          selectedRace === 'human'
+            ? HUMAN_MINIMUM_REPRODUCTIVE_AGE_V16
+            : raceProfile.adultAtAge,
+        maximumReproductiveAge: raceProfile.maximumReproductiveAge,
+        minimumReproductiveHealth: raceProfile.minimumReproductiveHealth,
+      },
+      allowCloseKin: foundingCloseKinAllowedV16(
+        selectedRace,
+        this.state.calendar.elapsedWorldMinutes,
+      ),
+      developmentalReadiness: Math.min(
+        reproductiveDevelopmentV16(selectedRace, a.life.ageYears),
+        reproductiveDevelopmentV16(selectedRace, b.life.ageYears),
+      ),
+    };
+    return {
+      familyA,
+      familyB,
+      context,
+      signals: evaluateFamilyAgency(familyA, familyB, context),
+    };
+  }
+
+  private stageFamilyIntimacyChoice(
+    a: AgentState,
+    b: AgentState,
+    selectedRace: AgentRace,
+    settlementId: string,
+    pairId: string,
+    mutualAttachment: number,
+    mutualIntimacyInterest: number,
+    childDecisionChosen: boolean,
+    now: number,
+  ): void {
+    recordRaceFamilyChoiceV16(this.state, selectedRace, 'intimacy');
+    recordLocalFamilyChoiceV16(
+      this.state,
+      settlementId,
+      selectedRace,
+      'intimacy',
+    );
+    this.stageEvent({
+      eventId: this.nextId('intimacy-decision'),
+      worldId: this.state.id,
+      kind: 'agent.family.intimacy',
+      source: 'agent',
+      occurredAt: now,
+      payload: {
+        agentA: a.id,
+        agentB: b.id,
+        race: selectedRace,
+        pairId,
+        worldMinutes: this.state.calendar.elapsedWorldMinutes,
+        voluntary: true,
+        mutualAttachment,
+        mutualIntimacyInterest,
+        childDecisionChosen,
+        physicallyCoPresent: true,
+      },
+    });
+  }
+
+  private pruneFamilyLifecycles(now: number): void {
+    const worldMinutes = this.state.calendar.elapsedWorldMinutes;
+    const lifecycles = this.familyLifecycleMap();
+    for (const [pairId, lifecycle] of Object.entries(lifecycles)) {
+      const a = this.state.agents[lifecycle.agentAId];
+      const b = this.state.agents[lifecycle.agentBId];
+      if (lifecycle.stage === 'pregnant') {
+        const pregnant = lifecycle.pregnantAgentId
+          ? this.state.agents[lifecycle.pregnantAgentId]
+          : undefined;
+        if (pregnant?.life.alive) continue;
+        delete lifecycles[pairId];
+        this.stageEvent({
+          eventId: this.nextId('pregnancy-ended'),
+          worldId: this.state.id,
+          kind: 'agent.family.pregnancy_ended',
+          source: 'world',
+          occurredAt: now,
+          payload: {
+            pairId,
+            reason: 'pregnant_resident_died',
+            worldMinutes,
+          },
+        });
+        continue;
+      }
+      const expiryWindow =
+        lifecycle.stage === 'meeting'
+          ? FAMILY_MEETING_EXPIRY_WORLD_MINUTES
+          : FAMILY_INTENT_EXPIRY_WORLD_MINUTES;
+      const expired =
+        worldMinutes - lifecycle.lastAffirmedWorldMinute >= expiryWindow;
+      const profile = SAPIENT_RACE_LIFE_PROFILES_V16[lifecycle.race];
+      const reproductiveWindowClosed =
+        lifecycle.stage === 'intending' &&
+        (a?.life.ageYears > profile.maximumReproductiveAge ||
+          b?.life.ageYears > profile.maximumReproductiveAge);
+      const impossible =
+        !a?.life.alive ||
+        !b?.life.alive ||
+        (a.race ?? 'human') !== lifecycle.race ||
+        (b.race ?? 'human') !== lifecycle.race ||
+        reproductiveWindowClosed ||
+        !this.canFormIntimateRelationship(a, b);
+      if (!expired && !impossible) continue;
+      delete lifecycles[pairId];
+      this.stageEvent({
+        eventId: this.nextId('family-intent-ended'),
+        worldId: this.state.id,
+        kind: 'agent.family.intent_ended',
+        source: 'agent',
+        occurredAt: now,
+        payload: {
+          pairId,
+          agentA: lifecycle.agentAId,
+          agentB: lifecycle.agentBId,
+          reason: impossible ? 'no_longer_possible' : 'intent_expired',
+          worldMinutes,
+        },
+      });
+    }
+  }
+
+  private advanceFamilyPregnancies(now: number): void {
+    const worldMinutes = this.state.calendar.elapsedWorldMinutes;
+    const lifecycles = this.familyLifecycleMap();
+    for (const [pairId, lifecycle] of Object.entries(lifecycles)) {
+      if (lifecycle.stage !== 'pregnant') continue;
+      const dueWorldMinute = lifecycle.dueWorldMinute;
+      if (dueWorldMinute === undefined || worldMinutes < dueWorldMinute) continue;
+      const a = this.state.agents[lifecycle.agentAId];
+      const b = this.state.agents[lifecycle.agentBId];
+      const mother = lifecycle.pregnantAgentId
+        ? this.state.agents[lifecycle.pregnantAgentId]
+        : undefined;
+      if (!a || !b || !mother?.life.alive) {
+        delete lifecycles[pairId];
+        continue;
+      }
+      const expectedChildCount = Math.max(
+        1,
+        Math.min(4, Math.trunc(lifecycle.expectedChildCount ?? 1)),
+      ) as BirthMultiplicityV22;
+      // Build the name registry once for this delivery. Multiple births are
+      // rare, but they must not multiply an O(population) name scan.
+      const existingNames = new Set(
+        Object.values(this.state.agents).map((agent) =>
+          agent.name.toLocaleLowerCase('ru-RU'),
+        ),
+      );
+      const childIds: string[] = [];
+      for (let birthOrder = 1; birthOrder <= expectedChildCount; birthOrder += 1) {
+        childIds.push(
+          this.createChild(a, b, now, mother.locationId, {
+            multiplicity: expectedChildCount,
+            birthOrder,
+            existingNames,
+          }),
+        );
+        recordRaceFamilyChoiceV16(this.state, lifecycle.race, 'birth');
+        if (this.state.settlements[lifecycle.settlementId]) {
+          recordLocalFamilyChoiceV16(
+            this.state,
+            lifecycle.settlementId,
+            lifecycle.race,
+            'birth',
+          );
+        }
+      }
+
+      // Multiple delivery has a bounded physical cost evaluated once, at the
+      // birth event itself. It adds no recurring family-tick scan.
+      const rawHealthLoss = maternalPostpartumHealthLossV22(
+        expectedChildCount,
+        expectedChildCount > 1 ? this.rng.next() : 0,
+      );
+      const fertilityRecoveryMastery = giftMasteryV20(this.state, mother.id, 'fertility');
+      // Fertility supports carrying/recovery modestly. It never reduces the
+      // explicit multiplicity mortality roll (quadruplets remain 50%).
+      const healthLoss = rawHealthLoss * (1 - fertilityRecoveryMastery * 0.15);
+      if (healthLoss > 0) {
+        mother.life.health = Math.max(0.02, mother.life.health - healthLoss);
+        mother.life.physiology = racePhysiology(
+          mother.race ?? 'human',
+          physiologyForAge(
+            mother.life.ageYears,
+            mother.life.lifespanYears,
+            mother.life.health,
+          ),
+        );
+      }
+      const maternalMortalityRisk = maternalChildbirthMortalityRiskV22(
+        expectedChildCount,
+      );
+      const maternalDeathTriggered =
+        maternalMortalityRisk > 0 && this.rng.next() < maternalMortalityRisk;
+      if (maternalDeathTriggered) {
+        this.recordDeath(mother, 'childbirth', now);
+      }
+      const maternalDied = !mother.life.alive;
+      if (!maternalDied) {
+        practiceGiftV20(this.state, mother.id, 'fertility', 0.0015 + expectedChildCount * 0.0005);
+      }
+
+      this.stageEvent({
+        eventId: this.nextId('pregnancy-completed'),
+        worldId: this.state.id,
+        kind: 'agent.family.pregnancy_completed',
+        source: 'world',
+        occurredAt: now,
+        payload: {
+          pairId,
+          childId: childIds[0],
+          childIds,
+          childCount: childIds.length,
+          multipleBirth: childIds.length > 1,
+          pregnantAgentId: mother.id,
+          conceptionWorldMinute: lifecycle.conceptionWorldMinute ?? null,
+          dueWorldMinute,
+          birthWorldMinute: worldMinutes,
+          birthPlaceId: mother.locationId,
+          maternalHealthLoss: healthLoss,
+          maternalMortalityRisk,
+          maternalDeathTriggered,
+          maternalDied,
+        },
+      });
+      delete lifecycles[pairId];
+    }
+  }
+
+  private advanceExistingFamilyIntentions(now: number): void {
+    const worldMinutes = this.state.calendar.elapsedWorldMinutes;
+    const lifecycles = this.familyLifecycleMap();
+    const pregnantAgentIds = new Set(
+      Object.values(lifecycles)
+        .filter((lifecycle) => lifecycle.stage === 'pregnant')
+        .flatMap((lifecycle) =>
+          lifecycle.pregnantAgentId ? [lifecycle.pregnantAgentId] : [],
+        ),
+    );
+    for (const lifecycle of Object.values(lifecycles)) {
+      if (lifecycle.stage !== 'intending') continue;
+      const a = this.state.agents[lifecycle.agentAId];
+      const b = this.state.agents[lifecycle.agentBId];
+      if (!a || !b || !this.physicallyCoPresent(a, b)) continue;
+      if (!this.canConsiderChildDecision(a, b, now)) continue;
+      const { familyA, familyB, context, signals } = this.familyDecisionInputs(
+        a,
+        b,
+        lifecycle.race,
+      );
+      lifecycle.lastPhysicalMeetingWorldMinute = worldMinutes;
+      lifecycle.lastAffirmedWorldMinute = worldMinutes;
+      const intimacyDecision = decideIntimacyVoluntarily(
+        familyA,
+        familyB,
+        context,
+        this.rng.next(),
+      );
+      if (!intimacyDecision.chosen) continue;
+      this.stageFamilyIntimacyChoice(
+        a,
+        b,
+        lifecycle.race,
+        lifecycle.settlementId,
+        lifecycle.pairId,
+        signals.mutualAttachment,
+        signals.mutualIntimacyInterest,
+        true,
+        now,
+      );
+      lifecycle.lastIntimacyWorldMinute = worldMinutes;
+      const mother = a.sex === 'female' ? a : b.sex === 'female' ? b : undefined;
+      if (!mother || pregnantAgentIds.has(mother.id)) continue;
+      const fertilitySupport = this.lawValue('fertility_support', 0.55);
+      const physicalRealizationChance = clamp01(
+        0.32 +
+          fertilitySupport * 0.34 +
+          Math.min(a.life.health, b.life.health) * 0.18 +
+          signals.familyReadiness * 0.14 +
+          Math.max(
+            giftMasteryV20(this.state, a.id, 'fertility'),
+            giftMasteryV20(this.state, b.id, 'fertility'),
+          ) * 0.15,
+      );
+      if (this.rng.next() >= physicalRealizationChance) continue;
+      lifecycle.stage = 'pregnant';
+      lifecycle.pregnantAgentId = mother.id;
+      lifecycle.conceptionWorldMinute = worldMinutes;
+      lifecycle.dueWorldMinute = worldMinutes + FAMILY_GESTATION_WORLD_MINUTES;
+      lifecycle.expectedChildCount = choosePregnancyMultiplicityV22(
+        lifecycle.race,
+        Math.max(
+          giftMasteryV20(this.state, a.id, 'fertility'),
+          giftMasteryV20(this.state, b.id, 'fertility'),
+        ),
+        this.rng.next(),
+      );
+      practiceGiftV20(this.state, a.id, 'fertility', 0.0008);
+      practiceGiftV20(this.state, b.id, 'fertility', 0.0008);
+      pregnantAgentIds.add(mother.id);
+      this.stageEvent({
+        eventId: this.nextId('conception'),
+        worldId: this.state.id,
+        kind: 'agent.family.conceived',
+        source: 'world',
+        occurredAt: now,
+        payload: {
+          pairId: lifecycle.pairId,
+          agentA: a.id,
+          agentB: b.id,
+          pregnantAgentId: mother.id,
+          conceptionPlaceId: mother.locationId,
+          conceptionWorldMinute: worldMinutes,
+          dueWorldMinute: lifecycle.dueWorldMinute,
+          expectedChildCount: lifecycle.expectedChildCount ?? 1,
+          voluntaryIntimacy: true,
+          priorMutualChildIntent: true,
+        },
+      });
+    }
+  }
+
   private advanceBirths(now: number, elapsedWorldMinutes: number): void {
     const scheduleTick = this.v15ScheduleTick(now);
-    if (!Number.isInteger(scheduleTick) || scheduleTick % BIRTH_CHECK_INTERVAL !== 0) return;
-    const worldMinutes = this.state.calendar.elapsedWorldMinutes;
+    if (!Number.isInteger(scheduleTick)) return;
 
-    const living = Object.values(this.state.agents).filter(
-      (agent) => agent.life.alive,
+    // Pregnancy is a persistent physical state. Complete it before opening a
+    // new family-opportunity window so a due birth can free the parent's
+    // cooldown in the same deterministic semantic boundary.
+    this.advanceFamilyPregnancies(now);
+    if (scheduleTick % BIRTH_CHECK_INTERVAL !== 0) return;
+    if (!(elapsedWorldMinutes > 0)) return;
+
+    const worldMinutes = this.state.calendar.elapsedWorldMinutes;
+    this.pruneFamilyLifecycles(now);
+    this.advanceExistingFamilyIntentions(now);
+    const lifecycles = this.familyLifecycleMap();
+    const pregnantAgentIds = new Set(
+      Object.values(lifecycles)
+        .filter((lifecycle) => lifecycle.stage === 'pregnant')
+        .flatMap((lifecycle) =>
+          lifecycle.pregnantAgentId ? [lifecycle.pregnantAgentId] : [],
+        ),
     );
-    // Pair eligibility is physical/lineage only. Relationship, intimacy and
-    // child intent remain separate voluntary signals. We intentionally do not
-    // pick a globally "best" couple.
+
+    // Pair eligibility remains physical/lineage only. New mutual child intent
+    // is considered only while the two residents are actually together. A
+    // home address or relationship record is not physical co-presence.
     const candidates = Object.values(this.state.relationships)
       .map((relationship) => {
         const a = this.state.agents[relationship.agentA];
@@ -13497,10 +14445,7 @@ export class WorldEngine {
           (a.race ?? 'human') === selectedRace &&
           (b.race ?? 'human') === selectedRace,
       );
-      const candidatesBySettlement = new Map<
-        string,
-        typeof raceCandidates
-      >();
+      const candidatesBySettlement = new Map<string, typeof raceCandidates>();
       for (const candidate of raceCandidates) {
         const settlementId = this.familyOpportunitySettlementId(
           candidate.a,
@@ -13515,7 +14460,7 @@ export class WorldEngine {
       for (const [settlementId, localCandidates] of [
         ...candidatesBySettlement.entries(),
       ].sort(([left], [right]) => left.localeCompare(right))) {
-        recordRaceOpportunityCheckV16(
+        const raceOpportunity = recordRaceOpportunityCheckV16(
           this.state,
           selectedRace,
           localCandidates.length,
@@ -13526,151 +14471,100 @@ export class WorldEngine {
           selectedRace,
           localCandidates.length,
         );
-        const localRaceResidentCount = this.residentCountByHomeRace?.get(`${settlementId}\u0000${selectedRace}`) ?? 0;
-        // Fertility belongs to consenting adults, never to a settlement-wide quota.
-        const localBirthLimit = Number.POSITIVE_INFINITY;
-        let localBirths = 0;
-        // Only a rotating, population-proportional share of couples reaches a
-        // physical family opportunity in one two-month window. This avoids
-        // repeatedly evaluating every historic acquaintance while every pair
-        // remains reachable over later windows and growth stays uncapped.
+        const localRaceResidentCount =
+          this.residentCountByHomeRace?.get(
+            `${settlementId}\u0000${selectedRace}`,
+          ) ?? 0;
         const maximumCandidateChecks = Math.min(
           localCandidates.length,
           Math.max(8, Math.ceil(localRaceResidentCount * 0.2)),
         );
-        const candidateOffset =
-          localCandidates.length === 0
-            ? 0
-            : scheduleTick % localCandidates.length;
+        const window = residentOpportunityWindow(
+          localCandidates,
+          ({ a, b }) => relationshipKey(a.id, b.id),
+          maximumCandidateChecks,
+          localOpportunity.lastConsideredPairId,
+        );
+        localOpportunity.lastConsideredPairId = window.afterKey;
+        raceOpportunity.scheduledPairChecks =
+          (raceOpportunity.scheduledPairChecks ?? 0) + window.candidates.length;
+        localOpportunity.scheduledPairChecks =
+          (localOpportunity.scheduledPairChecks ?? 0) + window.candidates.length;
 
-        for (
-          let candidateIndex = 0;
-          candidateIndex < maximumCandidateChecks &&
-          localBirths < localBirthLimit;
-          candidateIndex += 1
-        ) {
-          const candidate =
-            localCandidates[
-              (candidateOffset + candidateIndex) % localCandidates.length
-            ];
-          const { a, b, relationship } = candidate;
+        for (const { a, b } of window.candidates) {
           if (!this.canConsiderChildDecision(a, b, now)) continue;
+          raceOpportunity.evaluatedPairChecks =
+            (raceOpportunity.evaluatedPairChecks ?? 0) + 1;
+          localOpportunity.evaluatedPairChecks =
+            (localOpportunity.evaluatedPairChecks ?? 0) + 1;
 
-          ensureAgentV15State(this.state, a);
-          ensureAgentV15State(this.state, b);
-          const v15 = this.v15World();
-          const aAgency = v15.familyAgencyByAgentId[a.id];
-          const bAgency = v15.familyAgencyByAgentId[b.id];
+          const pairId = relationshipKey(a.id, b.id);
+          const existingLifecycle = lifecycles[pairId];
+          if (existingLifecycle?.stage === 'pregnant' || existingLifecycle?.stage === 'intending') {
+            continue;
+          }
+          if (!this.physicallyCoPresent(a, b)) continue;
+          if (existingLifecycle?.stage === 'meeting') {
+            // The remembered rendezvous did its job: both residents are now
+            // physically together. Only now can a child decision be discussed.
+            delete lifecycles[pairId];
+            this.stageEvent({
+              eventId: this.nextId('family-meeting-completed'),
+              worldId: this.state.id,
+              kind: 'agent.family.meeting_completed',
+              source: 'agent',
+              occurredAt: now,
+              payload: {
+                pairId,
+                agentA: a.id,
+                agentB: b.id,
+                meetingPlaceId: a.locationId,
+                worldMinutes,
+              },
+            });
+          }
+          const mother = a.sex === 'female' ? a : b.sex === 'female' ? b : undefined;
+          if (!mother || pregnantAgentIds.has(mother.id)) continue;
 
-      const asFamilyPerson = (
-        agent: AgentState,
-        agency: WorldV15State['familyAgencyByAgentId'][string],
-      ): FamilyPerson => ({
-        id: agent.id,
-        sex: agent.sex === 'female' ? 'female' : 'male',
-        ageYears: agent.life.ageYears,
-        alive: agent.life.alive,
-        health: agent.life.health,
-        stress: agent.stress,
-        resources: agent.resources,
-        personality: {
-          physicalIntimacyInclination: agency.physicalIntimacyInclination,
-          childDesire: agency.childDesire,
-          autonomy: agency.autonomy,
-        },
-        parentIds: [...agent.life.parentIds],
-        childIds: [...agent.life.childIds],
-        ...(agent.life.lastChildWorldMinute === undefined
-          ? {}
-          : { lastChildWorldMinute: agent.life.lastChildWorldMinute }),
-      });
-
-          const familyA = asFamilyPerson(a, aAgency);
-          const familyB = asFamilyPerson(b, bAgency);
-        const attachment = clamp01(
-          relationship.affinity * 0.5 +
-            relationship.trust * 0.28 +
-            relationship.respect * 0.14 -
-            relationship.conflict * 0.16,
-        );
-        const context = {
-          worldMinutes,
-          relationship: {
-            trust: relationship.trust,
-            affinity: relationship.affinity,
-            respect: relationship.respect,
-            conflict: relationship.conflict,
-            attachment,
-          },
-          householdResourceSecurity: Math.min(
-            this.v15EffectiveResourceSecurity(a),
-            this.v15EffectiveResourceSecurity(b),
-          ),
-          physicalEligibility: {
-            minimumAdultAge:
-              selectedRace === 'human'
-                ? HUMAN_MINIMUM_REPRODUCTIVE_AGE_V16
-                : raceProfile.adultAtAge,
-            maximumReproductiveAge: raceProfile.maximumReproductiveAge,
-            minimumReproductiveHealth: raceProfile.minimumReproductiveHealth,
-          },
-          allowCloseKin: foundingCloseKinAllowedV16(
+          const { familyA, familyB, context, signals } = this.familyDecisionInputs(
+            a,
+            b,
             selectedRace,
-            worldMinutes,
-          ),
-          developmentalReadiness: Math.min(
-            reproductiveDevelopmentV16(selectedRace, a.life.ageYears),
-            reproductiveDevelopmentV16(selectedRace, b.life.ageYears),
-          ),
-        };
-        const signals = evaluateFamilyAgency(familyA, familyB, context);
-        const intimacyDecision = decideIntimacyVoluntarily(
-          familyA,
-          familyB,
-          context,
-          this.rng.next(),
-        );
-        const personalBirthCooldown =
-          PERSONAL_PARENT_BIRTH_COOLDOWN_WORLD_MINUTES_V15 *
-          (raceProfile.raceBirthSpacingWorldMinutes /
-            SAPIENT_RACE_LIFE_PROFILES_V16.human.raceBirthSpacingWorldMinutes);
-        const decision = decideChildVoluntarily(
-          familyA,
-          familyB,
-          context,
-          this.rng.next(),
-          personalBirthCooldown,
-        );
+          );
+          const intimacyDecision = decideIntimacyVoluntarily(
+            familyA,
+            familyB,
+            context,
+            this.rng.next(),
+          );
+          const personalBirthCooldown =
+            PERSONAL_PARENT_BIRTH_COOLDOWN_WORLD_MINUTES_V15 *
+            (raceProfile.raceBirthSpacingWorldMinutes /
+              SAPIENT_RACE_LIFE_PROFILES_V16.human
+                .raceBirthSpacingWorldMinutes);
+          const decision = decideChildVoluntarily(
+            familyA,
+            familyB,
+            context,
+            this.rng.next(),
+            personalBirthCooldown,
+          );
 
           if (intimacyDecision.chosen) {
-            recordRaceFamilyChoiceV16(this.state, selectedRace, 'intimacy');
-            recordLocalFamilyChoiceV16(
-              this.state,
-              settlementId,
+            this.stageFamilyIntimacyChoice(
+              a,
+              b,
               selectedRace,
-              'intimacy',
+              settlementId,
+              intimacyDecision.pairId,
+              signals.mutualAttachment,
+              signals.mutualIntimacyInterest,
+              decision.chosen,
+              now,
             );
-          this.stageEvent({
-            eventId: this.nextId('intimacy-decision'),
-            worldId: this.state.id,
-            kind: 'agent.family.intimacy',
-            source: 'agent',
-            occurredAt: now,
-            payload: {
-              agentA: a.id,
-              agentB: b.id,
-              race: selectedRace,
-              pairId: intimacyDecision.pairId,
-              worldMinutes,
-              voluntary: true,
-              mutualAttachment: signals.mutualAttachment,
-              mutualIntimacyInterest: signals.mutualIntimacyInterest,
-              childDecisionChosen: decision.chosen,
-            },
-          });
-        }
-
+          }
           if (!decision.chosen) continue;
+
           recordRaceFamilyChoiceV16(this.state, selectedRace, 'child');
           recordLocalFamilyChoiceV16(
             this.state,
@@ -13678,62 +14572,127 @@ export class WorldEngine {
             selectedRace,
             'child',
           );
+          this.stageEvent({
+            eventId: this.nextId('family-decision'),
+            worldId: this.state.id,
+            kind: 'agent.family.child_decision',
+            source: 'agent',
+            occurredAt: now,
+            payload: {
+              agentA: a.id,
+              agentB: b.id,
+              race: selectedRace,
+              pairId: decision.pairId,
+              worldMinutes,
+              voluntary: true,
+              mutualAttachment: signals.mutualAttachment,
+              mutualIntimacyInterest: signals.mutualIntimacyInterest,
+              mutualChildIntent: signals.mutualChildIntent,
+              familyReadiness: signals.familyReadiness,
+              physicallyCoPresent: true,
+              conceptionDeferred: false,
+              conceptionRequiresPhysicalRealization: true,
+            },
+          });
 
-        this.stageEvent({
-          eventId: this.nextId('family-decision'),
-          worldId: this.state.id,
-          kind: 'agent.family.child_decision',
-          source: 'agent',
-          occurredAt: now,
-          payload: {
-            agentA: a.id,
-            agentB: b.id,
+          // The mutual decision becomes persistent intent. Even if intimacy
+          // also happened in this same window, conception is deliberately not
+          // resolved until a later physical meeting. "Decided" is not
+          // "pregnant" and never becomes an instant birth.
+          lifecycles[pairId] = {
+            id: pairId,
+            pairId,
+            agentAId: a.id,
+            agentBId: b.id,
             race: selectedRace,
-            pairId: decision.pairId,
-            worldMinutes,
-            voluntary: true,
-            mutualAttachment: signals.mutualAttachment,
-            mutualIntimacyInterest: signals.mutualIntimacyInterest,
-            mutualChildIntent: signals.mutualChildIntent,
-            familyReadiness: signals.familyReadiness,
-          },
-        });
-
-        // Choosing a child, choosing intimacy, and an actual conception/birth
-        // are separate mechanisms. A child decision never forces intimacy.
-          if (!intimacyDecision.chosen) continue;
-
-        // This additional draw models physical realization; it is not another
-        // decision override.
-        const fertilitySupport = this.lawValue('fertility_support', 0.55);
-        const physicalRealizationChance = clamp01(
-          0.32 +
-            fertilitySupport * 0.34 +
-            Math.min(a.life.health, b.life.health) * 0.18 +
-            signals.familyReadiness * 0.14 +
-            ((hasGiftV20(this.state, a.id, 'fertility') || hasGiftV20(this.state, b.id, 'fertility')) ? 0.15 : 0),
-        );
-        const timeScale = Math.max(
-          0.2,
-          Math.min(
-            1,
-            (elapsedWorldMinutes / V15_SIMULATION_QUANTUM_WORLD_MINUTES),
-          ),
-        );
-          if (this.rng.next() >= physicalRealizationChance * timeScale) continue;
-
-          this.createChild(a, b, now);
-          recordRaceFamilyChoiceV16(this.state, selectedRace, 'birth');
-          recordLocalFamilyChoiceV16(
-            this.state,
             settlementId,
-            selectedRace,
-            'birth',
-          );
-          localBirths += 1;
+            meetingPlaceId: a.locationId,
+            stage: 'intending',
+            createdWorldMinute: worldMinutes,
+            lastAffirmedWorldMinute: worldMinutes,
+            lastPhysicalMeetingWorldMinute: worldMinutes,
+            ...(intimacyDecision.chosen
+              ? { lastIntimacyWorldMinute: worldMinutes }
+              : {}),
+          };
+          this.stageEvent({
+            eventId: this.nextId('family-intent'),
+            worldId: this.state.id,
+            kind: 'agent.family.intent_formed',
+            source: 'agent',
+            occurredAt: now,
+            payload: {
+              pairId,
+              agentA: a.id,
+              agentB: b.id,
+              race: selectedRace,
+              settlementId,
+              meetingPlaceId: a.locationId,
+              worldMinutes,
+              voluntary: true,
+            },
+          });
+
+          // Child intent and intimacy remain separate choices. When both were
+          // independently chosen during this real physical meeting, conception
+          // may physically occur in the same encounter; the child still needs
+          // a full gestation. If realization does not occur, the child intent
+          // persists and a later physical meeting can try again.
+          if (intimacyDecision.chosen) {
+            const fertilitySupport = this.lawValue('fertility_support', 0.55);
+            const physicalRealizationChance = clamp01(
+              0.32 +
+                fertilitySupport * 0.34 +
+                Math.min(a.life.health, b.life.health) * 0.18 +
+                signals.familyReadiness * 0.14 +
+                Math.max(
+                  giftMasteryV20(this.state, a.id, 'fertility'),
+                  giftMasteryV20(this.state, b.id, 'fertility'),
+                ) * 0.15,
+            );
+            if (this.rng.next() < physicalRealizationChance) {
+              lifecycles[pairId].stage = 'pregnant';
+              lifecycles[pairId].pregnantAgentId = mother.id;
+              lifecycles[pairId].conceptionWorldMinute = worldMinutes;
+              lifecycles[pairId].dueWorldMinute =
+                worldMinutes + FAMILY_GESTATION_WORLD_MINUTES;
+              lifecycles[pairId].expectedChildCount = choosePregnancyMultiplicityV22(
+                selectedRace,
+                Math.max(
+          giftMasteryV20(this.state, a.id, 'fertility'),
+          giftMasteryV20(this.state, b.id, 'fertility'),
+        ),
+                this.rng.next(),
+              );
+              practiceGiftV20(this.state, a.id, 'fertility', 0.0008);
+              practiceGiftV20(this.state, b.id, 'fertility', 0.0008);
+              pregnantAgentIds.add(mother.id);
+              this.stageEvent({
+                eventId: this.nextId('conception'),
+                worldId: this.state.id,
+                kind: 'agent.family.conceived',
+                source: 'world',
+                occurredAt: now,
+                payload: {
+                  pairId,
+                  agentA: a.id,
+                  agentB: b.id,
+                  pregnantAgentId: mother.id,
+                  conceptionPlaceId: mother.locationId,
+                  conceptionWorldMinute: worldMinutes,
+                  dueWorldMinute: lifecycles[pairId].dueWorldMinute,
+                  expectedChildCount: lifecycles[pairId].expectedChildCount ?? 1,
+                  voluntaryIntimacy: true,
+                  priorMutualChildIntent: true,
+                  samePhysicalMeetingAsChildDecision: true,
+                },
+              });
+            }
+          }
         }
       }
     }
+
   }
 
   private familyOpportunitySettlementId(
@@ -13794,6 +14753,8 @@ export class WorldEngine {
     const race = a.race ?? 'human';
     const profile = SAPIENT_RACE_LIFE_PROFILES_V16[race];
     if (
+      isImmortalV20(this.state, a.id) ||
+      isImmortalV20(this.state, b.id) ||
       !this.canFormIntimateRelationship(a, b) ||
       a.life.ageYears > profile.maximumReproductiveAge ||
       b.life.ageYears > profile.maximumReproductiveAge ||
@@ -13817,7 +14778,17 @@ export class WorldEngine {
     return true;
   }
 
-  private createChild(a: AgentState, b: AgentState, now: number): void {
+  private createChild(
+    a: AgentState,
+    b: AgentState,
+    now: number,
+    birthPlaceId?: string,
+    birthContext?: {
+      multiplicity: BirthMultiplicityV22;
+      birthOrder: number;
+      existingNames: Set<string>;
+    },
+  ): string {
     const sequence = this.state.population.nextAgentSequence;
     this.state.population.nextAgentSequence += 1;
     const childId = `epoch_${this.state.epoch ?? 1}_agent_${sequence}`;
@@ -13849,7 +14820,8 @@ export class WorldEngine {
       closeKinFoundingUnion && this.rng.next() < 0.22;
     const inheritedHealth = clamp01(
       blueprint.health -
-        (inheritedHealthRiskManifested ? this.rng.between(0.04, 0.16) : 0),
+        (inheritedHealthRiskManifested ? this.rng.between(0.04, 0.16) : 0) -
+        newbornMultipleHealthPenaltyV22(birthContext?.multiplicity ?? 1),
     );
     const nameChoice = chooseCulturalChildNameV18({
       worldId: this.state.id,
@@ -13858,15 +14830,22 @@ export class WorldEngine {
       sequence,
       parentA: a,
       parentB: b,
-      existingNames: new Set(
-        Object.values(this.state.agents).map((agent) =>
-          agent.name.toLocaleLowerCase('ru-RU'),
+      existingNames:
+        birthContext?.existingNames ??
+        new Set(
+          Object.values(this.state.agents).map((agent) =>
+            agent.name.toLocaleLowerCase('ru-RU'),
+          ),
         ),
-      ),
     });
     const name = nameChoice.name;
+    birthContext?.existingNames.add(name.toLocaleLowerCase('ru-RU'));
     const lifespanYears =
       blueprint.lifespanYears * SAPIENT_RACE_LIFE_PROFILES_V16[race].lifespanScale;
+    const physicalBirthPlaceId =
+      birthPlaceId && this.state.places[birthPlaceId]
+        ? birthPlaceId
+        : blueprint.homeId;
     const needs = { belonging: 0.88, purpose: 0.72 };
     const mind = createMindState(
       this.state.id,
@@ -13920,23 +14899,70 @@ export class WorldEngine {
       skills: { ...blueprint.skills },
       goal: { kind: 'recover', strength: 0.66, since: now },
       homeId: blueprint.homeId,
-      locationId: blueprint.homeId,
+      locationId: physicalBirthPlaceId,
       position: {
-        x: this.state.places[blueprint.homeId].mapX,
-        y: this.state.places[blueprint.homeId].mapY,
+        x: this.state.places[physicalBirthPlaceId].mapX,
+        y: this.state.places[physicalBirthPlaceId].mapY,
         layerId: 'surface',
       },
       lastMeaningfulEventAt: now,
     };
     this.state.agents[childId] = child;
     observeLocalPlacesV20(this.state, child);
+    // Gifts can coexist and intertwine, but inheritance is evaluated per gift.
+    // Immortality/Legacy/Marked/hero-composite are explicitly non-heritable.
+    const inheritedGiftKinds = new Set<DivineGiftKind>();
+    const inheritedBurdenKinds = new Set<DivineBurdenKind>();
     for (const parent of [a, b]) {
-      const legacy = this.state.v19?.divineAgency.byAgentId[parent.id]?.gifts.find(g => g.gift === 'legacy');
-      if (legacy?.inheritableGift && this.rng.next() < 0.25) applyDivineActionV19(this.state, {
-        operationId: `inherit:${childId}:${parent.id}`, agentId: childId, deityId: legacy.deityId,
-        deityName: legacy.deityName, gift: legacy.inheritableGift,
-        worldMinute: this.state.calendar.elapsedWorldMinutes, interpretationRoll: 0.5,
-      });
+      const divineProfile = this.state.v19?.divineAgency.byAgentId[parent.id];
+      if (!divineProfile) continue;
+      const legacy = divineProfile.gifts.find((grant) => grant.gift === 'legacy');
+      for (const grant of divineProfile.gifts) {
+        if (!giftIsHeritableV20(grant.gift) || inheritedGiftKinds.has(grant.gift)) continue;
+        const parentMastery = giftMasteryV20(this.state, parent.id, grant.gift);
+        const legacySelected = legacy?.inheritableGift === grant.gift;
+        if (this.rng.next() >= giftInheritanceChanceV20(grant.gift, parentMastery, legacySelected)) continue;
+        applyDivineActionV19(this.state, {
+          operationId: `inherit:${childId}:${parent.id}:${grant.gift}`,
+          agentId: childId,
+          deityId: grant.deityId,
+          deityName: grant.deityName,
+          gift: grant.gift,
+          worldMinute: this.state.calendar.elapsedWorldMinutes,
+          interpretationRoll: 0.5,
+        });
+        const inheritedGrant = this.state.v19?.divineAgency.byAgentId[childId]?.gifts.find(
+          (candidate) => candidate.gift === grant.gift,
+        );
+        if (inheritedGrant) {
+          inheritedGrant.mastery = inheritedGiftMasteryV20(grant.gift, parentMastery);
+          inheritedGrant.inheritedFromAgentId = parent.id;
+        }
+        inheritedGiftKinds.add(grant.gift);
+      }
+      // A lineage curse is inherited as a weakened burden. It changes external
+      // circumstances/body risk, never the descendant's choices or feelings.
+      for (const burden of divineProfile.burdens ?? []) {
+        if (!burden.lineage || inheritedBurdenKinds.has(burden.burden)) continue;
+        applyDivineActionV19(this.state, {
+          operationId: `lineage:${childId}:${parent.id}:${burden.burden}`,
+          agentId: childId,
+          deityId: burden.deityId,
+          deityName: burden.deityName,
+          burden: burden.burden,
+          lineageCurse: true,
+          worldMinute: this.state.calendar.elapsedWorldMinutes,
+          interpretationRoll: 0.5,
+        });
+        const inheritedBurden = this.state.v19?.divineAgency.byAgentId[childId]?.burdens?.find(
+          (candidate) => candidate.burden === burden.burden,
+        );
+        if (inheritedBurden) {
+          inheritedBurden.intensity = clamp01(Math.max(0.08, burden.intensity * 0.85));
+          inheritedBurden.inheritedFromAgentId = parent.id;
+        }
+        inheritedBurdenKinds.add(burden.burden);
+      }
     }
     ensureAgentV15State(this.state, child);
     ensureAgentV16State(this.state, child);
@@ -13945,7 +14971,7 @@ export class WorldEngine {
     ensureLifeRhythmV18(this.state, child);
     // A newborn receives its body and applied-knowledge record in the same
     // atomic birth operation. Reopening must never be the moment a body appears.
-    ensureEmbodiedWorldV21(this.state);
+    ensureAgentEmbodiedWorldV21(this.state, childId);
     this.v15World().familyAgencyByAgentId[childId] = {
       ...blueprint.protectedFamilyPersonality,
     };
@@ -13996,6 +15022,9 @@ export class WorldEngine {
         closeKinFoundingUnion,
         inheritedHealthRiskManifested,
         technicalSequenceKeptOnlyInAgentId: true,
+        birthPlaceId: physicalBirthPlaceId,
+        multipleBirthSize: birthContext?.multiplicity ?? 1,
+        birthOrder: birthContext?.birthOrder ?? 1,
       },
     });
     for (const parent of [a, b]) {
@@ -14013,6 +15042,7 @@ export class WorldEngine {
         relatedAgentIds: [childId, parent.id === a.id ? b.id : a.id],
       });
     }
+    return childId;
   }
 
   private advanceSapientRaces(now: number): void {
@@ -14384,8 +15414,16 @@ export class WorldEngine {
       )
       .sort((a, b) => b.threat - a.threat)[0];
     if (!monster) return;
-    if (!monster.isMonster && hasGiftV20(this.state, agent.id, 'beast_friend') && this.rng.next() < 0.7) return;
-    if (hasGiftV20(this.state, agent.id, 'premonition') && this.rng.next() < 0.18) return;
+    const beastFriend = giftMasteryV20(this.state, agent.id, 'beast_friend');
+    if (!monster.isMonster && beastFriend > 0 && this.rng.next() < 0.15 + beastFriend * 0.62) {
+      practiceGiftV20(this.state, agent.id, 'beast_friend', 0.0014, this.state.calendar.elapsedWorldMinutes);
+      return;
+    }
+    const premonition = giftMasteryV20(this.state, agent.id, 'premonition');
+    if (premonition > 0 && this.rng.next() < 0.03 + premonition * 0.2) {
+      practiceGiftV20(this.state, agent.id, 'premonition', 0.0012, this.state.calendar.elapsedWorldMinutes);
+      return;
+    }
 
     const placeDanger = this.state.places[agent.locationId]?.danger ?? 0.5;
     const safetyFactor = 1 - environment.safetySupport * 0.78;
@@ -14476,9 +15514,10 @@ export class WorldEngine {
         (agent.progression?.combatMastery ?? 0) * 0.16 +
         (agent.progression?.objectControlAuthority ?? 0) * 0.08 +
         environment.safetySupport * 0.08 +
-        (hasGiftV20(this.state, agent.id, 'agility') ? 0.18 : 0) +
-        (hasGiftV20(this.state, agent.id, 'keen_eye') ? 0.1 : 0) +
-        (hasGiftV20(this.state, agent.id, 'luck') ? 0.025 : 0),
+        giftMasteryV20(this.state, agent.id, 'agility') * 0.18 +
+        giftMasteryV20(this.state, agent.id, 'keen_eye') * 0.1 +
+        giftMasteryV20(this.state, agent.id, 'luck') * 0.03 -
+        burdenIntensityV22(this.state, agent.id, 'misfortune') * 0.04,
     );
     const counterCapacity = legendaryHero ? 1 : clamp01(
       agent.life.physiology.strength * 0.18 +
@@ -14491,6 +15530,9 @@ export class WorldEngine {
     );
 
     const escaped = !choseFight && this.rng.next() < evasion;
+    if (escaped && giftMasteryV20(this.state, agent.id, 'luck') > 0) {
+      practiceGiftV20(this.state, agent.id, 'luck', 0.0008, this.state.calendar.elapsedWorldMinutes);
+    }
     const repelled = choseFight && (legendaryHero || this.rng.next() < counterCapacity);
     const equipmentProtection = clamp01(
       activeWeapon.effectiveness * 0.2 + activeWeapon.reach * 0.12,
@@ -14705,10 +15747,14 @@ export class WorldEngine {
         (action === 'explore' ? 0.006 : 0) -
         agent.mind.emotions.grief * 0.002,
     );
+    const livingArchive = hasGiftV20(this.state, agent.id, 'living_archive');
+    const memoryProtection = livingArchive
+      ? 1
+      : giftMasteryV20(this.state, agent.id, 'perfect_memory');
     agent.mind.memoryCoherence = clamp01(
       agent.mind.memoryCoherence +
         (action === 'reflect' ? 0.006 : 0.001) -
-        agent.stress * (hasGiftV20(this.state, agent.id, 'perfect_memory') ? 0.000014 : 0.0014),
+        agent.stress * (livingArchive ? 0 : 0.0014 * (1 - 0.9 * memoryProtection)),
     );
     agent.mind.autonomy = clamp01(
       0.45 +
@@ -14734,6 +15780,18 @@ export class WorldEngine {
     agent: AgentState,
     allAgents: AgentState[],
   ): AgentState | undefined {
+    const activeFamilyIntent = this.familyRendezvousForAgent(agent.id);
+    if (activeFamilyIntent) {
+      const intendedPartner = this.familyPartnerFor(activeFamilyIntent, agent.id);
+      if (
+        intendedPartner &&
+        allAgents.some((candidate) => candidate.id === intendedPartner.id) &&
+        this.physicallyCoPresent(agent, intendedPartner) &&
+        this.canFormIntimateRelationship(agent, intendedPartner)
+      ) {
+        return intendedPartner;
+      }
+    }
     let best: { other: AgentState; score: number } | undefined;
     for (const other of allAgents) {
       if (
@@ -14760,7 +15818,7 @@ export class WorldEngine {
   }
 
   private performBond(a: AgentState, b: AgentState, now: number): void {
-    this.moveAgent(a, b.locationId);
+    if (!a.life.alive || !b.life.alive || a.movement || b.movement || a.locationId !== b.locationId) return;
     const key = relationshipKey(a.id, b.id);
     const relationship = this.relationshipFor(a, b, now);
     const accepted =
@@ -14772,6 +15830,12 @@ export class WorldEngine {
           b.mind.values.care * 0.12 -
           relationship.conflict * 0.25,
       );
+    if (this.relationshipKeysByResident) {
+      for (const id of [a.id, b.id]) {
+        const keys = this.relationshipKeysByResident.get(id) ?? new Set<string>();
+        keys.add(key); this.relationshipKeysByResident.set(id, keys);
+      }
+    }
     this.state.relationships[key] = {
       ...relationship,
       trust: clamp01(relationship.trust + (accepted ? 0.025 : 0.004)),
@@ -14784,6 +15848,51 @@ export class WorldEngine {
       ),
       updatedAt: now,
     };
+
+    // A successful in-person bond can establish a remembered rendezvous for
+    // another meeting. This is deliberately NOT consent to intimacy and NOT a
+    // child intention. It only gives both residents a causally acquired place
+    // where they may choose to meet again, avoiding remote conception while
+    // also preventing established couples from almost never crossing paths.
+    if (accepted && this.canFormIntimateRelationship(a, b)) {
+      const lifecycles = this.familyLifecycleMap();
+      if (!lifecycles[key]) {
+        const settlementId = this.familyOpportunitySettlementId(a, b);
+        if (settlementId) {
+          lifecycles[key] = {
+            id: key,
+            pairId: key,
+            agentAId: a.id,
+            agentBId: b.id,
+            race: a.race ?? 'human',
+            settlementId,
+            meetingPlaceId: a.locationId,
+            stage: 'meeting',
+            createdWorldMinute: this.state.calendar.elapsedWorldMinutes,
+            lastAffirmedWorldMinute: this.state.calendar.elapsedWorldMinutes,
+            lastPhysicalMeetingWorldMinute: this.state.calendar.elapsedWorldMinutes,
+          };
+          this.stageEvent({
+            eventId: this.nextId('family-meeting-planned'),
+            worldId: this.state.id,
+            kind: 'agent.family.meeting_planned',
+            source: 'agent',
+            occurredAt: now,
+            payload: {
+              pairId: key,
+              agentA: a.id,
+              agentB: b.id,
+              meetingPlaceId: a.locationId,
+              settlementId,
+              worldMinutes: this.state.calendar.elapsedWorldMinutes,
+              voluntary: true,
+              impliesChildIntent: false,
+              impliesIntimacyConsent: false,
+            },
+          });
+        }
+      }
+    }
     a.energy = clamp01(a.energy - 0.014);
     a.needs.belonging = clamp01(
       a.needs.belonging + (accepted ? 0.07 : -0.008),
@@ -14822,26 +15931,6 @@ export class WorldEngine {
   }
 
   private performPray(agent: AgentState, now: number): void {
-    const sacredPlaces = [
-      ...(this.placesByKind?.get('ruins') ?? []),
-      ...(this.placesByKind?.get('quiet_space') ?? []),
-    ];
-    let nearestSacred:
-      | { place: WorldPlace; distance: number }
-      | undefined;
-    for (const place of sacredPlaces) {
-      if (!(agent.knownPlaceIds ?? []).includes(place.id) || this.pathBetween(agent.locationId, place.id) === undefined) continue;
-      const distance = Math.hypot(
-        place.mapX - agent.position.x,
-        place.mapY - agent.position.y,
-      );
-      if (!nearestSacred || distance < nearestSacred.distance) {
-        nearestSacred = { place, distance };
-      }
-    }
-    const sacredPlaceId =
-      nearestSacred?.place.id ??
-      this.localPlace(agent, ['quiet_space'], agent.homeId);
     // Residents can speak to a deity where they actually are, including home.
     // A sacred place is optional, not a long mandatory journey before every prayer.
     const resonance =
@@ -14863,7 +15952,7 @@ export class WorldEngine {
       subject: this.rng.next(),
       deity: this.rng.next(),
       wording: this.rng.next(),
-    });
+    }, this.relationshipsForResident(agent.id));
     const prayerIsMeaningful = prayer.importance >= 0.62;
     if (prayerIsMeaningful) {
       this.stageMemory({
@@ -15007,16 +16096,15 @@ export class WorldEngine {
   }
 
   private performHelp(a: AgentState, b: AgentState, now: number): void {
-    this.moveAgent(a, b.locationId);
+    if (!a.life.alive || !b.life.alive || a.movement || b.movement || a.locationId !== b.locationId) return;
     const key = relationshipKey(a.id, b.id);
     const current = this.relationshipFor(a, b, now);
     if (current.trust > 0.25) {
       sharePlaceKnowledgeV20(this.state, a, b);
       sharePlaceKnowledgeV20(this.state, b, a);
     }
-    const canHeal =
-      hasDivineGiftV19(this.state, a.id, 'healing_touch') &&
-      b.life.health < 0.98;
+    const healingMastery = giftMasteryV20(this.state, a.id, 'healing_touch');
+    const canHeal = healingMastery > 0 && b.life.health < 0.995;
     const physicalCareNeed = bodyCareNeedV21(this.state, b.id);
     const offered = Math.min(0.065, Math.max(0, a.resources - 0.35), 0.72 - b.resources);
     const acceptance = clamp01(
@@ -15025,13 +16113,14 @@ export class WorldEngine {
         current.affinity * 0.18 +
         current.respect * 0.12 -
         current.conflict * 0.35 +
-        b.personality.sociability * 0.08,
+        b.personality.sociability * 0.08 -
+        burdenIntensityV22(this.state, a.id, 'discord') * 0.18,
     );
     const accepted =
       (offered > 0.005 || canHeal || physicalCareNeed > 0.02) &&
       this.rng.next() < acceptance;
     const healed = accepted && canHeal
-      ? Math.min(0.1, 1 - b.life.health)
+      ? Math.min(0.015 + healingMastery * 0.085, 1 - b.life.health)
       : 0;
     const beneficiaryBefore = b.resources + b.life.health;
     let ordinaryCareImprovement = 0;
@@ -15040,6 +16129,26 @@ export class WorldEngine {
       a.resources = clamp01(a.resources - offered);
       b.resources = clamp01(b.resources + offered);
       b.life.health = clamp01(b.life.health + healed);
+      if (healed > 0) {
+        // Mastery is semantic: low mastery can treat only light conditions;
+        // severe wounds/diseases become reachable only close to full mastery.
+        const body = this.state.v21?.bodiesByAgentId[b.id];
+        const treatableSeverity = 0.12 + healingMastery * 0.88;
+        const reduction = 0.015 + healingMastery * 0.12;
+        if (body) {
+          for (const wound of body.wounds) {
+            if (wound.severity <= treatableSeverity) {
+              wound.severity = clamp01(Math.max(0, wound.severity - reduction));
+            }
+          }
+          for (const disease of body.diseases) {
+            if (disease.severity <= treatableSeverity) {
+              disease.severity = clamp01(Math.max(0, disease.severity - reduction * 0.8));
+            }
+          }
+        }
+        practiceGiftV20(this.state, a.id, 'healing_touch', 0.001 + healed * 0.035);
+      }
       if (physicalCareNeed > 0.02) {
         ordinaryCareImprovement = recordCarePracticeV21(this.state, a, b).improvement;
       }
@@ -15211,7 +16320,7 @@ export class WorldEngine {
   }
 
   private interact(a: AgentState, b: AgentState, now: number): void {
-    if (a.locationId !== b.locationId) return;
+    if (!a.life.alive || !b.life.alive || a.movement || b.movement || a.locationId !== b.locationId) return;
     const key = relationshipKey(a.id, b.id);
     const current = this.relationshipFor(a, b, now);
 
@@ -15230,8 +16339,10 @@ export class WorldEngine {
         (priorMood - 0.35) * 0.5 +
         (compatibility - 0.5) * 0.24 +
         socialSkill * 0.08 +
-        (hasGiftV20(this.state, a.id, 'charm') ? 0.07 : 0) +
-        (hasGiftV20(this.state, a.id, 'eloquence') ? 0.05 : 0) -
+        giftMasteryV20(this.state, a.id, 'charm') * 0.07 +
+        giftMasteryV20(this.state, a.id, 'eloquence') * 0.05 -
+        (burdenIntensityV22(this.state, a.id, 'discord') +
+          burdenIntensityV22(this.state, b.id, 'discord')) * 0.055 -
         stressPenalty,
     );
 
@@ -15245,16 +16356,24 @@ export class WorldEngine {
     };
 
     this.state.relationships[key] = next;
+    if (sentiment > 0.18 && next.trust > 0.25) {
+      sharePlaceKnowledgeV20(this.state, a, b);
+      sharePlaceKnowledgeV20(this.state, b, a);
+      consultSettlementMap(this.state, a);
+      consultSettlementMap(this.state, b);
+    }
     // Visible evidence can provoke awe or fear without assigning a religion.
     if (hasGiftV20(this.state, a.id, 'marked')) {
       b.mind.emotions.awe = clamp01(b.mind.emotions.awe + 0.06);
       if (sentiment < 0) b.mind.emotions.fear = clamp01(b.mind.emotions.fear + 0.025);
     }
-    if (hasGiftV20(this.state, a.id, 'crowd_charisma')) {
-      for (const listener of this.agentsAtLocation(a.locationId).filter(person => person.id !== a.id && person.id !== b.id && !person.movement).slice(0, 12)) {
-        if (this.rng.next() < listener.personality.sociability * 0.45) {
+    const crowdCharisma = giftMasteryV20(this.state, a.id, 'crowd_charisma');
+    if (crowdCharisma > 0) {
+      const audienceLimit = Math.max(1, Math.round(2 + crowdCharisma * 10));
+      for (const listener of this.agentsAtLocation(a.locationId).filter(person => person.id !== a.id && person.id !== b.id && !person.movement).slice(0, audienceLimit)) {
+        if (this.rng.next() < listener.personality.sociability * (0.18 + crowdCharisma * 0.27)) {
           const heard = this.relationshipFor(a, listener, now);
-          heard.respect = clamp01(heard.respect + sentiment * 0.015);
+          heard.respect = clamp01(heard.respect + sentiment * (0.004 + crowdCharisma * 0.011));
         }
       }
     }
@@ -15369,7 +16488,7 @@ export class WorldEngine {
           b.mind.values.tradition * 0.18 +
           next.trust * 0.18 +
           b.mind.emotions.awe * 0.12 +
-          (hasDivineGiftV19(this.state, a.id, 'crowd_charisma') ? 0.28 : 0),
+          giftMasteryV20(this.state, a.id, 'crowd_charisma') * 0.28,
       );
       const listenerMoved = this.rng.next() < listenerInterpretationChance;
       recordVoluntaryDivineContactShareV19(
@@ -15467,6 +16586,21 @@ export class WorldEngine {
     this.recordRelationshipEvent(next, sentiment, now);
   }
 
+  private relationshipsForResident(agentId: string): RelationshipState[] {
+    if (!this.relationshipKeysByResident) {
+      const index = new Map<string, Set<string>>();
+      for (const [key, relationship] of Object.entries(this.state.relationships)) {
+        for (const id of [relationship.agentA, relationship.agentB]) {
+          const keys = index.get(id) ?? new Set<string>();
+          keys.add(key); index.set(id, keys);
+        }
+      }
+      this.relationshipKeysByResident = index;
+    }
+    return [...(this.relationshipKeysByResident.get(agentId) ?? [])]
+      .map(key => this.state.relationships[key]).filter(Boolean);
+  }
+
   private relationshipFor(a: AgentState, b: AgentState, now: number): RelationshipState {
     const key = relationshipKey(a.id, b.id);
     const ids = [a.id, b.id].sort();
@@ -15488,6 +16622,13 @@ export class WorldEngine {
     sentiment: number,
     now: number,
   ): void {
+    if (this.relationshipKeysByResident) {
+      const key = relationshipKey(relationship.agentA, relationship.agentB);
+      for (const id of [relationship.agentA, relationship.agentB]) {
+        const keys = this.relationshipKeysByResident.get(id) ?? new Set<string>();
+        keys.add(key); this.relationshipKeysByResident.set(id, keys);
+      }
+    }
     const pair = `${relationship.agentA}::${relationship.agentB}`;
     let stableSlot = 0;
     for (let index = 0; index < pair.length; index += 1) {
@@ -15532,12 +16673,12 @@ export class WorldEngine {
     if (agent.locationId === locationId && !agent.movement) return;
 
     if (availableBoat(this.state, agent) || Object.values(this.state.v15?.items ?? {}).some(i=>i.boat?.journey?.originPlaceId===agent.locationId)) {
-      const direct = this.pathBetween(agent.locationId, locationId);
+      const direct = residentKnownPath(this.state, agent, locationId);
       const waterShortcut = !direct || direct.length > 3;
       if (waterShortcut && startBoatTravel(this.state, agent, locationId, agent.lastDecision?.action ?? 'walk',
           this.rng.next(), (a,b)=>this.pathBetween(a,b)!==undefined)) return;
     }
-    const path = this.pathBetween(agent.locationId, locationId);
+    const path = residentKnownPath(this.state, agent, locationId);
     if (!path || path.slice(1).some(id => !mayKnowPlaceV20(agent, id, this.state))) {
       // Water and disconnected territory are physical boundaries. A resident
       // never receives an implicit teleport just because an action chose it.
@@ -15591,8 +16732,10 @@ export class WorldEngine {
         const resident = this.state.agents[arrival.agentId];
         this.moveResidentLocationIndex(resident, arrival.fromPlaceId, arrival.toPlaceId);
         this.routePathCache?.clear();
+        invalidateResidentNavigation(this.state);
         if (arrival.discovered && this.state.geography) this.state.geography.revision++;
         observeLocalPlacesV20(this.state, resident);
+        recordExplorationArrival(this.state, resident);
         this.recordAgentEvent(resident, this.state.now, 'agent.boat.arrived', {...arrival});
         if (arrival.onwardPlaceId && resident.life.alive) this.moveAgent(resident, arrival.onwardPlaceId);
       }
@@ -15673,8 +16816,10 @@ export class WorldEngine {
             if (route) route.completedTraversals = (route.completedTraversals ?? 0) + 1;
           }
           agent.movement = undefined;
+          recordResidentRouteArrival(this.state, agent, movement.routeIds ?? [], arrivalMinute);
           noteLibraryArrival(this.state, agent, arrivalMinute);
           observeLocalPlacesV20(this.state, agent);
+          recordExplorationArrival(this.state, agent);
         }
         continue;
       }
@@ -15691,12 +16836,13 @@ export class WorldEngine {
       this.state.settlements,
       0,
     );
-    repairCompactSettlementLayout(this.state);
-    this.state.routes = rebuildWorldRoutes(
-      this.state.places,
-      this.state.routes,
-    );
+    // The geometry migration already rebuilds and reconciles routes when it
+    // changes physical places. Never perform that expensive work twice.
+    if (!repairCompactSettlementLayout(this.state)) {
+      this.state.routes = rebuildWorldRoutes(this.state.places, this.state.routes);
+    }
     this.routePathCache?.clear();
+    invalidateResidentNavigation(this.state);
   }
 
   private lawValue(

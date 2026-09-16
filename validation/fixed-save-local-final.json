@@ -1,0 +1,13 @@
+{
+  "root": "/mnt/data/js_current",
+  "openMs": 4366.166300000001,
+  "elapsedMs": 12451.147877000001,
+  "cpuMs": 18448.701,
+  "rssMiB": 729.59765625,
+  "batches": 1,
+  "living": 529,
+  "humans": 89,
+  "familyStates": 0,
+  "pregnant": 0,
+  "intending": 0
+}

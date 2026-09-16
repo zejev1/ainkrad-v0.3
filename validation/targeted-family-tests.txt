@@ -1,0 +1,10 @@
+PASS source TypeScript typecheck (tsc 5.8.3)
+PASS new formal family lifecycle test source typechecks with a local vitest declaration shim
+PASS physical meeting -> independent child/intimacy choices -> pregnancy -> gestation -> birth
+PASS existing child intention cannot conceive while parents are physically apart
+PASS later physical reunion can conceive
+PASS newborn appears at mother's physical birth place; home remains separate
+PASS old save without familyLifecycleByPairId is repaired additively without resetting agents/RNG
+PASS fixed 529-resident save 50y->51y completed without material compute regression versus prior rework
+
+NOTE: npm registry was unreachable in this isolated container, so the complete Vitest/Vite commands could not be re-run locally after these final family-only changes. The prior rework tree (before these 3 source files + 1 test were changed) had 397/397 tests, typecheck and production build green. No GitHub push was made to obtain remote CI for the local final tree, per user instruction.

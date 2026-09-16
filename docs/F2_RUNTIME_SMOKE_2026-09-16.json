@@ -1,0 +1,18 @@
+{
+  "ok": true,
+  "distances": [
+    15454.562512226405,
+    15454.562512226405,
+    15454.5625122264
+  ],
+  "rulidShore": {
+    "x": 93.2193031975068,
+    "y": -2.682202896103263
+  },
+  "healingMastery": 0.4158279443040184,
+  "nextVessel": "sailing_boat",
+  "quadrupletMortality": 0.5,
+  "fiveYearSmokeMs": 7430.807905,
+  "fiveYearLiving": 36,
+  "fiveYearHumans": 36
+}

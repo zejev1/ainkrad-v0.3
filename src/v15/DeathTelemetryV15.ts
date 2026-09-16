@@ -1,6 +1,7 @@
 export type CanonicalDeathCauseV15 =
   | 'old_age'
   | 'illness'
+  | 'childbirth'
   | 'deprivation'
   | 'catastrophe'
   | 'wildlife'
@@ -78,6 +79,7 @@ export interface DeathTelemetryRecordV15 {
     | 'lifespan_exhausted'
     | 'old_age_probability'
     | 'health_failure'
+    | 'childbirth_complication'
     | 'resource_deprivation'
     | 'authorized_catastrophe'
     | 'wildlife_encounter'
@@ -227,6 +229,10 @@ export function buildDeathTelemetryV15(
     humanSummary = lifespanTriggered
       ? `${context.name} умер(ла) от старости: возраст достиг расчётной продолжительности жизни.`
       : `${context.name} умер(ла) от старости во время возрастного риска конца жизни.`;
+  } else if (cause === 'childbirth') {
+    primaryMechanism = 'childbirth_complication';
+    diagnosticFactors.push('canonicalRule=delivery_multiplicity_risk');
+    humanSummary = `${context.name} умер(ла) от осложнения во время родов.`;
   } else if (cause === 'deprivation') {
     primaryMechanism = 'resource_deprivation';
     diagnosticFactors.push('canonicalRule=health<=0.015 && resources<0.08');
@@ -328,6 +334,7 @@ export interface MortalityClusterSummaryV15 {
 const CANONICAL_CAUSES: readonly CanonicalDeathCauseV15[] = [
   'old_age',
   'illness',
+  'childbirth',
   'deprivation',
   'catastrophe',
   'wildlife',
@@ -415,6 +422,7 @@ export interface PopulationMortalityReportV15 {
 const CAUSE_RU: Record<CanonicalDeathCauseV15, string> = {
   old_age: 'старость',
   illness: 'критическое ухудшение здоровья',
+  childbirth: 'осложнение при родах',
   deprivation: 'истощение / нехватка ресурсов',
   catastrophe: 'катастрофа',
   wildlife: 'дикое животное',

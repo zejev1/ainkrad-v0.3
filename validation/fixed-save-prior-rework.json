@@ -1,0 +1,13 @@
+{
+  "root": "/mnt/data/js_baseline",
+  "openMs": 4226.34555,
+  "elapsedMs": 12391.728707,
+  "cpuMs": 18428.536,
+  "rssMiB": 796.875,
+  "batches": 1,
+  "living": 543,
+  "humans": 88,
+  "familyStates": 0,
+  "pregnant": 0,
+  "intending": 0
+}

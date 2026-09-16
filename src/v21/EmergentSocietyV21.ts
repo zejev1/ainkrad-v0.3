@@ -1,3 +1,4 @@
+import { personalEarningRetentionV22 } from '../v20/DivineGiftsV20';
 import { ensureSettlementEconomyV16 } from '../v16/SocietyFoundationV16';
 import type {
   AgentActionKind,
@@ -537,8 +538,14 @@ export function marketUnitPriceV21(
   settlementId: string,
   commodity: V19CommodityKind,
 ): number {
-  const society = repairEmergentSocietyV21(world, economy);
   const key = marketKey(settlementId, commodity);
+  const cached = economy.emergentSociety?.marketPricesByKey?.[key];
+  if (cached && world.calendar.elapsedWorldMinutes - cached.updatedWorldMinute < WORLD_MINUTES_PER_YEAR / 12) {
+    // A cached price is a read, not a reason to repair every resident's whole
+    // education/contract history for every comparator in a commodity sort.
+    return cached.unitPrice ?? BASE_PRICE[commodity];
+  }
+  const society = repairEmergentSocietyV21(world, economy);
   const old = society.marketPricesByKey[key];
   if (
     !old ||
@@ -1106,8 +1113,9 @@ export function fulfillContractFromLivedActionV21(
       market.tradeVolume += paidCoin;
     }
     settlementEconomy.stocks.food -= paidFood;
-    wallet.coinBalance += paidCoin;
-    wallet.totalCoinEarned += paidCoin;
+    const retainedCoin = paidCoin * personalEarningRetentionV22(world, agent.id);
+    wallet.coinBalance += retainedCoin;
+    wallet.totalCoinEarned += retainedCoin;
     agent.resources = clamp01(agent.resources + paidFood * 0.72);
     updateSocialRank(
       economy,

@@ -26,6 +26,7 @@ import {
 import type {
   DivineContactKind,
   DivineGiftKind,
+  DivineBurdenKind,
 } from '../world/types';
 import type { V19DivineInterpretation } from '../v19/types';
 
@@ -99,6 +100,7 @@ type LiveWorldWorkerPayload =
       agentId: string;
       authorized: boolean;
       giftGranted?: boolean;
+      burdenApplied?: boolean;
       contactRecorded?: boolean;
       interpretation?: V19DivineInterpretation;
       residentResponse?: string;
@@ -135,6 +137,8 @@ interface PrivateDivineAudienceCommand {
   message?: string;
   gift?: DivineGiftKind;
   inheritanceGift?: DivineGiftKind;
+  burden?: DivineBurdenKind;
+  lineageCurse?: boolean;
   contactKind?: DivineContactKind;
   relatedPrayerId?: string;
 }
@@ -262,6 +266,7 @@ async function grantPrivateDivineAudience(
     ...(request.gift ? { gift: request.gift } : {}),
     ...(request.contactKind ? { contactKind: request.contactKind } : {}),
     ...(request.inheritanceGift ? { inheritanceGift: request.inheritanceGift } : {}),
+    ...(request.burden ? { burden: request.burden, lineageCurse: Boolean(request.lineageCurse) } : {}),
     ...(request.relatedPrayerId
       ? { relatedPrayerId: request.relatedPrayerId }
       : {}),
@@ -274,6 +279,9 @@ async function grantPrivateDivineAudience(
   const contact = profile?.contacts.find(
     (candidate) => candidate.id === `contact:${request.requestId}`,
   );
+  const burden = profile?.burdens?.find(
+    (candidate) => candidate.id === `burden:${request.requestId}`,
+  );
   const result = {
     type: 'divine_audience_result',
     protocolVersion: FRAME_PROTOCOL_VERSION, clockRevision: appliedClockRevision,
@@ -283,12 +291,13 @@ async function grantPrivateDivineAudience(
     ...(record.authorized
       ? {
           giftGranted: Boolean(gift),
+          burdenApplied: Boolean(burden),
           contactRecorded: Boolean(contact),
           ...(contact?.interpretation || gift?.interpretation
             ? { interpretation: contact?.interpretation ?? gift?.interpretation }
             : {}),
-          ...(contact?.residentResponse || gift?.residentResponse
-            ? { residentResponse: contact?.residentResponse ?? gift?.residentResponse }
+          ...(contact?.residentResponse || gift?.residentResponse || burden?.residentResponse
+            ? { residentResponse: contact?.residentResponse ?? gift?.residentResponse ?? burden?.residentResponse }
             : {}),
         }
       : {}),

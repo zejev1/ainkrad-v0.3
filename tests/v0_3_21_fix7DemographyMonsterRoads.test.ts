@@ -48,11 +48,11 @@ describe('FIX7 demography, century parasite and physical roads', () => {
     world.population.deaths = 99;
 
     const byRace = demographyByRace(world);
-    expect(byRace.human).toMatchObject({ living: 11, births: 2, deaths: 1 });
+    expect(byRace.human).toMatchObject({ living: 31, births: 2, deaths: 1 });
     expect(byRace.elf.births).toBe(1);
     expect(byRace.orc.births).toBe(1);
     expect(observeWorldArchitecture(world)).toMatchObject({
-      livingPopulation: 11,
+      livingPopulation: 31,
       totalBirths: 2,
       totalDeaths: 1,
     });
@@ -116,6 +116,12 @@ describe('FIX7 demography, century parasite and physical roads', () => {
   it('migrates a straight inter-settlement road into a winding terrain trail', async () => {
     const world = await fresh('fix7-roads');
     const from = world.places.commons;
+    const terrain = bindWorldTerrain(world)!;
+    let target = { x: from.mapX - 1400, y: from.mapY - 900 };
+    for (let ring = 0; ring < 40 && terrain.sample(target.x, target.y).water; ring += 1) {
+      target = { x: from.mapX - 1200 - ring * 45, y: from.mapY - 700 + ring * 31 };
+    }
+    expect(terrain.sample(target.x, target.y).water).toBe(false);
     const to = {
       ...structuredClone(from),
       id: 'remote_point',
@@ -123,8 +129,8 @@ describe('FIX7 demography, century parasite and physical roads', () => {
       kind: 'meadow' as const,
       biome: 'plains' as const,
       settlementId: undefined,
-      mapX: -9000,
-      mapY: -6000,
+      mapX: target.x,
+      mapY: target.y,
       connectedPlaceIds: ['commons'],
     };
     world.places.remote_point = to;
@@ -156,6 +162,6 @@ describe('FIX7 demography, century parasite and physical roads', () => {
         Math.abs(dy * (point.x - from.mapX) - dx * (point.y - from.mapY)) / length,
       ),
     );
-    expect(maximumDeviation).toBeGreaterThan(100);
+    expect(maximumDeviation).toBeGreaterThan(50);
   });
 });

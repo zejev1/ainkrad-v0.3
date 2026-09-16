@@ -1,0 +1,400 @@
+2026-09-16T19:54:03.3158745Z Current runner version: '2.337.0'
+2026-09-16T19:54:03.3176141Z ##[group]Runner Image Provisioner
+2026-09-16T19:54:03.3176674Z Hosted Compute Agent
+2026-09-16T19:54:03.3177012Z Version: 20260828.587
+2026-09-16T19:54:03.3177419Z Commit: abac92662cab4cc7352de4f9f9d2e2419aad9c29
+2026-09-16T19:54:03.3177889Z Build Date: 2026-08-28T16:44:25Z
+2026-09-16T19:54:03.3178301Z Worker ID: {3c14c049-f464-4dd8-ad1d-76bb9330f153}
+2026-09-16T19:54:03.3178722Z Azure Region: westus3
+2026-09-16T19:54:03.3179055Z ##[endgroup]
+2026-09-16T19:54:03.3179877Z ##[group]Operating System
+2026-09-16T19:54:03.3180251Z Ubuntu
+2026-09-16T19:54:03.3180547Z 24.04.5
+2026-09-16T19:54:03.3180888Z LTS
+2026-09-16T19:54:03.3181188Z ##[endgroup]
+2026-09-16T19:54:03.3181524Z ##[group]Runner Image
+2026-09-16T19:54:03.3181939Z Image: ubuntu-24.04
+2026-09-16T19:54:03.3182261Z Version: 20260907.300.1
+2026-09-16T19:54:03.3183261Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260907.300/images/ubuntu/Ubuntu2404-Readme.md
+2026-09-16T19:54:03.3184140Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260907.300
+2026-09-16T19:54:03.3184708Z ##[endgroup]
+2026-09-16T19:54:03.3185346Z ##[group]GITHUB_TOKEN Permissions
+2026-09-16T19:54:03.3186704Z Contents: read
+2026-09-16T19:54:03.3187009Z Metadata: read
+2026-09-16T19:54:03.3187627Z ##[endgroup]
+2026-09-16T19:54:03.3188877Z Secret source: Actions
+2026-09-16T19:54:03.3189456Z Cache mode: write
+2026-09-16T19:54:03.3189857Z Prepare workflow directory
+2026-09-16T19:54:03.3382317Z Prepare all required actions
+2026-09-16T19:54:03.3412243Z Getting action download info
+2026-09-16T19:54:03.6853911Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-09-16T19:54:03.8261246Z Download action repository 'actions/setup-node@v4' (SHA:49933ea5288caeca8642d1e84afbd3f7d6820020)
+2026-09-16T19:54:03.9981687Z Complete job name: check
+2026-09-16T19:54:04.0413581Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-09-16T19:54:04.0418542Z ##[group]Run actions/checkout@v4
+2026-09-16T19:54:04.0418879Z with:
+2026-09-16T19:54:04.0419113Z   repository: zejev1/ainkrad-v0.3
+2026-09-16T19:54:04.0421202Z   token: ***
+2026-09-16T19:54:04.0421419Z   ssh-strict: true
+2026-09-16T19:54:04.0421646Z   ssh-user: git
+2026-09-16T19:54:04.0421878Z   persist-credentials: true
+2026-09-16T19:54:04.0422130Z   clean: true
+2026-09-16T19:54:04.0422363Z   sparse-checkout-cone-mode: true
+2026-09-16T19:54:04.0422746Z   fetch-depth: 1
+2026-09-16T19:54:04.0422968Z   fetch-tags: false
+2026-09-16T19:54:04.0423202Z   show-progress: true
+2026-09-16T19:54:04.0423436Z   lfs: false
+2026-09-16T19:54:04.0423679Z   submodules: false
+2026-09-16T19:54:04.0423915Z   set-safe-directory: true
+2026-09-16T19:54:04.0424180Z   allow-unsafe-pr-checkout: false
+2026-09-16T19:54:04.0424515Z ##[endgroup]
+2026-09-16T19:54:04.1061106Z Syncing repository: zejev1/ainkrad-v0.3
+2026-09-16T19:54:04.1062367Z ##[group]Getting Git version info
+2026-09-16T19:54:04.1062932Z Working directory is '/home/runner/work/ainkrad-v0.3/ainkrad-v0.3'
+2026-09-16T19:54:04.1063519Z [command]/usr/bin/git version
+2026-09-16T19:54:04.1154275Z git version 2.55.0
+2026-09-16T19:54:04.1156857Z ##[endgroup]
+2026-09-16T19:54:04.1169617Z Temporarily overriding HOME='/home/runner/work/_temp/8745aac4-ee72-4cf9-bca6-a9df1380d821' before making global git config changes
+2026-09-16T19:54:04.1170882Z Adding repository directory to the temporary git global config as a safe directory
+2026-09-16T19:54:04.1174301Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/ainkrad-v0.3/ainkrad-v0.3
+2026-09-16T19:54:04.1218162Z Deleting the contents of '/home/runner/work/ainkrad-v0.3/ainkrad-v0.3'
+2026-09-16T19:54:04.1221665Z ##[group]Initializing the repository
+2026-09-16T19:54:04.1225265Z [command]/usr/bin/git init /home/runner/work/ainkrad-v0.3/ainkrad-v0.3
+2026-09-16T19:54:04.1611813Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-09-16T19:54:04.1612451Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-09-16T19:54:04.1613281Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-09-16T19:54:04.1613881Z hint: call:
+2026-09-16T19:54:04.1614201Z hint:
+2026-09-16T19:54:04.1614625Z hint: 	git config --global init.defaultBranch <name>
+2026-09-16T19:54:04.1614948Z hint:
+2026-09-16T19:54:04.1615393Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-09-16T19:54:04.1616154Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-09-16T19:54:04.1616616Z hint:
+2026-09-16T19:54:04.1616932Z hint: 	git branch -m <name>
+2026-09-16T19:54:04.1617222Z hint:
+2026-09-16T19:54:04.1617546Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-09-16T19:54:04.1618123Z Initialized empty Git repository in /home/runner/work/ainkrad-v0.3/ainkrad-v0.3/.git/
+2026-09-16T19:54:04.1621433Z [command]/usr/bin/git remote add origin https://github.com/zejev1/ainkrad-v0.3
+2026-09-16T19:54:04.1662861Z ##[endgroup]
+2026-09-16T19:54:04.1663288Z ##[group]Disabling automatic garbage collection
+2026-09-16T19:54:04.1665392Z [command]/usr/bin/git config --local gc.auto 0
+2026-09-16T19:54:04.1692318Z ##[endgroup]
+2026-09-16T19:54:04.1693195Z ##[group]Setting up auth
+2026-09-16T19:54:04.1697859Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-09-16T19:54:04.1726297Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-09-16T19:54:04.2594966Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-09-16T19:54:04.2625604Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-09-16T19:54:04.2793041Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-09-16T19:54:04.2820985Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-09-16T19:54:04.2993392Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-09-16T19:54:04.3025777Z ##[endgroup]
+2026-09-16T19:54:04.3026338Z ##[group]Fetching the repository
+2026-09-16T19:54:04.3034768Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +2507067f17ad0eb634dbe3711f885a6fafc07ce8:refs/remotes/origin/ci/f2-candidate-20260916
+2026-09-16T19:54:05.5495005Z From https://github.com/zejev1/ainkrad-v0.3
+2026-09-16T19:54:05.5496618Z  * [new ref]         2507067f17ad0eb634dbe3711f885a6fafc07ce8 -> origin/ci/f2-candidate-20260916
+2026-09-16T19:54:05.5499676Z ##[endgroup]
+2026-09-16T19:54:05.5500684Z ##[group]Determining the checkout info
+2026-09-16T19:54:05.5501803Z ##[endgroup]
+2026-09-16T19:54:05.5505509Z [command]/usr/bin/git sparse-checkout disable
+2026-09-16T19:54:05.5548173Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-09-16T19:54:05.5573066Z ##[group]Checking out the ref
+2026-09-16T19:54:05.5575553Z [command]/usr/bin/git checkout --progress --force -B ci/f2-candidate-20260916 refs/remotes/origin/ci/f2-candidate-20260916
+2026-09-16T19:54:05.5853218Z Switched to a new branch 'ci/f2-candidate-20260916'
+2026-09-16T19:54:05.5857702Z branch 'ci/f2-candidate-20260916' set up to track 'origin/ci/f2-candidate-20260916'.
+2026-09-16T19:54:05.5862806Z ##[endgroup]
+2026-09-16T19:54:05.5898519Z [command]/usr/bin/git log -1 --format=%H
+2026-09-16T19:54:05.5920114Z 2507067f17ad0eb634dbe3711f885a6fafc07ce8
+2026-09-16T19:54:05.6103546Z ##[group]Run cat \
+2026-09-16T19:54:05.6104247Z cat \
+2026-09-16T19:54:05.6104854Z   ci/f2-patch/part-00.b64 \
+2026-09-16T19:54:05.6105623Z   ci/f2-patch/part-01.b64 \
+2026-09-16T19:54:05.6106603Z   ci/f2-patch/part-02a.b64 \
+2026-09-16T19:54:05.6107377Z   ci/f2-patch/part-02b.b64 \
+2026-09-16T19:54:05.6108185Z   ci/f2-patch/part-02c1-fixed.b64 \
+2026-09-16T19:54:05.6109046Z   ci/f2-patch/part-02c2-fixed.b64 \
+2026-09-16T19:54:05.6109870Z   ci/f2-patch/part-02d.b64 \
+2026-09-16T19:54:05.6110675Z   ci/f2-patch/part-02e1-fixed.b64 \
+2026-09-16T19:54:05.6111528Z   ci/f2-patch/part-02e2-fixed.b64 \
+2026-09-16T19:54:05.6112354Z   ci/f2-patch/part-02f.b64 \
+2026-09-16T19:54:05.6113275Z   ci/f2-patch/part-02g1-fixed.b64 \
+2026-09-16T19:54:05.6114118Z   ci/f2-patch/part-02g2-fixed.b64 \
+2026-09-16T19:54:05.6115003Z   ci/f2-patch/part-02h1.b64 \
+2026-09-16T19:54:05.6115821Z   ci/f2-patch/part-02h2-fixed.b64 \
+2026-09-16T19:54:05.6116656Z   ci/f2-patch/part-02i.b64 \
+2026-09-16T19:54:05.6117446Z   > /tmp/f2.patch.gz.b64
+2026-09-16T19:54:05.6118925Z echo 'e0c3d02d3986d9c92a145d4bce1c6e91855da8a38e5f9901bb1f29f310744998  /tmp/f2.patch.gz.b64' | sha256sum -c -
+2026-09-16T19:54:05.6120566Z base64 -d /tmp/f2.patch.gz.b64 > /tmp/f2.patch.gz
+2026-09-16T19:54:05.6122136Z echo 'eed1c9ba583bd564b1b1d67a56d61e1ab5bbd910044076454d64668451c42469  /tmp/f2.patch.gz' | sha256sum -c -
+2026-09-16T19:54:05.6123857Z gunzip -c /tmp/f2.patch.gz > /tmp/f2.patch
+2026-09-16T19:54:05.6125334Z echo '6676640a5ca9e18bf3dd50124aadd68ea87d049446d0e05116fb9d297fb53be9  /tmp/f2.patch' | sha256sum -c -
+2026-09-16T19:54:05.6126758Z git apply --check /tmp/f2.patch
+2026-09-16T19:54:05.6127541Z git apply /tmp/f2.patch
+2026-09-16T19:54:05.6128245Z 
+2026-09-16T19:54:05.6129085Z cat ci/f2-supplement/part-{00..11}.b64 > /tmp/f2-supplement.tar.gz.b64
+2026-09-16T19:54:05.6130897Z echo '70c5e86bbdc71c476164154e42845069ce729d0d5e44ade13846195310f1db9b  /tmp/f2-supplement.tar.gz.b64' | sha256sum -c -
+2026-09-16T19:54:05.6132762Z base64 -d /tmp/f2-supplement.tar.gz.b64 > /tmp/f2-supplement.tar.gz
+2026-09-16T19:54:05.6134469Z echo '76bc4bb1e172466715fef2d3045f691697ec9972a0571b30769d5f929db9e178  /tmp/f2-supplement.tar.gz' | sha256sum -c -
+2026-09-16T19:54:05.6135967Z tar -xzf /tmp/f2-supplement.tar.gz
+2026-09-16T19:54:05.6136695Z 
+2026-09-16T19:54:05.6138063Z for patch in ci/f2-fix-overlay.patch ci/f2-fix-overlay2.patch ci/f2-fix-overlay3.patch ci/f2-fix-overlay4.patch ci/f2-fix-overlay5.patch; do
+2026-09-16T19:54:05.6139633Z   printf '\n' >> "$patch"
+2026-09-16T19:54:05.6140340Z   git apply --check "$patch"
+2026-09-16T19:54:05.6141071Z   git apply "$patch"
+2026-09-16T19:54:05.6141695Z done
+2026-09-16T19:54:05.6174659Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-09-16T19:54:05.6175485Z ##[endgroup]
+2026-09-16T19:54:05.6303660Z /tmp/f2.patch.gz.b64: OK
+2026-09-16T19:54:05.6330727Z /tmp/f2.patch.gz: OK
+2026-09-16T19:54:05.6377014Z /tmp/f2.patch: OK
+2026-09-16T19:54:05.6579635Z /tmp/f2-supplement.tar.gz.b64: OK
+2026-09-16T19:54:05.6599440Z /tmp/f2-supplement.tar.gz: OK
+2026-09-16T19:54:05.7014300Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-09-16T19:54:05.7017406Z ##[group]Run actions/setup-node@v4
+2026-09-16T19:54:05.7018038Z with:
+2026-09-16T19:54:05.7018518Z   node-version: 22
+2026-09-16T19:54:05.7019040Z   always-auth: false
+2026-09-16T19:54:05.7019716Z   check-latest: false
+2026-09-16T19:54:05.7025283Z   token: ***
+2026-09-16T19:54:05.7025785Z ##[endgroup]
+2026-09-16T19:54:05.8101657Z Found in cache @ /opt/hostedtoolcache/node/22.23.2/x64
+2026-09-16T19:54:05.8104650Z (node:2076) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-09-16T19:54:05.8106836Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-09-16T19:54:05.8108613Z ##[group]Environment details
+2026-09-16T19:54:06.6490051Z node: v22.23.2
+2026-09-16T19:54:06.6490430Z npm: 10.9.8
+2026-09-16T19:54:06.6490647Z yarn: 1.22.22
+2026-09-16T19:54:06.6492099Z ##[endgroup]
+2026-09-16T19:54:06.6605663Z ##[group]Run npm ci --no-audit --no-fund
+2026-09-16T19:54:06.6605894Z npm ci --no-audit --no-fund
+2026-09-16T19:54:06.6645171Z shell: /usr/bin/bash -e {0}
+2026-09-16T19:54:06.6645352Z ##[endgroup]
+2026-09-16T19:54:08.4023088Z 
+2026-09-16T19:54:08.4028271Z added 57 packages in 2s
+2026-09-16T19:54:08.4387229Z ##[group]Run npm run typecheck
+2026-09-16T19:54:08.4387419Z npm run typecheck
+2026-09-16T19:54:08.4417072Z shell: /usr/bin/bash -e {0}
+2026-09-16T19:54:08.4417218Z ##[endgroup]
+2026-09-16T19:54:08.5063365Z 
+2026-09-16T19:54:08.5063968Z > ainkrad-v0-3@0.3.22-f2 typecheck
+2026-09-16T19:54:08.5064372Z > tsc -p tsconfig.json
+2026-09-16T19:54:08.5064512Z 
+2026-09-16T19:54:11.2815277Z ##[group]Run npm run test
+2026-09-16T19:54:11.2815457Z npm run test
+2026-09-16T19:54:11.2845516Z shell: /usr/bin/bash -e {0}
+2026-09-16T19:54:11.2845670Z ##[endgroup]
+2026-09-16T19:54:11.3441474Z 
+2026-09-16T19:54:11.3442214Z > ainkrad-v0-3@0.3.22-f2 test
+2026-09-16T19:54:11.3442885Z > vitest run --minWorkers=1 --maxWorkers=1 --testTimeout=60000
+2026-09-16T19:54:11.3443141Z 
+2026-09-16T19:54:11.5545924Z 
+2026-09-16T19:54:27.8015179Z  RUN  v3.1.1 /home/runner/work/ainkrad-v0.3/ainkrad-v0.3
+2026-09-16T19:54:27.8015637Z 
+2026-09-16T19:54:27.8016507Z  ✓ tests/v0_3_16_societyFoundation.test.ts (14 tests) 15402ms
+2026-09-16T19:54:27.8017559Z    ✓ v0.3.16 race-neutral family opportunities > lets a non-human people make voluntary family choices and continue a lineage  4608ms
+2026-09-16T19:54:27.8018682Z    ✓ v0.3.16 truthful entity inspectors > reports only persisted resident, wildlife and terrain evidence  325ms
+2026-09-16T19:54:27.8019745Z    ✓ v0.3.17 physically grounded hostile ecology > keeps territorial monsters active without attacking a destination remotely  418ms
+2026-09-16T19:54:27.8020920Z    ✓ v0.3.17 physically grounded hostile ecology > makes monsters consume reachable prey and lose population when isolated from food  457ms
+2026-09-16T19:54:27.8022051Z    ✓ v0.3.16 material settlements and death aftermath > turns learned field work into recorded food/material harvests  645ms
+2026-09-16T19:54:27.8023237Z    ✓ v0.3.16 material settlements and death aftermath > keeps a real corpse, lets residents bury it and creates a cemetery  553ms
+2026-09-16T19:54:27.8024324Z    ✓ v0.3.16 material settlements and death aftermath > reserves local materials and builds a real home when housing is full  2044ms
+2026-09-16T19:54:27.8025435Z    ✓ v0.3.16 material settlements and death aftermath > allows voluntary settlement war over real resources or claimed land  5376ms
+2026-09-16T19:55:00.5586018Z  ✓ tests/worldAutonomy.test.ts (16 tests) 32313ms
+2026-09-16T19:55:00.5586905Z    ✓ World rules version > migrates a 0.3.8 save without restarting its people, time or relationships  394ms
+2026-09-16T19:55:00.5588472Z    ✓ World rules version > migrates the live 0.3.9 ecology without resetting its frontier or RNG future  1551ms
+2026-09-16T19:55:00.5589508Z    ✓ Autonomous society depth > produces several autonomous action families instead of one fixed routine  2722ms
+2026-09-16T19:55:00.5590567Z    ✓ Autonomous society depth > lets resident exploration grow the world in stages and supports nature activity  3278ms
+2026-09-16T19:55:00.5591564Z    ✓ Autonomous society depth > can choose a reasonable alternative instead of always obeying the top score  1229ms
+2026-09-16T19:55:00.5592703Z    ✓ Autonomous society depth > is deterministic for the same seed while different seeds can diverge  4285ms
+2026-09-16T19:55:00.5593690Z    ✓ Autonomous society depth > preserves the exact autonomous future across an engine restart  3715ms
+2026-09-16T19:55:00.5594684Z    ✓ Autonomous society depth > does not guarantee control-world collapse merely because agents keep living  14362ms
+2026-09-16T19:55:08.2770537Z  ✓ tests/v0_3_22_lifeContinuity.test.ts (19 tests) 7491ms
+2026-09-16T19:55:08.2771518Z    ✓ world-time opportunities do not shrink with unrelated population > gives all 97 awake residents one ordinary decision in a quantum  493ms
+2026-09-16T19:55:08.2772822Z    ✓ world-time opportunities do not shrink with unrelated population > gives all 241 awake residents one ordinary decision in a quantum  6579ms
+2026-09-16T19:55:14.0211214Z  ✓ tests/v0_3_21_responsiveClock.test.ts (16 tests) 5360ms
+2026-09-16T19:55:14.0212272Z    ✓ FIX4 responsive external acceleration > fifty_years_per_minute has a bounded live queue and executes every accepted semantic quantum  415ms
+2026-09-16T19:55:14.0213589Z    ✓ FIX4 responsive external acceleration > does not accumulate decades during repeated overloaded browser frames  2392ms
+2026-09-16T19:55:14.0214706Z    ✓ FIX4 responsive external acceleration > aligns fractional restoration with the next exact Cardinal five-year boundary  1628ms
+2026-09-16T19:55:14.0215918Z    ✓ FIX4 offline continuity and cancellation > keeps the IndexedDB world, genealogy, RNG and Cardinal evidence through cancel and reload  305ms
+2026-09-16T19:55:14.4224424Z  ✓ tests/v0_3_22_settlementCartography.test.ts (11 tests) 191ms
+2026-09-16T19:55:18.3747289Z  ✓ tests/v0_3_21_foundingOcean.test.ts (9 tests) 3729ms
+2026-09-16T19:55:18.3747959Z    ✓ FIX3 founding sea after a new epoch and accelerated continuation > uses the same physical sea in first creation and consecutive player resets  391ms
+2026-09-16T19:55:18.3748785Z    ✓ FIX3 founding sea after a new epoch and accelerated continuation > repairs the saved state before discovery and then crosses the formerly failing shore boundary  365ms
+2026-09-16T19:55:18.3749600Z    ✓ FIX3 founding sea after a new epoch and accelerated continuation > continues the old epoch at year-per-minute x1 through the live clock, reload and offline catch-up  401ms
+2026-09-16T19:55:18.3750411Z    ✓ FIX3 founding sea after a new epoch and accelerated continuation > continues the old epoch at year-per-minute x10 through the live clock, reload and offline catch-up  383ms
+2026-09-16T19:55:18.3751611Z    ✓ FIX3 founding sea after a new epoch and accelerated continuation > preserves IndexedDB world identity and nonzero Cardinal history during repair, acceleration and reload  1955ms
+2026-09-16T19:55:19.7496022Z  ✓ tests/worldAuthority.test.ts (6 tests) 1158ms
+2026-09-16T19:55:19.7496613Z    ✓ Independent world authority > enforces authority cooldown in canonical world minutes  568ms
+2026-09-16T19:55:19.8904698Z  ✓ tests/sensors.test.ts (6 tests) 5ms
+2026-09-16T19:55:20.0138551Z  ✓ tests/cardinalCore.test.ts (8 tests) 6ms
+2026-09-16T19:55:21.4261175Z  ✓ tests/v0_3_21_fix10AgentsSystems.test.ts (11 tests) 1219ms
+2026-09-16T19:55:27.3906190Z  ✓ tests/v0_3_14_worldLogic.test.ts (7 tests) 5753ms
+2026-09-16T19:55:27.3907317Z    ✓ v0.3.14 Underworld-style substrate audit > migrates a critically small existing world without a hidden population rescue cohort  549ms
+2026-09-16T19:55:27.3908066Z    ✓ v0.3.14 Underworld-style substrate audit > keeps generation-zero founders rooted while allowing travel and later-generation resettlement logic  4249ms
+2026-09-16T19:55:27.3908820Z    ✓ v0.3.14 Underworld-style substrate audit > starts a new epoch with thirty founders in three settlements while Cardinal retains all-time experience  301ms
+2026-09-16T19:55:28.6386778Z  ✓ tests/v0_3_19_divineAgency.test.ts (7 tests) 1035ms
+2026-09-16T19:55:29.4689864Z  ✓ tests/browserUiSmoke.test.ts (5 tests) 618ms
+2026-09-16T19:55:36.4361685Z  ✓ tests/v0_3_13_releaseAudit.test.ts (5 tests) 6766ms
+2026-09-16T19:55:36.4362351Z    ✓ v0.3.13 release audit > migrates a stopped v0.3.12 world with only three survivors without replacing their minds  1689ms
+2026-09-16T19:55:36.4363070Z    ✓ v0.3.13 release audit > does not count other intelligent races as humans and allows lived progression  4637ms
+2026-09-16T19:55:38.1422794Z  ✓ tests/v0_3_19_adventureEconomy.test.ts (11 tests) 1491ms
+2026-09-16T19:55:38.9736610Z  ✓ tests/v0_3_21_boatNavigation.test.ts (7 tests) 609ms
+2026-09-16T19:55:38.9737589Z    ✓ physical, voluntary boat navigation > opens an actual saved world with a voyage in progress and retains its physical course  414ms
+2026-09-16T19:55:40.5476994Z  ✓ tests/v0_3_20_regressions.test.ts (8 tests) 1371ms
+2026-09-16T19:55:40.5477745Z    ✓ v0.3.20 lived knowledge, gifts and continuity > grants every capability without changing identity, profession or inserting future knowledge  731ms
+2026-09-16T19:55:42.0098217Z  ✓ tests/v0_3_21_indexedDbContinuity.test.ts (5 tests) 1248ms
+2026-09-16T19:55:42.0099158Z    ✓ durable continuity, migration backup and failure atomicity > retains Cardinal journal, personal history and RNG through an update and accelerated continuation  496ms
+2026-09-16T19:55:42.9060916Z  ✓ tests/v0_3_22_oceanFrontier.test.ts (7 tests) 690ms
+2026-09-16T19:55:43.1726626Z  ✓ tests/v0_3_22_navigationPerformance.test.ts (9 tests) 132ms
+2026-09-16T19:55:43.7853292Z  ✓ tests/v0_3_21_learning.test.ts (7 tests) 427ms
+2026-09-16T19:55:44.4889496Z  ✓ tests/v0_3_21_settlementGeometry.test.ts (5 tests) 499ms
+2026-09-16T19:55:45.9075453Z  ✓ tests/v0_3_21_libraryAdmissions.test.ts (6 tests) 1226ms
+2026-09-16T19:55:45.9076357Z    ✓ bounded library admissions > preserves limits under accelerated catch-up, year boundaries and repeated reloads  1023ms
+2026-09-16T19:55:50.7063080Z  ✓ tests/v0_3_21_continentalGeography.test.ts (6 tests) 4593ms
+2026-09-16T19:55:50.7064208Z    ✓ one physical world from continental view to walking streets > connects every river to a downhill outlet, including the saved lakes, without cycles  1533ms
+2026-09-16T19:55:50.7065970Z    ✓ one physical world from continental view to walking streets > migrates once with a backup, retaining people, deaths, knowledge, road counts and Cardinal records  1758ms
+2026-09-16T19:55:51.2528619Z  ✓ tests/v0_3_22_familyLifecycle.test.ts (3 tests) 340ms
+2026-09-16T19:55:51.3875142Z  ✓ tests/v15FamilyAgency.test.ts (9 tests) 3ms
+2026-09-16T19:55:56.6125168Z  ✓ tests/liveWorldRuntime.test.ts (5 tests) 5016ms
+2026-09-16T19:55:56.6126111Z    ✓ Live world continuity > does not show stale resume metadata after a new epoch starts  366ms
+2026-09-16T19:55:56.6126848Z    ✓ Live world continuity > lets a fresh Cardinal study pressure without intervening during the first 200 years  547ms
+2026-09-16T19:55:56.6127672Z    ✓ Live world continuity > keeps historic Cardinal learning but resets visible intervention counters per world epoch  642ms
+2026-09-16T19:55:56.6128466Z    ✓ Cardinal semantic speed equivalence > gives Cardinal identical opportunities at supported ×1 and ×10 for equal Ainkrad time  3218ms
+2026-09-16T19:55:57.0604299Z  ✓ tests/v0_3_22_multipleBirths.test.ts (5 tests) 232ms
+2026-09-16T19:55:58.1197905Z  ✓ tests/v0_3_21_fix8ExplorationGiftsRoads.test.ts (7 tests) 875ms
+2026-09-16T19:55:59.2730940Z  ✓ tests/v0_3_22_f2DivineSystem.test.ts (7 tests) 966ms
+2026-09-16T19:56:00.2863908Z  ✓ tests/v0_3_18_culturalAgency.test.ts (5 tests) 817ms
+2026-09-16T19:56:01.0764194Z  ✓ tests/persistence.test.ts (7 tests) 593ms
+2026-09-16T19:56:01.2144057Z  ✓ tests/cardinalResearch.test.ts (3 tests) 9ms
+2026-09-16T19:56:01.5604236Z  ✓ tests/gatewayRecovery.test.ts (4 tests) 159ms
+2026-09-16T19:56:02.7012969Z  ✓ tests/v0_3_21_localExplorationReading.test.ts (5 tests) 945ms
+2026-09-16T19:56:02.7014095Z    ✓ local exploration and real historical reading > surveys nearby existing dry ground in varied directions without changing terrain or knowledge  574ms
+2026-09-16T19:56:04.5030073Z  ✓ tests/v0_3_21_fix7DemographyMonsterRoads.test.ts (4 tests) 1611ms
+2026-09-16T19:56:04.5031565Z    ✓ FIX7 demography, century parasite and physical roads > runs one adult to one host and exactly one crawling larva  1224ms
+2026-09-16T19:56:05.1175245Z  ✓ tests/v0_3_21_visibilityAndTown.test.ts (3 tests) 398ms
+2026-09-16T19:56:05.1176717Z    ✓ v0.3.21 FIX1 visible residents and local town buildings > relocates an old library once, preserving study, people, time and a journey in progress  339ms
+2026-09-16T19:56:06.6307906Z  ✓ tests/v0_3_20_startupRepair.test.ts (6 tests) 1318ms
+2026-09-16T19:56:06.6308602Z    ✓ v0.3.20 startup repair after an earlier completed repair > recovers missing elf evidence in ainkrad-world-rules-0.3.16 without resetting the world  340ms
+2026-09-16T19:56:07.7594175Z  ✓ tests/v0_3_21_atlasGeography.test.ts (5 tests) 934ms
+2026-09-16T19:56:07.7594897Z    ✓ FIX5 physical geography and bounded atlas > builds irregular rotated parcels with real clearances and fields outside town  305ms
+2026-09-16T19:56:07.7596017Z    ✓ FIX5 physical geography and bounded atlas > retains sparse planet scale, bounds tile history, and never changes the world from camera operations  507ms
+2026-09-16T19:56:08.5793333Z  ✓ tests/v0_3_18_underworldFoundation.test.ts (4 tests) 633ms
+2026-09-16T19:56:08.5794785Z    ✓ v0.3.18 additive Underworld foundation > migrates v16 once without changing people, time, relations, RNG or Cardinal-facing history  345ms
+2026-09-16T19:56:17.2079947Z  ✓ tests/v0_3_19_sapientPeoples.test.ts (3 tests) 8441ms
+2026-09-16T19:56:17.2080693Z    ✓ v0.3.19 distinct sapient peoples and continental homelands > creates six mechanically distinct peoples and evidence-based diplomatic priors  4478ms
+2026-09-16T19:56:17.2081447Z    ✓ v0.3.19 distinct sapient peoples and continental homelands > repairs old close homelands once without rewriting resident identity or history  3961ms
+2026-09-16T19:56:18.6931319Z  ✓ tests/personhoodLifecycle.test.ts (4 tests) 1286ms
+2026-09-16T19:56:18.6932013Z    ✓ Fluctlight-inspired persistent personhood > keeps identity continuity while choices, emotions and values evolve  351ms
+2026-09-16T19:56:18.6932778Z    ✓ Fluctlight-inspired persistent personhood > allows voluntary families to create a new unique generation  550ms
+2026-09-16T19:56:19.3738906Z  ✓ tests/v0_3_20_fix3Viewport.test.ts (3 tests) 494ms
+2026-09-16T19:56:20.2891949Z  ✓ tests/v0_3_18_secretLibrary.test.ts (3 tests) 735ms
+2026-09-16T19:56:20.7269145Z  ✓ tests/interventionGateway.test.ts (5 tests) 241ms
+2026-09-16T19:56:21.2811484Z  ✓ tests/v0_3_21_bodyBoundary.test.ts (4 tests) 363ms
+2026-09-16T19:56:28.9429062Z stdout | tests/v0_3_20_fix2Clock.test.ts > FIX2 elapsed time and bounded live work > retains work across speed changes, counts ten years for one minute, and exposes real backlog
+2026-09-16T19:56:28.9430120Z {"benchmark":"10 requested world years","realSeconds":5.6899708790000005,"simulatedYears":10,"living":51}
+2026-09-16T19:56:28.9430510Z 
+2026-09-16T19:56:29.1994453Z  ✓ tests/v0_3_20_fix2Clock.test.ts (5 tests) 7715ms
+2026-09-16T19:56:29.1995588Z    ✓ FIX2 elapsed time and bounded live work > simulates the same year and Cardinal observations with or without presentation frames  1737ms
+2026-09-16T19:56:29.1996304Z    ✓ FIX2 elapsed time and bounded live work > retains work across speed changes, counts ten years for one minute, and exposes real backlog  5721ms
+2026-09-16T19:56:29.3498732Z  ✓ tests/auditor.test.ts (3 tests) 3ms
+2026-09-16T19:56:39.4160536Z  ✓ tests/worldClockCivilization.test.ts (4 tests) 9873ms
+2026-09-16T19:56:39.4161463Z    ✓ External FLA-like world clock > advances calendar and biological age by the same persisted duration  305ms
+2026-09-16T19:56:39.4162335Z    ✓ Human-like bodies and growing civilization > opens remote monster habitats and grows villages into cities  9390ms
+2026-09-16T19:56:39.5815246Z  ✓ tests/v0_3_21_mapGestures.test.ts (4 tests) 5ms
+2026-09-16T19:56:39.7067410Z  ✓ tests/inputBus.test.ts (8 tests) 4ms
+2026-09-16T19:56:40.4604579Z  ✓ tests/v0_3_20_fix2Map.test.ts (3 tests) 569ms
+2026-09-16T19:56:40.5894543Z  ✓ tests/v0_3_22_bodySleep.test.ts (4 tests) 3ms
+2026-09-16T19:56:40.9294357Z  ✓ tests/v0_3_22_hotPathContinuity.test.ts (6 tests) 156ms
+2026-09-16T19:56:57.1279953Z  ✓ tests/v0_3_18_offlineCatchUp.test.ts (3 tests) 15993ms
+2026-09-16T19:56:57.1280864Z    ✓ v0.3.18 closed-browser catch-up > executes every semantic quantum while bounding durable commits  14775ms
+2026-09-16T19:56:57.1282875Z    ✓ v0.3.18 closed-browser catch-up > splits the reported day-300 mobile restoration into safe commits  893ms
+2026-09-16T19:56:57.1283859Z    ✓ v0.3.18 closed-browser catch-up > returns an idempotent completed result at an already reached target  324ms
+2026-09-16T19:56:57.2904730Z  ✓ tests/portableCardinal.test.ts (2 tests) 4ms
+2026-09-16T19:56:57.4050541Z  ✓ tests/history.test.ts (7 tests) 3ms
+2026-09-16T19:56:58.0145024Z  ✓ tests/worldSpatial.test.ts (3 tests) 431ms
+2026-09-16T19:56:58.2389910Z  ✓ tests/cardinalJournalScaling.test.ts (1 test) 98ms
+2026-09-16T19:56:58.3601935Z  ✓ tests/cardinalExperience.test.ts (1 test) 4ms
+2026-09-16T19:57:03.2499074Z  ✓ tests/v0_3_18_livelihoodAndPlace.test.ts (2 tests) 4703ms
+2026-09-16T19:57:03.2499758Z    ✓ v0.3.18 truthful livelihoods and workplaces > records production only after arrival at a compatible physical place  4702ms
+2026-09-16T19:57:03.3895365Z  ✓ tests/logBackedJournal.test.ts (3 tests) 5ms
+2026-09-16T19:57:03.9311720Z  ✓ tests/v0_3_22_threeHumanSettlements.test.ts (2 tests) 358ms
+2026-09-16T19:57:04.0593679Z  ✓ tests/cardinalJournal.test.ts (4 tests) 5ms
+2026-09-16T19:57:04.4437330Z  ✓ tests/v0_3_22_maritimeEvolution.test.ts (1 test) 204ms
+2026-09-16T19:57:04.5762757Z  ✓ tests/generationalKnowledgeAudit.test.ts (2 tests) 2ms
+2026-09-16T19:57:04.8864215Z  ✓ tests/worldRuntime.test.ts (1 test) 128ms
+2026-09-16T19:57:05.9553338Z  ✓ tests/v0_3_21_timeReceiptRetention.test.ts (1 test) 933ms
+2026-09-16T19:57:05.9554014Z    ✓ FIX5 bounded time receipts > expires old clock receipts while retaining recent retries and all non-clock evidence  933ms
+2026-09-16T19:57:06.3854826Z  ✓ tests/v0_3_22_lifeDiagnostics.test.ts (3 tests) 244ms
+2026-09-16T19:57:06.5150551Z  ✓ tests/v0_3_22_systemAgentsAndAtlas.test.ts (4 tests) 2ms
+2026-09-16T19:57:06.9188471Z  ✓ tests/v0_3_22_terrainDetails.test.ts (1 test) 212ms
+2026-09-16T19:57:07.6345828Z  ✓ tests/memoryStore.test.ts (2 tests) 518ms
+2026-09-16T19:57:07.6346356Z    ✓ Long-term memory storage > keeps memory history outside the hot world snapshot  517ms
+2026-09-16T19:57:08.4145097Z  ✓ tests/v0_3_21_cooperativeTime.test.ts (2 tests) 583ms
+2026-09-16T19:57:08.4145757Z    ✓ FIX5 cooperative exact-time execution > commits the completed quantum on cancellation and can resume the same absolute target  421ms
+2026-09-16T19:57:31.8283973Z  ✓ tests/v0_3_14_habitatIntegrity.test.ts (1 test) 23231ms
+2026-09-16T19:57:31.8284606Z    ✓ v0.3.14 habitat integrity long-run audit > never recovers wildlife or monsters in incompatible city/water habitats  23230ms
+2026-09-16T19:58:11.0501931Z  ✓ tests/experimentIntegrity.test.ts (1 test) 38972ms
+2026-09-16T19:58:11.0503351Z    ✓ Controlled Cardinal experiment integrity > keeps OFF/OBSERVER equivalent and records outcomes for executed interventions  38972ms
+2026-09-16T19:58:11.2071997Z  ✓ tests/offlineWorldClock.test.ts (2 tests) 2ms
+2026-09-16T19:58:11.7901927Z  ✓ tests/v0_3_21_randomFoundingWorld.test.ts (1 test) 405ms
+2026-09-16T19:58:11.7902963Z    ✓ seeded founding geography > varies town position and plan between new worlds but repeats the same seed exactly  405ms
+2026-09-16T19:58:11.9180968Z  ✓ tests/v0_3_22_genesisAdventureMentor.test.ts (2 tests) 2ms
+2026-09-16T19:58:12.0307133Z  ✓ tests/scheduler.test.ts (2 tests) 2ms
+2026-09-16T19:58:12.4616794Z  ✓ tests/observer.test.ts (1 test) 238ms
+2026-09-16T19:58:14.8188587Z  ✓ tests/modes.test.ts (3 tests) 2150ms
+2026-09-16T19:58:14.8189102Z    ✓ Cardinal modes > OFF creates no Cardinal evaluations  480ms
+2026-09-16T19:58:14.8189548Z    ✓ Cardinal modes > OBSERVER records evaluations but never interventions  372ms
+2026-09-16T19:58:14.8190042Z    ✓ Cardinal modes > OFF and OBSERVER produce identical autonomous world state  1297ms
+2026-09-16T19:58:15.1439217Z  ✓ tests/residentNavigationKnowledge.test.ts (1 test) 129ms
+2026-09-16T19:58:15.2713893Z  ✓ tests/v0_3_21_residentChoice.test.ts (2 tests) 2ms
+2026-09-16T19:58:15.4491096Z  ✓ tests/worldModuleBoundary.test.ts (1 test) 56ms
+2026-09-16T19:58:15.5652020Z  ✓ tests/externalGateway.test.ts (1 test) 1ms
+2026-09-16T19:58:15.5715323Z 
+2026-09-16T19:58:15.5722411Z  Test Files  85 passed (85)
+2026-09-16T19:58:15.5724751Z       Tests  415 passed (415)
+2026-09-16T19:58:15.5725134Z    Start at  19:54:11
+2026-09-16T19:58:15.5727267Z    Duration  244.02s (transform 1.31s, setup 0ms, collect 6.14s, tests 227.69s, environment 8ms, prepare 2.70s)
+2026-09-16T19:58:15.5727754Z 
+2026-09-16T19:58:15.6350523Z ##[group]Run npm run build
+2026-09-16T19:58:15.6350687Z npm run build
+2026-09-16T19:58:15.6380733Z shell: /usr/bin/bash -e {0}
+2026-09-16T19:58:15.6380867Z ##[endgroup]
+2026-09-16T19:58:15.6961990Z 
+2026-09-16T19:58:15.6962361Z > ainkrad-v0-3@0.3.22-f2 build
+2026-09-16T19:58:15.6962706Z > vite build
+2026-09-16T19:58:15.6962772Z 
+2026-09-16T19:58:15.8173259Z vite v7.0.4 building for production...
+2026-09-16T19:58:16.9821082Z transforming...
+2026-09-16T19:58:17.2050688Z ✓ 70 modules transformed.
+2026-09-16T19:58:17.2634483Z rendering chunks...
+2026-09-16T19:58:17.2693097Z computing gzip size...
+2026-09-16T19:58:17.2855573Z dist/index.html                               0.40 kB │ gzip:   0.29 kB
+2026-09-16T19:58:17.2856099Z dist/assets/liveWorld.worker-Bheus9HN.js  1,114.43 kB
+2026-09-16T19:58:17.2856743Z dist/assets/index-jEs4egY1.css               52.81 kB │ gzip:  13.11 kB
+2026-09-16T19:58:17.2857220Z dist/assets/index-Du2vxeIx.js               531.55 kB │ gzip: 156.89 kB
+2026-09-16T19:58:17.2857611Z 
+2026-09-16T19:58:17.2857930Z (!) Some chunks are larger than 500 kB after minification. Consider:
+2026-09-16T19:58:17.2858314Z - Using dynamic import() to code-split the application
+2026-09-16T19:58:17.2858900Z - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+2026-09-16T19:58:17.2859368Z - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+2026-09-16T19:58:17.2860213Z ✓ built in 1.45s
+2026-09-16T19:58:17.3260756Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-09-16T19:58:17.3261375Z Post job cleanup.
+2026-09-16T19:58:17.3977122Z (node:3402) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-09-16T19:58:17.3977843Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-09-16T19:58:17.4133555Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-09-16T19:58:17.4134616Z Post job cleanup.
+2026-09-16T19:58:17.4663663Z [command]/usr/bin/git version
+2026-09-16T19:58:17.4694956Z git version 2.55.0
+2026-09-16T19:58:17.4718090Z Temporarily overriding HOME='/home/runner/work/_temp/6566c83c-901e-4db8-bc68-7636f963aeed' before making global git config changes
+2026-09-16T19:58:17.4718660Z Adding repository directory to the temporary git global config as a safe directory
+2026-09-16T19:58:17.4721419Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/ainkrad-v0.3/ainkrad-v0.3
+2026-09-16T19:58:17.4749484Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-09-16T19:58:17.4775039Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-09-16T19:58:17.4955946Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-09-16T19:58:17.4975889Z http.https://github.com/.extraheader
+2026-09-16T19:58:17.4983494Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-09-16T19:58:17.5013777Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-09-16T19:58:17.5199643Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-09-16T19:58:17.5235739Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-09-16T19:58:17.5505179Z Cleaning up orphan processes
+2026-09-16T19:58:17.5669824Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-node@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

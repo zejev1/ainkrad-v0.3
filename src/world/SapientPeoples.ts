@@ -253,7 +253,7 @@ export function settlementFoundingRace(
   world: Readonly<WorldState>,
   settlementId: string,
 ): AgentRace | undefined {
-  if (settlementId === 'settlement_ainkrad') return 'human';
+  if (['settlement_ainkrad', 'settlement_rulid', 'settlement_zakkaria'].includes(settlementId)) return 'human';
   for (const race of Object.keys(SAPIENT_PEOPLE_FOUNDATIONS) as AgentRace[]) {
     if (settlementId === `settlement_${race}_homeland`) return race;
   }

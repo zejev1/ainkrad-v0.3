@@ -1,3 +1,6 @@
+import { withPhysicalNavigationQueries, navigationRouteSignature, beginNavigationConstruction,
+  clearNavigationConstruction, finishNavigationFailure, navigationFailureUnchanged,
+  type NavigationFailureProof } from './PhysicalNavigationQueries';
 import { routeAroundWater, pathCrossesWater } from './WaterNavigation';
 import {regionalTerrainRoute} from './geography/RegionalNavigation';
 import {terrainForPlaces} from './geography/WorldTerrain';
@@ -120,12 +123,32 @@ export function buildRoute(
   };
 }
 
+const routeValidation = new WeakMap<WorldRouteState, string>();
+// Bounded runtime evidence survives safe state clones, but every lookup checks
+// the exact inputs and all geometry queried by the failed deterministic search.
+// These certificates are never persisted in or trusted from a saved world.
+const failedRouteAttempts = new Map<string, NavigationFailureProof>();
+function rememberRouteFailure(key: string, proof: NavigationFailureProof | undefined): void {
+  if (!proof) return;
+  failedRouteAttempts.delete(key); failedRouteAttempts.set(key, proof);
+  while (failedRouteAttempts.size > 256) failedRouteAttempts.delete(failedRouteAttempts.keys().next().value!);
+}
+
 export function rebuildWorldRoutes(
+  places: Readonly<Record<string, WorldPlace>>,
+  existing: Readonly<Record<string, WorldRouteState>> = {},
+): Record<string, WorldRouteState> {
+  return withPhysicalNavigationQueries(places, () => rebuildIndexedWorldRoutes(places, existing));
+}
+
+function rebuildIndexedWorldRoutes(
   places: Readonly<Record<string, WorldPlace>>,
   existing: Readonly<Record<string, WorldRouteState>> = {},
 ): Record<string, WorldRouteState> {
   const routes: Record<string, WorldRouteState> = {};
   const terrainKey=terrainForPlaces(places)?.foundation.key;
+  const signature = (route: WorldRouteState): string =>
+    `${route.fromPlaceId}:${route.toPlaceId}:${route.traversal}:${route.distance}|${navigationRouteSignature(route.waypoints, places)}`;
   for (const place of Object.values(places)) {
     for (const connectedId of place.connectedPlaceIds) {
       const connected = places[connectedId];
@@ -134,17 +157,31 @@ export function rebuildWorldRoutes(
       if (routes[id]) continue;
       const explicit = existing[id];
       const traversal = explicit?.traversal ?? traversalBetween(place, connected);
-      if (!traversal) continue;
+      if (!traversal || (traversal === 'walk' &&
+          (!isSurfaceWalkable(place.surface) || !isSurfaceWalkable(connected.surface)))) continue;
       if(explicit?.geometryVersion===3 && explicit.terrainKey===terrainKey && explicit.waypoints.length>1) {
         const first=explicit.waypoints[0],last=explicit.waypoints.at(-1)!;
         const direct=explicit.fromPlaceId===place.id;
         const a=direct?place:connected,b=direct?connected:place;
-        if(pointDistance(first,{x:a.mapX,y:a.mapY})<1e-8&&pointDistance(last,{x:b.mapX,y:b.mapY})<1e-8&&
-          (traversal!=='walk'||(!pathCrossesWater(explicit.waypoints,places)&&
-            routeAroundBuildings(explicit.waypoints,place.id,connected.id,places)===explicit.waypoints))) {
-          routes[id]=explicit;continue;
+        if (pointDistance(first,{x:a.mapX,y:a.mapY}) < 1e-8 && pointDistance(last,{x:b.mapX,y:b.mapY}) < 1e-8) {
+          const key = signature(explicit);
+          // Runtime evidence, not a trusted field from a save. Only the actual
+          // path, its endpoints, terrain recipe and nearby physical blockers
+          // can invalidate an already verified route. A remote discovery cannot.
+          if (routeValidation.get(explicit) === key || traversal !== 'walk' ||
+              (!pathCrossesWater(explicit.waypoints, places) &&
+               routeAroundBuildings(explicit.waypoints, place.id, connected.id, places) === explicit.waypoints)) {
+            routeValidation.set(explicit, key); routes[id] = explicit; continue;
+          }
         }
       }
+      // Direction is significant: the reverse heuristic may find a path even
+      // when the first orientation failed. Never suppress that second chance.
+      const failureKey = `${terrainKey ?? ''}|${place.id}->${connected.id}:${traversal}`;
+      const priorFailure = failedRouteAttempts.get(failureKey);
+      if (priorFailure && navigationFailureUnchanged(places,priorFailure,place,connected,traversal)) continue;
+      beginNavigationConstruction(places);
+      const failed = () => rememberRouteFailure(failureKey, finishNavigationFailure(places,place,connected,traversal));
       const route = buildRoute(place, connected, traversal, places);
       route.completedTraversals = explicit?.completedTraversals ?? 0;
       route.geometryVersion=3;route.widthMetres=traversal==='walk'?3:4;
@@ -161,10 +198,10 @@ export function rebuildWorldRoutes(
           path=checked;
           if(!path)break;
         }
-        if(!path||pathCrossesWater(path,places))continue;
+        if(!path||pathCrossesWater(path,places)){failed();continue;}
         // A final building pass must not invalidate the verified water route.
         const final=routeAroundBuildings(path,place.id,connected.id,places);
-        if(!final||pathCrossesWater(final,places))continue;
+        if(!final||pathCrossesWater(final,places)){failed();continue;}
         const rounded = roundedRoutePath(final);
         const roundedAvoidsBuildings = routeAroundBuildings(
           rounded,
@@ -178,6 +215,9 @@ export function rebuildWorldRoutes(
         route.waypoints=physicalPath;
         route.distance=physicalPath.slice(1).reduce((sum,p,i)=>sum+pointDistance(physicalPath[i],p),0);
       }
+      clearNavigationConstruction(places);
+      failedRouteAttempts.delete(failureKey);
+      routeValidation.set(route, signature(route));
       routes[id] = route;
     }
   }

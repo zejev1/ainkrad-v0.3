@@ -7,6 +7,8 @@ export interface ScoredAction {action:AgentActionKind;score:number}
 export function residentChoiceCandidates(scores:readonly ScoredAction[],allowed:ReadonlySet<AgentActionKind>,window:number):ScoredAction[] {
   const viable=scores.filter(s=>allowed.has(s.action)&&Number.isFinite(s.score)).sort((a,b)=>b.score-a.score);
   if(!viable.length)throw new Error('Resident has no finite, physically available action score.');
-  const preferred=viable.filter(s=>s.score>=viable[0].score-window&&s.score>-.25);
+  // A lower positive preference is not a physical prohibition. Soft weights
+  // in the caller preserve competing wishes, including exploration in weather.
+  const preferred=viable.filter(s=>s.score>-.25);
   return preferred.length?preferred:viable.filter(s=>s.score>=viable[0].score-window);
 }

@@ -1,0 +1,41 @@
+PASS 0.3.22 F2 divine progression, immortality and punishment > grants potential instead of maxing stats and grows only through matching lived practice
+PASS 0.3.22 F2 divine progression, immortality and punishment > keeps immortality nonheritable, blocks reproduction and limits transmitted old knowledge
+PASS 0.3.22 F2 divine progression, immortality and punishment > keeps punishment separate from gifts and persists a lineage curse
+PASS 0.3.22 F2 divine progression, immortality and punishment > makes Empty Hands reduce only personal earnings and leaves shared stores alone
+PASS 0.3.22 F2 divine progression, immortality and punishment > passes ordinary gifts and lineage curses independently but never inherits immortality
+PASS 0.3.22 F2 divine progression, immortality and punishment > keeps cheat-like abilities separate from inheritable gifts and consumes Phoenix only once
+PASS 0.3.22 F2 divine progression, immortality and punishment > keeps repeated prayers grounded in several live concerns instead of locking adults onto one family subject
+PASS 0.3.22 F2 lived shipbuilding progression > requires real prior vessel experience before a Spark can improve the design
+PASS human multiple births > keeps natural multiples rare and fertility bounded instead of turning birth into a litter mechanic
+PASS human multiple births > chooses multiplicity once from the conception roll and leaves other races singleton
+PASS human multiple births > uses an exact 50 percent base maternal mortality risk for quadruplet delivery
+PASS human multiple births > creates four distinct Sparks from one quadruplet pregnancy and can kill the mother from childbirth
+PASS human multiple births > keeps older pregnancies without expectedChildCount singleton and migration-safe
+PASS 0.3.22 F2 three independent human foundations > starts Ainkrad, Rulid and Zakkaria as equal distant human settlements with a real Rulid coast
+PASS 0.3.22 F2 three independent human foundations > also uses three human settlements when the live runtime supplies its explicit 30 founder names
+PASS physical, voluntary boat navigation > opens an actual saved world with a voyage in progress and retains its physical course
+PASS physical, voluntary boat navigation > boards only willing adults, carries their existing cargo continuously and lands them together
+PASS physical, voluntary boat navigation > cannot launch without a real vessel, theory, room for the load or in a storm
+PASS physical, voluntary boat navigation > uses water for every sailing segment and never draws a water voyage as a road
+PASS physical, voluntary boat navigation > catches fish only after time on the water and return, with the same result after a reload
+PASS physical, voluntary boat navigation > discovers the actual landing only on arrival and gives no knowledge to an absent person
+PASS physical, voluntary boat navigation > returns a surviving passenger physically when the pilot dies and rejects corrupted saved occupancy
+PASS causal family lifecycle > keeps child choice, intimacy, conception, pregnancy and birth physically causal
+PASS causal family lifecycle > does not conceive an existing child intention while the parents are apart
+PASS causal family lifecycle > repairs older saves additively instead of resetting world data
+PASS v0.3.20 lived knowledge, gifts and continuity > keeps libraries private to their people even after face-to-face map sharing
+PASS v0.3.20 lived knowledge, gifts and continuity > removes unsurveyed cross-continent edges and grows a frontier beside the explorer
+PASS v0.3.20 lived knowledge, gifts and continuity > requires discovery and testimony for dungeons and does not enroll orcs in the human guild
+PASS v0.3.20 lived knowledge, gifts and continuity > grants every capability without changing identity, profession or inserting future knowledge
+PASS v0.3.20 lived knowledge, gifts and continuity > accelerates actual practice but does not learn during an idle step
+PASS v0.3.20 lived knowledge, gifts and continuity > uses elapsed reading time and literacy instead of instant whole-book acquisition
+PASS v0.3.20 lived knowledge, gifts and continuity > does not label a fed child with access to a granary as hungry or poor
+PASS v0.3.20 lived knowledge, gifts and continuity > retains displayed Cardinal experience on reload without an extra world tick
+PASS FIX8 exploration, divine understanding and curved routes > sends a voluntary exploration choice toward known reachable wilderness
+PASS FIX8 exploration, divine understanding and curved routes > notices a connected frontier trail without learning an unconnected remote place
+PASS FIX8 exploration, divine understanding and curved routes > rounds a physical right-angle route instead of keeping a square corner
+PASS FIX8 exploration, divine understanding and curved routes > keeps the original gift when legacy is added
+PASS FIX8 exploration, divine understanding and curved routes > answers the actual private words from the resident context and recognizes a named gift
+PASS FIX8 exploration, divine understanding and curved routes > records an ordinary decision as a short human reflection instead of visible maths
+PASS FIX8 exploration, divine understanding and curved routes > lets consequential choices take minutes, never simulated days of thinking
+{"tests":40,"passed":40,"failed":0}

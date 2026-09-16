@@ -64,10 +64,15 @@ export function residentExplorationTarget(
       attempt.problem === 'distress' &&
       ['rest', 'relax', 'reflect'].includes(attempt.action),
     ).length >= 9;
-  if (!recentDistressLoop && choiceRoll !== undefined && choiceRoll < 0.55) {
+  const mapped = new Set(mappedPlaceIds);
+  const current = world.places[agent.locationId];
+  // A first local survey is useful. An already surveyed home/field must not
+  // swallow 55% of every later generation's independently chosen exploration.
+  // Resurveying remains a weighted candidate below, not a compulsory exit.
+  if (!recentDistressLoop && current && !EXCLUDED_TARGET_KINDS.has(current.kind) &&
+      !mapped.has(current.id) && choiceRoll !== undefined && choiceRoll < 0.55) {
     return agent.locationId;
   }
-  const mapped = new Set(mappedPlaceIds);
   const candidates = [...known]
     .map((id) => world.places[id])
     .filter(
@@ -77,7 +82,16 @@ export function residentExplorationTarget(
         canReach(place.id),
     );
 
+  let identityHash = 2166136261;
+  for (const char of `${world.id}:${agent.id}`) {
+    identityHash ^= char.charCodeAt(0);
+    identityHash = Math.imul(identityHash, 16777619);
+  }
+  const preferredBearing = ((identityHash >>> 0) / 0xffffffff) * Math.PI * 2;
+  const scores = new Map<string, number>();
   const score = (place: WorldPlace): number => {
+      const cached = scores.get(place.id);
+      if (cached !== undefined) return cached;
       const outsideRank = place.settlementId === undefined
         ? 3
         : place.settlementId !== homeSettlementId
@@ -89,12 +103,6 @@ export function residentExplorationTarget(
       const bearing = home
         ? Math.atan2(place.mapY - home.mapY, place.mapX - home.mapX)
         : 0;
-      let identityHash = 2166136261;
-      for (const char of `${world.id}:${agent.id}`) {
-        identityHash ^= char.charCodeAt(0);
-        identityHash = Math.imul(identityHash, 16777619);
-      }
-      const preferredBearing = ((identityHash >>> 0) / 0xffffffff) * Math.PI * 2;
       const directionalFit = (Math.cos(bearing - preferredBearing) + 1) / 2;
       const terrainFit =
         place.kind === 'forest'
@@ -104,12 +112,16 @@ export function residentExplorationTarget(
             : place.kind === 'shore' || place.kind === 'river'
               ? agent.personality.resilience * 0.12
               : 0;
-      return outsideRank * 1.2 + wildernessRank * 0.42 + unmappedRank * 0.9 +
+      const value = outsideRank * 1.2 + wildernessRank * 0.42 + unmappedRank * 0.9 +
         -Math.log1p(distance) * 0.9 + directionalFit * 0.36 + terrainFit;
+      scores.set(place.id, value);
+      return value;
   };
-  candidates.sort((left, right) => score(right) - score(left) || left.id.localeCompare(right.id));
-  if (candidates.length === 0) return agent.locationId;
-  const pool = candidates.slice(0, Math.min(7, candidates.length));
+  const uncharted = candidates.filter(place => !mapped.has(place.id));
+  const frontierCandidates = uncharted.length ? uncharted : candidates;
+  frontierCandidates.sort((left, right) => score(right) - score(left) || left.id.localeCompare(right.id));
+  if (frontierCandidates.length === 0) return agent.locationId;
+  const pool = frontierCandidates.slice(0, Math.min(7, frontierCandidates.length));
   const best = score(pool[0]);
   const weights = pool.map((place) =>
     Math.exp((score(place) - best) / (0.2 + agent.personality.curiosity * 0.18)),

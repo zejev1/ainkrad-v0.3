@@ -54,6 +54,7 @@ export type AgentLifeStage =
 export type AgentDeathCause =
   | 'old_age'
   | 'illness'
+  | 'childbirth'
   | 'deprivation'
   | 'catastrophe'
   | 'wildlife'
@@ -145,6 +146,7 @@ export interface AgentSkills {
 }
 
 export type DivineGiftKind = import('../v20/DivineGiftsV20').GiftKindV20;
+export type DivineBurdenKind = import('../v20/DivineGiftsV20').DivineBurdenKindV22;
 
 export type DivineContactKind =
   | 'message'
@@ -228,6 +230,7 @@ export interface AgentMovementState {
 }
 
 export interface AgentState {
+  cartography?: import('./ResidentCartography').ResidentMapNotes;
   /** Lived attempts, predictions and revisable methods; absent in legacy saves. */
   learning?: import('./learning/index').ResidentLearningState;
   knownPlaceIds?: string[];
@@ -639,6 +642,13 @@ export interface V15WorldItemState {
     lastWorkedMinute: number;
     completed: boolean;
     condition?: number;
+    /** Design evolves only after real construction and voyages. */
+    design?: 'coastal_skiff' | 'sailing_boat' | 'coastal_ship';
+    designExperience?: number;
+    passengerCapacity?: number;
+    cargoCapacityKg?: number;
+    range?: number;
+    seaworthiness?: number;
     position?: WorldPoint2D;
     journey?: import('../v21/BoatNavigation').BoatJourney;
   };
@@ -774,6 +784,10 @@ export interface V16RaceFamilyOpportunityState {
   voluntaryIntimacyChoices: number;
   voluntaryChildChoices: number;
   birthsSinceTracking: number;
+  /** New receipts distinguish the candidate pool from actual opportunities.
+   * eligiblePairChecks is the legacy cumulative pre-window candidate count. */
+  scheduledPairChecks?: number;
+  evaluatedPairChecks?: number;
 }
 
 export interface V16LocalFamilyOpportunityState {
@@ -788,6 +802,41 @@ export interface V16LocalFamilyOpportunityState {
   voluntaryIntimacyChoices: number;
   voluntaryChildChoices: number;
   birthsSinceTracking: number;
+  /** New receipts distinguish the candidate pool from actual opportunities.
+   * eligiblePairChecks is the legacy cumulative pre-window candidate count. */
+  scheduledPairChecks?: number;
+  evaluatedPairChecks?: number;
+  /** Stable round-robin cursor; no per-couple lifetime history is required. */
+  lastConsideredPairId?: string;
+}
+
+export type V16FamilyLifecycleStage = 'meeting' | 'intending' | 'pregnant';
+
+/**
+ * Persistent causal family state. A meeting is only a remembered rendezvous,
+ * not consent to intimacy or a child. A mutual child intention is evidence of a
+ * decision, never an instant pregnancy. Conception requires later physical
+ * co-presence and a separate voluntary intimacy decision; birth requires a
+ * completed gestation in canonical world time.
+ */
+export interface V16FamilyLifecycleState {
+  id: string;
+  pairId: string;
+  agentAId: string;
+  agentBId: string;
+  race: AgentRace;
+  settlementId: string;
+  meetingPlaceId: string;
+  stage: V16FamilyLifecycleStage;
+  createdWorldMinute: number;
+  lastAffirmedWorldMinute: number;
+  lastPhysicalMeetingWorldMinute?: number;
+  lastIntimacyWorldMinute?: number;
+  pregnantAgentId?: string;
+  conceptionWorldMinute?: number;
+  dueWorldMinute?: number;
+  /** Chosen once at conception; absent in older saves means singleton. */
+  expectedChildCount?: 1 | 2 | 3 | 4;
 }
 
 export type V16SettlementPracticeKind =
@@ -933,6 +982,8 @@ export interface WorldV16State {
   residentEvidenceByAgentId: Record<string, V16ResidentEvidenceState>;
   raceFamilyOpportunityByRace: Record<AgentRace, V16RaceFamilyOpportunityState>;
   localFamilyOpportunityByKey: Record<string, V16LocalFamilyOpportunityState>;
+  /** Additive persistent intent/pregnancy state; empty in migrated old worlds. */
+  familyLifecycleByPairId: Record<string, V16FamilyLifecycleState>;
   settlementEvidenceById: Record<string, V16SettlementEvidenceState>;
   settlementResourcesById: Record<string, V16SettlementResourceState>;
   settlementEconomyById: Record<string, V16SettlementEconomyState>;
@@ -1075,6 +1126,7 @@ export interface WorldV21State {
 }
 
 export interface WorldState {
+  cartography?: import('./ResidentCartography').WorldCartography;
   terrain?: TerrainFoundation;
   oceanExploration?: import('./geography/OceanExploration').OceanExplorationState;
   id: string;

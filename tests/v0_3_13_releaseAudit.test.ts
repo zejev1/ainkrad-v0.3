@@ -9,7 +9,7 @@ import { InMemoryWorldStore } from '../src/world/InMemoryWorldStore';
 import { WorldEngine } from '../src/world/WorldEngine';
 
 describe('v0.3.13 release audit', () => {
-  it('starts the default human line as 5 male + 5 female with progression', async () => {
+  it('starts three default human lines as 15 male + 15 female with progression', async () => {
     const store = new InMemoryWorldStore();
     const world = await WorldEngine.create({
       worldId: 'audit-founders',
@@ -18,10 +18,10 @@ describe('v0.3.13 release audit', () => {
       startTime: 0,
     });
     const living = Object.values(world.snapshot().agents).filter((agent) => agent.life.alive);
-    expect(living).toHaveLength(10);
-    expect(living.filter((agent) => agent.race === 'human')).toHaveLength(10);
-    expect(living.filter((agent) => agent.sex === 'male')).toHaveLength(5);
-    expect(living.filter((agent) => agent.sex === 'female')).toHaveLength(5);
+    expect(living).toHaveLength(30);
+    expect(living.filter((agent) => agent.race === 'human')).toHaveLength(30);
+    expect(living.filter((agent) => agent.sex === 'male')).toHaveLength(15);
+    expect(living.filter((agent) => agent.sex === 'female')).toHaveLength(15);
     expect(living.every((agent) => (agent.progression?.level ?? 0) >= 1)).toBe(true);
   });
 

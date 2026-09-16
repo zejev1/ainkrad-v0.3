@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   allowedActionsForAgeV16,
   ensureSettlementRelationV16,
@@ -529,7 +529,15 @@ describe('v0.3.17 physically grounded hostile ecology', () => {
     const store = new InMemoryWorldStore();
     await store.initializeWorld(raw);
     const world = await WorldEngine.open({ worldId: raw.id, store });
-    await world.advanceCanonicalTimeTo(WORLD_MINUTES_PER_YEAR);
+    // Hold this fixture's geography fixed: an isolated-food-chain assertion
+    // must not depend on whether residents discover a new prey habitat nearby.
+    // Live frontier discovery is covered by the world autonomy tests.
+    const growth = vi.spyOn(world as any, 'advanceWorldGrowth').mockReturnValue(undefined);
+    try {
+      await world.advanceCanonicalTimeTo(WORLD_MINUTES_PER_YEAR);
+    } finally {
+      growth.mockRestore();
+    }
 
     const state = world.snapshot();
     const history = await store.history(raw.id);
@@ -803,32 +811,21 @@ describe('v0.3.16 material settlements and death aftermath', () => {
     const [settlementA, settlementB] = settlements;
     // Two already-contacted human frontier communities share a short surveyed
     // border; this fixture must not invent a 1000 km route between unknown peoples.
-    const oldId = settlementB.id;
-    const localId = 'test_contacted_frontier';
-    raw.settlements[oldId] = { ...structuredClone(settlementB), memberPlaceIds: [settlementB.centerPlaceId] };
-    settlementB.id = localId;
-    raw.settlements[localId] = settlementB;
     const centerA = raw.places[settlementA.centerPlaceId];
-    const oldCenterId = settlementB.centerPlaceId;
-    const originalCenter = structuredClone(raw.places[oldCenterId]);
-    const centerB = raw.places[oldCenterId];
+    const centerB = raw.places[settlementB.centerPlaceId];
     const dx = centerA.mapX - 12 - centerB.mapX;
     const dy = centerA.mapY - centerB.mapY;
-    for (const place of Object.values(raw.places)) if (place.settlementId === oldId) {
-      place.settlementId = localId; place.mapX += dx; place.mapY += dy;
+    // Keep the existing settlement/place identities intact. This test needs a
+    // short, already-surveyed frontier, not a synthetic migration that rewrites
+    // every subsystem keyed by settlement id.
+    for (const place of Object.values(raw.places)) if (place.settlementId === settlementB.id) {
+      place.mapX += dx;
+      place.mapY += dy;
     }
-    const newCenterId = 'test_contacted_frontier_center';
-    centerB.id = newCenterId;
-    raw.places[newCenterId] = centerB;
-    raw.places[oldCenterId] = originalCenter;
-    settlementB.centerPlaceId = newCenterId;
-    settlementB.memberPlaceIds = settlementB.memberPlaceIds.map(id => id === oldCenterId ? newCenterId : id);
-    for (const place of Object.values(raw.places)) if (place.settlementId === localId)
-      place.connectedPlaceIds = place.connectedPlaceIds.map(id => id === oldCenterId ? newCenterId : id);
-    for (const agent of Object.values(raw.agents)) if (agent.locationId === oldCenterId) agent.locationId = newCenterId;
-    settlementB.centerX = centerB.mapX; settlementB.centerY = centerB.mapY;
-    centerA.connectedPlaceIds.push(centerB.id);
-    centerB.connectedPlaceIds.push(centerA.id);
+    settlementB.centerX = centerB.mapX;
+    settlementB.centerY = centerB.mapY;
+    if (!centerA.connectedPlaceIds.includes(centerB.id)) centerA.connectedPlaceIds.push(centerB.id);
+    if (!centerB.connectedPlaceIds.includes(centerA.id)) centerB.connectedPlaceIds.push(centerA.id);
     const homesB = settlementB.memberPlaceIds.filter(
       (placeId) => raw.places[placeId]?.kind === 'home',
     );

@@ -14,7 +14,7 @@ const humanCount = (world: ReturnType<WorldEngine['snapshot']>) =>
   ).length;
 
 describe('v0.3.14 Underworld-style substrate audit', () => {
-  it('starts the live world with ten balanced human founders in one coherent settlement', async () => {
+  it('starts the live world with three independent balanced human settlements', async () => {
     const runtime = await LiveWorldRuntime.create({
       mode: 'observer', seed: 'v14-founders', worldId: 'v14-founders',
       store: new InMemoryWorldStore(), controlLog: new InMemoryAppendOnlyLog(),
@@ -23,11 +23,14 @@ describe('v0.3.14 Underworld-style substrate audit', () => {
     const humans = Object.values(frame.world.agents).filter(
       (agent) => agent.life.alive && (agent.race ?? 'human') === 'human',
     );
-    expect(humans).toHaveLength(10);
-    expect(humans.filter((agent) => agent.sex === 'male')).toHaveLength(5);
-    expect(humans.filter((agent) => agent.sex === 'female')).toHaveLength(5);
+    expect(humans).toHaveLength(30);
+    expect(humans.filter((agent) => agent.sex === 'male')).toHaveLength(15);
+    expect(humans.filter((agent) => agent.sex === 'female')).toHaveLength(15);
     expect(humans.every((agent) => agent.life.generation === 0)).toBe(true);
-    expect(humans.every((agent) => frame.world.places[agent.homeId]?.settlementId === 'settlement_ainkrad')).toBe(true);
+    expect(new Set(humans.map((agent) => frame.world.places[agent.homeId]?.settlementId))).toEqual(new Set(['settlement_ainkrad','settlement_rulid','settlement_zakkaria']));
+    for (const settlementId of ['settlement_ainkrad','settlement_rulid','settlement_zakkaria']) {
+      expect(humans.filter((agent) => frame.world.places[agent.homeId]?.settlementId === settlementId)).toHaveLength(10);
+    }
 
     const c = frame.world.places.commons;
     const workshop = frame.world.places.workshop;
@@ -172,7 +175,7 @@ describe('v0.3.14 Underworld-style substrate audit', () => {
     expect(damagedWorld.snapshot().governance.laws.fertility_support.value).toBeGreaterThan(0.55);
   });
 
-  it('starts a new epoch with ten founders while Cardinal retains all-time experience', async () => {
+  it('starts a new epoch with thirty founders in three settlements while Cardinal retains all-time experience', async () => {
     const store = new InMemoryWorldStore();
     const controlLog = new InMemoryAppendOnlyLog();
     const runtime = await LiveWorldRuntime.create({ mode: 'observer', seed: 'v14-reset', worldId: 'v14-reset', store, controlLog });
@@ -186,7 +189,7 @@ describe('v0.3.14 Underworld-style substrate audit', () => {
     const reset = await runtime.resetWorld('v14-reset-new');
     expect(reset.epoch).toBe(2);
     expect(reset.calendar.elapsedWorldMinutes).toBe(0);
-    expect(humanCount(reset)).toBe(10);
+    expect(humanCount(reset)).toBe(30);
     expect(Object.keys(reset.wildlife)).toHaveLength(0);
     expect(Object.keys(reset.relationships)).toHaveLength(0);
     expect(Object.keys(reset.agents).some((id) => oldIds.has(id))).toBe(false);

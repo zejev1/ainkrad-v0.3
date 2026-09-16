@@ -106,6 +106,8 @@ const LIVE_BATCHING_START_WORLD_MINUTES = WORLD_MINUTES_PER_YEAR * 2;
 
 const DEFAULT_LIVE_FOUNDER_NAMES = [
   'Арон', 'Мира', 'Кай', 'Ноа', 'Илан', 'Рин', 'Лея', 'Дарен', 'Сора', 'Талия',
+  'Эрен', 'Майя', 'Теон', 'Ливия', 'Сайр', 'Нора', 'Рен', 'Илла', 'Марк', 'Элира',
+  'Кален', 'Селия', 'Орен', 'Мираэль', 'Тавен', 'Рия', 'Дален', 'Лора', 'Нейл', 'Сари',
 ] as const;
 // v15 deliberately has no hidden automatic population rescue.
 // External resident entry remains available only through the independent
@@ -204,6 +206,7 @@ export interface CardinalConsoleSnapshot {
 const CANONICAL_DEATH_CAUSES: readonly CanonicalDeathCauseV15[] = [
   'old_age',
   'illness',
+  'childbirth',
   'deprivation',
   'catastrophe',
   'wildlife',

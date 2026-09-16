@@ -28,7 +28,7 @@ describe('FIX3 metre-scale cities and bounded map surfaces', () => {
 
   it('leaves 3–6m lanes and a main street no wider than 10m, independent of distant homelands', async () => {
     const world=(await WorldEngine.create({worldId:'city-metres',seed:'street',store:new InMemoryWorldStore()})).snapshot();
-    const homes=Object.values(world.places).filter(p=>p.kind==='home').sort((a,b)=>a.urbanLot!-b.urbanLot!);
+    const homes=Object.values(world.places).filter(p=>p.kind==='home'&&p.settlementId==='settlement_ainkrad').sort((a,b)=>a.urbanLot!-b.urbanLot!);
     expect(homes).toHaveLength(10);
     const pair=homes.find(p=>homes.some(q=>q.urbanLot===(p.urbanLot!^1)))!;
     const opposite=homes.find(p=>p.urbanLot===(pair.urbanLot!^1))!;
@@ -41,7 +41,8 @@ describe('FIX3 metre-scale cities and bounded map surfaces', () => {
     const plot=nextUrbanHomeLot(world.places,{x:50,y:50},'settlement_ainkrad')!;
     expect(homes.some(p=>p.urbanLot===plot.lot)).toBe(false);
     expect(urbanHomeLot({x:50,y:50},plot.lot)).toEqual({x:plot.x,y:plot.y});
-    for (const r of Object.values(world.routes).filter(r=>r.fromPlaceId.startsWith('home_')||r.toPlaceId.startsWith('home_'))) {
+    const ainkradHomes = new Set(homes.map(p => p.id));
+    for (const r of Object.values(world.routes).filter(r=>ainkradHomes.has(r.fromPlaceId)||ainkradHomes.has(r.toPlaceId))) {
       expect(r.distance*100).toBeLessThan(150);
     }
   });

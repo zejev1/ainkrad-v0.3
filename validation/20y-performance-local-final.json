@@ -1,0 +1,17 @@
+{
+  "root": "/mnt/data/js_current",
+  "years": 20,
+  "seed": "life-repair-control-b",
+  "wall": 13.615098843,
+  "cpuSec": 19.483815,
+  "rssMiB": 213.40234375,
+  "living": 100,
+  "humans": 17,
+  "deaths": 0,
+  "familyStates": 0,
+  "pregnant": 0,
+  "intending": 0,
+  "mapPlaces": 0,
+  "mapRoutes": 0,
+  "explore": 0
+}

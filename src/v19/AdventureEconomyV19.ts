@@ -3,6 +3,7 @@ import {
   ensureSettlementRelationV16,
 } from '../v16/SocietyFoundationV16';
 import type { AgentState, WorldPlace, WorldState } from '../world/types';
+import { burdenIntensityV22, personalEarningRetentionV22 } from '../v20/DivineGiftsV20';
 import { WORLD_MINUTES_PER_YEAR } from '../world/WorldClock';
 import {
   assertEmergentSocietyV21,
@@ -235,8 +236,12 @@ function syncIntoState(
   }
   const existingCount = Object.keys(state.dungeonsById).length;
   if (existingCount >= MAX_DUNGEONS_V19) return;
+  // Same physical-presence rule, one O(residents + places) pass instead of
+  // allocating/scanning the entire population once per candidate place.
+  const occupiedPlaces = new Set(Object.values(world.agents)
+    .filter(agent => agent.life.alive && !agent.movement).map(agent => agent.locationId));
   const candidates = Object.values(world.places)
-    .filter(place => eligibleDungeonEntrance(place) && Object.values(world.agents).some(agent => agent.life.alive && !agent.movement && agent.locationId === place.id))
+    .filter(place => eligibleDungeonEntrance(place) && occupiedPlaces.has(place.id))
     .sort(
       (left, right) =>
         (left.discoveredAt ?? 0) - (right.discoveredAt ?? 0) ||
@@ -410,7 +415,7 @@ export function ensureAdventurerV19(
   world: WorldState,
   agentId: string,
 ): V19AdventurerState {
-  const state = syncAdventureEconomyV19(world);
+  const state = world.v19?.adventureEconomy ?? repairAdventureEconomyV19(world);
   return (state.adventurersByAgentId[agentId] ??= emptyAdventurer(agentId));
 }
 
@@ -746,7 +751,9 @@ export function resolveDungeonExpeditionV19(
       (giftKinds.has('might') ? 0.13 : 0) +
       (legendaryGift ? 0.42 : 0),
   );
-  const difficulty = assessment.knownDanger;
+  const difficulty = clamp01(
+    assessment.knownDanger + burdenIntensityV22(world, agent.id, 'misfortune') * 0.045,
+  );
   const mustRetreat =
     !legendaryGift &&
     (agent.energy < 0.28 ||
@@ -866,8 +873,9 @@ export function resolveDungeonExpeditionV19(
   const coinShare = coinRecovered / Math.max(1, party.length);
   for (const member of party) {
     const memberProfile = ensureAdventurerV19(world, member.id);
-    memberProfile.coinBalance += coinShare;
-    memberProfile.totalCoinEarned += coinShare;
+    const retainedCoin = coinShare * personalEarningRetentionV22(world, member.id);
+    memberProfile.coinBalance += retainedCoin;
+    memberProfile.totalCoinEarned += retainedCoin;
   }
   state.totalCoinRecovered += coinRecovered;
   if (coinRecovered > 0) {
@@ -1061,7 +1069,7 @@ export function tryAdventureMarketTradeV19(
   if (physicalSettlementId !== settlementId || !world.settlements[settlementId]) {
     return undefined;
   }
-  const state = syncAdventureEconomyV19(world);
+  const state = world.v19?.adventureEconomy ?? repairAdventureEconomyV19(world);
   const profile = state.adventurersByAgentId[agent.id];
   if (!profile) return undefined;
   if (
@@ -1147,10 +1155,22 @@ export function tryAdventureMarketTradeV19(
       settlementId,
       commodity,
     );
+    const storedMaterial = commodity === 'meat' || commodity === 'herbs'
+      ? 'food'
+      : commodity === 'food' || commodity === 'wood' || commodity === 'stone' ||
+        commodity === 'metal' || commodity === 'fuel' ? commodity : undefined;
+    const storageConversion = commodity === 'meat' ? 0.72 : commodity === 'herbs' ? 0.22 : 1;
+    const storageRoom = storedMaterial
+      ? Math.max(0, economy.storageCapacity[storedMaterial] - economy.stocks[storedMaterial]) / storageConversion
+      : Infinity;
+    // A full warehouse declines the excess before any money or goods move.
+    // Keep unsold provisions with their owner; never discard stock afterward
+    // merely to make the physical-capacity validator pass.
     const quantity = Math.min(
       carried,
       0.4,
       market.treasuryCoin / Math.max(0.05, unitPrice),
+      storageRoom,
     );
     // Division followed by multiplication can exceed the balance by one ULP.
     // Debit and credit the same bounded amount, never mint a rounding shortfall.
@@ -1162,21 +1182,14 @@ export function tryAdventureMarketTradeV19(
       market.treasuryCoin -= coin;
       market.tradeVolume += coin;
       market.lastTradeWorldMinute = world.calendar.elapsedWorldMinutes;
-      profile.coinBalance += coin;
-      profile.totalCoinEarned += coin;
+      const retainedCoin = coin * personalEarningRetentionV22(world, agent.id);
+      profile.coinBalance += retainedCoin;
+      profile.totalCoinEarned += retainedCoin;
       profile.lastTradeWorldMinute = world.calendar.elapsedWorldMinutes;
       state.totalTradeVolume += coin;
       agent.resources = clamp01(agent.resources - Math.min(0.12, quantity * 0.2));
-      if (
-        commodity === 'food' ||
-        commodity === 'wood' ||
-        commodity === 'stone' ||
-        commodity === 'metal' ||
-        commodity === 'fuel'
-      ) {
-        economy.stocks[commodity] += quantity;
-      } else if (commodity === 'meat' || commodity === 'herbs') {
-        economy.stocks.food += quantity * (commodity === 'meat' ? 0.72 : 0.22);
+      if (storedMaterial) {
+        economy.stocks[storedMaterial] += quantity * storageConversion;
       }
       recordCarriedTrade(
         world,
@@ -1231,8 +1244,9 @@ export function tryAdventureMarketTradeV19(
     if (coin >= price * 0.55 || barterFood > 0) {
       market.treasuryCoin -= coin;
       economy.stocks.food -= barterFood;
-      profile.coinBalance += coin;
-      profile.totalCoinEarned += coin;
+      const retainedCoin = coin * personalEarningRetentionV22(world, agent.id);
+      profile.coinBalance += retainedCoin;
+      profile.totalCoinEarned += retainedCoin;
       agent.resources = clamp01(agent.resources + barterFood * 0.72);
       profile.artifactIds = profile.artifactIds.filter(
         (id) => id !== saleCandidate.id,

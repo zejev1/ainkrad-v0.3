@@ -70,7 +70,7 @@ describe('physical settlement geometry and observer navigation',()=>{
       w.places.commons.connectedPlaceIds.push(id);
     }
     repairCompactSettlementLayout(w);
-    const homes=Object.values(w.places).filter(p=>p.kind==='home');
+    const homes=Object.values(w.places).filter(p=>p.kind==='home'&&p.settlementId==='settlement_ainkrad');
     for(const home of homes) {
       const pair=homes.find(p=>p.urbanLot===(home.urbanLot!^1));
       if(pair) {

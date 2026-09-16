@@ -40,6 +40,8 @@ describe('SPCK browser UI smoke contract', () => {
     expect(template).toContain('id="prayer-inbox-list"');
     expect(template).toContain('id="prayer-filter-settlement"');
     expect(template).toContain('id="divine-contact-kind"');
+    expect(template).toContain('id="divine-burden"');
+    expect(template).toContain('id="divine-lineage-curse"');
     expect(template).not.toContain('id="divine-calling"');
     expect(browserSource).toContain('readableLawReports');
     expect(browserSource).toContain('readableInterventionReports');

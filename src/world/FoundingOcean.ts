@@ -39,16 +39,26 @@ export function repairFoundingOcean(
     world.places[AINKRAD_OCEAN_ID] = createFoundingOcean(world.epochStartedAt ?? 0);
     changed = true;
   }
-  const shore = world.places.shore;
-  if (shore?.kind !== 'shore') return changed;
   const ocean = world.places[AINKRAD_OCEAN_ID];
-  if (!shore.connectedPlaceIds.includes(AINKRAD_OCEAN_ID)) {
-    shore.connectedPlaceIds.push(AINKRAD_OCEAN_ID);
+  const foundingShore = world.places.shore;
+  // Legacy Ainkrad saves used the canonical `shore` id. New F2 worlds may
+  // also contain Rulid's physical coast. Restore reciprocity without inventing
+  // links for unrelated shore places.
+  const linkedShores = Object.values(world.places).filter(
+    (place) =>
+      place.kind === 'shore' &&
+      (place.id === 'shore' || place.connectedPlaceIds.includes(AINKRAD_OCEAN_ID)),
+  );
+  if (foundingShore?.kind === 'shore' && !foundingShore.connectedPlaceIds.includes(AINKRAD_OCEAN_ID)) {
+    foundingShore.connectedPlaceIds.push(AINKRAD_OCEAN_ID);
     changed = true;
+    if (!linkedShores.includes(foundingShore)) linkedShores.push(foundingShore);
   }
-  if (!ocean.connectedPlaceIds.includes(shore.id)) {
-    ocean.connectedPlaceIds.push(shore.id);
-    changed = true;
+  for (const shore of linkedShores) {
+    if (!ocean.connectedPlaceIds.includes(shore.id)) {
+      ocean.connectedPlaceIds.push(shore.id);
+      changed = true;
+    }
   }
   return changed;
 }

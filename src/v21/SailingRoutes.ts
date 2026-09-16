@@ -29,11 +29,11 @@ export function waterAccess(world: Readonly<WorldState>, bank: WorldPoint2D): Wo
 }
 
 /** Bounded water-only A*: no dry-land shortcuts and no arbitrary ocean hop. */
-export function sailingCourse(world: Readonly<WorldState>, from: WorldPoint2D, to: WorldPoint2D): WorldPoint2D[] | undefined {
+export function sailingCourse(world: Readonly<WorldState>, from: WorldPoint2D, to: WorldPoint2D, maxDistance=40): WorldPoint2D[] | undefined {
   const a=waterAccess(world,from), b=waterAccess(world,to);
-  if(!a||!b||pointDistance(a,b)>40) return;
+  if(!a||!b||pointDistance(a,b)>maxDistance) return;
   if(waterSegment(world,a,b)) return [from,a,b,to];
-  const step=Math.max(.08,Math.min(.4,pointDistance(a,b)/48));
+  const step=Math.max(.08,Math.min(.8,pointDistance(a,b)/64));
   type Node={x:number;y:number;p:WorldPoint2D;g:number;f:number;parent?:Node};
   const first:Node={x:0,y:0,p:a,g:0,f:pointDistance(a,b)};
   const open=[first], best=new Map<string,number>([['0,0',0]]),closed=new Set<string>();
@@ -49,7 +49,7 @@ export function sailingCourse(world: Readonly<WorldState>, from: WorldPoint2D, t
     for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]) {
       const x=node.x+dx,y=node.y+dy,k=`${x},${y}`,p={x:a.x+x*step,y:a.y+y*step};
       const g=node.g+Math.hypot(dx,dy)*step;
-      if(closed.has(k)||g>60||g>=(best.get(k)??Infinity)||!waterSegment(world,node.p,p))continue;
+      if(closed.has(k)||g>maxDistance*1.35||g>=(best.get(k)??Infinity)||!waterSegment(world,node.p,p))continue;
       best.set(k,g);open.push({x,y,p,g,f:g+pointDistance(p,b),parent:node});
     }
   }
@@ -68,13 +68,15 @@ export function fishingCourse(world: Readonly<WorldState>, from: WorldPoint2D, r
 
 /** Survey a bearing selected by the resident. The site is not exposed to
  * their knowledge, the map or other residents until the vessel arrives. */
-export function surveyLanding(world: Readonly<WorldState>, from: WorldPoint2D, roll: number) {
+export function surveyLanding(world: Readonly<WorldState>, from: WorldPoint2D, roll: number, maxSurveyDistance=12) {
   const water=waterAccess(world,from), terrain=bindWorldTerrain(world);if(!water||!terrain)return;
   const existing=Object.values(world.places).filter(p=>p.surface!=='water');
+  const stepSize=Math.max(.15,Math.min(.75,maxSurveyDistance/80));
+  const maxSteps=Math.max(8,Math.ceil(maxSurveyDistance/stepSize));
   for(let i=0;i<24;i++) {
     const angle=(roll+i/24)*Math.PI*2;let previous=water;
-    for(let step=1;step<=80;step++) {
-      const p={x:water.x+Math.cos(angle)*step*.15,y:water.y+Math.sin(angle)*step*.15};
+    for(let step=1;step<=maxSteps;step++) {
+      const p={x:water.x+Math.cos(angle)*step*stepSize,y:water.y+Math.sin(angle)*step*stepSize};
       if(terrain.sample(p.x,p.y).water) {previous=p;continue;}
       if(pointDistance(p,from)<1||existing.some(site=>pointDistance(p,{x:site.mapX,y:site.mapY})<.8))break;
       if(!waterSegment(world,water,previous))break;

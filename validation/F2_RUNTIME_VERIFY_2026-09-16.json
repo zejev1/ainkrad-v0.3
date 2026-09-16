@@ -1,0 +1,30 @@
+{
+  "ok": true,
+  "distances": [
+    13968.219981528819,
+    13968.219981528815,
+    13968.219981528817
+  ],
+  "healing": 0.5535220247493223,
+  "prayerTopics": [
+    "health",
+    "purpose",
+    "health",
+    "health",
+    "health",
+    "health",
+    "health",
+    "health",
+    "purpose",
+    "health",
+    "health",
+    "health"
+  ],
+  "exceptional": [
+    "immortality",
+    "eternal_youth",
+    "phoenix",
+    "living_archive"
+  ],
+  "quad": 0.5
+}

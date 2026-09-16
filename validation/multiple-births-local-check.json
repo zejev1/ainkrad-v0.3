@@ -1,0 +1,38 @@
+{
+  "date": "2026-09-16",
+  "status": "PASS_TARGETED",
+  "typecheck": "PASS",
+  "naturalHumanPregnancyProbabilities": {
+    "singleton": 0.98564,
+    "twins": 0.014,
+    "triplets": 0.00035,
+    "quadruplets": 0.00001
+  },
+  "binaryFertilityGiftPregnancyProbabilities": {
+    "singleton": 0.94724,
+    "twins": 0.049,
+    "triplets": 0.00335,
+    "quadruplets": 0.00041
+  },
+  "maternalMortalityRiskByMultiplicity": {
+    "1": 0,
+    "2": 0.005,
+    "3": 0.06,
+    "4": 0.5
+  },
+  "runtimeChecks": {
+    "quadrupletDistinctSparkCount": 4,
+    "quadrupletUniqueIds": 4,
+    "quadrupletUniqueNames": 4,
+    "forcedFatalQuadrupletDeathCause": "childbirth",
+    "legacyPregnancyWithoutMultiplicityBirthCount": 1
+  },
+  "targetedBirthPathPerformance": {
+    "forcedSingletonDeliveriesPerRun": 150,
+    "previousF1MsPerDeliveryRuns": [18.256852973333334, 15.36669428],
+    "checkpointMsPerDeliveryRuns": [14.983919213333332, 12.44350128],
+    "note": "Targeted Node birth-path stress check with unrelated systems frozen; not a browser/mobile FPS benchmark."
+  },
+  "fullVitestAndVite": "NOT_RUN_LOCAL_DEPENDENCIES_UNAVAILABLE",
+  "githubWriteUsed": false
+}

@@ -19,7 +19,7 @@ describe('Persisted 2D world physics', () => {
 
     expect(settlement.centerPlaceId).toBe('commons');
     const homes = Object.values(state.places).filter(
-      (place) => place.kind === 'home',
+      (place) => place.kind === 'home' && place.settlementId === settlement.id,
     );
     expect(homes.length).toBeGreaterThan(0);
     for (const home of homes) {

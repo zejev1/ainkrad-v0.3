@@ -659,6 +659,7 @@ export function createWorldV16State(
     residentEvidenceByAgentId,
     raceFamilyOpportunityByRace,
     localFamilyOpportunityByKey,
+    familyLifecycleByPairId: {},
     settlementEvidenceById,
     settlementResourcesById,
     settlementEconomyById,
@@ -693,6 +694,7 @@ export function repairWorldV16AdditiveSchema(
   v16.raceFamilyOpportunityByRace ??=
     {} as WorldV16State['raceFamilyOpportunityByRace'];
   v16.localFamilyOpportunityByKey ??= {};
+  v16.familyLifecycleByPairId ??= {};
   v16.settlementEvidenceById ??= {};
   v16.settlementResourcesById ??= {};
   v16.settlementEconomyById ??= {};
@@ -823,6 +825,7 @@ export function ensureWorldV16State(
   // Recovery checkpoints produced during the additive v16 work may predate
   // settlement-local resources. Fill the new map in place without resetting
   // residents, RNG, evidence, Cardinal history or any existing v16 counters.
+  state.v16.familyLifecycleByPairId ??= {};
   state.v16.settlementResourcesById ??= {};
   state.v16.settlementEconomyById ??= {};
   state.v16.remainsById ??= {};

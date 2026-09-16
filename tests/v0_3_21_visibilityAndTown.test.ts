@@ -68,7 +68,8 @@ describe('v0.3.21 FIX1 visible residents and local town buildings', () => {
     const world=await fresh(), saved=structuredClone(world);
     const focus=townMapFocus(world,'agent_1',390,600)!;
     const camera=new WorldMapCamera(); camera.resize(390,600); Object.assign(camera,focus);
-    for(const place of Object.values(world.places).filter(p=>p.urbanLayoutVersion===3 && ['home','library','workshop','quiet_space'].includes(p.kind))) {
+    const selectedSettlement = world.places[world.agents.agent_1.homeId].settlementId;
+    for(const place of Object.values(world.places).filter(p=>p.settlementId===selectedSettlement && p.urbanLayoutVersion===3 && ['home','library','workshop','quiet_space'].includes(p.kind))) {
       const p=camera.point(place.mapX,place.mapY);
       expect(p.x).toBeGreaterThan(0); expect(p.x).toBeLessThan(100);
       expect(p.y).toBeGreaterThan(0); expect(p.y).toBeLessThan(100);

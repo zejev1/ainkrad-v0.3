@@ -34,3 +34,7 @@ while making a future host integration explicit:
 
 Technical order values are used only for ordering and idempotency. Semantic
 windows and outcomes use the host adapter's canonical world-minute field.
+
+## Permanent detachable-conductor requirement
+
+Portability is not only a packaging property. Cardinal may be physically absent while the world continues on its own host. `CARDINAL OFF` detaches orchestration but does not stop the world or any autonomous system-agent domain. Abrupt removal becomes `OFFLINE`, not a world failure. Reconnection synchronizes Cardinal to the current world and absence history; it never rolls the world back. The normative details live in `docs/CARDINAL_DETACHABLE_CONDUCTOR_CONSTITUTION.md`.

@@ -340,3 +340,18 @@ These rules convert failures from the previous implementation into tests and str
 272. Catch-up targets are absolute and epoch-scoped, making exact retries idempotent and preventing duplicate tabs from double-advancing time.
 273. Player-entry types remain dormant until a later explicit migration and independent gateway activation; Cardinal cannot authenticate, embody or steer the future player.
 274. Original strategy-style visual hierarchy may improve readability, but proprietary assets/code are not copied and graphics never become an NPC controller.
+
+## Permanent detachable-Cardinal constitution
+
+89. Cardinal is a **detachable conductor**, not the engine of life. The world and every system-agent domain remain operational with Cardinal OFF, disconnected, crashed or physically absent.
+90. Explicit `CARDINAL ON` and `CARDINAL OFF` are required operating modes. `OFF` removes orchestration only; it does not pause world time, stop system agents, reset state, or weaken resident autonomy.
+91. Unexpected Cardinal disappearance is handled as `CARDINAL OFFLINE`: Cardinal control fails closed, while the local world engine and system agents continue from committed state.
+92. System agents are the continuous operators of world domains. Cardinal may observe, coordinate, prioritize, audit and request bounded domain changes, but it is not the mandatory per-tick executor of weather, ecology, resources, dungeons, economy or other world systems.
+93. No system agent may require a synchronous Cardinal response to make normal progress. Cardinal commands are optional orchestration inputs handled through explicit contracts and bounded queues/timeouts.
+94. Cardinal may replace or upgrade a domain-agent implementation only inside the same authorized contract and without transferring resident-mind authority or creating a new dependency on Cardinal presence.
+95. Reconnecting Cardinal synchronizes it to the **current** autonomous world. It reconstructs the absence interval from state and evidence; it never rolls the world back to the last state Cardinal remembers.
+96. Cardinal runtime/state is portable and may reside on removable/separate hardware. World persistence and autonomous system-agent state stay with the world host and cannot require Cardinal storage to continue.
+97. Cardinal usefulness is experimentally falsifiable. Fair comparisons must allow the same autonomous substrate to run with Cardinal OFF/absent. The result may be beneficial, neutral, harmful, or context-dependent.
+98. It is forbidden to cripple autonomous agents, recovery paths, or domain logic in order to manufacture an apparent benefit for Cardinal.
+99. Every system-agent release must test at least: Cardinal absent from start; ON→OFF continuous world progression; OFF→ON resynchronization; abrupt disconnect/removal; and identical save/reload continuity of the world-owned state.
+100. If removing Cardinal freezes time, suppresses mandatory world computation, corrupts state, loses autonomous history, or makes any system domain stop solely because Cardinal is absent, the revision violates the Ainkrad architecture.

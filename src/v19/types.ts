@@ -25,6 +25,32 @@ export interface V19DivineGiftGrant {
   interpretation: V19DivineInterpretation;
   residentResponse?: string;
   relatedPrayerId?: string;
+  /** 0..1 lived mastery. Missing only in migrated pre-F2 saves. */
+  mastery?: number;
+  practiceCount?: number;
+  lastPracticedWorldMinute?: number;
+  inheritedFromAgentId?: string;
+  /** Runtime trigger counter for finite exceptional abilities such as Phoenix. */
+  triggerCount?: number;
+}
+
+export type V19DivineBurdenKind =
+  | 'misfortune'
+  | 'frailty'
+  | 'empty_hands'
+  | 'discord';
+
+export interface V19DivineBurdenGrant {
+  id: string;
+  burden: V19DivineBurdenKind;
+  deityId: string;
+  deityName: string;
+  grantedWorldMinute: number;
+  intensity: number;
+  lineage: boolean;
+  inheritedFromAgentId?: string;
+  residentResponse?: string;
+  relatedPrayerId?: string;
 }
 
 export interface V19DivineContactRecord {
@@ -104,6 +130,8 @@ export interface V19PrayerResponseState {
   interventionId: string;
   respondedWorldMinute: number;
   gift?: DivineGiftKind;
+  burden?: V19DivineBurdenKind;
+  lineageCurse?: boolean;
   contactKind?: DivineContactKind;
   interpretation: V19DivineInterpretation;
   residentResponse: string;
@@ -152,6 +180,8 @@ export interface V19SignificantPrayerHistoryEntry {
 export interface V19AgentDivineAgencyState {
   agentId: string;
   gifts: V19DivineGiftGrant[];
+  /** Divine punishment/curse is persisted separately from gifts. */
+  burdens: V19DivineBurdenGrant[];
   contacts: V19DivineContactRecord[];
   deityRelationships: V19DeityRelationshipState[];
   significantPrayers: V19SignificantPrayerHistoryEntry[];
