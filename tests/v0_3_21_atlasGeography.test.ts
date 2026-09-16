@@ -51,8 +51,14 @@ describe('FIX5 physical geography and bounded atlas',()=>{
   });
   it('surveys natural features once without consuming world RNG or putting banks under water',async()=>{
     const w=await fresh(),before=structuredClone({rng:w.determinism,calendar:w.calendar,people:w.agents});
+    const origin=w.places.commons;
+    // Synthetic natural sites must stay on the same local mainland as the
+    // founding settlement. Absolute x=70..106 belonged to an obsolete map
+    // where Ainkrad lived around x=50; after continent-scale F2 placement that
+    // coordinate can be open ocean and is not a valid bank fixture.
     for(const [i,kind]of (['forest','mountains','river','lake'] as const).entries()) {
-      const id='survey_'+kind;w.places[id]={...w.places.commons,id,name:kind,kind,settlementId:undefined,mapX:70+i*12,mapY:70,
+      const id='survey_'+kind;w.places[id]={...w.places.commons,id,name:kind,kind,settlementId:undefined,
+        mapX:origin.mapX+12+i*6,mapY:origin.mapY+12,
         surface:kind==='river'||kind==='lake'?'shore':'land',connectedPlaceIds:[]};
     }
     repairCompactSettlementLayout(w);
