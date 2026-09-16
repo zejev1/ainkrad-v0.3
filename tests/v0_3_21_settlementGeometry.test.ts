@@ -7,14 +7,18 @@ import { buildingRadius, nextUrbanHomeLot, segmentEntersBuilding, dryBuildingPlo
 import { settlementOptions } from '../src/presentation/SettlementPicker';
 import { settlementMapFocus, residentMapFocus } from '../src/presentation/WorldMapFocus';
 import { rebuildWorldRoutes, routeIdBetween } from '../src/world/WorldNavigation';
-import type { WorldPlace } from '../src/world/types';
+import { homelandCenterForWorld } from '../src/world/geography/WorldTerrain';
+import type { AgentRace, WorldPlace } from '../src/world/types';
 
 const fresh=async()=> (await WorldEngine.create({worldId:'geometry',seed:'streets',store:new InMemoryWorldStore()})).snapshot();
 describe('physical settlement geometry and observer navigation',()=>{
   it('migrates different homelands internally, preserving IDs and long geographical separation',async()=>{
     const w=await fresh(),model=w.places.home_agent_1;
-    for(const [i,race] of ['elf','orc','dwarf'].entries()) {
-      const id='settlement_'+race,x=w.places.commons.mapX-10000-i*10000,y=w.places.commons.mapY;
+    for(const race of ['elf','orc','dwarf'] as AgentRace[]) {
+      // Use each people's already-persisted terrain foundation instead of
+      // fabricating a coordinate relative to Ainkrad. F2 moved the three human
+      // lines across the continent, so "commons - 10,000" may now be ocean.
+      const homeland=homelandCenterForWorld(w,race),id='settlement_'+race,x=homeland.x,y=homeland.y;
       w.places[id]={...w.places.commons,id,name:race,kind:'village',settlementId:id,mapX:x,mapY:y,connectedPlaceIds:[]};
       w.settlements[id]={id,name:race,kind:'village',centerPlaceId:id,centerX:x,centerY:y,radius:17,memberPlaceIds:[],foundedAt:0};
       for(let j=0;j<10;j++) {
@@ -41,7 +45,7 @@ describe('physical settlement geometry and observer navigation',()=>{
         expect(polygonGap(buildingPolygon(p),buildingPolygon(q))).toBeGreaterThanOrEqual(.03-1e-7);
       }
     }
-    expect(Math.abs(w.places.settlement_elf.mapX-w.places.commons.mapX)).toBeGreaterThanOrEqual(10000);
+    expect(Math.hypot(w.places.settlement_elf.mapX-w.places.commons.mapX,w.places.settlement_elf.mapY-w.places.commons.mapY)).toBeGreaterThanOrEqual(10000);
     const once=structuredClone(w);expect(repairCompactSettlementLayout(w)).toBe(false);expect(w).toEqual(once);
   });
   it('reprojects an old field journey onto its displayed road and retains road use history',async()=>{
