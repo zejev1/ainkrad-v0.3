@@ -1,0 +1,97 @@
+name: F2 Verified Source Export
+
+on:
+  push:
+    branches: [ci/f2-verified-export-20260916]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exactly the successful CI revision
+        uses: actions/checkout@v4
+        with:
+          ref: 2507067f17ad0eb634dbe3711f885a6fafc07ce8
+          path: candidate
+          persist-credentials: false
+      - name: Verify successful typecheck, full tests and production build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/f2-export"
+          gh api repos/zejev1/ainkrad-v0.3/actions/runs/35143320672 > "$RUNNER_TEMP/f2-export/verified-run.json"
+          jq -e '.head_sha == "2507067f17ad0eb634dbe3711f885a6fafc07ce8" and .status == "completed" and .conclusion == "success"' "$RUNNER_TEMP/f2-export/verified-run.json"
+          gh api repos/zejev1/ainkrad-v0.3/actions/runs/35143320672/jobs > "$RUNNER_TEMP/f2-export/verified-jobs.json"
+          jq -e '[.jobs[].steps[] | select(.name == "Typecheck" or .name == "Vitest full suite" or .name == "Vite production build")] | length == 3 and all(.conclusion == "success")' "$RUNNER_TEMP/f2-export/verified-jobs.json"
+          gh api repos/zejev1/ainkrad-v0.3/actions/jobs/104952989430/logs > "$RUNNER_TEMP/f2-export/validation.log"
+      - name: Reconstruct using the exact script that passed CI
+        working-directory: candidate
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          text = Path('.github/workflows/f2-candidate-final-ci.yml').read_text()
+          block = text.split('      - name: Reconstruct exact F2 candidate\n', 1)[1].split('      - name: Setup Node 22', 1)[0]
+          script = block.split('        run: |\n', 1)[1]
+          Path('/tmp/reconstruct-verified-f2.sh').write_text('\n'.join(line[10:] if line.startswith('          ') else line for line in script.splitlines()) + '\n')
+          PY
+          bash -e -o pipefail /tmp/reconstruct-verified-f2.sh
+          cp ci/f2-fix-overlay*.patch "$RUNNER_TEMP/f2-export/"
+          tar --exclude='./.git' --exclude='./ci' --exclude='./node_modules' --exclude='./dist' --exclude='./.github/workflows/f2-candidate-*.yml' -czf "$RUNNER_TEMP/f2-export/verified-source.tar.gz" .
+          python3 - <<'PY'
+          import hashlib, os, tarfile
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']) / 'f2-export'
+          with tarfile.open(root / 'verified-source.tar.gz', 'r:gz') as archive:
+              lines = []
+              for item in archive.getmembers():
+                  if item.isfile():
+                      name = item.name.removeprefix('./')
+                      lines.append(hashlib.sha256(archive.extractfile(item).read()).hexdigest() + '  ' + name)
+          (root / 'VERIFIED_SOURCE_SHA256SUMS.txt').write_text('\n'.join(sorted(lines)) + '\n')
+          PY
+      - name: Checkout pinned main ancestry for portable SPCK metadata
+        uses: actions/checkout@v4
+        with:
+          ref: 222c54ffba26bfdc870a1d4a5c9e0eb8f8911814
+          path: mainbase
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prepare local main metadata without committing or pushing
+        working-directory: mainbase
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = 222c54ffba26bfdc870a1d4a5c9e0eb8f8911814
+          git switch -C main 222c54ffba26bfdc870a1d4a5c9e0eb8f8911814
+          git update-ref refs/remotes/origin/main 222c54ffba26bfdc870a1d4a5c9e0eb8f8911814
+          git for-each-ref --format='%(refname)' | while read -r ref; do
+            case "$ref" in refs/heads/main|refs/remotes/origin/main|refs/remotes/origin/HEAD) ;; *) git update-ref -d "$ref" ;; esac
+          done
+          git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+          git reflog expire --expire=now --all
+          git gc --prune=now
+          git config --local user.name zejev1
+          git config --local user.email zejev1@users.noreply.github.com
+          git config --local core.filemode false
+          git config --local branch.main.remote origin
+          git config --local branch.main.merge refs/heads/main
+          git remote set-url origin https://github.com/zejev1/ainkrad-v0.3.git
+          test ! -f .git/objects/info/alternates
+          test ! -f .git/shallow
+          if git config --local --get-regexp 'extraheader|credential'; then exit 1; fi
+          git fsck --full
+          rm -rf .git/hooks .git/logs
+          rm -f .git/FETCH_HEAD .git/ORIG_HEAD
+          tar -czf "$RUNNER_TEMP/f2-export/pinned-main-git.tar.gz" .git
+      - name: Upload exact tested source and portable Git metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: F2-verified-2507067-source-and-git
+          path: ${{ runner.temp }}/f2-export/
+          retention-days: 7
+          if-no-files-found: error
