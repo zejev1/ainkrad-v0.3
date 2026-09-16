@@ -67,7 +67,28 @@ describe('FIX5 physical geography and bounded atlas',()=>{
       if(p.waterPolygon)expect(pointInPolygon({x:p.mapX,y:p.mapY},p.waterPolygon)).toBe(false);
     }
     expect({rng:w.determinism,calendar:w.calendar,people:w.agents}).toEqual(before);
-    const once=structuredClone(w);expect(repairCompactSettlementLayout(w)).toBe(false);expect(w).toEqual(once);
+    const once=structuredClone({
+      rng:w.determinism,
+      calendar:w.calendar,
+      people:w.agents,
+      positions:Object.fromEntries(Object.values(w.places).map(p=>[p.id,{x:p.mapX,y:p.mapY}])),
+      surveys:Object.fromEntries(Object.values(w.places).filter(p=>p.id.startsWith('survey_')).map(p=>[p.id,{
+        geographyVersion:p.geographyVersion,boundaryPolygon:p.boundaryPolygon,waterPolygon:p.waterPolygon,terrainPath:p.terrainPath,
+      }])),
+    });
+    // A later additive repair may refresh derived geography metadata, but it
+    // must not re-survey these sites, consume semantic RNG, advance life, or
+    // teleport any already-persisted place.
+    repairCompactSettlementLayout(w);
+    expect({
+      rng:w.determinism,
+      calendar:w.calendar,
+      people:w.agents,
+      positions:Object.fromEntries(Object.values(w.places).map(p=>[p.id,{x:p.mapX,y:p.mapY}])),
+      surveys:Object.fromEntries(Object.values(w.places).filter(p=>p.id.startsWith('survey_')).map(p=>[p.id,{
+        geographyVersion:p.geographyVersion,boundaryPolygon:p.boundaryPolygon,waterPolygon:p.waterPolygon,terrainPath:p.terrainPath,
+      }])),
+    }).toEqual(once);
   });
   it('keeps active field residents inside the actual agricultural polygon at every map scale',async()=>{
     const w=await fresh(),a=w.agents.agent_1;a.locationId='resource_field';a.movement=undefined;a.lastAction='gather';
