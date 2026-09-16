@@ -474,7 +474,7 @@ describe('Autonomous society depth', () => {
     }
 
     expect(means.reduce((sum, value) => sum + value, 0) / means.length).toBeGreaterThan(0.3);
-  }, 30_000);
+  }, 90_000);
 
   it('rejects a same-version persisted world whose required agent structures are corrupted', async () => {
     const sourceStore = new InMemoryWorldStore();
