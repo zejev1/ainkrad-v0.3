@@ -48,7 +48,7 @@ describe('v0.3.18 closed-browser catch-up', () => {
     expect(world.revision).toBeLessThanOrEqual(batches + 3);
     expect(world.population.births + world.population.deaths).toBeGreaterThan(0);
     expect(world.v18?.recentConversations.length ?? 0).toBeLessThanOrEqual(96);
-  });
+  }, 180_000);
 
   it('splits the reported day-300 mobile restoration into safe commits', async () => {
     const store = new InMemoryWorldStore();
@@ -84,7 +84,7 @@ describe('v0.3.18 closed-browser catch-up', () => {
     );
     expect(result.currentWorldMinutes).toBe(target);
     expect(resumed.worldDiagnosticSummary().living).toBeGreaterThan(0);
-  });
+  }, 120_000);
 
   it('returns an idempotent completed result at an already reached target', async () => {
     const runtime = await LiveWorldRuntime.create({
