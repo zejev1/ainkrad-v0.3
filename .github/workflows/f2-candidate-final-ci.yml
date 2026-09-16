@@ -52,7 +52,7 @@ jobs:
           echo '76bc4bb1e172466715fef2d3045f691697ec9972a0571b30769d5f929db9e178  /tmp/f2-supplement.tar.gz' | sha256sum -c -
           tar -xzf /tmp/f2-supplement.tar.gz
 
-          for patch in ci/f2-fix-overlay.patch ci/f2-fix-overlay2.patch ci/f2-fix-overlay3.patch ci/f2-fix-overlay4.patch; do
+          for patch in ci/f2-fix-overlay.patch ci/f2-fix-overlay2.patch ci/f2-fix-overlay3.patch ci/f2-fix-overlay4.patch ci/f2-fix-overlay5.patch; do
             printf '\n' >> "$patch"
             git apply --check "$patch"
             git apply "$patch"
