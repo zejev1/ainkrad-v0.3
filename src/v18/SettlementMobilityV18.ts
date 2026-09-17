@@ -3,6 +3,11 @@ import { WORLD_MINUTES_PER_YEAR } from '../world/WorldClock';
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 
+/** 600 map units = 60 km. New towns may expand the frontier step by step, but
+ * a single settlement decision can never target the opposite side of the
+ * continent just because a route graph happens to exist there. */
+export const MAX_FRONTIER_SETTLEMENT_DISTANCE_MAP_UNITS = 600;
+
 export interface V18SiteAppraisal {
   placeId: string;
   score: number;
@@ -51,8 +56,9 @@ function biomeResourceOpportunity(place: Readonly<WorldPlace>): number {
 }
 
 /**
- * Appraise only physically discovered, reachable land. This function describes
- * opportunities; it never commands a resident to move or found anything.
+ * Appraise only physically discovered, reachable land that the origin
+ * community actually knows. This function describes opportunities; it never
+ * commands a resident to move or found anything.
  */
 export function appraiseFrontierSitesV18(
   state: Readonly<WorldState>,
@@ -63,21 +69,44 @@ export function appraiseFrontierSitesV18(
   if (!origin) return [];
   const lifecycle = state.v18?.settlementLifecycleById[originSettlementId];
   const originMemberIds = new Set(origin.memberPlaceIds);
+  const settlementMap = state.cartography?.bySettlementId[originSettlementId];
 
   return Object.values(state.places)
-    .filter(
-      (place) =>
-        place.surface === 'land' &&
-        !place.settlementId &&
-        !originMemberIds.has(place.id) &&
-        place.kind !== 'cemetery' &&
-        place.kind !== 'home',
-    )
+    .filter((place) => {
+      if (
+        place.surface !== 'land' ||
+        place.settlementId ||
+        originMemberIds.has(place.id) ||
+        place.kind === 'cemetery' ||
+        place.kind === 'home' ||
+        place.discoveredAt === undefined
+      ) {
+        return false;
+      }
+      const physicalDistance = Math.hypot(
+        place.mapX - origin.centerX,
+        place.mapY - origin.centerY,
+      );
+      if (physicalDistance > MAX_FRONTIER_SETTLEMENT_DISTANCE_MAP_UNITS) return false;
+
+      // Once a settlement has a map archive, colonisation can use only places
+      // that travellers actually deposited there. A missing archive is a
+      // legacy/bootstrap case; then a physically connected local site may still
+      // be considered, but never a remote global place.
+      if (settlementMap) return settlementMap.points[place.id] !== undefined;
+      return place.connectedPlaceIds.some((id) => originMemberIds.has(id));
+    })
     .map((place) => {
       const routeDistance = routeDistanceFromOrigin(place.id);
       if (routeDistance === undefined) return undefined;
+      const physicalDistance = Math.hypot(
+        place.mapX - origin.centerX,
+        place.mapY - origin.centerY,
+      );
       const resourceOpportunity = biomeResourceOpportunity(place);
-      const accessibility = 1 / (1 + routeDistance * 0.16);
+      const routeAccessibility = 1 / (1 + routeDistance * 0.16);
+      const physicalAccessibility = 1 / (1 + physicalDistance / 120);
+      const accessibility = routeAccessibility * 0.55 + physicalAccessibility * 0.45;
       const safety = 1 - place.danger;
       const unclaimed = place.claimedBySettlementId ? 0 : 1;
       const pressure = lifecycle?.departurePressure ?? 0;
@@ -93,7 +122,7 @@ export function appraiseFrontierSitesV18(
       if (place.fertility >= 0.65) reasons.push('fertile_land');
       if (resourceOpportunity >= 0.75) reasons.push('resource_opportunity');
       if (place.danger >= 0.42) reasons.push('known_danger');
-      if (routeDistance >= 4) reasons.push('long_route');
+      if (routeDistance >= 4 || physicalDistance >= 120) reasons.push('long_route');
       if (place.claimedBySettlementId) reasons.push('claimed_land');
       return {
         placeId: place.id,
@@ -172,9 +201,9 @@ export function decideFrontierExpeditionV18(
   if (generationalIndependence > 0) reasons.push('own_generation_future');
 
   // A high score creates an opportunity, never a deterministic order. Later
-  // generations have no founder oath tying them to Ainkrad, so the same
-  // willingness is allowed to turn into action a little more often. The RNG
-  // roll and the independent decision at camp still preserve refusal twice.
+  // generations have no founder oath tying them to their first town, so the
+  // same willingness is allowed to turn into action a little more often. The
+  // RNG roll and the independent decision at camp still preserve refusal twice.
   const acceptanceChance = clamp01(
     agent.life.generation === 0
       ? Math.max(0, willingness - 0.32) * 0.72
