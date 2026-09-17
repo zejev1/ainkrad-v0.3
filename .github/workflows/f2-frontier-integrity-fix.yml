@@ -65,6 +65,9 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Final regression preflight
+        run: npx vitest run tests/v0_3_16_societyFoundation.test.ts tests/v0_3_20_regressions.test.ts tests/v0_3_22_frontierIntegrity.test.ts --minWorkers=1 --maxWorkers=1 --testTimeout=60000
+
       - name: Full Vitest
         run: npm run test
 
