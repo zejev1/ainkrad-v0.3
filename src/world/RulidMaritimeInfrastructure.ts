@@ -79,16 +79,22 @@ export function ensureRulidMaritimeInfrastructure(world: WorldState): boolean {
 
   let changed = false;
 
-  if (!world.places[RULID_SHIPYARD_ID]) {
-    const site = coastalSite(world, shore, 1, 0.23, 0.08) ?? point(shore);
+  // During the zero-minute creation/reset transaction Rulid's bank can be
+  // refined once after the terrain recipe becomes available. Facilities may
+  // follow that bank only before any lived world time exists. Afterwards their
+  // persisted coordinates are immutable migration evidence.
+  const mayReanchorFresh = world.calendar.elapsedWorldMinutes <= 1e-9;
+  const shipyardSite = coastalSite(world, shore, 1, 0.23, 0.08) ?? point(shore);
+  const existingShipyard = world.places[RULID_SHIPYARD_ID];
+  if (!existingShipyard) {
     world.places[RULID_SHIPYARD_ID] = {
       id: RULID_SHIPYARD_ID,
       name: 'Верфь и пристань Рулида',
       kind: 'workshop',
       capacity: 18,
       biome: 'coast',
-      mapX: site.x,
-      mapY: site.y,
+      mapX: shipyardSite.x,
+      mapY: shipyardSite.y,
       connectedPlaceIds: [],
       fertility: 0.12,
       danger: 0.08,
@@ -98,27 +104,40 @@ export function ensureRulidMaritimeInfrastructure(world: WorldState): boolean {
       discoveredAt: world.epochStartedAt ?? 0,
     };
     changed = true;
+  } else if (mayReanchorFresh && distance(point(existingShipyard), shipyardSite) > 1e-9) {
+    existingShipyard.mapX = shipyardSite.x;
+    existingShipyard.mapY = shipyardSite.y;
+    existingShipyard.urbanLayoutVersion = 3;
+    delete existingShipyard.boundaryPolygon;
+    changed = true;
   }
 
-  if (!world.places[RULID_BEACH_ID]) {
-    const site = coastalSite(world, shore, -1, 0.3, 0.03) ?? point(shore);
+  const beachSite = coastalSite(world, shore, -1, 0.3, 0.03) ?? point(shore);
+  const existingBeach = world.places[RULID_BEACH_ID];
+  if (!existingBeach) {
     world.places[RULID_BEACH_ID] = {
       id: RULID_BEACH_ID,
       name: 'Пляж Рулида',
       kind: 'shore',
       capacity: 28,
       biome: 'coast',
-      mapX: site.x,
-      mapY: site.y,
+      mapX: beachSite.x,
+      mapY: beachSite.y,
       connectedPlaceIds: [],
       fertility: 0.28,
       danger: 0.12,
       surface: 'shore',
       settlementId: RULID_SETTLEMENT_ID,
       geographyVersion: 1,
-      boundaryPolygon: beachPolygon(site),
+      boundaryPolygon: beachPolygon(beachSite),
       discoveredAt: world.epochStartedAt ?? 0,
     };
+    changed = true;
+  } else if (mayReanchorFresh && distance(point(existingBeach), beachSite) > 1e-9) {
+    existingBeach.mapX = beachSite.x;
+    existingBeach.mapY = beachSite.y;
+    existingBeach.geographyVersion = 1;
+    existingBeach.boundaryPolygon = beachPolygon(beachSite);
     changed = true;
   }
 
