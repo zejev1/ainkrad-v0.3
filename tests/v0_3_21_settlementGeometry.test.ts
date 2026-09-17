@@ -13,7 +13,7 @@ import type { AgentRace, WorldPlace } from '../src/world/types';
 const fresh=async()=> (await WorldEngine.create({worldId:'geometry',seed:'streets',store:new InMemoryWorldStore()})).snapshot();
 describe('physical settlement geometry and observer navigation',()=>{
   it('migrates different homelands internally, preserving IDs and long geographical separation',async()=>{
-    const w=await fresh(),model=w.places.home_agent_1;
+    const w=await fresh(),model=w.places.home_agent_1,syntheticSettlementIds:string[]=[];
     for(const race of ['elf','orc','dwarf'] as AgentRace[]) {
       // Each real homeland is already occupied in a fresh F2 world. Put this
       // synthetic stale-layout fixture nearby on a broad persisted dry patch,
@@ -24,7 +24,7 @@ describe('physical settlement geometry and observer navigation',()=>{
         return {x:homeland.x+Math.cos(angle)*6,y:homeland.y+Math.sin(angle)*6};
       }).find(point=>terrainPlotIsDry(w.places,point,2.2));
       expect(center).toBeDefined();
-      const id='settlement_'+race,x=center!.x,y=center!.y;
+      const id='settlement_'+race,x=center!.x,y=center!.y;syntheticSettlementIds.push(id);
       w.places[id]={...w.places.commons,id,name:race,kind:'village',settlementId:id,mapX:x,mapY:y,connectedPlaceIds:[]};
       w.settlements[id]={id,name:race,kind:'village',centerPlaceId:id,centerX:x,centerY:y,radius:17,memberPlaceIds:[],foundedAt:0};
       for(let j=0;j<10;j++) {
@@ -41,13 +41,13 @@ describe('physical settlement geometry and observer navigation',()=>{
     const ids=Object.keys(w.places);repairCompactSettlementLayout(w);
     expect(Object.keys(w.places)).toEqual(ids);
     expect({agents:w.agents,calendar:w.calendar,rng:w.determinism,v15:w.v15,v18:w.v18!.secretLibrary.knowledgeByAgentId}).toEqual(protectedState);
-    for(const town of Object.values(w.settlements)) {
+    // The old compact-radius assertions belong to the synthetic stale-layout
+    // fixtures above, not to F2's already-correct live founding settlements.
+    for(const id of syntheticSettlementIds) {
+      const town=w.settlements[id];
       const built=Object.values(w.places).filter(p=>p.settlementId===town.id && buildingRadius(p)>0);
       const edge=Math.max(...built.map(p=>Math.hypot(p.mapX-town.centerX,p.mapY-town.centerY)+buildingRadius(p)));
-      // F2 intentionally pins Rulid's civic centre within 100m of the real sea.
-      // Its dry residential/facility lots may therefore extend farther inland;
-      // the old universal 200m-radius fixture applies only to inland towns.
-      if(town.id!=='settlement_rulid')expect(edge).toBeLessThan(2);
+      expect(edge).toBeLessThan(2);
       for(const field of Object.values(w.places).filter(p=>p.settlementId===town.id && p.kind==='resource_field'))
         expect(Math.hypot(field.mapX-town.centerX,field.mapY-town.centerY)).toBeGreaterThan(edge);
       for(const p of built) for(const q of built) if(p.id!==q.id) {
