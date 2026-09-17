@@ -1,5 +1,6 @@
 import type { AgentState, V15WorldItemState, WorldState } from '../world/types';
 import { ensureSettlementEconomyV16 } from '../v16/SocietyFoundationV16';
+import { RULID_SHIPYARD_ID } from '../world/RulidMaritimeInfrastructure';
 
 export const BOAT_KNOWLEDGE_ID = 'boatbuilding-timber-hull';
 export const FISHING_KNOWLEDGE_ID = 'fishing-handline-and-habitat';
@@ -71,11 +72,23 @@ export function boatWorkSite(world: Readonly<WorldState>, agent: Readonly<AgentS
   const completed = ownedCompletedBoats(world, agent.id);
   const repair = completed.find(item => !item.boat!.journey && (item.boat!.condition ?? 1) < 0.95);
   if (repair) return repair.locationId;
-  if (!nextDesign(world, agent)) return undefined;
-  return (agent.knownPlaceIds ?? []).map(id => world.places[id]).filter(place => place?.surface === 'shore' &&
+  const design = nextDesign(world, agent);
+  if (!design) return undefined;
+  const nearby = (agent.knownPlaceIds ?? []).map(id => world.places[id]).filter(place => place?.surface === 'shore' &&
     Math.hypot(place.mapX - agent.position.x, place.mapY - agent.position.y) < 12)
-    .sort((a, b) => Math.hypot(a.mapX - agent.position.x, a.mapY - agent.position.y) -
-      Math.hypot(b.mapX - agent.position.x, b.mapY - agent.position.y))[0]?.id;
+    .sort((a, b) => {
+      const aYard = Number(a.id === RULID_SHIPYARD_ID || (a.kind === 'workshop' && a.biome === 'coast'));
+      const bYard = Number(b.id === RULID_SHIPYARD_ID || (b.kind === 'workshop' && b.biome === 'coast'));
+      return bYard - aYard ||
+        Math.hypot(a.mapX - agent.position.x, a.mapY - agent.position.y) -
+        Math.hypot(b.mapX - agent.position.x, b.mapY - agent.position.y);
+    });
+  const yard = nearby.find(place => place.id === RULID_SHIPYARD_ID || (place.kind === 'workshop' && place.biome === 'coast'));
+  // Large hulls need a real coastal yard/slipway. Existing smaller projects
+  // keep their saved build site; new skiffs may still begin on an ordinary
+  // usable bank where no yard has emerged.
+  if (design === 'coastal_ship') return yard?.id;
+  return yard?.id ?? nearby[0]?.id;
 }
 
 /** A real, finite material project. Better vessels are not unlocked by a menu:
