@@ -34,12 +34,14 @@ jobs:
           node --check scripts/apply-f2-frontier-integrity-fix.mjs
           node --check scripts/apply-f2-frontier-integrity-followup.mjs
           node --check scripts/apply-f2-frontier-integrity-final.mjs
+          node --check scripts/apply-f2-family-rendezvous-final.mjs
 
       - name: Apply deterministic patch
         run: |
           node scripts/apply-f2-frontier-integrity-fix.mjs
           node scripts/apply-f2-frontier-integrity-followup.mjs
           node scripts/apply-f2-frontier-integrity-final.mjs
+          node scripts/apply-f2-family-rendezvous-final.mjs
 
       - name: Tighten library id compatibility
         shell: bash
