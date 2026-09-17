@@ -1,19 +1,38 @@
 import type { AgentState, WorldState } from '../world/types';
 import type { SecretLibraryVisitorV18 } from '../v18/SecretLibraryV18';
 
-export const LIBRARY_IDS = ['secret_library_v18', 'elf_library_v20'] as const;
+export const HUMAN_LIBRARY_IDS = [
+  'secret_library_v18',
+  'secret_library_rulid_v18',
+  'secret_library_zakkaria_v18',
+] as const;
+export const ELF_LIBRARY_ID = 'elf_library_v20' as const;
+export const LIBRARY_IDS = [...HUMAN_LIBRARY_IDS, ELF_LIBRARY_ID] as const;
 export const LIBRARY_LIMIT = 5;
 export const LIBRARY_YEAR = 365 * 24 * 60;
 export const LIBRARY_HISTORY_LIMIT = 100;
-export const libraryIdOf = (v: SecretLibraryVisitorV18): string => v.libraryPlaceId ?? LIBRARY_IDS[0];
+export const libraryIdOf = (v: SecretLibraryVisitorV18): string => v.libraryPlaceId ?? HUMAN_LIBRARY_IDS[0];
 export const isSecretLibrary = (id: string): boolean => (LIBRARY_IDS as readonly string[]).includes(id);
 export const admissionDeadline = (v: SecretLibraryVisitorV18): number =>
   (v.arrivedWorldMinute ?? v.selectedWorldMinute) + LIBRARY_YEAR;
 
+export function humanLibraryIdForSettlement(settlementId: string | undefined): (typeof HUMAN_LIBRARY_IDS)[number] {
+  if (settlementId === 'settlement_rulid') return HUMAN_LIBRARY_IDS[1];
+  if (settlementId === 'settlement_zakkaria') return HUMAN_LIBRARY_IDS[2];
+  return HUMAN_LIBRARY_IDS[0];
+}
+
+export function libraryIdForAgent(world: Readonly<WorldState>, agent: Readonly<AgentState>): string {
+  if ((agent.race ?? 'human') === 'elf') return ELF_LIBRARY_ID;
+  const homeSettlementId = world.places[agent.homeId]?.settlementId;
+  return humanLibraryIdForSettlement(homeSettlementId);
+}
+
 export function hasLibraryAdmission(world: Readonly<WorldState>, agent: Readonly<AgentState>,
   id: string, minute = world.calendar.elapsedWorldMinutes): boolean {
   if (!isSecretLibrary(id)) return false;
-  if (!agent.life.alive || (agent.race ?? 'human') !== (id === LIBRARY_IDS[1] ? 'elf' : 'human')) return false;
+  const expectedRace = id === ELF_LIBRARY_ID ? 'elf' : 'human';
+  if (!agent.life.alive || (agent.race ?? 'human') !== expectedRace) return false;
   return !!world.v18?.secretLibrary.visitors.some(v => v.agentId === agent.id && libraryIdOf(v) === id &&
     (v.status === 'travelling' || v.status === 'studying') && v.selectedWorldMinute <= minute && minute < admissionDeadline(v));
 }
