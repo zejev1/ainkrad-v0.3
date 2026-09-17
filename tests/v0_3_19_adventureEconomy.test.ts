@@ -24,14 +24,17 @@ async function preparedWorld(worldId: string): Promise<{
     startTime: 0,
   });
   const state = engine.snapshot();
+  const outskirts = state.places.outskirts;
+  const ruinsX = outskirts.mapX + 8;
+  const ruinsY = outskirts.mapY + 6;
   state.places.adventure_ruins = {
     id: 'adventure_ruins',
     name: 'Каменные руины',
     kind: 'ruins',
     capacity: 10,
     biome: 'ancient_ruins',
-    mapX: 74,
-    mapY: 64,
+    mapX: ruinsX,
+    mapY: ruinsY,
     connectedPlaceIds: ['outskirts'],
     fertility: 0.12,
     danger: 0.24,
@@ -43,7 +46,7 @@ async function preparedWorld(worldId: string): Promise<{
   // A scout first physically discovers the entrance, then tells the resident.
   const scout = state.agents.agent_2;
   scout.locationId = 'adventure_ruins';
-  scout.position = { x: 74, y: 64, layerId: 'surface' };
+  scout.position = { x: ruinsX, y: ruinsY, layerId: 'surface' };
   scout.movement = undefined;
   const adventure = syncAdventureEconomyV19(state);
   const dungeon = Object.values(adventure.dungeonsById).find(

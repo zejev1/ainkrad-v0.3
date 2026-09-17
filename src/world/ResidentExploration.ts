@@ -14,6 +14,18 @@ const WILDERNESS_KINDS = new Set([
   'ruins',
 ]);
 
+/**
+ * One ordinary exploration decision may move toward a local frontier, not a
+ * coordinate on the other side of the continent. 80 map units = 8 km. Longer
+ * journeys remain possible only as a sequence of lived, mapped local legs.
+ */
+export const MAX_LOCAL_EXPLORATION_TARGET_DISTANCE = 80;
+export const MAX_PLANNED_EXPLORATION_TARGET_DISTANCE = 40;
+
+function distanceFromAgent(agent: Readonly<AgentState>, place: Readonly<WorldPlace>): number {
+  return Math.hypot(place.mapX - agent.position.x, place.mapY - agent.position.y);
+}
+
 /** Selects where a resident's own explore decision leads. It ranks only
  * places the resident already knows and can physically reach; it never grants
  * knowledge, creates a journey or chooses exploration for the resident. */
@@ -47,10 +59,16 @@ export function residentExplorationTarget(
     known.has(planned.id) &&
     !EXCLUDED_TARGET_KINDS.has(planned.kind) &&
     (planned.settlementId !== homeSettlementId || WILDERNESS_KINDS.has(planned.kind)) &&
-    Math.hypot(planned.mapX - agent.position.x, planned.mapY - agent.position.y) < 40 &&
+    distanceFromAgent(agent, planned) <= MAX_PLANNED_EXPLORATION_TARGET_DISTANCE &&
     canReach(planned.id)
   ) {
     return planned.id;
+  }
+  // A legacy plan that points across the continent is preserved nowhere as an
+  // instruction. The resident may still keep the old place in memory, but must
+  // approach it through ordinary local decisions and real traversals.
+  if (planned && distanceFromAgent(agent, planned) > MAX_PLANNED_EXPLORATION_TARGET_DISTANCE) {
+    (agent as AgentState).plan = undefined;
   }
 
   // Local surveying remains normal early behaviour. But if a resident has
@@ -79,6 +97,7 @@ export function residentExplorationTarget(
       (place): place is WorldPlace =>
         Boolean(place) &&
         !EXCLUDED_TARGET_KINDS.has(place.kind) &&
+        distanceFromAgent(agent, place) <= MAX_LOCAL_EXPLORATION_TARGET_DISTANCE &&
         canReach(place.id),
     );
 
@@ -90,32 +109,32 @@ export function residentExplorationTarget(
   const preferredBearing = ((identityHash >>> 0) / 0xffffffff) * Math.PI * 2;
   const scores = new Map<string, number>();
   const score = (place: WorldPlace): number => {
-      const cached = scores.get(place.id);
-      if (cached !== undefined) return cached;
-      const outsideRank = place.settlementId === undefined
-        ? 3
-        : place.settlementId !== homeSettlementId
-          ? 2
-          : 0;
-      const wildernessRank = WILDERNESS_KINDS.has(place.kind) ? 1 : 0;
-      const unmappedRank = mapped.has(place.id) ? 0 : 1;
-      const distance = Math.hypot(place.mapX - agent.position.x, place.mapY - agent.position.y);
-      const bearing = home
-        ? Math.atan2(place.mapY - home.mapY, place.mapX - home.mapX)
+    const cached = scores.get(place.id);
+    if (cached !== undefined) return cached;
+    const outsideRank = place.settlementId === undefined
+      ? 3
+      : place.settlementId !== homeSettlementId
+        ? 2
         : 0;
-      const directionalFit = (Math.cos(bearing - preferredBearing) + 1) / 2;
-      const terrainFit =
-        place.kind === 'forest'
-          ? agent.personality.curiosity * 0.18
-          : place.kind === 'mountains' || place.kind === 'ruins'
-            ? agent.personality.riskTolerance * 0.2
-            : place.kind === 'shore' || place.kind === 'river'
-              ? agent.personality.resilience * 0.12
-              : 0;
-      const value = outsideRank * 1.2 + wildernessRank * 0.42 + unmappedRank * 0.9 +
-        -Math.log1p(distance) * 0.9 + directionalFit * 0.36 + terrainFit;
-      scores.set(place.id, value);
-      return value;
+    const wildernessRank = WILDERNESS_KINDS.has(place.kind) ? 1 : 0;
+    const unmappedRank = mapped.has(place.id) ? 0 : 1;
+    const distance = distanceFromAgent(agent, place);
+    const bearing = home
+      ? Math.atan2(place.mapY - home.mapY, place.mapX - home.mapX)
+      : 0;
+    const directionalFit = (Math.cos(bearing - preferredBearing) + 1) / 2;
+    const terrainFit =
+      place.kind === 'forest'
+        ? agent.personality.curiosity * 0.18
+        : place.kind === 'mountains' || place.kind === 'ruins'
+          ? agent.personality.riskTolerance * 0.2
+          : place.kind === 'shore' || place.kind === 'river'
+            ? agent.personality.resilience * 0.12
+            : 0;
+    const value = outsideRank * 1.2 + wildernessRank * 0.42 + unmappedRank * 0.9 +
+      -Math.log1p(distance) * 0.9 + directionalFit * 0.36 + terrainFit;
+    scores.set(place.id, value);
+    return value;
   };
   const uncharted = candidates.filter(place => !mapped.has(place.id));
   const frontierCandidates = uncharted.length ? uncharted : candidates;

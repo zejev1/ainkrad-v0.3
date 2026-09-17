@@ -3,6 +3,7 @@ import { hasGiftV20, giftMasteryV20, canImmortalTransmitKnowledgeV20 } from '../
 import type { GenesisDomain } from '../v15/GenesisBootstrap';
 import { rebuildWorldRoutes } from '../world/WorldNavigation';
 import { compactLibraryPlot } from '../world/SettlementLibraryLayout';
+import { HUMAN_LIBRARY_IDS, LIBRARY_IDS, LIBRARY_LIMIT } from '../v21/LibraryAdmissions';
 import type {
   AgentActionKind,
   AgentState,
@@ -405,6 +406,53 @@ function ainkradAnchor(world: Readonly<WorldState>): WorldPlace | undefined {
  * Mounts or repairs once per epoch. Coordinates depend only on Ainkrad's
  * original centre, never on min/max extents, so map growth cannot drag the
  * library into a new corner.
+ */
+const HUMAN_BRANCH_LIBRARIES_V18 = [
+  { id: HUMAN_LIBRARY_IDS[1], settlementId: 'settlement_rulid', name: 'Тайная библиотека Рулида' },
+  { id: HUMAN_LIBRARY_IDS[2], settlementId: 'settlement_zakkaria', name: 'Тайная библиотека Заккарии' },
+] as const;
+
+function settlementAnchorV18(world: Readonly<WorldState>, settlementId: string): WorldPlace | undefined {
+  const settlement = world.settlements[settlementId];
+  return settlement ? world.places[settlement.centerPlaceId] : undefined;
+}
+
+function mountLibraryPlaceV18(
+  world: WorldState,
+  id: string,
+  name: string,
+  anchor: WorldPlace,
+  settlementId?: string,
+): boolean {
+  const existing = world.places[id];
+  if (
+    existing?.kind === 'library' &&
+    existing.connectedPlaceIds.includes(anchor.id) &&
+    (settlementId === undefined || existing.settlementId === settlementId)
+  ) return false;
+
+  const plot = compactLibraryPlot(world.places, { x: anchor.mapX, y: anchor.mapY }, id);
+  if (!plot) return false;
+  const planet = world.v18?.planetaryGeography;
+  const mapX = planet ? Math.max(planet.minMapX, Math.min(planet.maxMapX, plot.x)) : plot.x;
+  const mapY = planet ? Math.max(planet.minMapY, Math.min(planet.maxMapY, plot.y)) : plot.y;
+  for (const place of Object.values(world.places)) {
+    place.connectedPlaceIds = place.connectedPlaceIds.filter(connectedId => connectedId !== id);
+  }
+  if (!anchor.connectedPlaceIds.includes(id)) anchor.connectedPlaceIds.push(id);
+  world.places[id] = {
+    id, name, kind: 'library', capacity: LIBRARY_LIMIT, biome: 'ancient_ruins',
+    mapX, mapY, connectedPlaceIds: [anchor.id], fertility: 0, danger: 0,
+    surface: 'land', discoveredAt: existing?.discoveredAt ?? 0,
+    ...(settlementId ? { settlementId } : {}),
+  };
+  return true;
+}
+
+/**
+ * Mounts or repairs the human library network. Ainkrad retains the canonical
+ * archive state; Rulid and Zakkaria receive local physical branches with their
+ * own five-person admission quotas. Existing lived towns are not moved.
  */
 export function repairSecretLibraryPlacementV18(world: WorldState): boolean {
   const v18 = world.v18;
@@ -818,9 +866,17 @@ export function assertSecretLibraryStateV18(world: Readonly<WorldState>): void {
   ) {
     throw new Error('Secret Library physical anchor is invalid.');
   }
+  for (const branch of HUMAN_BRANCH_LIBRARIES_V18) {
+    const branchPlace = world.places[branch.id];
+    if (!branchPlace) continue;
+    if (branchPlace.kind !== 'library' || branchPlace.settlementId !== branch.settlementId) {
+      throw new Error('Secret Library branch ' + branch.id + ' is misplaced.');
+    }
+  }
+  const activeLibraryIds = LIBRARY_IDS.filter(id => Boolean(world.places[id]));
   if (
-    library.visitors.length > SECRET_LIBRARY_MAX_VISITORS_PER_YEAR_V18 * 2 ||
-    ['secret_library_v18', 'elf_library_v20'].some(id => library.visitors.filter(v => (v.libraryPlaceId ?? SECRET_LIBRARY_PLACE_ID_V18) === id).length > 5) ||
+    library.visitors.length > SECRET_LIBRARY_MAX_VISITORS_PER_YEAR_V18 * activeLibraryIds.length ||
+    activeLibraryIds.some(id => library.visitors.filter(v => (v.libraryPlaceId ?? SECRET_LIBRARY_PLACE_ID_V18) === id).length > LIBRARY_LIMIT) ||
     (library.visitHistory?.length ?? 0) > 100 ||
     new Set(library.visitors.map((visitor) => visitor.agentId)).size !==
       library.visitors.length

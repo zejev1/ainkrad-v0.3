@@ -20,6 +20,29 @@ export const GENESIS_ACTIVE_YEARS = 10;
 export const GENESIS_ACTIVE_WORLD_MINUTES =
   GENESIS_ACTIVE_YEARS * WORLD_MINUTES_PER_YEAR;
 
+/**
+ * Genesis is a bootstrap teaching subsystem, not four physical people standing
+ * in Ainkrad. All three independent human seed communities have equal access
+ * during the bootstrap window; non-human homelands do not magically share it
+ * across thousands of kilometres.
+ */
+export const GENESIS_HUMAN_FOUNDING_SETTLEMENT_IDS = [
+  'settlement_ainkrad',
+  'settlement_rulid',
+  'settlement_zakkaria',
+] as const;
+
+export function genesisBootstrapAvailableToV15(
+  race: string | undefined,
+  homeSettlementId: string | undefined,
+): boolean {
+  return (
+    (race ?? 'human') === 'human' &&
+    homeSettlementId !== undefined &&
+    (GENESIS_HUMAN_FOUNDING_SETTLEMENT_IDS as readonly string[]).includes(homeSettlementId)
+  );
+}
+
 export const GENESIS_DOMAINS: readonly GenesisDomain[] = [
   'agriculture',
   'construction',

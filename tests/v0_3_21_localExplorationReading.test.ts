@@ -25,7 +25,9 @@ describe('local exploration and real historical reading', () => {
       expect(sites.filter(Boolean).length).toBeGreaterThan(8);
       expect(new Set(sites.filter(Boolean).map(p=>Math.floor(Math.atan2(p!.y-agent.position.y,p!.x-agent.position.x)*4/Math.PI))).size).toBeGreaterThan(3);
       for(const site of sites) if(site) {
-        expect(Math.hypot(site.x-agent.position.x,site.y-agent.position.y)).toBeLessThanOrEqual(8.0001);
+        const step=Math.hypot(site.x-agent.position.x,site.y-agent.position.y);
+        expect(step).toBeGreaterThanOrEqual(5.9999);
+        expect(step).toBeLessThanOrEqual(36.0001);
         expect(site.biome).toBe(localTerrainBiome(world,site));
         expect(site.connections).toEqual(['outskirts']);
       }

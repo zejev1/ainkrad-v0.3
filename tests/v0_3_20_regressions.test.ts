@@ -50,7 +50,9 @@ describe('v0.3.20 lived knowledge, gifts and continuity', () => {
 
   it('requires discovery and testimony for dungeons and does not enroll orcs in the human guild', async () => {
     const world = await fresh(); const a = world.agents.agent_1, b = world.agents.agent_2;
-    world.places.unseen_ruins = { ...world.places.outskirts, id: 'unseen_ruins', kind: 'ruins', surface: 'land', danger: 0.2, mapX: 65, mapY: 55 };
+    const outskirts = world.places.outskirts;
+    world.places.unseen_ruins = { ...outskirts, id: 'unseen_ruins', kind: 'ruins', surface: 'land', danger: 0.2,
+      mapX: outskirts.mapX + 8, mapY: outskirts.mapY + 6 };
     const state = syncAdventureEconomyV19(world);
     expect(state.dungeonsById['dungeon:unseen_ruins']).toBeUndefined();
     a.locationId = 'unseen_ruins'; a.movement = undefined;

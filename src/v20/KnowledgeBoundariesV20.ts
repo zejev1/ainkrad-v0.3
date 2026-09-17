@@ -17,9 +17,9 @@ export function observeLocalPlacesV20(world: Readonly<WorldState>, agent: AgentS
   if (mayKnowPlaceV20(agent, agent.locationId, world)) known.add(agent.locationId);
   for (const id of world.places[agent.locationId]?.connectedPlaceIds ?? []) {
     const place = world.places[id];
-    // A directly connected local trail can be perceived as far as the
-    // frontier survey radius (procedural frontier sites are at most 40 map
-    // units away). This does not reveal an unconnected place or continent.
+    // A directly connected local trail can be perceived nearby. This never
+    // reveals an unconnected place or a remote continent merely because that
+    // place exists in the global world state.
     if (place && mayKnowPlaceV20(agent, id, world) &&
         Math.hypot(place.mapX - agent.position.x, place.mapY - agent.position.y) <= LOCAL_TRAIL_NOTICE_RADIUS_V20) known.add(id);
   }
@@ -29,15 +29,40 @@ export function observeLocalPlacesV20(world: Readonly<WorldState>, agent: AgentS
   if (dungeon && !agent.movement) agent.knownDungeonIds = [...new Set([...(agent.knownDungeonIds ?? []), dungeon.id])];
 }
 
+/**
+ * Conversation transmits evidence the speaker physically carries, not every
+ * raw place id ever left in their legacy memory. Cartography copies/surveys are
+ * handled by shareResidentCartography; ordinary conversation additionally
+ * notices only the co-located place and its visible local trails.
+ */
 export function sharePlaceKnowledgeV20(world: Readonly<WorldState>, speaker: Readonly<AgentState>, listener: AgentState): void {
   if (speaker.locationId !== listener.locationId || speaker.movement || listener.movement) return;
-  const known = new Set((listener.knownPlaceIds ?? []).filter(id => mayKnowPlaceV20(listener, id, world)));
-  for (const id of speaker.knownPlaceIds ?? []) {
-    if (world.places[id] && mayKnowPlaceV20(listener, id, world)) known.add(id);
-  }
-  listener.knownPlaceIds = [...known];
-  listener.knownDungeonIds = [...new Set([...(listener.knownDungeonIds ?? []), ...(speaker.knownDungeonIds ?? [])])];
+
   shareResidentCartography(world, speaker, listener);
+  const known = new Set((listener.knownPlaceIds ?? []).filter(id => world.places[id] && mayKnowPlaceV20(listener, id, world)));
+  const sharedHere = world.places[speaker.locationId];
+  if (sharedHere && mayKnowPlaceV20(listener, sharedHere.id, world)) known.add(sharedHere.id);
+  for (const id of sharedHere?.connectedPlaceIds ?? []) {
+    const place = world.places[id];
+    if (!place || !mayKnowPlaceV20(listener, id, world)) continue;
+    if (Math.hypot(place.mapX - speaker.position.x, place.mapY - speaker.position.y) <= LOCAL_TRAIL_NOTICE_RADIUS_V20) {
+      known.add(id);
+    }
+  }
+  known.add(listener.homeId);
+  if (mayKnowPlaceV20(listener, listener.locationId, world)) known.add(listener.locationId);
+  listener.knownPlaceIds = [...known];
+
+  // Dungeon testimony is carried knowledge, not teleportation. Only a dungeon
+  // that already exists and is explicitly present in the speaker's own memory
+  // can be mentioned; merely existing in global world state is insufficient.
+  const testifiedDungeonIds = (speaker.knownDungeonIds ?? []).filter((id) => {
+    const dungeon = world.v19?.adventureEconomy.dungeonsById[id];
+    return Boolean(dungeon && (speaker.knownPlaceIds ?? []).includes(dungeon.entrancePlaceId));
+  });
+  if (testifiedDungeonIds.length) {
+    listener.knownDungeonIds = [...new Set([...(listener.knownDungeonIds ?? []), ...testifiedDungeonIds])];
+  }
 }
 
 export function removeUnsurveyedHomelandLinksV20(world: WorldState): void {

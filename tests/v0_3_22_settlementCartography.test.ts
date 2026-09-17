@@ -64,7 +64,11 @@ describe('settlement map is shared evidence, not a telepathic global atlas', () 
   });
   it('freezes a carried copy when a traveller leaves, including later survey upgrades', async () => {
     const {world, first, second, settlementId} = await fixture();
-    first.knownPlaceIds = [...(first.knownPlaceIds ?? []), 'remote_a'];
+    const home = world.places[first.homeId];
+    world.places.remote_a.mapX = home.mapX + 20;
+    world.places.remote_a.mapY = home.mapY;
+    home.connectedPlaceIds = [...new Set([...home.connectedPlaceIds, 'remote_a'])];
+    world.places.remote_a.connectedPlaceIds = [...new Set([...world.places.remote_a.connectedPlaceIds, home.id])];
     consultSettlementMap(world, first); consultSettlementMap(world, second);
     expect(second.knownPlaceIds).toContain('remote_a');
     expect(residentSurveyedPlaceIds(world, second)).not.toContain('remote_a');

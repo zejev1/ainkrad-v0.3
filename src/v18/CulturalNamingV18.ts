@@ -2,6 +2,7 @@ import type {
   AgentRace,
   AgentSex,
   AgentState,
+  WorldBiome,
   WorldState,
 } from '../world/types';
 
@@ -220,6 +221,81 @@ export function chooseCulturalChildNameV18(input: {
   };
 }
 
+
+const PLACE_NOUNS_V18: Readonly<Record<WorldBiome, readonly string[]>> = {
+  settlement: ['Перекрёсток', 'Стоянка', 'Предел', 'Урочище'],
+  plains: ['Долина', 'Простор', 'Луга', 'Степь', 'Низина', 'Поля'],
+  forest: ['Роща', 'Лес', 'Бор', 'Чаща', 'Опушка', 'Кроны'],
+  coast: ['Берег', 'Бухта', 'Мыс', 'Коса', 'Прибой'],
+  ocean: ['Воды', 'Залив', 'Пролив', 'Море'],
+  mountains: ['Гряда', 'Перевал', 'Кряж', 'Склоны', 'Ущелье'],
+  lake: ['Озеро', 'Плёс', 'Заводь', 'Чаша'],
+  river: ['Брод', 'Излучина', 'Плёс', 'Протока', 'Берег'],
+  swamp: ['Топь', 'Трясина', 'Мхи', 'Низина', 'Кочки'],
+  ancient_ruins: ['Руины', 'Камни', 'Арка', 'Двор', 'Остатки'],
+};
+
+const PLACE_RACE_MOTIFS_V18: Readonly<Record<AgentRace, readonly string[]>> = {
+  human: ['Золотого Ветра', 'Семи Трав', 'Ясного Неба', 'Дальних Костров', 'Утренней Росы', 'Трёх Сосен', 'Синей Тени', 'Старого Камня'],
+  elf: ['Лунных Крон', 'Серебряного Листа', 'Тихой Песни', 'Белых Ветвей', 'Звёздной Росы', 'Шепчущих Корней', 'Долгой Памяти', 'Зелёного Света'],
+  dwarf: ['Каменного Звона', 'Медной Жилы', 'Гулких Скал', 'Чёрного Кремня', 'Семи Молотов', 'Глубокой Трещины', 'Седого Камня', 'Железного Эха'],
+  goblin: ['Кривого Корня', 'Рыжего Мха', 'Трёх Нор', 'Скользких Камней', 'Зелёного Дыма', 'Колючей Тропы', 'Ломаной Ветки', 'Хитрого Брода'],
+  orc: ['Красного Ветра', 'Сломанного Клыка', 'Громкой Скалы', 'Чёрной Тропы', 'Железного Неба', 'Двух Копий', 'Серого Пепла', 'Гулкого Грома'],
+  ogre: ['Большой Тени', 'Гулкой Земли', 'Тяжёлого Камня', 'Долгого Эха', 'Сломанной Скалы', 'Трёх Холмов', 'Глубокого Следа', 'Медленного Грома'],
+};
+
+const PLACE_SHARED_MOTIFS_V18 = [
+  'Тихого Дождя', 'Утреннего Света', 'Семи Камней', 'Двух Ручьёв',
+  'Высокого Облака', 'Белого Тумана', 'Долгой Тени', 'Первой Звезды',
+  'Сухой Травы', 'Холодной Росы', 'Тёплого Ветра', 'Старой Тропы',
+] as const;
+
+const PLACE_LANDMARKS_V18 = [
+  'у Старого Камня', 'у Белой Скалы', 'за Тремя Холмами', 'у Двойного Брода',
+  'у Кривой Сосны', 'над Тихой Водой', 'у Медного Утёса', 'под Высоким Небом',
+] as const;
+
+/**
+ * The discovering Spark names the place from its culture, personality and the
+ * terrain it actually saw. The engine supplies grammar and vocabulary, but no
+ * tiny global list of canned full names. The chosen name is deterministic for
+ * replay and persists on the physical place.
+ */
+export function chooseCulturalPlaceNameV18(input: {
+  world: Readonly<WorldState>;
+  explorer: Readonly<AgentState>;
+  biome: WorldBiome;
+  sequence: number;
+  x: number;
+  y: number;
+}): string {
+  const { world, explorer, biome, sequence, x, y } = input;
+  const race = explorer.race ?? 'human';
+  const nouns = PLACE_NOUNS_V18[biome];
+  const raceMotifs = PLACE_RACE_MOTIFS_V18[race];
+  const seed = stableHash([
+    world.id, explorer.id, race, biome, Math.floor(sequence),
+    Math.round(x * 10), Math.round(y * 10),
+    Math.round((explorer.personality?.curiosity ?? 0.5) * 100),
+    Math.round((explorer.mind?.values?.tradition ?? 0.5) * 100),
+    Math.round((explorer.mind?.values?.freedom ?? 0.5) * 100),
+].join(':'));
+  const existing = new Set(Object.values(world.places).map(place => place.name.toLocaleLowerCase('ru-RU')));
+  const startNoun = seed % nouns.length;
+  const startRace = Math.floor(seed / 7) % raceMotifs.length;
+  const startShared = Math.floor(seed / 31) % PLACE_SHARED_MOTIFS_V18.length;
+  const startLandmark = Math.floor(seed / 127) % PLACE_LANDMARKS_V18.length;
+  for (let attempt = 0; attempt < 96; attempt += 1) {
+    const noun = nouns[(startNoun + attempt * 3) % nouns.length];
+    const personal = raceMotifs[(startRace + attempt * 5) % raceMotifs.length];
+    const shared = PLACE_SHARED_MOTIFS_V18[(startShared + attempt * 7) % PLACE_SHARED_MOTIFS_V18.length];
+    const landmark = PLACE_LANDMARKS_V18[(startLandmark + attempt * 11) % PLACE_LANDMARKS_V18.length];
+    const candidate = attempt % 3 === 0 ? noun + ' ' + personal :
+      attempt % 3 === 1 ? noun + ' ' + shared : noun + ' ' + personal + ' ' + landmark;
+    if (!existing.has(candidate.toLocaleLowerCase('ru-RU'))) return candidate;
+  }
+  return nouns[startNoun] + ' ' + raceMotifs[startRace] + ' — след ' + explorer.name;
+}
 export function isLegacyTechnicalChildNameV18(
   name: string,
   race: AgentRace,

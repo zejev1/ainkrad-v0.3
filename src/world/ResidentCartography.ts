@@ -99,8 +99,16 @@ export function consultSettlementMap(world: WorldState, agent: AgentState): void
     archive.routes[id] ??= { ...route, knownRevision: ++archive.revision };
     publish(physical.fromPlaceId); publish(physical.toPlaceId);
   };
-  for (const id of agent.knownPlaceIds ?? []) publish(id);
+  // Raw legacy knownPlaceIds are personal memory, not proof that a distant
+  // settlement archive surveyed the far side of the continent. Publish only
+  // physical presence here; personal surveys, traversed routes and carried map
+  // revisions are published by the evidence loops below.
   publish(agent.homeId); publish(agent.locationId);
+  const current = world.places[agent.locationId];
+  for (const id of current?.connectedPlaceIds ?? []) {
+    const place = world.places[id];
+    if (place && Math.hypot(place.mapX - agent.position.x, place.mapY - agent.position.y) <= 45) publish(id);
+  }
   for (const [id, survey] of Object.entries(own.surveys)) publish(id, survey);
   // People who met another traveller, or moved town, can physically bring a copy.
   eachCarriedPoint(world, agent, publish);

@@ -4,6 +4,8 @@ import { updateSettlementGeometry } from './SettlementGeometryV21';
 import { updateNaturalGeography, finishWorldGeography } from './WorldGeography';
 import { reconcileRouteGeometry } from './RouteGeometryMigration';
 import { rebuildWorldRoutes } from './WorldNavigation';
+import { compactLibraryPlot } from './SettlementLibraryLayout';
+import { HUMAN_LIBRARY_IDS, LIBRARY_LIMIT } from '../v21/LibraryAdmissions';
 import type { WorldPoint2D, WorldState } from './types';
 
 const FOUNDING_HUMAN_SETTLEMENTS = [
@@ -11,6 +13,43 @@ const FOUNDING_HUMAN_SETTLEMENTS = [
   'settlement_rulid',
   'settlement_zakkaria',
 ] as const;
+
+const FOUNDING_HUMAN_CIVIC_CENTERS: Readonly<Record<(typeof FOUNDING_HUMAN_SETTLEMENTS)[number], string>> = {
+  settlement_ainkrad: 'commons',
+  settlement_rulid: 'rulid_commons',
+  settlement_zakkaria: 'zakkaria_commons',
+};
+
+/**
+ * New founding worlds use the public square/market as the actual civic centre
+ * in all three human communities. Older lived worlds are never re-centred here
+ * because changing the origin after history exists would move streets/buildings
+ * during the geometry migration.
+ */
+function normalizeFreshFoundingCivicCenters(world: WorldState): boolean {
+  if (world.terrain) return false;
+  let changed = false;
+  for (const settlementId of FOUNDING_HUMAN_SETTLEMENTS) {
+    const town = world.settlements[settlementId];
+    const commons = world.places[FOUNDING_HUMAN_CIVIC_CENTERS[settlementId]];
+    if (!town || !commons || commons.settlementId !== settlementId) continue;
+    if (town.centerPlaceId !== commons.id) {
+      town.centerPlaceId = commons.id;
+      changed = true;
+    }
+    if (town.centerX !== commons.mapX || town.centerY !== commons.mapY) {
+      town.centerX = commons.mapX;
+      town.centerY = commons.mapY;
+      changed = true;
+    }
+    if (changed) {
+      delete town.boundaryPolygon;
+      delete town.layoutVersion;
+      delete town.layoutSignature;
+    }
+  }
+  return changed;
+}
 
 /**
  * F2 founding humans must begin as three genuinely distant populations, not as
@@ -84,8 +123,8 @@ function spreadFoundingHumanSettlements(
           after = {x:95.7,y:target.y};
         } else if (place.id !== center.id) {
           // Rulid is a coastal town: all civic/residential offsets must point
-          // inland (west), otherwise the old local +X layout puts its commons
-          // and ten homes directly into the ocean and silently drops routes.
+          // inland (west), otherwise the old local +X layout puts buildings
+          // directly into the ocean and silently drops routes.
           after = {x:target.x-Math.abs(local.x),y:target.y+local.y};
         }
       }
@@ -119,6 +158,31 @@ function spreadFoundingHumanSettlements(
   return changed;
 }
 
+function ensureFreshFoundingHumanLibraries(world: WorldState): boolean {
+  if (world.terrain) return false;
+  const specs = [
+    { id: HUMAN_LIBRARY_IDS[1], settlementId: 'settlement_rulid', name: 'Тайная библиотека Рулида' },
+    { id: HUMAN_LIBRARY_IDS[2], settlementId: 'settlement_zakkaria', name: 'Тайная библиотека Заккарии' },
+  ] as const;
+  let changed = false;
+  for (const spec of specs) {
+    if (world.places[spec.id]) continue;
+    const town = world.settlements[spec.settlementId];
+    const anchor = town ? world.places[town.centerPlaceId] : undefined;
+    if (!town || !anchor) continue;
+    const plot = compactLibraryPlot(world.places, { x: anchor.mapX, y: anchor.mapY }, spec.id);
+    if (!plot) continue;
+    world.places[spec.id] = {
+      id: spec.id, name: spec.name, kind: 'library', capacity: LIBRARY_LIMIT,
+      biome: 'ancient_ruins', mapX: plot.x, mapY: plot.y, connectedPlaceIds: [anchor.id],
+      fertility: 0, danger: 0, surface: 'land', settlementId: spec.settlementId, discoveredAt: 0,
+    };
+    if (!anchor.connectedPlaceIds.includes(spec.id)) anchor.connectedPlaceIds.push(spec.id);
+    if (!town.memberPlaceIds.includes(spec.id)) town.memberPlaceIds.push(spec.id);
+    changed = true;
+  }
+  return changed;
+}
 function invalidateRulidLayoutForCoast(world:WorldState):void {
   const town=world.settlements.settlement_rulid;
   if(!town)return;
@@ -148,7 +212,9 @@ export function repairCompactSettlementLayout(world:WorldState):boolean {
   bindWorldTerrain(world);
   const oldRoutes=world.routes;
   const moved=new Map<string,{before:WorldPoint2D;after:WorldPoint2D}>();
+  const civicCenterChanged=normalizeFreshFoundingCivicCenters(world);
   const foundingSpreadChanged=spreadFoundingHumanSettlements(world,moved);
+  const freshLibraryChanged=ensureFreshFoundingHumanLibraries(world);
   const naturalChanged=updateNaturalGeography(world);
   updateSettlementGeometry(world,(id,point)=>{
     const place=world.places[id];
@@ -159,7 +225,7 @@ export function repairCompactSettlementLayout(world:WorldState):boolean {
 
   // The first founding pass necessarily precedes terrain creation. Re-plan
   // Rulid once the real coastline exists so homes/fields remain on dry land,
-  // while its civic centre stays within 100 m of the sea.
+  // while its civic square stays within 100 m of the sea.
   if(foundingSpreadChanged&&terrainChanged&&world.settlements.settlement_rulid){
     invalidateRulidLayoutForCoast(world);
     updateSettlementGeometry(world,(id,point)=>{
@@ -171,7 +237,7 @@ export function repairCompactSettlementLayout(world:WorldState):boolean {
   }
 
   const geographyChanged=finishWorldGeography(world);
-  if(!terrainChanged&&!naturalChanged&&!foundingSpreadChanged&&!moved.size&&!geographyChanged)return false;
+  if(!terrainChanged&&!naturalChanged&&!civicCenterChanged&&!foundingSpreadChanged&&!freshLibraryChanged&&!moved.size&&!geographyChanged)return false;
   world.routes=rebuildWorldRoutes(world.places,world.routes);
   reconcileRouteGeometry(world,oldRoutes,moved);
   return true;

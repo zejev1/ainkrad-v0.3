@@ -46,6 +46,8 @@ export const MAX_RECENT_DUNGEON_RUNS_V19 = 256;
 export const MAX_RECENT_ADVENTURE_TRANSACTIONS_V19 = 256;
 export const MAX_AGENT_ARTIFACTS_V19 = 12;
 export const MAX_AGENT_ABILITIES_V19 = 8;
+/** A dungeon trip begins locally. Longer journeys require ordinary staged travel first. */
+export const MAX_DUNGEON_EXPEDITION_DISTANCE_MAP_UNITS = 120;
 export const MAX_MARKET_ARTIFACTS_V19 = 32;
 
 export const ADVENTURE_RANKS_V19: readonly V19AdventureRank[] = [
@@ -464,16 +466,22 @@ export function chooseDungeonExpeditionV19(
   const maximumRankIndex = Math.max(1, rankIndex(currentRank) + 1);
   const candidates = reachableDungeonIds
     .map((id) => state.dungeonsById[id])
-    .filter(
-      (dungeon): dungeon is V19DungeonState =>
-        dungeon !== undefined &&
-        dungeon.active &&
-        ((agent.knownDungeonIds ?? []).includes(dungeon.id) ||
+    .filter((dungeon): dungeon is V19DungeonState => {
+      if (
+        dungeon === undefined ||
+        !dungeon.active ||
+        !((agent.knownDungeonIds ?? []).includes(dungeon.id) ||
           (agent.knownPlaceIds ?? []).includes(dungeon.entrancePlaceId) ||
-          agent.locationId === dungeon.entrancePlaceId) &&
-        dungeon.treasureReserve >= 0.2 &&
-        rankIndex(dungeon.rank) <= maximumRankIndex,
-    )
+          agent.locationId === dungeon.entrancePlaceId) ||
+        dungeon.treasureReserve < 0.2 ||
+        rankIndex(dungeon.rank) > maximumRankIndex
+      ) return false;
+      const entrance = world.places[dungeon.entrancePlaceId];
+      return Boolean(entrance) && Math.hypot(
+        entrance!.mapX - agent.position.x,
+        entrance!.mapY - agent.position.y,
+      ) <= MAX_DUNGEON_EXPEDITION_DISTANCE_MAP_UNITS;
+    })
     .slice(0, 6);
   if (candidates.length === 0) return undefined;
 
