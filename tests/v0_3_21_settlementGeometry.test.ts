@@ -14,15 +14,16 @@ const fresh=async()=> (await WorldEngine.create({worldId:'geometry',seed:'street
 describe('physical settlement geometry and observer navigation',()=>{
   it('migrates different homelands internally, preserving IDs and long geographical separation',async()=>{
     const w=await fresh(),model=w.places.home_agent_1,syntheticSettlementIds:string[]=[];
+    const water=Object.values(w.places).filter(p=>p.surface==='water'||p.waterPolygon);
     for(const race of ['elf','orc','dwarf'] as AgentRace[]) {
       // Each real homeland is already occupied in a fresh F2 world. Put this
-      // synthetic stale-layout fixture nearby on a broad persisted dry patch,
-      // instead of stacking a second town directly on top of the live one.
+      // synthetic stale-layout fixture nearby on a broad patch that is dry in
+      // both the persisted terrain and the explicit saved water geometry.
       const homeland=homelandCenterForWorld(w,race);
       const center=Array.from({length:24},(_,i)=>{
         const angle=i*Math.PI*2/24;
         return {x:homeland.x+Math.cos(angle)*6,y:homeland.y+Math.sin(angle)*6};
-      }).find(point=>terrainPlotIsDry(w.places,point,2.2));
+      }).find(point=>terrainPlotIsDry(w.places,point,2.2)&&dryBuildingPlot(point,2.2,2.2,water));
       expect(center).toBeDefined();
       const id='settlement_'+race,x=center!.x,y=center!.y;syntheticSettlementIds.push(id);
       w.places[id]={...w.places.commons,id,name:race,kind:'village',settlementId:id,mapX:x,mapY:y,connectedPlaceIds:[]};
