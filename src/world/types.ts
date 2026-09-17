@@ -56,6 +56,7 @@ export type AgentDeathCause =
   | 'illness'
   | 'childbirth'
   | 'deprivation'
+  | 'drowning'
   | 'catastrophe'
   | 'wildlife'
   | 'monster'
@@ -1073,6 +1074,10 @@ export interface V21AppliedKnowledgeState {
   diagnosisPractice: number;
   treatmentPractice: number;
   materialPractice: number;
+  /** Swimming theory can be taught; bodily practice must be lived in water. */
+  swimmingTheory?: number;
+  swimmingPractice?: number;
+  swimmingLessonsGiven?: number;
   verifiedObservations: number;
   lastLearnedWorldMinute?: number;
 }
@@ -1122,6 +1127,8 @@ export interface WorldV21State {
   itemPhysicsByItemId: Record<string, V21ItemPhysicalState>;
   materialCatalog: Record<V21PhysicalMaterialKind, V21MaterialDefinition>;
   childSupervisionByChildId: Record<string, V21ChildSupervisionState>;
+  /** One explicit Rulid instructor bootstrap; never silently replaced after death. */
+  rulidSwimmingBootstrapAgentId?: string;
   lastAdvancedWorldMinute: number;
 }
 
