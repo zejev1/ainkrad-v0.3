@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { advanceBodySleepV21, bodyFatigueDecisionBoostV21, bodyFatigueMobilityScaleV21, bodySleepStateV21, startBodySleepV21 } from '../src/v21/BodySleepV21';
+import { WorldEngine } from '../src/world/WorldEngine';
+import { InMemoryWorldStore } from '../src/world/InMemoryWorldStore';
 import type { AgentState, WorldState } from '../src/world/types';
 
 function agent(overrides: Partial<AgentState> = {}): AgentState {
@@ -52,6 +54,43 @@ describe('body-driven sleep',()=>{
     expect(homeTarget).toBeGreaterThanOrEqual(.95);
     expect(fieldTarget).toBeLessThanOrEqual(.6);
     expect(homeTarget).toBeGreaterThan(fieldTarget);
+  });
+  it('actually gates a live WorldEngine resident, cancels travel and wakes the body after six hours',async()=>{
+    const engine=await WorldEngine.create({worldId:'body-sleep-integration',seed:'body-sleep-integration',store:new InMemoryWorldStore(),startTime:0});
+    const internal=engine as any;
+    const w=internal.committedState as WorldState;
+    const a=w.agents.agent_1;
+    a.energy=0;
+    a.movement={
+      targetPlaceId:'commons',purpose:'socialize',
+      waypoints:[{x:a.position.x,y:a.position.y},{x:w.places.commons.mapX,y:w.places.commons.mapY}],
+      nextWaypointIndex:1,startedAt:0,worldStageAtStart:0,routeIds:[],
+    } as any;
+    internal.workingState=w;
+    internal.stagedEvents=[];
+    internal.stagedMemories=[];
+
+    internal.stepAgent(a,Object.values(w.agents),w.environment,0);
+    const sleep=bodySleepStateV21(w,a.id)!;
+    expect(sleep).toBeDefined();
+    expect(sleep.forced).toBe(true);
+    expect(sleep.wakesAtWorldMinute-sleep.startedWorldMinute).toBe(360);
+    expect(a.movement).toBeUndefined();
+    expect(a.lastAction).toBe('rest');
+
+    w.calendar.elapsedWorldMinutes=359;
+    internal.stepAgent(a,Object.values(w.agents),w.environment,1);
+    expect(bodySleepStateV21(w,a.id)).toBeDefined();
+    expect(a.lastAction).toBe('rest');
+
+    w.calendar.elapsedWorldMinutes=360;
+    internal.stepAgent(a,Object.values(w.agents),w.environment,2);
+    expect(bodySleepStateV21(w,a.id)).toBeUndefined();
+    expect(a.energy).toBeGreaterThan(0);
+
+    internal.workingState=undefined;
+    internal.stagedEvents=undefined;
+    internal.stagedMemories=undefined;
   });
 });
 
