@@ -35,13 +35,17 @@ jobs:
       - name: Apply deterministic patch
         run: node scripts/apply-f2-frontier-integrity-fix.mjs
 
-      - name: Tighten library id type
+      - name: Tighten library id compatibility
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p = Path('src/v21/LibraryAdmissions.ts')
           s = p.read_text()
+          s = s.replace(
+              'export const LIBRARY_IDS = [...HUMAN_LIBRARY_IDS, ELF_LIBRARY_ID] as const;',
+              'export const LIBRARY_IDS = [HUMAN_LIBRARY_IDS[0], ELF_LIBRARY_ID, HUMAN_LIBRARY_IDS[1], HUMAN_LIBRARY_IDS[2]] as const;'
+          )
           s = s.replace(
               'export function libraryIdForAgent(world: Readonly<WorldState>, agent: Readonly<AgentState>): string {',
               'export function libraryIdForAgent(world: Readonly<WorldState>, agent: Readonly<AgentState>): (typeof LIBRARY_IDS)[number] {'
