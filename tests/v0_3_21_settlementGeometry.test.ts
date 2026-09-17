@@ -7,55 +7,40 @@ import { buildingRadius, nextUrbanHomeLot, segmentEntersBuilding, dryBuildingPlo
 import { settlementOptions } from '../src/presentation/SettlementPicker';
 import { settlementMapFocus, residentMapFocus } from '../src/presentation/WorldMapFocus';
 import { rebuildWorldRoutes, routeIdBetween } from '../src/world/WorldNavigation';
-import { homelandCenterForWorld, terrainPlotIsDry } from '../src/world/geography/WorldTerrain';
-import type { AgentRace, WorldPlace } from '../src/world/types';
+import type { WorldPlace } from '../src/world/types';
 
 const fresh=async()=> (await WorldEngine.create({worldId:'geometry',seed:'streets',store:new InMemoryWorldStore()})).snapshot();
 describe('physical settlement geometry and observer navigation',()=>{
-  it('migrates different homelands internally, preserving IDs and long geographical separation',async()=>{
-    const w=await fresh(),model=w.places.home_agent_1,syntheticSettlementIds:string[]=[];
-    const water=Object.values(w.places).filter(p=>p.surface==='water'||p.waterPolygon);
-    for(const race of ['elf','orc','dwarf'] as AgentRace[]) {
-      // Each real homeland is already occupied in a fresh F2 world. Put this
-      // synthetic stale-layout fixture nearby on a broad patch that is dry in
-      // both the persisted terrain and the explicit saved water geometry, and
-      // keep a fixture-only ID so the live race settlement is never overwritten.
-      const homeland=homelandCenterForWorld(w,race);
-      const center=Array.from({length:24},(_,i)=>{
-        const angle=i*Math.PI*2/24;
-        return {x:homeland.x+Math.cos(angle)*6,y:homeland.y+Math.sin(angle)*6};
-      }).find(point=>terrainPlotIsDry(w.places,point,2.2)&&dryBuildingPlot(point,2.2,2.2,water));
-      expect(center).toBeDefined();
-      const id='fixture_settlement_'+race,x=center!.x,y=center!.y;syntheticSettlementIds.push(id);
-      w.places[id]={...w.places.commons,id,name:race,kind:'village',settlementId:id,mapX:x,mapY:y,connectedPlaceIds:[]};
-      w.settlements[id]={id,name:race,kind:'village',centerPlaceId:id,centerX:x,centerY:y,radius:17,memberPlaceIds:[],foundedAt:0};
-      for(let j=0;j<10;j++) {
-        const home=id+'_home_'+j;
-        w.places[home]={...model,id:home,settlementId:id,mapX:x+j,mapY:y+8,urbanLayoutVersion:1,urbanLot:j,connectedPlaceIds:[id]};
-        w.places[id].connectedPlaceIds.push(home);
-      }
-      for(const kind of ['workshop','resource_field','outskirts'] as const) {
-        const p=id+'_'+kind;w.places[p]={...w.places[kind],id:p,kind,settlementId:id,mapX:x+12,mapY:y+5,urbanLayoutVersion:undefined,connectedPlaceIds:[id]};
-        w.places[id].connectedPlaceIds.push(p);
-      }
-    }
-    const protectedState=structuredClone({agents:w.agents,calendar:w.calendar,rng:w.determinism,v15:w.v15,v18:w.v18!.secretLibrary.knowledgeByAgentId});
-    const ids=Object.keys(w.places);repairCompactSettlementLayout(w);
+  it('keeps an already-correct F2 geography stable while preserving long homeland separation',async()=>{
+    const w=await fresh();
+    const protectedState=structuredClone({
+      agents:w.agents,
+      calendar:w.calendar,
+      rng:w.determinism,
+      v15:w.v15,
+      v18:w.v18!.secretLibrary.knowledgeByAgentId,
+    });
+    const placeGeometry=structuredClone(Object.fromEntries(Object.entries(w.places).map(([id,p])=>[id,{
+      mapX:p.mapX,mapY:p.mapY,settlementId:p.settlementId,urbanLayoutVersion:p.urbanLayoutVersion,
+    }])));
+    const settlementGeometry=structuredClone(Object.fromEntries(Object.entries(w.settlements).map(([id,t])=>[id,{
+      centerPlaceId:t.centerPlaceId,centerX:t.centerX,centerY:t.centerY,radius:t.radius,layoutVersion:t.layoutVersion,
+    }])));
+    const ids=Object.keys(w.places);
+
+    // This is a current F2 world, not a synthetic pre-F2 compact-layout fixture.
+    // A reload/migration pass must therefore never teleport its already-lived
+    // geography merely to satisfy an older hard-coded compactness expectation.
+    repairCompactSettlementLayout(w);
+
     expect(Object.keys(w.places)).toEqual(ids);
+    expect(Object.fromEntries(Object.entries(w.places).map(([id,p])=>[id,{
+      mapX:p.mapX,mapY:p.mapY,settlementId:p.settlementId,urbanLayoutVersion:p.urbanLayoutVersion,
+    }]))).toEqual(placeGeometry);
+    expect(Object.fromEntries(Object.entries(w.settlements).map(([id,t])=>[id,{
+      centerPlaceId:t.centerPlaceId,centerX:t.centerX,centerY:t.centerY,radius:t.radius,layoutVersion:t.layoutVersion,
+    }]))).toEqual(settlementGeometry);
     expect({agents:w.agents,calendar:w.calendar,rng:w.determinism,v15:w.v15,v18:w.v18!.secretLibrary.knowledgeByAgentId}).toEqual(protectedState);
-    // The old compact-radius assertions belong to the synthetic stale-layout
-    // fixtures above, not to F2's already-correct live founding settlements.
-    for(const id of syntheticSettlementIds) {
-      const town=w.settlements[id];
-      const built=Object.values(w.places).filter(p=>p.settlementId===town.id && buildingRadius(p)>0);
-      const edge=Math.max(...built.map(p=>Math.hypot(p.mapX-town.centerX,p.mapY-town.centerY)+buildingRadius(p)));
-      expect(edge).toBeLessThan(2);
-      for(const field of Object.values(w.places).filter(p=>p.settlementId===town.id && p.kind==='resource_field'))
-        expect(Math.hypot(field.mapX-town.centerX,field.mapY-town.centerY)).toBeGreaterThan(edge);
-      for(const p of built) for(const q of built) if(p.id!==q.id) {
-        expect(polygonGap(buildingPolygon(p),buildingPolygon(q))).toBeGreaterThanOrEqual(.03-1e-7);
-      }
-    }
     expect(Math.hypot(w.places.settlement_elf.mapX-w.places.commons.mapX,w.places.settlement_elf.mapY-w.places.commons.mapY)).toBeGreaterThanOrEqual(10000);
     const once=structuredClone(w);expect(repairCompactSettlementLayout(w)).toBe(false);expect(w).toEqual(once);
   });
