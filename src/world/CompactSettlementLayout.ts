@@ -6,6 +6,7 @@ import { reconcileRouteGeometry } from './RouteGeometryMigration';
 import { rebuildWorldRoutes } from './WorldNavigation';
 import { compactLibraryPlot } from './SettlementLibraryLayout';
 import { HUMAN_LIBRARY_IDS, LIBRARY_LIMIT } from '../v21/LibraryAdmissions';
+import { ensureRulidMaritimeInfrastructure } from './RulidMaritimeInfrastructure';
 import type { WorldPoint2D, WorldState } from './types';
 
 const FOUNDING_HUMAN_SETTLEMENTS = [
@@ -215,6 +216,9 @@ export function repairCompactSettlementLayout(world:WorldState):boolean {
   const civicCenterChanged=normalizeFreshFoundingCivicCenters(world);
   const foundingSpreadChanged=spreadFoundingHumanSettlements(world,moved);
   const freshLibraryChanged=ensureFreshFoundingHumanLibraries(world);
+  // Existing lived Rulid worlds already have terrain. Add only the missing
+  // coastal facilities around the saved shore before town geometry refreshes.
+  const maritimeBeforeTerrainChanged=ensureRulidMaritimeInfrastructure(world);
   const naturalChanged=updateNaturalGeography(world);
   updateSettlementGeometry(world,(id,point)=>{
     const place=world.places[id];
@@ -236,8 +240,22 @@ export function repairCompactSettlementLayout(world:WorldState):boolean {
     alignFreshFoundersWithHomes(world);
   }
 
+  // Fresh worlds gain terrain only above. Mount the beach/shipyard now from
+  // Rulid's actual physical shore. The shipyard is itself a fixed coastal
+  // workshop, so a second layout pass updates the town boundary without
+  // dragging it inland.
+  const maritimeAfterTerrainChanged=ensureRulidMaritimeInfrastructure(world);
+  if(maritimeAfterTerrainChanged){
+    updateSettlementGeometry(world,(id,point)=>{
+      const place=world.places[id];
+      moved.set(id,{before:{x:place.mapX,y:place.mapY},after:point});
+      place.mapX=point.x;place.mapY=point.y;place.urbanLayoutVersion=3;
+    });
+  }
+
   const geographyChanged=finishWorldGeography(world);
-  if(!terrainChanged&&!naturalChanged&&!civicCenterChanged&&!foundingSpreadChanged&&!freshLibraryChanged&&!moved.size&&!geographyChanged)return false;
+  if(!terrainChanged&&!naturalChanged&&!civicCenterChanged&&!foundingSpreadChanged&&!freshLibraryChanged&&
+     !maritimeBeforeTerrainChanged&&!maritimeAfterTerrainChanged&&!moved.size&&!geographyChanged)return false;
   world.routes=rebuildWorldRoutes(world.places,world.routes);
   reconcileRouteGeometry(world,oldRoutes,moved);
   return true;
