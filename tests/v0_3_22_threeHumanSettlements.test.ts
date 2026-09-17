@@ -9,6 +9,9 @@ describe('0.3.22 F2 three independent human foundations',()=>{
     const world=(await WorldEngine.create({worldId:'f2-three-human',seed:'f2-three-human',store:new InMemoryWorldStore(),startTime:0})).snapshot();
     const ids=['settlement_ainkrad','settlement_rulid','settlement_zakkaria'];
     for(const id of ids) expect(world.settlements[id]).toBeDefined();
+    expect(world.settlements.settlement_ainkrad.centerPlaceId).toBe('commons');
+    expect(world.settlements.settlement_rulid.centerPlaceId).toBe('rulid_commons');
+    expect(world.settlements.settlement_zakkaria.centerPlaceId).toBe('zakkaria_commons');
     const centers=ids.map(id=>({mapX:world.settlements[id].centerX,mapY:world.settlements[id].centerY}));
     const d=(i:number,j:number)=>Math.hypot(centers[i].mapX-centers[j].mapX,centers[i].mapY-centers[j].mapY);
     const distances=[d(0,1),d(0,2),d(1,2)];
@@ -23,7 +26,7 @@ describe('0.3.22 F2 three independent human foundations',()=>{
 
     const terrain=bindWorldTerrain(world);
     expect(terrain).toBeDefined();
-    const rulid=world.places.rulid_center;
+    const rulid=world.places[world.settlements.settlement_rulid.centerPlaceId];
     expect(terrain!.sample(rulid.mapX,rulid.mapY).water).toBe(false);
     let seaDistance=Infinity;
     for(let distance=.05;distance<=1;distance+=.05){
@@ -37,7 +40,7 @@ describe('0.3.22 F2 three independent human foundations',()=>{
     const rulidResidents=people.filter(a=>world.places[a.homeId]?.settlementId==='settlement_rulid');
     expect(rulidResidents.every(a=>!terrain!.sample(world.places[a.homeId].mapX,world.places[a.homeId].mapY).water)).toBe(true);
 
-    const foundingCenters = ['commons', 'rulid_center', 'zakkaria_center'];
+    const foundingCenters = ['commons', 'rulid_commons', 'zakkaria_commons'];
     for (const placeId of foundingCenters) {
       const place = world.places[placeId];
       expect(place.connectedPlaceIds.every((other) => !foundingCenters.includes(other))).toBe(true);
@@ -52,6 +55,8 @@ describe('0.3.22 F2 three independent human foundations',()=>{
     expect(Object.values(world.agents).filter(a=>world.places[a.homeId]?.settlementId==='settlement_ainkrad')).toHaveLength(10);
     expect(Object.values(world.agents).filter(a=>world.places[a.homeId]?.settlementId==='settlement_rulid')).toHaveLength(10);
     expect(Object.values(world.agents).filter(a=>world.places[a.homeId]?.settlementId==='settlement_zakkaria')).toHaveLength(10);
+    expect(world.settlements.settlement_rulid.centerPlaceId).toBe('rulid_commons');
+    expect(world.settlements.settlement_zakkaria.centerPlaceId).toBe('zakkaria_commons');
   });
 
 });
