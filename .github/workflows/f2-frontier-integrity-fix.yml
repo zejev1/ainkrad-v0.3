@@ -35,6 +35,20 @@ jobs:
       - name: Apply deterministic patch
         run: node scripts/apply-f2-frontier-integrity-fix.mjs
 
+      - name: Tighten library id type
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/v21/LibraryAdmissions.ts')
+          s = p.read_text()
+          s = s.replace(
+              'export function libraryIdForAgent(world: Readonly<WorldState>, agent: Readonly<AgentState>): string {',
+              'export function libraryIdForAgent(world: Readonly<WorldState>, agent: Readonly<AgentState>): (typeof LIBRARY_IDS)[number] {'
+          )
+          p.write_text(s)
+          PY
+
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
