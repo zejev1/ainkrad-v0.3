@@ -240,11 +240,10 @@ function syncIntoState(
   if (existingCount >= MAX_DUNGEONS_V19) return;
   // Same physical-presence rule, one O(residents + places) pass instead of
   // allocating/scanning the entire population once per candidate place.
-  const eligibleDiscovererPlaces = new Set(Object.values(world.agents)
-    .filter(agent => agent.life.alive && !agent.movement && ['human', 'elf', 'dwarf'].includes(agent.race ?? 'human'))
-    .map(agent => agent.locationId));
+  const occupiedPlaces = new Set(Object.values(world.agents)
+    .filter(agent => agent.life.alive && !agent.movement).map(agent => agent.locationId));
   const candidates = Object.values(world.places)
-    .filter(place => eligibleDungeonEntrance(place) && eligibleDiscovererPlaces.has(place.id))
+    .filter(place => eligibleDungeonEntrance(place) && occupiedPlaces.has(place.id))
     .sort(
       (left, right) =>
         (left.discoveredAt ?? 0) - (right.discoveredAt ?? 0) ||

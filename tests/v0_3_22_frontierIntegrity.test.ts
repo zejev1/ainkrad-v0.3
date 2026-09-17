@@ -149,7 +149,7 @@ describe('F2 frontier integrity', () => {
     expect(second).not.toMatch(/^(Скрытые|Дикие|Серебряные|Ветреные)\b/u);
   });
 
-  it('does not let an ineligible goblin create a dungeon merely by standing on remote ruins', async () => {
+  it('lets any physically present Spark discover a dungeon while keeping guild eligibility separate', async () => {
     const world = await fresh('frontier-dungeon-physicality');
     const source = world.places.outskirts;
     const ruins: WorldPlace = {
@@ -169,7 +169,11 @@ describe('F2 frontier integrity', () => {
     goblin.movement = undefined;
     world.agents[goblin.id] = goblin;
     syncAdventureEconomyV19(world);
-    expect(world.v19!.adventureEconomy.dungeonsById[`dungeon:${ruins.id}`]).toBeUndefined();
+    const dungeon = world.v19!.adventureEconomy.dungeonsById[`dungeon:${ruins.id}`];
+    expect(dungeon).toBeDefined();
+    goblin.knownPlaceIds = [...new Set([...(goblin.knownPlaceIds ?? []), ruins.id])];
+    goblin.knownDungeonIds = [dungeon!.id];
+    expect(chooseDungeonExpeditionV19(world, goblin, [dungeon!.id], 0)).toBeUndefined();
   });
 
   it('refuses a legacy known dungeon thousands of kilometres away as one expedition target', async () => {

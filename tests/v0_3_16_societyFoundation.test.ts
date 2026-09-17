@@ -298,22 +298,6 @@ describe('v0.3.16 race-neutral family opportunities', () => {
     const bornGoblins = Object.values(state.agents).filter(
       (agent) => agent.race === 'goblin' && agent.life.generation > 0,
     );
-    console.log('F2_GOBLIN_LINEAGE_DIAG', JSON.stringify({
-      livingGoblinCount: goblins.length,
-      bornGoblinCount: bornGoblins.length,
-      raceOpportunity: state.v16!.raceFamilyOpportunityByRace.goblin,
-      localOpportunities: Object.values(state.v16!.localFamilyOpportunityByKey).filter((value) => value.race === 'goblin'),
-      lifecycles: Object.values(state.v16!.familyLifecycleByPairId).filter((value) => {
-        const a = state.agents[value.agentAId];
-        return a?.race === 'goblin';
-      }),
-      adults: adults.map((adult) => {
-        const current = state.agents[adult.id];
-        return current ? { id: current.id, sex: current.sex, homeId: current.homeId, locationId: current.locationId,
-          alive: current.life.alive, age: current.life.ageYears, health: current.life.health, children: current.life.childIds.length,
-          movement: Boolean(current.movement) } : { id: adult.id, missing: true };
-      }),
-    }));
 
     expect(goblins.length).toBeGreaterThanOrEqual(4);
     expect(bornGoblins.length).toBeGreaterThan(0);
