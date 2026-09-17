@@ -11,7 +11,7 @@ import type { WorldPlace } from '../src/world/types';
 
 const fresh=async()=> (await WorldEngine.create({worldId:'geometry',seed:'streets',store:new InMemoryWorldStore()})).snapshot();
 describe('physical settlement geometry and observer navigation',()=>{
-  it('keeps an already-correct F2 geography stable while preserving long homeland separation',async()=>{
+  it('keeps an already-correct F2 geography stable while preserving continent-scale founding separation',async()=>{
     const w=await fresh();
     const protectedState=structuredClone({
       agents:w.agents,
@@ -41,9 +41,21 @@ describe('physical settlement geometry and observer navigation',()=>{
       centerPlaceId:t.centerPlaceId,centerX:t.centerX,centerY:t.centerY,radius:t.radius,layoutVersion:t.layoutVersion,
     }]))).toEqual(settlementGeometry);
     expect({agents:w.agents,calendar:w.calendar,rng:w.determinism,v15:w.v15,v18:w.v18!.secretLibrary.knowledgeByAgentId}).toEqual(protectedState);
-    const elfTown=w.settlements.settlement_elf_homeland;expect(elfTown).toBeDefined();
-    const elfCenter=w.places[elfTown.centerPlaceId];expect(elfCenter).toBeDefined();
-    expect(Math.hypot(elfCenter.mapX-w.places.commons.mapX,elfCenter.mapY-w.places.commons.mapY)).toBeGreaterThanOrEqual(10000);
+
+    // A fresh F2 world contains the three human foundations immediately.
+    // Non-human homeland settlements are created later by lived world progression,
+    // so this reload-stability test must not invent them at world minute zero.
+    const ainkrad=w.settlements.settlement_ainkrad;
+    const rulid=w.settlements.settlement_rulid;
+    const zakkaria=w.settlements.settlement_zakkaria;
+    expect(ainkrad).toBeDefined();expect(rulid).toBeDefined();expect(zakkaria).toBeDefined();
+    const foundingDistances=[
+      Math.hypot(ainkrad.centerX-rulid.centerX,ainkrad.centerY-rulid.centerY),
+      Math.hypot(ainkrad.centerX-zakkaria.centerX,ainkrad.centerY-zakkaria.centerY),
+      Math.hypot(rulid.centerX-zakkaria.centerX,rulid.centerY-zakkaria.centerY),
+    ];
+    expect(Math.min(...foundingDistances)).toBeGreaterThanOrEqual(35_000);
+
     const once=structuredClone(w);expect(repairCompactSettlementLayout(w)).toBe(false);expect(w).toEqual(once);
   });
   it('reprojects an old field journey onto its displayed road and retains road use history',async()=>{
