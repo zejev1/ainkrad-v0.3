@@ -76,6 +76,9 @@ function emptyKnowledge(agentId: string): V21AppliedKnowledgeState {
     diagnosisPractice: 0,
     treatmentPractice: 0,
     materialPractice: 0,
+    swimmingTheory: 0,
+    swimmingPractice: 0,
+    swimmingLessonsGiven: 0,
     verifiedObservations: 0,
   };
 }
@@ -169,6 +172,9 @@ export function ensureAgentEmbodiedWorldV21(world: WorldState, agentId?: string)
     knowledge.homeTheory ??= 0;
     knowledge.familyTheory ??= 0;
     knowledge.weatherTheory ??= 0;
+    knowledge.swimmingTheory ??= 0;
+    knowledge.swimmingPractice ??= 0;
+    knowledge.swimmingLessonsGiven ??= 0;
     knowledge.foundingPrimerLessons ??= 0;
     knowledge.foundingPrimerPageIndex ??= 0;
     knowledge.foundingPrimerWordOffset ??= 0;
@@ -203,6 +209,9 @@ export function ensureEmbodiedWorldV21(world: WorldState): WorldV21State {
     knowledge.homeTheory ??= 0;
     knowledge.familyTheory ??= 0;
     knowledge.weatherTheory ??= 0;
+    knowledge.swimmingTheory ??= 0;
+    knowledge.swimmingPractice ??= 0;
+    knowledge.swimmingLessonsGiven ??= 0;
     knowledge.foundingPrimerLessons ??= 0;
     knowledge.foundingPrimerPageIndex ??= 0;
     knowledge.foundingPrimerWordOffset ??= 0;
