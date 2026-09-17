@@ -23,6 +23,12 @@ import type { WorldInterventionKind as InterventionKind, WorldInputEnvelope as I
 import { observeLocalPlacesV20, sharePlaceKnowledgeV20, removeUnsurveyedHomelandLinksV20, mayKnowPlaceV20 } from '../v20/KnowledgeBoundariesV20';
 import { nextUrbanHomeLot } from './SettlementStreets';
 import { repairCompactSettlementLayout } from './CompactSettlementLayout';
+import {
+  attemptSwimmingPracticeV22,
+  ensureRulidSwimmingBootstrap,
+  shareSwimmingKnowledgeV22,
+  swimmingPracticeDestinationV22,
+} from '../v21/SwimmingPracticeV22';
 import { assertResidentLearning, beginLearningAttempt, finishLearningAttempt, learnedActionAdjustment, learnedSiteAdjustment, noteLearningHelp, noteLearningMaterial } from './learning/index';
 import { canResidentAct, stopDeceasedActions, repairDeceasedActions, assertDeceasedBody } from './ResidentBodyBoundary';
 import {
@@ -4222,7 +4228,7 @@ async function repairCompatibleV16World(
       payload: {
         from: WORLD_RULES_VERSION_V16,
         to: WORLD_RULES_VERSION_V16,
-        migrationMode: 'same_version_additive_schema_repair',
+        migrationMode: 'same_version_additive_schema_repair_rulid_maritime_foundation',
         preservedTick: next.now,
         preservedWorldMinutes: next.calendar.elapsedWorldMinutes,
         preservedPeople: Object.keys(next.agents).length,
@@ -4474,7 +4480,7 @@ async function migrateV18WorldToV19(
 }
 
 const V19_ADDITIVE_SCHEMA_REPAIR_OPERATION_ID =
-  'migration:v22-family-lifecycle-cartography-perf-2026-09-15';
+  'migration:v22-rulid-maritime-foundation-2026-09-18';
 
 async function repairCompatibleV19World(
   store: WorldStore,
@@ -4485,7 +4491,7 @@ async function repairCompatibleV19World(
     from: WORLD_RULES_VERSION,
     to: WORLD_RULES_VERSION,
     mode: 'same_version_additive_schema_repair',
-    schemaRevision: '2026-09-15-family-lifecycle-cartography-perf',
+    schemaRevision: '2026-09-18-rulid-maritime-foundation',
   });
   let current = persisted;
 
@@ -4513,6 +4519,7 @@ async function repairCompatibleV19World(
     removeUnsurveyedHomelandLinksV20(next);
     repairSecretLibraryPlacementV18(next);
     repairCompactSettlementLayout(next);
+    ensureRulidSwimmingBootstrap(next);
     reconcileLibraryAdmissions(next, next.calendar.elapsedWorldMinutes);
     repairDeceasedActions(next);
     ensureCenturyHumpbackState(next);
@@ -4526,7 +4533,7 @@ async function repairCompatibleV19World(
     await store.checkpointWorld?.(current.id, current.revision, 'before-additive-schema-migration');
     next.revision = current.revision + 1;
     const migrationEvent: WorldEvent = {
-      eventId: `migration:${next.id}:v22-family-lifecycle-cartography-perf-2026-09-15:revision:${current.revision}`,
+      eventId: `migration:${next.id}:v22-rulid-maritime-foundation-2026-09-18:revision:${current.revision}`,
       worldId: next.id,
       kind: 'world.migrated',
       source: 'system',
@@ -4926,6 +4933,7 @@ export class WorldEngine {
       // Finalize the moved coast now, not lazily on the next reload.
       repairCompactSettlementLayout(state);
     }
+    ensureRulidSwimmingBootstrap(state);
     reconcileLibraryAdmissions(state, state.calendar.elapsedWorldMinutes, true);
 
     for (const resident of Object.values(state.agents)) observeLocalPlacesV20(state, resident);
@@ -5130,6 +5138,7 @@ export class WorldEngine {
           this.state.settlements = rebuildSettlementProjection(this.state.places, this.state.settlements, resetAt);
           repairCompactSettlementLayout(this.state);
         }
+        ensureRulidSwimmingBootstrap(this.state);
         this.state.determinism.eventSequence = priorSequence;
         this.rng.restore(rng.snapshot());
 
@@ -9230,15 +9239,48 @@ export class WorldEngine {
       agent.energy < 0.58 ||
       agent.stress > 0.62 ||
       agent.personality.sociability < 0.42;
+    const swimDestination = recoverAtHome
+      ? undefined
+      : swimmingPracticeDestinationV22(this.state, agent);
+    const choseSwimming = Boolean(
+      swimDestination &&
+      this.rng.next() < 0.18 + agent.personality.curiosity * 0.22 +
+        agent.personality.riskTolerance * 0.12,
+    );
     const destination = recoverAtHome
       ? agent.homeId
-      : this.localPlace(
-          agent,
-          ['quiet_space', 'meadow', 'forest', 'shore', 'river', 'lake'],
-          agent.homeId,
-        );
+      : choseSwimming && swimDestination
+        ? swimDestination
+        : this.localPlace(
+            agent,
+            ['quiet_space', 'meadow', 'forest', 'shore', 'river', 'lake'],
+            agent.homeId,
+          );
 
     if (this.travelBeforeAction(agent, destination, 'relax', now)) return;
+    if (choseSwimming && swimDestination && agent.locationId === swimDestination) {
+      const attempt = attemptSwimmingPracticeV22(
+        this.state,
+        agent,
+        this.rng.next(),
+        this.rng.next(),
+      );
+      if (attempt.attempted) {
+        this.recordAgentEvent(agent, now, 'agent.swimming.practiced', {
+          locationId: agent.locationId,
+          fatal: attempt.fatal,
+          risk: attempt.risk,
+          supervised: attempt.supervised,
+          practiceBefore: attempt.practiceBefore,
+          practiceAfter: attempt.practiceAfter,
+          physicalWaterExposure: true,
+        });
+        if (attempt.fatal) {
+          this.recordDeath(agent, 'drowning', now);
+          return;
+        }
+      }
+    }
     agent.energy = clamp01(
       agent.energy + 0.07 + agent.life.physiology.recovery * 0.08,
     );
@@ -16378,6 +16420,10 @@ export class WorldEngine {
     if (sentiment > 0.18 && next.trust > 0.25) {
       sharePlaceKnowledgeV20(this.state, a, b);
       sharePlaceKnowledgeV20(this.state, b, a);
+      // Swimming can be explained face-to-face, but practice is never copied:
+      // each resident must still enter the water and learn with their own body.
+      shareSwimmingKnowledgeV22(this.state, a, b);
+      shareSwimmingKnowledgeV22(this.state, b, a);
       consultSettlementMap(this.state, a);
       consultSettlementMap(this.state, b);
     }
@@ -16860,6 +16906,7 @@ export class WorldEngine {
     if (!repairCompactSettlementLayout(this.state)) {
       this.state.routes = rebuildWorldRoutes(this.state.places, this.state.routes);
     }
+    ensureRulidSwimmingBootstrap(this.state);
     this.routePathCache?.clear();
     invalidateResidentNavigation(this.state);
   }
