@@ -4,6 +4,7 @@ import {
   SECRET_LIBRARY_PLACE_ID_V18,
 } from '../src/v18/SecretLibraryV18';
 import { InMemoryWorldStore } from '../src/world/InMemoryWorldStore';
+import { HUMAN_LIBRARY_IDS, libraryIdOf } from '../src/v21/LibraryAdmissions';
 import { WorldEngine } from '../src/world/WorldEngine';
 import type { WorldV18State } from '../src/v18/types';
 
@@ -118,15 +119,19 @@ describe('v0.3.18 lightweight Secret Library', () => {
     const selected = world.snapshot().v18!.secretLibrary.visitors;
     expect(selected.length).toBeGreaterThan(0);
     expect(selected.length).toBeLessThanOrEqual(
-      SECRET_LIBRARY_MAX_VISITORS_PER_YEAR_V18,
+      SECRET_LIBRARY_MAX_VISITORS_PER_YEAR_V18 * HUMAN_LIBRARY_IDS.length,
     );
+    for (const id of HUMAN_LIBRARY_IDS) {
+      expect(selected.filter(visitor => libraryIdOf(visitor) === id).length)
+        .toBeLessThanOrEqual(SECRET_LIBRARY_MAX_VISITORS_PER_YEAR_V18);
+    }
     expect(world.snapshot().revision).toBe(revision + 1);
     expect(world.snapshot().v18!.secretLibrary.totalKnowledgeRecords).toBe(0);
     expect(selected.every((visitor) => visitor.acceptedVoluntarily)).toBe(true);
     expect(
       selected.every((visitor) =>
         world.snapshot().agents[visitor.agentId].movement?.targetPlaceId ===
-          SECRET_LIBRARY_PLACE_ID_V18,
+          libraryIdOf(visitor),
       ),
     ).toBe(true);
 

@@ -53,12 +53,15 @@ export function sharePlaceKnowledgeV20(world: Readonly<WorldState>, speaker: Rea
   if (mayKnowPlaceV20(listener, listener.locationId, world)) known.add(listener.locationId);
   listener.knownPlaceIds = [...known];
 
-  // Dungeon knowledge is likewise physical/local. A traveller can tell a
-  // companion about the dungeon at the place where they are standing, while a
-  // stale dungeon id from thousands of kilometres away no longer propagates.
-  const localDungeon = world.v19?.adventureEconomy.dungeonsById[`dungeon:${speaker.locationId}`];
-  if (localDungeon && (speaker.knownDungeonIds ?? []).includes(localDungeon.id)) {
-    listener.knownDungeonIds = [...new Set([...(listener.knownDungeonIds ?? []), localDungeon.id])];
+  // Dungeon testimony is carried knowledge, not teleportation. Only a dungeon
+  // that already exists and is explicitly present in the speaker's own memory
+  // can be mentioned; merely existing in global world state is insufficient.
+  const testifiedDungeonIds = (speaker.knownDungeonIds ?? []).filter((id) => {
+    const dungeon = world.v19?.adventureEconomy.dungeonsById[id];
+    return Boolean(dungeon && (speaker.knownPlaceIds ?? []).includes(dungeon.entrancePlaceId));
+  });
+  if (testifiedDungeonIds.length) {
+    listener.knownDungeonIds = [...new Set([...(listener.knownDungeonIds ?? []), ...testifiedDungeonIds])];
   }
 }
 

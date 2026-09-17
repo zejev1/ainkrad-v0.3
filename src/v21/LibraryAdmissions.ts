@@ -7,7 +7,7 @@ export const HUMAN_LIBRARY_IDS = [
   'secret_library_zakkaria_v18',
 ] as const;
 export const ELF_LIBRARY_ID = 'elf_library_v20' as const;
-export const LIBRARY_IDS = [...HUMAN_LIBRARY_IDS, ELF_LIBRARY_ID] as const;
+export const LIBRARY_IDS = [HUMAN_LIBRARY_IDS[0], ELF_LIBRARY_ID, HUMAN_LIBRARY_IDS[1], HUMAN_LIBRARY_IDS[2]] as const;
 export const LIBRARY_LIMIT = 5;
 export const LIBRARY_YEAR = 365 * 24 * 60;
 export const LIBRARY_HISTORY_LIMIT = 100;
@@ -22,10 +22,11 @@ export function humanLibraryIdForSettlement(settlementId: string | undefined): (
   return HUMAN_LIBRARY_IDS[0];
 }
 
-export function libraryIdForAgent(world: Readonly<WorldState>, agent: Readonly<AgentState>): string {
+export function libraryIdForAgent(world: Readonly<WorldState>, agent: Readonly<AgentState>): (typeof LIBRARY_IDS)[number] {
   if ((agent.race ?? 'human') === 'elf') return ELF_LIBRARY_ID;
   const homeSettlementId = world.places[agent.homeId]?.settlementId;
-  return humanLibraryIdForSettlement(homeSettlementId);
+  const preferred = humanLibraryIdForSettlement(homeSettlementId);
+  return world.places[preferred] ? preferred : HUMAN_LIBRARY_IDS[0];
 }
 
 export function hasLibraryAdmission(world: Readonly<WorldState>, agent: Readonly<AgentState>,
@@ -91,6 +92,7 @@ export function reconcileLibraryAdmissions(world: WorldState, minute = world.cal
   library.annualSelections ??= {};
   const legacy = library.admissionVersion !== 1;
   for (const id of LIBRARY_IDS) {
+    if (!world.places[id]) continue;
     const prior = library.annualSelections[id];
     if (!prior || prior.year !== year) {
       const records = [...library.visitHistory, ...library.visitors].filter(v => libraryIdOf(v) === id && v.accessYear === year)

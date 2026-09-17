@@ -4,6 +4,8 @@ import { updateSettlementGeometry } from './SettlementGeometryV21';
 import { updateNaturalGeography, finishWorldGeography } from './WorldGeography';
 import { reconcileRouteGeometry } from './RouteGeometryMigration';
 import { rebuildWorldRoutes } from './WorldNavigation';
+import { compactLibraryPlot } from './SettlementLibraryLayout';
+import { HUMAN_LIBRARY_IDS, LIBRARY_LIMIT } from '../v21/LibraryAdmissions';
 import type { WorldPoint2D, WorldState } from './types';
 
 const FOUNDING_HUMAN_SETTLEMENTS = [
@@ -156,6 +158,31 @@ function spreadFoundingHumanSettlements(
   return changed;
 }
 
+function ensureFreshFoundingHumanLibraries(world: WorldState): boolean {
+  if (world.terrain) return false;
+  const specs = [
+    { id: HUMAN_LIBRARY_IDS[1], settlementId: 'settlement_rulid', name: 'Тайная библиотека Рулида' },
+    { id: HUMAN_LIBRARY_IDS[2], settlementId: 'settlement_zakkaria', name: 'Тайная библиотека Заккарии' },
+  ] as const;
+  let changed = false;
+  for (const spec of specs) {
+    if (world.places[spec.id]) continue;
+    const town = world.settlements[spec.settlementId];
+    const anchor = town ? world.places[town.centerPlaceId] : undefined;
+    if (!town || !anchor) continue;
+    const plot = compactLibraryPlot(world.places, { x: anchor.mapX, y: anchor.mapY }, spec.id);
+    if (!plot) continue;
+    world.places[spec.id] = {
+      id: spec.id, name: spec.name, kind: 'library', capacity: LIBRARY_LIMIT,
+      biome: 'ancient_ruins', mapX: plot.x, mapY: plot.y, connectedPlaceIds: [anchor.id],
+      fertility: 0, danger: 0, surface: 'land', settlementId: spec.settlementId, discoveredAt: 0,
+    };
+    if (!anchor.connectedPlaceIds.includes(spec.id)) anchor.connectedPlaceIds.push(spec.id);
+    if (!town.memberPlaceIds.includes(spec.id)) town.memberPlaceIds.push(spec.id);
+    changed = true;
+  }
+  return changed;
+}
 function invalidateRulidLayoutForCoast(world:WorldState):void {
   const town=world.settlements.settlement_rulid;
   if(!town)return;
@@ -187,6 +214,7 @@ export function repairCompactSettlementLayout(world:WorldState):boolean {
   const moved=new Map<string,{before:WorldPoint2D;after:WorldPoint2D}>();
   const civicCenterChanged=normalizeFreshFoundingCivicCenters(world);
   const foundingSpreadChanged=spreadFoundingHumanSettlements(world,moved);
+  const freshLibraryChanged=ensureFreshFoundingHumanLibraries(world);
   const naturalChanged=updateNaturalGeography(world);
   updateSettlementGeometry(world,(id,point)=>{
     const place=world.places[id];
@@ -209,7 +237,7 @@ export function repairCompactSettlementLayout(world:WorldState):boolean {
   }
 
   const geographyChanged=finishWorldGeography(world);
-  if(!terrainChanged&&!naturalChanged&&!civicCenterChanged&&!foundingSpreadChanged&&!moved.size&&!geographyChanged)return false;
+  if(!terrainChanged&&!naturalChanged&&!civicCenterChanged&&!foundingSpreadChanged&&!freshLibraryChanged&&!moved.size&&!geographyChanged)return false;
   world.routes=rebuildWorldRoutes(world.places,world.routes);
   reconcileRouteGeometry(world,oldRoutes,moved);
   return true;

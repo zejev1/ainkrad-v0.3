@@ -17,7 +17,7 @@ import {bindWorldTerrain,assertTerrainFoundation,homelandCenterForWorld,terrainW
 import { assertPlaceGeography } from './WorldGeographyValidation';
 import type { WorldTimeExecution } from './WorldTimeExecution';
 import { createFoundingOcean, repairFoundingOcean } from './FoundingOcean';
-import { LIBRARY_IDS, LIBRARY_YEAR, admissionDeadline, isSecretLibrary, libraryIdOf, hasLibraryAdmission, reconcileLibraryAdmissions, enforceLibraryBoundary, noteLibraryArrival } from '../v21/LibraryAdmissions';
+import { LIBRARY_IDS, LIBRARY_YEAR, admissionDeadline, isSecretLibrary, libraryIdOf, libraryIdForAgent, hasLibraryAdmission, reconcileLibraryAdmissions, enforceLibraryBoundary, noteLibraryArrival } from '../v21/LibraryAdmissions';
 import { ensureElfLibraryV20, elfStudyMaterialV20, readingBudgetV20 } from '../v20/LibraryLearningV20';
 import type { WorldInterventionKind as InterventionKind, WorldInputEnvelope as InputEnvelope } from '../core/WorldContracts';
 import { observeLocalPlacesV20, sharePlaceKnowledgeV20, removeUnsurveyedHomelandLinksV20, mayKnowPlaceV20 } from '../v20/KnowledgeBoundariesV20';
@@ -94,6 +94,7 @@ import { stableJsonStringify } from '../core/stableJson';
 import { SeededRng } from '../utils/rng';
 import {
   createGenesisTeachers,
+  genesisBootstrapAvailableToV15,
   GENESIS_ACTIVE_WORLD_MINUTES,
   isGenesisTeacherActive,
   type GenesisDomain,
@@ -192,6 +193,7 @@ import {
 } from '../v18/LanguageAndConversationV18';
 import {
   chooseCulturalChildNameV18,
+  chooseCulturalPlaceNameV18,
   toRussianWorldNameV18,
 } from '../v18/CulturalNamingV18';
 import {
@@ -3316,7 +3318,7 @@ function addSecondaryHumanSettlementPlaces(
 
 function repairRulidCoastalBank(world: WorldState): boolean {
   const shore = world.places.rulid_shore;
-  const center = world.places.rulid_center;
+  const center = world.places[world.settlements.settlement_rulid?.centerPlaceId ?? 'rulid_commons'];
   if (!shore || !center) return false;
   const terrain = bindWorldTerrain(world);
   if (!terrain) return false;
@@ -5449,7 +5451,7 @@ export class WorldEngine {
     });
     if (!eligibleLibraries.length) return;
     for (const agent of rankedSecretLibraryCandidatesV18(livingAgents, year, literacyByAgentId, library.knowledgeByAgentId)) {
-      const libraryPlaceId = agent.race === 'elf' ? LIBRARY_IDS[1] : LIBRARY_IDS[0];
+      const libraryPlaceId = libraryIdForAgent(this.state, agent);
       const receipt = library.annualSelections![libraryPlaceId];
       if (!eligibleLibraries.includes(libraryPlaceId) || library.visitors.some(v => v.agentId === agent.id) ||
           receipt.agentIds.includes(agent.id) || receipt.agentIds.length >= 5 ||
@@ -7011,11 +7013,14 @@ export class WorldEngine {
     // Genesis is a temporary bootstrap mentor, never population. A lesson is
     // attached to a real activity and remains bounded by the same learning
     // mechanics used for ordinary teachers.
-    const genesis = v15.genesisTeachers.find(
-      (teacher) =>
-        teacher.domain === mapped.domain &&
-        isGenesisTeacherActive(teacher, worldMinutes),
-    );
+    const genesisSettlementId = this.homeSettlementId(agent);
+    const genesis = genesisBootstrapAvailableToV15(agent.race, genesisSettlementId)
+      ? v15.genesisTeachers.find(
+          (teacher) =>
+            teacher.domain === mapped.domain &&
+            isGenesisTeacherActive(teacher, worldMinutes),
+        )
+      : undefined;
     if (
       genesis &&
       policy.canReceiveStructuredLesson &&
@@ -7813,6 +7818,22 @@ export class WorldEngine {
             break;
           }
         }
+        if (
+          familyIntent &&
+          agent.locationId === familyIntent.meetingPlaceId &&
+          (!intendedPartner ||
+            intendedPartner.movement ||
+            intendedPartner.locationId !== agent.locationId)
+        ) {
+          // The resident already chose bond this quantum and reached the
+          // remembered rendezvous. Waiting here executes that voluntary
+          // choice instead of immediately walking away to reflect elsewhere.
+          // The next quantum remains a fresh autonomous decision.
+          agent.energy = clamp01(agent.energy + 0.004);
+          agent.stress = clamp01(agent.stress - 0.006);
+          agent.lastAction = 'bond';
+          break;
+        }
         const target = this.chooseBondTarget(
           agent,
           this.agentsAtLocation(agent.locationId),
@@ -8042,6 +8063,7 @@ export class WorldEngine {
       ? this.previewHuntOpportunity(agent.locationId)
       : undefined;
     const activeFamilyIntent = this.familyRendezvousForAgent(agent.id);
+    const committedFamilyIntent = this.familyIntentForAgent(agent.id);
     const familyMeetingAvailable = Boolean(
       activeFamilyIntent &&
         this.state.places[activeFamilyIntent.meetingPlaceId] &&
@@ -8352,7 +8374,7 @@ export class WorldEngine {
             emotions.joy * 0.12 +
             learnedKnowledgeBoost('bond') +
             goalBoost('build_family') +
-            (activeFamilyIntent ? 0.14 : 0)
+            (committedFamilyIntent ? 0.62 : activeFamilyIntent ? 0.14 : 0)
           : -1,
       },
       {
@@ -12992,15 +13014,12 @@ export class WorldEngine {
       swamp: 'swamp',
       ancient_ruins: 'ruins',
     };
-    const prefix = REGION_NAME_PREFIXES[
-      (stage + Math.floor(this.rng.next() * REGION_NAME_PREFIXES.length)) %
-        REGION_NAME_PREFIXES.length
-    ];
     const regionId = `region_${stage}`;
-    const suffixes = REGION_NAME_SUFFIXES[biome];
-    const suffix = suffixes[stage % suffixes.length];
     const mapX = site.x;
     const mapY = site.y;
+    const regionName = chooseCulturalPlaceNameV18({
+      world: this.state, explorer, biome, sequence: stage, x: mapX, y: mapY,
+    });
     const fertilityByBiome: Record<WorldBiome, number> = {
       settlement: 0.52,
       plains: 0.78,
@@ -13053,7 +13072,7 @@ export class WorldEngine {
     const initialCount = Math.max(2, Math.floor(carryingCapacity * 0.45));
     const place = createPlace(
       regionId,
-      `${prefix} ${suffix}`,
+      regionName,
       kindByBiome[biome],
       10 + Math.floor(this.rng.next() * 10),
       {
