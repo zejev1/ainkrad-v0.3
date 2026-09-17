@@ -1,0 +1,38 @@
+name: Maritime repair validation
+on:
+  push:
+    branches: [fix/rulid-maritime-foundation-20260918]
+    paths: [.github/workflows/maritime-repair-check.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Package source and locked test dependencies for isolated verification
+        run: |
+          git rev-parse HEAD > /tmp/source-sha.txt
+          git archive HEAD | tar -x -C /tmp --one-top-level=ainkrad-audit
+          cp /tmp/source-sha.txt /tmp/ainkrad-audit/SOURCE_SHA.txt
+          tar -czf /tmp/ainkrad-audit-source.tgz -C /tmp ainkrad-audit
+          tar -czf /tmp/ainkrad-audit-deps.tgz node_modules
+      - uses: actions/upload-artifact@v4
+        with:
+          name: maritime-audit-workspace
+          path: /tmp/ainkrad-audit-*.tgz
+          retention-days: 3
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Full Vitest
+        run: npm test
+      - name: Production build
+        run: npm run build
