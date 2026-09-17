@@ -2,12 +2,12 @@ import { TERRAIN_BOUNDS } from '../world/geography/TerrainTypes';
 import type { WorldPoint2D, WorldState } from '../world/types';
 
 /**
- * Coarse planet-scale exploration grid. 20×20 keeps the metric cheap and
- * stable while still making level 100 mean every coarse land/sea sector has
- * physically recorded exploration evidence.
+ * Planet-scale exploration grid. 100×100 gives 10,000 physical sectors across
+ * the current terrain bounds (~63×56 km per sector). A level cannot reach 100
+ * until every land/sea sector has persisted exploration evidence.
  */
-const COVERAGE_COLUMNS = 20;
-const COVERAGE_ROWS = 20;
+const COVERAGE_COLUMNS = 100;
+const COVERAGE_ROWS = 100;
 const COVERAGE_CELLS = COVERAGE_COLUMNS * COVERAGE_ROWS;
 const CELL_WIDTH = (TERRAIN_BOUNDS.maxX - TERRAIN_BOUNDS.minX) / COVERAGE_COLUMNS;
 const CELL_HEIGHT = (TERRAIN_BOUNDS.maxY - TERRAIN_BOUNDS.minY) / COVERAGE_ROWS;
@@ -48,9 +48,9 @@ function markSegment(cells: Set<number>, from: Readonly<WorldPoint2D>, to: Reado
 }
 
 /**
- * Read-only evidence metric. It never mutates world state and never runs in
- * the simulation hot path. It counts only persisted physical evidence:
- * discovered regions/places, actual surveys, and actually traversed routes.
+ * Read-only evidence metric. It never mutates world state and is presentation
+ * only: the simulation engine does not call it. Evidence comes from persisted
+ * discoveries, real surveys and actually traversed routes.
  */
 export function worldExplorationCoverageCells(world: Readonly<WorldState>): ReadonlySet<number> {
   const cells = new Set<number>();
@@ -60,8 +60,8 @@ export function worldExplorationCoverageCells(world: Readonly<WorldState>): Read
     if (place) markPoint(cells, { x: place.mapX, y: place.mapY });
   }
 
-  // Ocean/offshore discoveries and other physically discovered places are not
-  // all represented by growth.discoveredRegionIds.
+  // Ocean/offshore discoveries and some other physical discoveries are not
+  // necessarily represented by growth.discoveredRegionIds.
   for (const place of Object.values(world.places)) {
     if (place.discoveredAt !== undefined) {
       markPoint(cells, { x: place.mapX, y: place.mapY });
@@ -82,6 +82,8 @@ export function worldExplorationCoverageCells(world: Readonly<WorldState>): Read
     }
   }
 
+  // A physically traversed route proves exploration along its actual path.
+  // Merely generated or connected routes do not count.
   for (const route of Object.values(world.routes)) {
     if ((route.completedTraversals ?? 0) <= 0 || route.waypoints.length === 0) continue;
     markPoint(cells, route.waypoints[0]);
@@ -95,17 +97,20 @@ export function worldExplorationCoverageCells(world: Readonly<WorldState>): Read
 
 export function worldExplorationPercent(world: Readonly<WorldState>): number {
   const covered = worldExplorationCoverageCells(world).size;
-  return Math.max(0, Math.min(100, Math.floor((covered / COVERAGE_CELLS) * 100)));
+  return Math.max(0, Math.min(100, (covered / COVERAGE_CELLS) * 100));
 }
 
 /**
- * World level is deliberately 1..100. Level 100 is reached only when every
- * coarse physical sector in the current terrain bounds has exploration
- * evidence. Internal growth.stage remains an uncapped historical sequence and
- * is NOT a player-facing world level.
+ * Player-facing world level is 1..100 and is independent of growth.stage.
+ * growth.stage remains the uncapped historical/procedural sequence so old
+ * saves and deterministic simulation history are untouched.
  */
 export function worldExplorationLevel(world: Readonly<WorldState>): number {
-  return Math.max(1, worldExplorationPercent(world));
+  const percent = worldExplorationPercent(world);
+  if (percent >= 100) return 100;
+  return Math.max(1, Math.floor(percent));
 }
 
 export const WORLD_EXPLORATION_COVERAGE_CELLS = COVERAGE_CELLS;
+export const WORLD_EXPLORATION_COVERAGE_COLUMNS = COVERAGE_COLUMNS;
+export const WORLD_EXPLORATION_COVERAGE_ROWS = COVERAGE_ROWS;
