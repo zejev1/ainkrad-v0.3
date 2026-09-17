@@ -3,6 +3,7 @@ export type CanonicalDeathCauseV15 =
   | 'illness'
   | 'childbirth'
   | 'deprivation'
+  | 'drowning'
   | 'catastrophe'
   | 'wildlife'
   | 'monster'
@@ -81,6 +82,7 @@ export interface DeathTelemetryRecordV15 {
     | 'health_failure'
     | 'childbirth_complication'
     | 'resource_deprivation'
+    | 'drowning'
     | 'authorized_catastrophe'
     | 'wildlife_encounter'
     | 'monster_encounter'
@@ -253,6 +255,11 @@ export function buildDeathTelemetryV15(
     diagnosticFactors.push('canonicalRule=health<=0.015 && resources>=0.08');
     humanSummary =
       `${context.name} умер(ла) из-за критического падения здоровья, не объясняемого прямой нехваткой личных ресурсов.`;
+  } else if (cause === 'drowning') {
+    primaryMechanism = 'drowning';
+    diagnosticFactors.push('canonicalRule=failed_physical_swimming_exposure');
+    humanSummary =
+      `${context.name} утонул(а): вход в воду закончился фатально из-за недостаточного навыка плавания или неудачи при реальной попытке.`;
   } else if (cause === 'catastrophe') {
     primaryMechanism = 'authorized_catastrophe';
     if (context.catastrophe?.catastropheKind) {
@@ -336,6 +343,7 @@ const CANONICAL_CAUSES: readonly CanonicalDeathCauseV15[] = [
   'illness',
   'childbirth',
   'deprivation',
+  'drowning',
   'catastrophe',
   'wildlife',
   'monster',
@@ -424,6 +432,7 @@ const CAUSE_RU: Record<CanonicalDeathCauseV15, string> = {
   illness: 'критическое ухудшение здоровья',
   childbirth: 'осложнение при родах',
   deprivation: 'истощение / нехватка ресурсов',
+  drowning: 'утопление',
   catastrophe: 'катастрофа',
   wildlife: 'дикое животное',
   monster: 'монстр',
