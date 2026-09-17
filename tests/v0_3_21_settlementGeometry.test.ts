@@ -18,14 +18,15 @@ describe('physical settlement geometry and observer navigation',()=>{
     for(const race of ['elf','orc','dwarf'] as AgentRace[]) {
       // Each real homeland is already occupied in a fresh F2 world. Put this
       // synthetic stale-layout fixture nearby on a broad patch that is dry in
-      // both the persisted terrain and the explicit saved water geometry.
+      // both the persisted terrain and the explicit saved water geometry, and
+      // keep a fixture-only ID so the live race settlement is never overwritten.
       const homeland=homelandCenterForWorld(w,race);
       const center=Array.from({length:24},(_,i)=>{
         const angle=i*Math.PI*2/24;
         return {x:homeland.x+Math.cos(angle)*6,y:homeland.y+Math.sin(angle)*6};
       }).find(point=>terrainPlotIsDry(w.places,point,2.2)&&dryBuildingPlot(point,2.2,2.2,water));
       expect(center).toBeDefined();
-      const id='settlement_'+race,x=center!.x,y=center!.y;syntheticSettlementIds.push(id);
+      const id='fixture_settlement_'+race,x=center!.x,y=center!.y;syntheticSettlementIds.push(id);
       w.places[id]={...w.places.commons,id,name:race,kind:'village',settlementId:id,mapX:x,mapY:y,connectedPlaceIds:[]};
       w.settlements[id]={id,name:race,kind:'village',centerPlaceId:id,centerX:x,centerY:y,radius:17,memberPlaceIds:[],foundedAt:0};
       for(let j=0;j<10;j++) {
