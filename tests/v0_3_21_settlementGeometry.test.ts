@@ -41,7 +41,9 @@ describe('physical settlement geometry and observer navigation',()=>{
       centerPlaceId:t.centerPlaceId,centerX:t.centerX,centerY:t.centerY,radius:t.radius,layoutVersion:t.layoutVersion,
     }]))).toEqual(settlementGeometry);
     expect({agents:w.agents,calendar:w.calendar,rng:w.determinism,v15:w.v15,v18:w.v18!.secretLibrary.knowledgeByAgentId}).toEqual(protectedState);
-    expect(Math.hypot(w.places.settlement_elf.mapX-w.places.commons.mapX,w.places.settlement_elf.mapY-w.places.commons.mapY)).toBeGreaterThanOrEqual(10000);
+    const elfTown=w.settlements.settlement_elf;expect(elfTown).toBeDefined();
+    const elfCenter=w.places[elfTown.centerPlaceId];expect(elfCenter).toBeDefined();
+    expect(Math.hypot(elfCenter.mapX-w.places.commons.mapX,elfCenter.mapY-w.places.commons.mapY)).toBeGreaterThanOrEqual(10000);
     const once=structuredClone(w);expect(repairCompactSettlementLayout(w)).toBe(false);expect(w).toEqual(once);
   });
   it('reprojects an old field journey onto its displayed road and retains road use history',async()=>{
