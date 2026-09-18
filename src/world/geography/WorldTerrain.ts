@@ -4,6 +4,7 @@ import {polygonsOverlap} from '../BuildingFootprints';
 import {featureBounds} from './FeatureIndex';
 import {terrainModel,type TerrainModel} from './TerrainModel';
 import {hash} from './TerrainMath';
+import {plannedMainlandHomeland} from './MainlandHomelands';
 import type {TerrainFoundation,TerrainAnchor} from './TerrainTypes';
 
 const contexts=new WeakMap<Readonly<Record<string,WorldPlace>>,TerrainModel>();
@@ -33,6 +34,7 @@ export function homelandCenterForWorld(
 
   const human = world.places.commons ?? SAPIENT_PEOPLE_FOUNDATIONS.human.homelandCenter;
   if (race === 'human') return { x: human.mapX, y: human.mapY };
+  if (!world.terrain) return plannedMainlandHomeland(world, race);
   const key = `${world.id}:epoch:${world.epoch ?? 1}:homeland-layout`;
   const unit = (suffix: string) => hash(`${key}:${suffix}`) / 0x1_0000_0000;
   const angle = (unit('rotation') - 0.5) * 0.44;

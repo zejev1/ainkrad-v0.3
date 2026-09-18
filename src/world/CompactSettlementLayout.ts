@@ -1,5 +1,6 @@
 import {repairWorldTerrain,bindWorldTerrain} from './geography/WorldTerrain';
 import {hash} from './geography/TerrainMath';
+import {ensureInhabitedLandRescue} from './geography/InhabitedLandRescue';
 import { updateSettlementGeometry } from './SettlementGeometryV21';
 import { updateNaturalGeography, finishWorldGeography } from './WorldGeography';
 import { reconcileRouteGeometry } from './RouteGeometryMigration';
@@ -210,6 +211,7 @@ function alignFreshFoundersWithHomes(world:WorldState):void {
 /** Versioned geometry migration; calendar, RNG, identities and knowledge stay intact. */
 export function repairCompactSettlementLayout(world:WorldState):boolean {
   bindWorldTerrain(world);
+  const habitatRescueChanged=ensureInhabitedLandRescue(world).changed;
   const oldRoutes=world.routes;
   const moved=new Map<string,{before:WorldPoint2D;after:WorldPoint2D}>();
   const civicCenterChanged=normalizeFreshFoundingCivicCenters(world);
@@ -237,7 +239,7 @@ export function repairCompactSettlementLayout(world:WorldState):boolean {
   }
 
   const geographyChanged=finishWorldGeography(world);
-  if(!terrainChanged&&!naturalChanged&&!civicCenterChanged&&!foundingSpreadChanged&&!freshLibraryChanged&&!moved.size&&!geographyChanged)return false;
+  if(!habitatRescueChanged&&!terrainChanged&&!naturalChanged&&!civicCenterChanged&&!foundingSpreadChanged&&!freshLibraryChanged&&!moved.size&&!geographyChanged)return false;
   world.routes=rebuildWorldRoutes(world.places,world.routes);
   reconcileRouteGeometry(world,oldRoutes,moved);
   return true;
