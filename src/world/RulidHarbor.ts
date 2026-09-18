@@ -1,0 +1,99 @@
+import type { WorldPoint2D, WorldState } from './types';
+import { bindWorldTerrain } from './geography/WorldTerrain';
+import { waterAccess } from '../v21/SailingRoutes';
+
+export const RULID_HARBOR_ID='rulid_harbor';
+export const RULID_BEACH_ID='rulid_beach';
+
+function drySegment(world:Readonly<WorldState>,a:WorldPoint2D,b:WorldPoint2D):boolean {
+  const terrain=bindWorldTerrain(world);if(!terrain)return false;
+  const steps=Math.max(2,Math.ceil(Math.hypot(b.x-a.x,b.y-a.y)/.015));
+  for(let i=0;i<=steps;i++) {
+    const t=i/steps;
+    if(terrain.sample(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t).water)return false;
+  }
+  return true;
+}
+
+function coastalNeighbour(
+  world:Readonly<WorldState>,
+  shore:WorldPoint2D,
+  side:-1|1,
+):WorldPoint2D|undefined {
+  const terrain=bindWorldTerrain(world),wet=waterAccess(world,shore);
+  if(!terrain||!wet)return;
+  const dx=wet.x-shore.x,dy=wet.y-shore.y,length=Math.max(1e-9,Math.hypot(dx,dy));
+  const seaward={x:dx/length,y:dy/length};
+  const tangent={x:-seaward.y*side,y:seaward.x*side};
+  const occupied=Object.values(world.places).filter(p=>p.surface!=='water');
+
+  for(const along of [.18,.24,.32,.42,.54,.68]) {
+    for(const inward of [.04,.08,.12,.18]) {
+      const p={
+        x:shore.x+tangent.x*along-seaward.x*inward,
+        y:shore.y+tangent.y*along-seaward.y*inward,
+      };
+      if(terrain.sample(p.x,p.y).water||!waterAccess(world,p)||!drySegment(world,shore,p))continue;
+      if(occupied.some(place=>place.id!=='rulid_shore'&&
+        Math.hypot(place.mapX-p.x,place.mapY-p.y)<.08))continue;
+      return p;
+    }
+  }
+}
+
+/**
+ * Adds two fixed pieces of Rulid's civic coast. No resident, home or existing
+ * shoreline is relocated. Boat routes still begin from physical water access;
+ * these places merely provide a real build/mooring bank and a public beach.
+ */
+export function ensureRulidHarbor(world:WorldState):boolean {
+  const town=world.settlements.settlement_rulid;
+  const shore=world.places.rulid_shore;
+  if(!town||!shore||!world.terrain)return false;
+
+  const needHarbor=!world.places[RULID_HARBOR_ID];
+  const needBeach=!world.places[RULID_BEACH_ID];
+  if(!needHarbor&&!needBeach)return false;
+
+  const shorePoint={x:shore.mapX,y:shore.mapY};
+  const harborPoint=needHarbor?coastalNeighbour(world,shorePoint,1):undefined;
+  const beachPoint=needBeach?coastalNeighbour(world,shorePoint,-1):undefined;
+  // Never create a decorative or unreachable facility.
+  if((needHarbor&&!harborPoint)||(needBeach&&!beachPoint))return false;
+
+  if(needHarbor&&harborPoint){
+    world.places[RULID_HARBOR_ID]={
+      id:RULID_HARBOR_ID,
+      name:'Верфь и причал Рулида',
+      kind:'shore',
+      capacity:24,
+      biome:'coast',
+      mapX:harborPoint.x,mapY:harborPoint.y,
+      connectedPlaceIds:['rulid_shore'],
+      fertility:.16,danger:.08,surface:'shore',
+      settlementId:'settlement_rulid',
+      discoveredAt:world.epochStartedAt??world.now,
+      geographyVersion:1,
+    };
+    if(!shore.connectedPlaceIds.includes(RULID_HARBOR_ID))shore.connectedPlaceIds.push(RULID_HARBOR_ID);
+    if(!town.memberPlaceIds.includes(RULID_HARBOR_ID))town.memberPlaceIds.push(RULID_HARBOR_ID);
+  }
+  if(needBeach&&beachPoint){
+    world.places[RULID_BEACH_ID]={
+      id:RULID_BEACH_ID,
+      name:'Пляж Рулида',
+      kind:'shore',
+      capacity:30,
+      biome:'coast',
+      mapX:beachPoint.x,mapY:beachPoint.y,
+      connectedPlaceIds:['rulid_shore'],
+      fertility:.24,danger:.1,surface:'shore',
+      settlementId:'settlement_rulid',
+      discoveredAt:world.epochStartedAt??world.now,
+      geographyVersion:1,
+    };
+    if(!shore.connectedPlaceIds.includes(RULID_BEACH_ID))shore.connectedPlaceIds.push(RULID_BEACH_ID);
+    if(!town.memberPlaceIds.includes(RULID_BEACH_ID))town.memberPlaceIds.push(RULID_BEACH_ID);
+  }
+  return true;
+}
