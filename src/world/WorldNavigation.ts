@@ -159,19 +159,30 @@ function rebuildIndexedWorldRoutes(
       const traversal = explicit?.traversal ?? traversalBetween(place, connected);
       if (!traversal || (traversal === 'walk' &&
           (!isSurfaceWalkable(place.surface) || !isSurfaceWalkable(connected.surface)))) continue;
-      if(explicit?.geometryVersion===3 && explicit.terrainKey===terrainKey && explicit.waypoints.length>1) {
+      if(explicit?.geometryVersion===3 && explicit.waypoints.length>1) {
         const first=explicit.waypoints[0],last=explicit.waypoints.at(-1)!;
         const direct=explicit.fromPlaceId===place.id;
         const a=direct?place:connected,b=direct?connected:place;
         if (pointDistance(first,{x:a.mapX,y:a.mapY}) < 1e-8 && pointDistance(last,{x:b.mapX,y:b.mapY}) < 1e-8) {
           const key = signature(explicit);
-          // Runtime evidence, not a trusted field from a save. Only the actual
-          // path, its endpoints, terrain recipe and nearby physical blockers
-          // can invalidate an already verified route. A remote discovery cannot.
-          if (routeValidation.get(explicit) === key || traversal !== 'walk' ||
-              (!pathCrossesWater(explicit.waypoints, places) &&
-               routeAroundBuildings(explicit.waypoints, place.id, connected.id, places) === explicit.waypoints)) {
-            routeValidation.set(explicit, key); routes[id] = explicit; continue;
+          const sameTerrain = explicit.terrainKey === terrainKey;
+          const stillValidWalk = traversal === 'walk' &&
+            !pathCrossesWater(explicit.waypoints, places) &&
+            routeAroundBuildings(explicit.waypoints, place.id, connected.id, places) === explicit.waypoints;
+          // A remote terrain extension changes the global terrain key, but it
+          // must not reshape a local walking route whose exact saved geometry
+          // is still dry, clear and attached to unchanged endpoints. Water
+          // routes remain conservative and are rebuilt when the terrain key
+          // changes because a new island may physically obstruct them.
+          const retain =
+            (sameTerrain && (routeValidation.get(explicit) === key || traversal !== 'walk' || stillValidWalk)) ||
+            (!sameTerrain && stillValidWalk);
+          if (retain) {
+            const retained = sameTerrain ? explicit : {...explicit, terrainKey};
+            const retainedKey = signature(retained);
+            routeValidation.set(retained, retainedKey);
+            routes[id] = retained;
+            continue;
           }
         }
       }
