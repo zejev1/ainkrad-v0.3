@@ -23,6 +23,7 @@ import type { WorldInterventionKind as InterventionKind, WorldInputEnvelope as I
 import { observeLocalPlacesV20, sharePlaceKnowledgeV20, removeUnsurveyedHomelandLinksV20, mayKnowPlaceV20 } from '../v20/KnowledgeBoundariesV20';
 import { nextUrbanHomeLot } from './SettlementStreets';
 import { repairCompactSettlementLayout } from './CompactSettlementLayout';
+import { ensureRulidHarbor } from './RulidHarbor';
 import { assertResidentLearning, beginLearningAttempt, finishLearningAttempt, learnedActionAdjustment, learnedSiteAdjustment, noteLearningHelp, noteLearningMaterial } from './learning/index';
 import { canResidentAct, stopDeceasedActions, repairDeceasedActions, assertDeceasedBody } from './ResidentBodyBoundary';
 import {
@@ -4568,8 +4569,8 @@ async function repairCompatibleV19World(
   );
 }
 
-const F2_SUBMERGED_HOMELAND_REPAIR_OPERATION_ID =
-  'migration:f2-submerged-homeland-rescue-2026-09-18';
+const F2_GEOGRAPHY_REPAIR_OPERATION_ID =
+  'migration:f2-geography-rescue-and-rulid-harbor-2026-09-18';
 
 async function repairSubmergedHomelandWorld(
   store: WorldStore,
@@ -4594,11 +4595,12 @@ async function repairSubmergedHomelandWorld(
     };
 
     const rescued = repairSubmergedSapientHomelands(next);
-    if (rescued === 0) return current;
+    const addedRulidHarbor = ensureRulidHarbor(next);
+    if (rescued === 0 && !addedRulidHarbor) return current;
 
-    // New dry ground can make previously impossible local roads valid again.
-    // Rebuild geometry only; residents, knowledge, decisions and history stay
-    // at their exact saved coordinates.
+    // New dry ground or a new civic shore can make previously impossible local
+    // roads valid again. Rebuild geometry only; residents, knowledge,
+    // decisions and history stay at their exact saved coordinates.
     next.routes = rebuildWorldRoutes(next.places, next.routes);
 
     if (
@@ -4631,21 +4633,22 @@ async function repairSubmergedHomelandWorld(
     next.revision = current.revision + 1;
     const operationFingerprint = stableJsonStringify({
       kind: 'world_migration',
-      mode: 'f2_submerged_homeland_rescue',
+      mode: 'f2_geography_rescue_and_rulid_harbor',
       worldId: current.id,
       epoch: current.epoch ?? 1,
       priorTerrainKey: current.terrain?.key ?? null,
     });
     const event: WorldEvent = {
-      eventId: `migration:${next.id}:f2-submerged-homeland-rescue:revision:${current.revision}`,
+      eventId: `migration:${next.id}:f2-geography-rescue:revision:${current.revision}`,
       worldId: next.id,
       kind: 'world.migrated',
       source: 'system',
       occurredAt: next.now,
       occurredWorldMinutes: next.calendar.elapsedWorldMinutes,
       payload: {
-        migrationMode: 'f2_submerged_homeland_rescue',
+        migrationMode: 'f2_geography_rescue_and_rulid_harbor',
         rescuedHomelands: rescued,
+        addedRulidHarbor,
         movedResidents: 0,
         movedSettlements: 0,
         preservedWorldMinutes: next.calendar.elapsedWorldMinutes,
@@ -4656,7 +4659,7 @@ async function repairSubmergedHomelandWorld(
     assertWorldState(next);
     try {
       const result = await store.commit({
-        operationId: `${F2_SUBMERGED_HOMELAND_REPAIR_OPERATION_ID}:revision:${current.revision}`,
+        operationId: `${F2_GEOGRAPHY_REPAIR_OPERATION_ID}:revision:${current.revision}`,
         operationFingerprint,
         worldId: current.id,
         expectedRevision: current.revision,
@@ -5035,6 +5038,10 @@ export class WorldEngine {
       // Finalize the moved coast now, not lazily on the next reload.
       repairCompactSettlementLayout(state);
     }
+    if (useThreeHumanSeeds && ensureRulidHarbor(state)) {
+      state.routes = rebuildWorldRoutes(state.places, state.routes);
+      state.settlements = rebuildSettlementProjection(state.places, state.settlements, now);
+    }
     reconcileLibraryAdmissions(state, state.calendar.elapsedWorldMinutes, true);
 
     for (const resident of Object.values(state.agents)) observeLocalPlacesV20(state, resident);
@@ -5239,6 +5246,10 @@ export class WorldEngine {
           this.state.routes = rebuildWorldRoutes(this.state.places, this.state.routes);
           this.state.settlements = rebuildSettlementProjection(this.state.places, this.state.settlements, resetAt);
           repairCompactSettlementLayout(this.state);
+        }
+        if (useThreeHumanSeeds && ensureRulidHarbor(this.state)) {
+          this.state.routes = rebuildWorldRoutes(this.state.places, this.state.routes);
+          this.state.settlements = rebuildSettlementProjection(this.state.places, this.state.settlements, resetAt);
         }
         this.state.determinism.eventSequence = priorSequence;
         this.rng.restore(rng.snapshot());
