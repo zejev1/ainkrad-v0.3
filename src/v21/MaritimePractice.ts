@@ -72,7 +72,16 @@ export function boatWorkSite(world: Readonly<WorldState>, agent: Readonly<AgentS
   const repair = completed.find(item => !item.boat!.journey && (item.boat!.condition ?? 1) < 0.95);
   if (repair) return repair.locationId;
   if (!nextDesign(world, agent)) return undefined;
-  return (agent.knownPlaceIds ?? []).map(id => world.places[id]).filter(place => place?.surface === 'shore' &&
+  const known = new Set(agent.knownPlaceIds ?? []);
+  const homeSettlementId = world.places[agent.homeId]?.settlementId;
+  if (
+    homeSettlementId === 'settlement_rulid' &&
+    known.has('rulid_shore') &&
+    world.places.rulid_shore
+  ) {
+    return 'rulid_shore';
+  }
+  return [...known].map(id => world.places[id]).filter(place => place?.surface === 'shore' &&
     Math.hypot(place.mapX - agent.position.x, place.mapY - agent.position.y) < 12)
     .sort((a, b) => Math.hypot(a.mapX - agent.position.x, a.mapY - agent.position.y) -
       Math.hypot(b.mapX - agent.position.x, b.mapY - agent.position.y))[0]?.id;
