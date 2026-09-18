@@ -40,31 +40,40 @@ function installCoastalWalk(world:WorldState,fromId:string,toId:string):boolean 
 function coastalNeighbour(
   world:Readonly<WorldState>,
   shore:WorldPoint2D,
-  side:-1|1,
+  preferredSide:-1|1,
+  reserved:readonly WorldPoint2D[]=[],
 ):WorldPoint2D|undefined {
   const terrain=bindWorldTerrain(world),wet=waterAccess(world,shore);
   if(!terrain||!wet)return;
   const dx=wet.x-shore.x,dy=wet.y-shore.y,length=Math.max(1e-9,Math.hypot(dx,dy));
   const seaward={x:dx/length,y:dy/length};
-  const tangent={x:-seaward.y*side,y:seaward.x*side};
   const occupied=Object.values(world.places).filter(p=>p.surface!=='water');
+  const sides:readonly (-1|1)[]=[
+    preferredSide,
+    preferredSide===1?-1:1,
+  ];
 
-  // Start within a few metres of the existing physical bank and widen only
-  // when an old building already occupies that patch. This bounded survey
-  // guarantees we search the local coast rather than inventing a remote port.
-  for(const along of [.02,.03,.04,.05,.06,.08,.10,.12,.16,.20,.28,.36,.48,.62,.78]) {
-    for(const inward of [.01,.02,.03,.04,.05,.07,.10,.14,.18]) {
-      const p={
-        x:shore.x+tangent.x*along-seaward.x*inward,
-        y:shore.y+tangent.y*along-seaward.y*inward,
-      };
-      if(terrain.sample(p.x,p.y).water||!waterAccess(world,p)||!drySegment(world,shore,p))continue;
-      if(occupied.some(place=>place.id!=='rulid_shore'&&
-        Math.hypot(place.mapX-p.x,place.mapY-p.y)<.08))continue;
-      const direct=[{...shore},{...p}];
-      if(pathCrossesWater(direct,world.places))continue;
-      if(routeAroundBuildings(direct,'rulid_shore','__rulid_coastal_candidate__',world.places)!==direct)continue;
-      return p;
+  // Prefer the requested side, but a lived coastline may already be occupied.
+  // Search the opposite side before giving up. The furthest candidate remains
+  // under one map unit (~100 m) from the persisted Rulid shore.
+  for(const side of sides) {
+    const tangent={x:-seaward.y*side,y:seaward.x*side};
+    for(const along of [.02,.03,.04,.05,.06,.08,.10,.12,.16,.20,.28,.36,.48,.62,.76,.88]) {
+      for(const inward of [.01,.02,.03,.04,.05,.07,.10,.14,.18,.22]) {
+        const p={
+          x:shore.x+tangent.x*along-seaward.x*inward,
+          y:shore.y+tangent.y*along-seaward.y*inward,
+        };
+        if(Math.hypot(p.x-shore.x,p.y-shore.y)>=.98)continue;
+        if(reserved.some(other=>Math.hypot(other.x-p.x,other.y-p.y)<.12))continue;
+        if(terrain.sample(p.x,p.y).water||!waterAccess(world,p)||!drySegment(world,shore,p))continue;
+        if(occupied.some(place=>place.id!=='rulid_shore'&&
+          Math.hypot(place.mapX-p.x,place.mapY-p.y)<.08))continue;
+        const direct=[{...shore},{...p}];
+        if(pathCrossesWater(direct,world.places))continue;
+        if(routeAroundBuildings(direct,'rulid_shore','__rulid_coastal_candidate__',world.places)!==direct)continue;
+        return p;
+      }
     }
   }
 }
@@ -84,8 +93,17 @@ export function ensureRulidHarbor(world:WorldState):boolean {
   if(!needHarbor&&!needBeach)return false;
 
   const shorePoint={x:shore.mapX,y:shore.mapY};
-  const harborPoint=needHarbor?coastalNeighbour(world,shorePoint,1):undefined;
-  const beachPoint=needBeach?coastalNeighbour(world,shorePoint,-1):undefined;
+  const existingHarbor=world.places[RULID_HARBOR_ID];
+  const harborPoint=needHarbor
+    ? coastalNeighbour(world,shorePoint,1)
+    : existingHarbor
+      ? {x:existingHarbor.mapX,y:existingHarbor.mapY}
+      : undefined;
+  const beachPoint=needBeach
+    ? coastalNeighbour(world,shorePoint,-1,harborPoint?[harborPoint]:[])
+    : world.places[RULID_BEACH_ID]
+      ? {x:world.places[RULID_BEACH_ID].mapX,y:world.places[RULID_BEACH_ID].mapY}
+      : undefined;
   // Never create a decorative or unreachable facility.
   if((needHarbor&&!harborPoint)||(needBeach&&!beachPoint))return false;
 
