@@ -3311,7 +3311,7 @@ function addSecondaryHumanSettlementPlaces(
   mk(ids.quiet, `Тихий сад ${spec.name}`, 'quiet_space', Math.max(8, founderCount), -1.8, -2.2, 0.62, [ids.commons]);
   mk(ids.outskirts, `Окраина ${spec.name}`, 'outskirts', Math.max(16, founderCount * 2), 7.5, -1.5, 0.52, [ids.center, ...(spec.coastal ? [ids.shore] : [])]);
   if (spec.coastal) {
-    mk(ids.shore, `Пляж, причал и верфь ${spec.name}`, 'shore', Math.max(14, founderCount), 31.5, -0.5, 0.22, [ids.outskirts, 'ocean_ainkrad'], 'shore');
+    mk(ids.shore, spec.id === 'settlement_rulid' ? 'Пляж, причал и верфь Рулида' : `Берег ${spec.name}`, 'shore', Math.max(14, founderCount), 31.5, -0.5, 0.22, [ids.outskirts, 'ocean_ainkrad'], 'shore');
     if (places.ocean_ainkrad) places.ocean_ainkrad.connectedPlaceIds.push(ids.shore);
   }
 }
