@@ -4,7 +4,7 @@ import { installWorldMapGestures } from './presentation/WorldMapGestures';
 import { installObserverChrome } from './presentation/ObserverChrome';
 import { WorldAtlasRenderer } from './presentation/WorldAtlasRenderer';
 import { atlasLevel } from './presentation/WorldAtlasIndex';
-import { physicalPlaceDrawing, applyPhysicalPlaceStyle, visibleMapLabels } from './presentation/MapPlacePresentation';
+import { physicalPlaceDrawing, applyPhysicalPlaceStyle, visibleMapLabels, isPersistentMapLandmark } from './presentation/MapPlacePresentation';
 import { WorldClockPanel } from './presentation/WorldClockPanel';
 import { worldStorageDiagnostics } from './persistence/WorldSaveSafety';
 import { createSettlementPicker } from './presentation/SettlementPicker';
@@ -1593,6 +1593,7 @@ function renderPlaces(world: Readonly<WorldState>): void {
       placeElement.dataset.artKind = place.kind+':'+close;
     }
     placeElement.className = `map-place map-place--${place.kind} map-place--surface-${place.surface}`;
+    placeElement.classList.toggle('is-persistent-landmark', isPersistentMapLandmark(place));
     applyPhysicalPlaceStyle(placeElement,place,mapCamera);
     const mapLabel=labelIds.get(placeId);
     placeElement.classList.toggle('has-map-label',Boolean(mapLabel));
@@ -1618,7 +1619,9 @@ function renderPlaces(world: Readonly<WorldState>): void {
       dungeon ? `${point.label}; вход в подземелье ранга ${dungeon.rank}` : point.label,
     );
     const label = placeElement.querySelector<HTMLElement>('.place-label');
-    if (label) label.textContent = townNames.get(placeId)??point.label;
+    if (label) label.textContent = placeId === 'rulid_shore'
+      ? 'Причал и верфь Рулида'
+      : townNames.get(placeId)??point.label;
   }
 }
 

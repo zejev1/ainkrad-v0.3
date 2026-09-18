@@ -5,7 +5,22 @@ import type { WorldMapCamera } from './WorldMapCamera';
 import { atlasLevel } from './WorldAtlasIndex';
 import { placeDrawing } from './WorldMapVisuals';
 
+export function isPersistentMapLandmark(place:Readonly<WorldPlace>):boolean {
+  return place.id === 'rulid_shore';
+}
+
 export function physicalPlaceDrawing(place:Readonly<WorldPlace>,close:boolean):string {
+  if (place.id === 'rulid_shore') {
+    return '<svg class="place-art rulid-harbor-art" viewBox="0 0 60 50" aria-hidden="true">' +
+      '<path d="M0 0H27L23 50H0Z" fill="#c7bc8a"/>' +
+      '<path d="M27 0H60V50H23Z" fill="#4b8598"/>' +
+      '<path d="M7 29H39V34H7Z" fill="#765a3c" stroke="#4d3d2f" stroke-width="1"/>' +
+      '<path d="M15 25V40M25 25V40M35 29V42" stroke="#4d3d2f" stroke-width="2"/>' +
+      '<path d="M41 18L55 18L52 26H44Z" fill="#d6d1b2" stroke="#3f5055" stroke-width="1"/>' +
+      '<path d="M48 7V18M48 8L55 14H48Z" fill="#e6e1c8" stroke="#53666b" stroke-width="1"/>' +
+      '<path d="M32 42Q40 38 48 42T60 42" fill="none" stroke="#a8d3d1" stroke-width="2"/>' +
+      '</svg>';
+  }
   if(place.kind!=='home')return placeDrawing(place.kind);
   const roof=['#a65c43','#b57750','#945a48','#856c50'][Math.floor(geographySeed(place.id)*4)];
   const tiles=close?'<path d="M0 2H12M0 4H12M0 6H12M0 8H12M2 0V10M5 0V10M8 0V10M11 0V10" stroke="#d49a74" stroke-width=".12"/><rect x="8" y="1" width="1.5" height="2" fill="#655d50"/><path d="M4.8 10V9.3H6.4V10" fill="#5f4735"/>':'';
