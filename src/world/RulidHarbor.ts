@@ -47,7 +47,6 @@ function coastalNeighbour(
   if(!terrain||!wet)return;
   const dx=wet.x-shore.x,dy=wet.y-shore.y,length=Math.max(1e-9,Math.hypot(dx,dy));
   const seaward={x:dx/length,y:dy/length};
-  const occupied=Object.values(world.places).filter(p=>p.surface!=='water');
   const sides:readonly (-1|1)[]=[
     preferredSide,
     preferredSide===1?-1:1,
@@ -67,8 +66,6 @@ function coastalNeighbour(
         if(Math.hypot(p.x-shore.x,p.y-shore.y)>=.98)continue;
         if(reserved.some(other=>Math.hypot(other.x-p.x,other.y-p.y)<.12))continue;
         if(terrain.sample(p.x,p.y).water||!waterAccess(world,p)||!drySegment(world,shore,p))continue;
-        if(occupied.some(place=>place.id!=='rulid_shore'&&
-          Math.hypot(place.mapX-p.x,place.mapY-p.y)<.08))continue;
         const direct=[{...shore},{...p}];
         if(pathCrossesWater(direct,world.places))continue;
         if(routeAroundBuildings(direct,'rulid_shore','__rulid_coastal_candidate__',world.places)!==direct)continue;
