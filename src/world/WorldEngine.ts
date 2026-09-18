@@ -24,6 +24,7 @@ import { observeLocalPlacesV20, sharePlaceKnowledgeV20, removeUnsurveyedHomeland
 import { nextUrbanHomeLot } from './SettlementStreets';
 import { repairCompactSettlementLayout } from './CompactSettlementLayout';
 import {ensureInhabitedLandRescue} from './geography/InhabitedLandRescue';
+import {ensureRulidHarbor} from './RulidHarbor';
 import { assertResidentLearning, beginLearningAttempt, finishLearningAttempt, learnedActionAdjustment, learnedSiteAdjustment, noteLearningHelp, noteLearningMaterial } from './learning/index';
 import { canResidentAct, stopDeceasedActions, repairDeceasedActions, assertDeceasedBody } from './ResidentBodyBoundary';
 import {
@@ -4494,6 +4495,7 @@ async function repairCompatibleV19World(
     const next = structuredClone(current);
     const before = stableJsonStringify(next);
     const habitatRescue = ensureInhabitedLandRescue(next);
+    const addedRulidHarbor = ensureRulidHarbor(next);
     const repairedFoundingOcean = repairFoundingOcean(next);
     if (repairedFoundingOcean) next.routes = rebuildWorldRoutes(next.places, next.routes);
     repairWorldV16AdditiveSchema(
@@ -4546,6 +4548,7 @@ async function repairCompatibleV19World(
         addedRescueIslandIds: habitatRescue.addedIslandIds,
         addedRescueResourcePlaceIds: habitatRescue.addedPlaceIds,
         blockedRescueSettlementIds: habitatRescue.blockedSettlementIds,
+        addedRulidHarbor,
         residentCoordinatesRewritten: false,
         cardinalIntervention: false,
       },
@@ -4934,6 +4937,11 @@ export class WorldEngine {
       // Finalize the moved coast now, not lazily on the next reload.
       repairCompactSettlementLayout(state);
     }
+    if (useThreeHumanSeeds && ensureRulidHarbor(state)) {
+      makeConnectionsReciprocal(state.places);
+      state.routes = rebuildWorldRoutes(state.places, state.routes);
+      state.settlements = rebuildSettlementProjection(state.places, state.settlements, now);
+    }
     reconcileLibraryAdmissions(state, state.calendar.elapsedWorldMinutes, true);
 
     for (const resident of Object.values(state.agents)) observeLocalPlacesV20(state, resident);
@@ -5138,6 +5146,11 @@ export class WorldEngine {
           this.state.routes = rebuildWorldRoutes(this.state.places, this.state.routes);
           this.state.settlements = rebuildSettlementProjection(this.state.places, this.state.settlements, resetAt);
           repairCompactSettlementLayout(this.state);
+        }
+        if (useThreeHumanSeeds && ensureRulidHarbor(this.state)) {
+          makeConnectionsReciprocal(this.state.places);
+          this.state.routes = rebuildWorldRoutes(this.state.places, this.state.routes);
+          this.state.settlements = rebuildSettlementProjection(this.state.places, this.state.settlements, resetAt);
         }
         this.state.determinism.eventSequence = priorSequence;
         this.rng.restore(rng.snapshot());
