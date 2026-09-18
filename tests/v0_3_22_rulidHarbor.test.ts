@@ -31,11 +31,11 @@ describe('Rulid physical harbor foundation',()=>{
         expect(route.traversal).toBe('walk');
         expect(pathCrossesWater(route.waypoints,world.places)).toBe(false);
       }
-      expect(harbor.connectedPlaceIds).toContain('rulid_commons');
-      const cityRoute=world.routes[routeIdBetween('rulid_commons',RULID_HARBOR_ID)];
-      expect(cityRoute).toBeDefined();
-      expect(cityRoute.traversal).toBe('walk');
-      expect(pathCrossesWater(cityRoute.waypoints,world.places)).toBe(false);
+      // Harbor belongs to the city graph through the pre-existing Rulid shore
+      // and outskirts; no fake straight road is drawn across houses/water.
+      expect(harbor.connectedPlaceIds).toContain('rulid_shore');
+      expect(world.places.rulid_shore.connectedPlaceIds).toContain('rulid_outskirts');
+      expect(world.routes[routeIdBetween('rulid_shore','rulid_outskirts')]).toBeDefined();
       expect(harbor.connectedPlaceIds).not.toContain('ocean_ainkrad');
       expect(beach.connectedPlaceIds).not.toContain('ocean_ainkrad');
       expect(Math.hypot(harbor.mapX-shore.mapX,harbor.mapY-shore.mapY)).toBeLessThan(1);
