@@ -50,8 +50,11 @@ function coastalNeighbour(
   const tangent={x:-seaward.y*side,y:seaward.x*side};
   const occupied=Object.values(world.places).filter(p=>p.surface!=='water');
 
-  for(const along of [.04,.06,.08,.10,.12,.16,.20]) {
-    for(const inward of [.03,.05,.08,.12]) {
+  // Start within a few metres of the existing physical bank and widen only
+  // when an old building already occupies that patch. This bounded survey
+  // guarantees we search the local coast rather than inventing a remote port.
+  for(const along of [.02,.03,.04,.05,.06,.08,.10,.12,.16,.20,.28,.36,.48,.62,.78]) {
+    for(const inward of [.01,.02,.03,.04,.05,.07,.10,.14,.18]) {
       const p={
         x:shore.x+tangent.x*along-seaward.x*inward,
         y:shore.y+tangent.y*along-seaward.y*inward,
