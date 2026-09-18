@@ -1,5 +1,6 @@
 import type { AgentState, V15WorldItemState, WorldState } from '../world/types';
 import { ensureSettlementEconomyV16 } from '../v16/SocietyFoundationV16';
+import { RULID_HARBOR_ID } from '../world/RulidHarbor';
 
 export const BOAT_KNOWLEDGE_ID = 'boatbuilding-timber-hull';
 export const FISHING_KNOWLEDGE_ID = 'fishing-handline-and-habitat';
@@ -71,8 +72,18 @@ export function boatWorkSite(world: Readonly<WorldState>, agent: Readonly<AgentS
   const completed = ownedCompletedBoats(world, agent.id);
   const repair = completed.find(item => !item.boat!.journey && (item.boat!.condition ?? 1) < 0.95);
   if (repair) return repair.locationId;
-  if (!nextDesign(world, agent)) return undefined;
-  return (agent.knownPlaceIds ?? []).map(id => world.places[id]).filter(place => place?.surface === 'shore' &&
+  const design = nextDesign(world, agent);
+  if (!design) return undefined;
+  const known = new Set(agent.knownPlaceIds ?? []);
+  const harbor = world.places[RULID_HARBOR_ID];
+  const homeSettlement = world.places[agent.homeId]?.settlementId;
+  if (harbor && homeSettlement === 'settlement_rulid') {
+    if (known.has(RULID_HARBOR_ID)) return RULID_HARBOR_ID;
+    // A large coastal ship requires the actual yard/slipway. Until a Rulid
+    // builder has physically learned where it is, the project simply waits.
+    if (design === 'coastal_ship') return undefined;
+  }
+  return [...known].map(id => world.places[id]).filter(place => place?.surface === 'shore' &&
     Math.hypot(place.mapX - agent.position.x, place.mapY - agent.position.y) < 12)
     .sort((a, b) => Math.hypot(a.mapX - agent.position.x, a.mapY - agent.position.y) -
       Math.hypot(b.mapX - agent.position.x, b.mapY - agent.position.y))[0]?.id;
