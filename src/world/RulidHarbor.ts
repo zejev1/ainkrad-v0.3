@@ -27,8 +27,8 @@ function coastalNeighbour(
   const tangent={x:-seaward.y*side,y:seaward.x*side};
   const occupied=Object.values(world.places).filter(p=>p.surface!=='water');
 
-  for(const along of [.18,.24,.32,.42,.54,.68]) {
-    for(const inward of [.04,.08,.12,.18]) {
+  for(const along of [.04,.06,.08,.10,.12,.16,.20]) {
+    for(const inward of [.03,.05,.08,.12]) {
       const p={
         x:shore.x+tangent.x*along-seaward.x*inward,
         y:shore.y+tangent.y*along-seaward.y*inward,
@@ -100,6 +100,16 @@ export function ensureRulidHarbor(world:WorldState):boolean {
     };
     if(!shore.connectedPlaceIds.includes(RULID_BEACH_ID))shore.connectedPlaceIds.push(RULID_BEACH_ID);
     if(!town.memberPlaceIds.includes(RULID_BEACH_ID))town.memberPlaceIds.push(RULID_BEACH_ID);
+  }
+  // Harbor/beach are fixed coastal infrastructure, not a reason to regenerate
+  // the already-lived street/field plan. Keep the existing layout geometry and
+  // only acknowledge the new member IDs in its signature.
+  if(town.layoutVersion===3){
+    town.layoutSignature=Object.values(world.places)
+      .filter(place=>place.settlementId===town.id)
+      .map(place=>`${place.id}:${place.kind}`)
+      .sort()
+      .join('|');
   }
   return true;
 }
