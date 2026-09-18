@@ -160,7 +160,9 @@ describe('v0.3.19 distinct sapient peoples and continental homelands', () => {
     expect(repairSapientHomelandGeography(state)).toBe(5);
     expect(repairSapientHomelandGeography(state)).toBe(0);
     for (const race of races.filter((candidate) => candidate !== 'human')) {
-      const expected = SAPIENT_PEOPLE_FOUNDATIONS[race].homelandCenter;
+      const expected = state.terrain!.anchors.find(
+        (anchor) => anchor.id === `foundation_${race}`,
+      )!;
       expect(state.places[`settlement_${race}_homeland`].mapX).toBeCloseTo(expected.x, 6);
       expect(state.places[`settlement_${race}_homeland`].mapY).toBeCloseTo(expected.y, 6);
     }
