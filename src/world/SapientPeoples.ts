@@ -323,14 +323,34 @@ function rebuildAffectedMovement(world: WorldState, agent: AgentState): void {
 export function repairSapientHomelandGeography(world: WorldState): number {
   const movedSettlementIds = new Set<string>();
   const deltaBySettlement = new Map<string, WorldPoint2D>();
+  const currentHuman = world.places.commons;
+  const oldHuman = SAPIENT_PEOPLE_FOUNDATIONS.human.homelandCenter;
+
   for (const race of Object.keys(SAPIENT_PEOPLE_FOUNDATIONS) as AgentRace[]) {
     if (race === 'human') continue;
     const settlementId = `settlement_${race}_homeland`;
     const center = world.places[settlementId];
     if (!center) continue;
-    const target = SAPIENT_PEOPLE_FOUNDATIONS[race].homelandCenter;
+
+    // The original v18/v19 bug created homelands only 11–23 km around the
+    // old (50,50) human origin. F2 homelands can legitimately be thousands of
+    // kilometres away and MUST NOT be snapped back to these legacy constants.
+    const nearLegacyOrigin =
+      Math.hypot(center.mapX - oldHuman.x, center.mapY - oldHuman.y) < 600;
+    const nearCurrentHuman = currentHuman
+      ? Math.hypot(center.mapX - currentHuman.mapX, center.mapY - currentHuman.mapY) < 600
+      : false;
+    if (!nearLegacyOrigin && !nearCurrentHuman) continue;
+
+    const reserved = world.terrain?.anchors.find(
+      (anchor) => anchor.id === `foundation_${race}`,
+    );
+    const target = reserved
+      ? { x: reserved.x, y: reserved.y }
+      : SAPIENT_PEOPLE_FOUNDATIONS[race].homelandCenter;
     const delta = { x: target.x - center.mapX, y: target.y - center.mapY };
     if (Math.hypot(delta.x, delta.y) < 0.001) continue;
+
     movedSettlementIds.add(settlementId);
     deltaBySettlement.set(settlementId, delta);
     for (const place of Object.values(world.places)) {
