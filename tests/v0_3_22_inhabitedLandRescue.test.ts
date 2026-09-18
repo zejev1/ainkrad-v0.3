@@ -4,9 +4,9 @@ import { InMemoryWorldStore } from '../src/world/InMemoryWorldStore';
 import { bindWorldTerrain, assertTerrainFoundation, homelandCenterForWorld } from '../src/world/geography/WorldTerrain';
 import { ensureInhabitedLandRescue } from '../src/world/geography/InhabitedLandRescue';
 import { continentOutline } from '../src/world/geography/ContinentalRelief';
-import { repairCompactSettlementLayout } from '../src/world/CompactSettlementLayout';
 import { WORLD_MINUTES_PER_YEAR } from '../src/world/WorldClock';
 import { pointInPolygon } from '../src/world/BuildingFootprints';
+import { lifeStageForRaceV16 } from '../src/v16/SocietyFoundationV16';
 import type { AgentRace, WorldState } from '../src/world/types';
 
 const races: AgentRace[] = ['elf','dwarf','goblin','orc','ogre'];
@@ -30,6 +30,8 @@ async function offshoreFixture() {
   const world = await create('reported-offshore-homelands');
   world.calendar.elapsedWorldMinutes = WORLD_MINUTES_PER_YEAR * 20;
   world.v15!.simulationClock.simulatedWorldMinutes = world.calendar.elapsedWorldMinutes;
+  world.v15!.simulationClock.quantumIndex = 20 * 60;
+  world.v15!.simulationClock.pendingWorldMinutes = 0;
   const settlementId = 'settlement_dwarf_homeland';
   const p = {x:-41_000,y:-30_000};
   world.places[settlementId] = {id:settlementId,name:'Каменные Залы',kind:'village',surface:'land',biome:'mountains',mapX:p.x,mapY:p.y,
@@ -40,6 +42,7 @@ async function offshoreFixture() {
     radius:1,memberPlaceIds:[settlementId,'dwarf_test_home'],foundedAt:0,layoutVersion:3,layoutSignature:'saved'};
   const a = world.agents.agent_1;
   a.homeId = 'dwarf_test_home'; a.locationId = a.homeId; a.race = 'dwarf'; delete a.movement;
+  a.life.stage = lifeStageForRaceV16('dwarf',a.life.ageYears);
   a.position = {x:p.x+0.25,y:p.y+0.2,layerId:'surface'};
   a.knownPlaceIds = [a.homeId,settlementId];
   return world;
@@ -88,7 +91,6 @@ describe('physical homeland integrity and explicit island rescue', () => {
     for (const id of ['settlement_dwarf_homeland','dwarf_test_home']) {
       expect(world.places[id]).toMatchObject({mapX:before.places[id].mapX,mapY:before.places[id].mapY});
       expect(after.sample(world.places[id].mapX,world.places[id].mapY).water).toBe(false);
-      // Overview/detail use the same island mask, not an image-only patch.
       expect(after.sample(world.places[id].mapX,world.places[id].mapY,false).water).toBe(false);
     }
     expect(world.agents).toEqual(before.agents);
@@ -121,9 +123,6 @@ describe('physical homeland integrity and explicit island rescue', () => {
 
   it('preserves a living world through the actual open/migration path and a second reload', async () => {
     const world = await offshoreFixture();
-    // Existing geometry is finalized just as it is in an F2 save. Rescue must
-    // be additive; the prior unconditional homeland relocation must not run.
-    repairCompactSettlementLayout(world);
     const store = new InMemoryWorldStore(); await store.initializeWorld(world);
     const before = structuredClone(world.agents);
     const opened = await WorldEngine.open({worldId:world.id,store});
@@ -131,6 +130,7 @@ describe('physical homeland integrity and explicit island rescue', () => {
     expect(first.agents).toEqual(before);
     expect(first.calendar).toEqual(world.calendar);
     expect(first.determinism.rngState).toBe(world.determinism.rngState);
+    expect(bindWorldTerrain(first)!.sample(before.agent_1.position.x,before.agent_1.position.y).water).toBe(false);
     const again = (await WorldEngine.open({worldId:world.id,store})).snapshot();
     expect(again).toEqual(first);
   });
