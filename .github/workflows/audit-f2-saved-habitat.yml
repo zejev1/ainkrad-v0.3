@@ -1,0 +1,54 @@
+name: Audit actual F2 saved habitat rescue
+on:
+  push:
+    branches: [audit/f2-saved-habitat-rescue-20260918]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: audit-f2-saved-habitat
+  cancel-in-progress: true
+jobs:
+  audit:
+    if: github.ref == 'refs/heads/audit/f2-saved-habitat-rescue-20260918'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Reproduce unchanged F2 worlds
+        run: |
+          mkdir -p "$RUNNER_TEMP/f2-baseline"
+          git archive 0563af1dc1fea7d2abe76eb17501ef574078b4d2 | tar -x -C "$RUNNER_TEMP/f2-baseline"
+          ln -s "$GITHUB_WORKSPACE/node_modules" "$RUNNER_TEMP/f2-baseline/node_modules"
+          cat > "$RUNNER_TEMP/f2-baseline/generate-audit.ts" <<'TS'
+          import {writeFileSync} from 'node:fs';
+          import {WorldEngine} from './src/world/WorldEngine';
+          import {InMemoryWorldStore} from './src/world/InMemoryWorldStore';
+          import {WORLD_MINUTES_PER_YEAR} from './src/world/WorldClock';
+          for(const id of ['reported-offshore-homelands','v19-six-sapient-peoples','f2-three-human']){
+            const engine=await WorldEngine.create({worldId:id,seed:id,store:new InMemoryWorldStore(),startTime:0});
+            await engine.advanceCanonicalTimeTo(12*WORLD_MINUTES_PER_YEAR);
+            writeFileSync(process.env.RUNNER_TEMP+'/'+id+'.json',JSON.stringify(engine.snapshot()));
+          }
+          TS
+          (cd "$RUNNER_TEMP/f2-baseline" && "$GITHUB_WORKSPACE/node_modules/.bin/vite-node" generate-audit.ts)
+      - name: Apply candidate integration without writing any branch
+        run: python3 scripts/apply-inhabited-rescue.py
+      - name: Audit actual save migration and deterministic continuation
+        run: |
+          node_modules/.bin/vite-node scripts/audit-saved-habitats.ts "$RUNNER_TEMP/reported-offshore-homelands.json" "$RUNNER_TEMP/v19-six-sapient-peoples.json" "$RUNNER_TEMP/f2-three-human.json"
+          cat audit-evidence/rescue-audit.json >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: f2-habitat-rescue-audit
+          path: audit-evidence/
+          if-no-files-found: ignore
+          retention-days: 7
