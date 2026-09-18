@@ -3311,7 +3311,7 @@ function addSecondaryHumanSettlementPlaces(
   mk(ids.quiet, `Тихий сад ${spec.name}`, 'quiet_space', Math.max(8, founderCount), -1.8, -2.2, 0.62, [ids.commons]);
   mk(ids.outskirts, `Окраина ${spec.name}`, 'outskirts', Math.max(16, founderCount * 2), 7.5, -1.5, 0.52, [ids.center, ...(spec.coastal ? [ids.shore] : [])]);
   if (spec.coastal) {
-    mk(ids.shore, `Берег ${spec.name}`, 'shore', Math.max(14, founderCount), 31.5, -0.5, 0.22, [ids.outskirts, 'ocean_ainkrad'], 'shore');
+    mk(ids.shore, `Пляж, причал и верфь ${spec.name}`, 'shore', Math.max(14, founderCount), 31.5, -0.5, 0.22, [ids.outskirts, 'ocean_ainkrad'], 'shore');
     if (places.ocean_ainkrad) places.ocean_ainkrad.connectedPlaceIds.push(ids.shore);
   }
 }
@@ -4474,7 +4474,7 @@ async function migrateV18WorldToV19(
 }
 
 const V19_ADDITIVE_SCHEMA_REPAIR_OPERATION_ID =
-  'migration:v22-inhabited-land-rescue-2026-09-18';
+  'migration:v22-inhabited-land-rescue-rulid-shore-2026-09-18';
 
 async function repairCompatibleV19World(
   store: WorldStore,
@@ -4485,7 +4485,7 @@ async function repairCompatibleV19World(
     from: WORLD_RULES_VERSION,
     to: WORLD_RULES_VERSION,
     mode: 'same_version_additive_schema_repair',
-    schemaRevision: '2026-09-18-inhabited-land-rescue',
+    schemaRevision: '2026-09-18-inhabited-land-rescue-rulid-shore',
   });
   let current = persisted;
 
@@ -4514,6 +4514,10 @@ async function repairCompatibleV19World(
     removeUnsurveyedHomelandLinksV20(next);
     repairSecretLibraryPlacementV18(next);
     repairCompactSettlementLayout(next);
+    const rulidShore = next.places.rulid_shore;
+    if (rulidShore && rulidShore.name !== 'Пляж, причал и верфь Рулида') {
+      rulidShore.name = 'Пляж, причал и верфь Рулида';
+    }
     reconcileLibraryAdmissions(next, next.calendar.elapsedWorldMinutes);
     repairDeceasedActions(next);
     ensureCenturyHumpbackState(next);
@@ -4527,7 +4531,7 @@ async function repairCompatibleV19World(
     await store.checkpointWorld?.(current.id, current.revision, 'before-additive-schema-migration');
     next.revision = current.revision + 1;
     const migrationEvent: WorldEvent = {
-      eventId: `migration:${next.id}:v22-inhabited-land-rescue-2026-09-18:revision:${current.revision}`,
+      eventId: `migration:${next.id}:v22-inhabited-land-rescue-rulid-shore-2026-09-18:revision:${current.revision}`,
       worldId: next.id,
       kind: 'world.migrated',
       source: 'system',
