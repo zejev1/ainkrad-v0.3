@@ -3,6 +3,7 @@ import { bindWorldTerrain } from './geography/WorldTerrain';
 import { waterAccess } from '../v21/SailingRoutes';
 import { finishWorldGeography } from './WorldGeography';
 import { routeIdBetween } from './WorldNavigation';
+import { routeAroundBuildings } from './SettlementStreets';
 
 export const RULID_HARBOR_ID='rulid_harbor';
 export const RULID_BEACH_ID='rulid_beach';
@@ -58,6 +59,8 @@ function coastalNeighbour(
       if(terrain.sample(p.x,p.y).water||!waterAccess(world,p)||!drySegment(world,shore,p))continue;
       if(occupied.some(place=>place.id!=='rulid_shore'&&
         Math.hypot(place.mapX-p.x,place.mapY-p.y)<.08))continue;
+      const direct=[{...shore},{...p}];
+      if(routeAroundBuildings(direct,'rulid_shore','__rulid_coastal_candidate__',world.places)!==direct)continue;
       return p;
     }
   }
