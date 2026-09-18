@@ -67,6 +67,9 @@ describe('physical homeland integrity and explicit island rescue', () => {
     expect(duplicate.terrain).toEqual(before.terrain);
     const names = Object.values(before.agents).map(a=>a.name);
     for (let epoch=2;epoch<=3;epoch++) {
+      // Opening a second engine may atomically commit compatible metadata.
+      // Refresh the original writer, rather than bypass revision protection.
+      await engine.reload();
       await engine.resetEpoch(`mainland-reset-${epoch}`,names,`reset-${epoch}`);
       const world = engine.snapshot(); checkReservations(world);
       const reloaded = (await WorldEngine.open({worldId:world.id,store})).snapshot();
