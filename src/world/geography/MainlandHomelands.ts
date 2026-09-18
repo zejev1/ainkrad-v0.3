@@ -27,7 +27,12 @@ export function plannedMainlandHomeland(world: Readonly<WorldState>, race: Peopl
   const seed = hash(`${world.id}:terrain:${epoch}`);
   const foundation: TerrainFoundation = { version: 1, epoch, seed, key: '', anchors: [] };
   const mainland = new PreparedPolygonQuery(continentOutline(foundation));
-  const unit = (suffix: string) => hash(`${signature}:${suffix}`) / 0x1_0000_0000;
+  const unit = (suffix: string) => {
+    let n = hash(`${signature}:${suffix}`);
+    n = Math.imul(n ^ (n >>> 16), 0x7feb352d);
+    n = Math.imul(n ^ (n >>> 15), 0x846ca68b);
+    return ((n ^ (n >>> 16)) >>> 0) / 0x1_0000_0000;
+  };
   const order = [...PEOPLES].sort((a, b) => unit(`order:${a}`) - unit(`order:${b}`) || a.localeCompare(b));
   const interior = (p: WorldPoint2D) => mainland.contains(p) &&
     Array.from({ length: 16 }, (_, i) => i * Math.PI / 8).every(angle =>

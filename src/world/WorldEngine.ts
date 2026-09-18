@@ -23,6 +23,7 @@ import type { WorldInterventionKind as InterventionKind, WorldInputEnvelope as I
 import { observeLocalPlacesV20, sharePlaceKnowledgeV20, removeUnsurveyedHomelandLinksV20, mayKnowPlaceV20 } from '../v20/KnowledgeBoundariesV20';
 import { nextUrbanHomeLot } from './SettlementStreets';
 import { repairCompactSettlementLayout } from './CompactSettlementLayout';
+import {ensureInhabitedLandRescue} from './geography/InhabitedLandRescue';
 import { assertResidentLearning, beginLearningAttempt, finishLearningAttempt, learnedActionAdjustment, learnedSiteAdjustment, noteLearningHelp, noteLearningMaterial } from './learning/index';
 import { canResidentAct, stopDeceasedActions, repairDeceasedActions, assertDeceasedBody } from './ResidentBodyBoundary';
 import {
@@ -272,7 +273,6 @@ import {
   raceFounderPersonality,
   raceFounderSkills,
   racePhysiology,
-  repairSapientHomelandGeography,
   SAPIENT_PEOPLE_FOUNDATIONS,
   settlementFoundingRace,
 } from './SapientPeoples';
@@ -4429,7 +4429,7 @@ async function migrateV18WorldToV19(
   next.v19 = createWorldV19State(next, WORLD_RULES_VERSION_V18);
   ensureFoundingPrimerV21(next);
   next.v21 = createEmbodiedWorldV21(next);
-  const relocatedSapientHomelands = repairSapientHomelandGeography(next);
+  const relocatedSapientHomelands = 0 /* saved homeland coordinates are authoritative */;
 
   const migrationEvent: WorldEvent = {
     eventId: `migration:${next.id}:world-rules-0.3.19`,
@@ -4474,7 +4474,7 @@ async function migrateV18WorldToV19(
 }
 
 const V19_ADDITIVE_SCHEMA_REPAIR_OPERATION_ID =
-  'migration:v22-family-lifecycle-cartography-perf-2026-09-15';
+  'migration:v22-inhabited-land-rescue-2026-09-18';
 
 async function repairCompatibleV19World(
   store: WorldStore,
@@ -4485,7 +4485,7 @@ async function repairCompatibleV19World(
     from: WORLD_RULES_VERSION,
     to: WORLD_RULES_VERSION,
     mode: 'same_version_additive_schema_repair',
-    schemaRevision: '2026-09-15-family-lifecycle-cartography-perf',
+    schemaRevision: '2026-09-18-inhabited-land-rescue',
   });
   let current = persisted;
 
@@ -4493,6 +4493,7 @@ async function repairCompatibleV19World(
     if (current.rulesVersion !== WORLD_RULES_VERSION) return current;
     const next = structuredClone(current);
     const before = stableJsonStringify(next);
+    const habitatRescue = ensureInhabitedLandRescue(next);
     const repairedFoundingOcean = repairFoundingOcean(next);
     if (repairedFoundingOcean) next.routes = rebuildWorldRoutes(next.places, next.routes);
     repairWorldV16AdditiveSchema(
@@ -4509,7 +4510,7 @@ async function repairCompatibleV19World(
     );
     ensureFoundingPrimerV21(next);
     ensureEmbodiedWorldV21(next);
-    repairSapientHomelandGeography(next);
+    0 /* saved homeland coordinates are authoritative */;
     removeUnsurveyedHomelandLinksV20(next);
     repairSecretLibraryPlacementV18(next);
     repairCompactSettlementLayout(next);
@@ -4526,7 +4527,7 @@ async function repairCompatibleV19World(
     await store.checkpointWorld?.(current.id, current.revision, 'before-additive-schema-migration');
     next.revision = current.revision + 1;
     const migrationEvent: WorldEvent = {
-      eventId: `migration:${next.id}:v22-family-lifecycle-cartography-perf-2026-09-15:revision:${current.revision}`,
+      eventId: `migration:${next.id}:v22-inhabited-land-rescue-2026-09-18:revision:${current.revision}`,
       worldId: next.id,
       kind: 'world.migrated',
       source: 'system',
@@ -4540,6 +4541,13 @@ async function repairCompatibleV19World(
         preservedWorldMinutes: next.calendar.elapsedWorldMinutes,
         preservedPeople: Object.keys(next.agents).length,
         preservedRngState: next.determinism.rngState,
+        userAuthorizedGeographyRescue: habitatRescue.changed,
+        rescuedSettlementIds: habitatRescue.settlementIds,
+        addedRescueIslandIds: habitatRescue.addedIslandIds,
+        addedRescueResourcePlaceIds: habitatRescue.addedPlaceIds,
+        blockedRescueSettlementIds: habitatRescue.blockedSettlementIds,
+        residentCoordinatesRewritten: false,
+        cardinalIntervention: false,
       },
     };
 
@@ -5057,6 +5065,7 @@ export class WorldEngine {
               physiology: physiologyForAge(ageYears, lifespanYears, health), generation: 0, parentIds: [], childIds: [] },
             mind: createMindState(this.state.id, id, personality, needs), needs,
             skills: { gathering: rng.between(0.18, 0.5), hunting: rng.between(0.08, 0.38), craft: rng.between(0.18, 0.52), social: rng.between(0.18, 0.52), exploration: rng.between(0.16, 0.48) },
+            knownPlaceIds: [homeId, `${settlementSpec.prefix}commons`],
             homeId, locationId: homeId, position: { x: places[homeId].mapX, y: places[homeId].mapY, layerId: 'surface' as const },
             lastMeaningfulEventAt: resetAt,
           } satisfies Omit<AgentState, 'goal'>;
