@@ -2,6 +2,9 @@ import type { WorldPoint2D, WorldState } from './types';
 import { bindWorldTerrain } from './geography/WorldTerrain';
 import { waterAccess } from '../v21/SailingRoutes';
 import { finishWorldGeography } from './WorldGeography';
+import { routeIdBetween } from './WorldNavigation';
+import { pathCrossesWater } from './WaterNavigation';
+import { routeAroundBuildings } from './SettlementStreets';
 
 export const RULID_HARBOR_ID='rulid_harbor';
 export const RULID_BEACH_ID='rulid_beach';
@@ -16,6 +19,23 @@ function drySegment(world:Readonly<WorldState>,a:WorldPoint2D,b:WorldPoint2D):bo
   return true;
 }
 
+
+function installCoastalWalk(world:WorldState,fromId:string,toId:string):boolean {
+  const from=world.places[fromId],to=world.places[toId];
+  if(!from||!to)return false;
+  const path=[{x:from.mapX,y:from.mapY},{x:to.mapX,y:to.mapY}];
+  if(pathCrossesWater(path,world.places))return false;
+  if(routeAroundBuildings(path,fromId,toId,world.places)!==path)return false;
+  const id=routeIdBetween(fromId,toId);
+  world.routes[id]={
+    id,fromPlaceId:fromId,toPlaceId:toId,traversal:'walk',
+    waypoints:path,
+    distance:Math.hypot(to.mapX-from.mapX,to.mapY-from.mapY),
+    geometryVersion:3,widthMetres:3,terrainKey:world.terrain?.key,
+    completedTraversals:world.routes[id]?.completedTraversals??0,
+  };
+  return true;
+}
 
 function coastalNeighbour(
   world:Readonly<WorldState>,
@@ -41,6 +61,9 @@ function coastalNeighbour(
       if(terrain.sample(p.x,p.y).water||!waterAccess(world,p)||!drySegment(world,shore,p))continue;
       if(occupied.some(place=>place.id!=='rulid_shore'&&
         Math.hypot(place.mapX-p.x,place.mapY-p.y)<.08))continue;
+      const direct=[{...shore},{...p}];
+      if(pathCrossesWater(direct,world.places))continue;
+      if(routeAroundBuildings(direct,'rulid_shore','__rulid_coastal_candidate__',world.places)!==direct)continue;
       return p;
     }
   }
@@ -86,6 +109,8 @@ export function ensureRulidHarbor(world:WorldState):boolean {
       geographyVersion:1,
     };
     if(!shore.connectedPlaceIds.includes(RULID_HARBOR_ID))shore.connectedPlaceIds.push(RULID_HARBOR_ID);
+    if(!installCoastalWalk(world,'rulid_shore',RULID_HARBOR_ID))
+      throw new Error('Rulid harbor was placed without a physical shore path.');
     const commons=world.places.rulid_commons;
     if(commons&&world.places[RULID_HARBOR_ID].connectedPlaceIds.includes('rulid_commons')&&
        !commons.connectedPlaceIds.includes(RULID_HARBOR_ID)) commons.connectedPlaceIds.push(RULID_HARBOR_ID);
@@ -104,6 +129,8 @@ export function ensureRulidHarbor(world:WorldState):boolean {
       geographyVersion:1,
     };
     if(!shore.connectedPlaceIds.includes(RULID_BEACH_ID))shore.connectedPlaceIds.push(RULID_BEACH_ID);
+    if(!installCoastalWalk(world,'rulid_shore',RULID_BEACH_ID))
+      throw new Error('Rulid beach was placed without a physical shore path.');
   }
   // Commit the new places/connections into the geography signature now. A
   // later reopen must be a pure read, not a second "repair" revision.
