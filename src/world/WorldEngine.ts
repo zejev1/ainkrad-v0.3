@@ -4495,7 +4495,6 @@ async function repairCompatibleV19World(
     const next = structuredClone(current);
     const before = stableJsonStringify(next);
     const habitatRescue = ensureInhabitedLandRescue(next);
-    const addedRulidHarbor = ensureRulidHarbor(next);
     const repairedFoundingOcean = repairFoundingOcean(next);
     if (repairedFoundingOcean) next.routes = rebuildWorldRoutes(next.places, next.routes);
     repairWorldV16AdditiveSchema(
@@ -4516,6 +4515,7 @@ async function repairCompatibleV19World(
     removeUnsurveyedHomelandLinksV20(next);
     repairSecretLibraryPlacementV18(next);
     repairCompactSettlementLayout(next);
+    const addedRulidHarbor = ensureRulidHarbor(next);
     reconcileLibraryAdmissions(next, next.calendar.elapsedWorldMinutes);
     repairDeceasedActions(next);
     ensureCenturyHumpbackState(next);
@@ -4940,7 +4940,6 @@ export class WorldEngine {
     if (useThreeHumanSeeds && ensureRulidHarbor(state)) {
       makeConnectionsReciprocal(state.places);
       state.routes = rebuildWorldRoutes(state.places, state.routes);
-      state.settlements = rebuildSettlementProjection(state.places, state.settlements, now);
     }
     reconcileLibraryAdmissions(state, state.calendar.elapsedWorldMinutes, true);
 
@@ -5150,7 +5149,6 @@ export class WorldEngine {
         if (useThreeHumanSeeds && ensureRulidHarbor(this.state)) {
           makeConnectionsReciprocal(this.state.places);
           this.state.routes = rebuildWorldRoutes(this.state.places, this.state.routes);
-          this.state.settlements = rebuildSettlementProjection(this.state.places, this.state.settlements, resetAt);
         }
         this.state.determinism.eventSequence = priorSequence;
         this.rng.restore(rng.snapshot());
