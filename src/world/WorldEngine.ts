@@ -13,7 +13,7 @@ import { residentDecisionReflection } from './ResidentDecisionReflection';
 import { residentExplorationTarget } from './ResidentExploration';
 import { residentOpportunityWindow } from './ResidentOpportunityWindow';
 import { explorationEvidence, recordExplorationArrival } from './ResidentExplorationEvidence';
-import {bindWorldTerrain,assertTerrainFoundation,homelandCenterForWorld,terrainWalkingScale} from './geography/WorldTerrain';
+import {bindWorldTerrain,assertTerrainFoundation,homelandCenterForWorld,repairSubmergedSapientHomelands,terrainWalkingScale} from './geography/WorldTerrain';
 import { assertPlaceGeography } from './WorldGeographyValidation';
 import type { WorldTimeExecution } from './WorldTimeExecution';
 import { createFoundingOcean, repairFoundingOcean } from './FoundingOcean';
@@ -4568,6 +4568,115 @@ async function repairCompatibleV19World(
   );
 }
 
+const F2_SUBMERGED_HOMELAND_REPAIR_OPERATION_ID =
+  'migration:f2-submerged-homeland-rescue-2026-09-18';
+
+async function repairSubmergedHomelandWorld(
+  store: WorldStore,
+  persisted: WorldState,
+): Promise<WorldState> {
+  let current = persisted;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (current.rulesVersion !== WORLD_RULES_VERSION) return current;
+    const next = structuredClone(current);
+    const preserved = {
+      worldMinutes: next.calendar.elapsedWorldMinutes,
+      rngState: next.determinism.rngState,
+      agentPositions: Object.fromEntries(
+        Object.entries(next.agents).map(([id, agent]) => [id, { ...agent.position }]),
+      ),
+      settlementCenters: Object.fromEntries(
+        Object.entries(next.settlements).map(([id, settlement]) => [
+          id,
+          { x: settlement.centerX, y: settlement.centerY },
+        ]),
+      ),
+    };
+
+    const rescued = repairSubmergedSapientHomelands(next);
+    if (rescued === 0) return current;
+
+    // New dry ground can make previously impossible local roads valid again.
+    // Rebuild geometry only; residents, knowledge, decisions and history stay
+    // at their exact saved coordinates.
+    next.routes = rebuildWorldRoutes(next.places, next.routes);
+
+    if (
+      next.calendar.elapsedWorldMinutes !== preserved.worldMinutes ||
+      next.determinism.rngState !== preserved.rngState
+    ) {
+      throw new Error('Homeland rescue changed world time or RNG.');
+    }
+    for (const [id, position] of Object.entries(preserved.agentPositions)) {
+      const currentPosition = next.agents[id]?.position;
+      if (!currentPosition ||
+          currentPosition.x !== position.x ||
+          currentPosition.y !== position.y ||
+          currentPosition.layerId !== position.layerId) {
+        throw new Error('Homeland rescue moved a resident.');
+      }
+    }
+    for (const [id, center] of Object.entries(preserved.settlementCenters)) {
+      const settlement = next.settlements[id];
+      if (!settlement || settlement.centerX !== center.x || settlement.centerY !== center.y) {
+        throw new Error('Homeland rescue moved a settlement.');
+      }
+    }
+
+    await store.checkpointWorld?.(
+      current.id,
+      current.revision,
+      'before-f2-submerged-homeland-rescue',
+    );
+    next.revision = current.revision + 1;
+    const operationFingerprint = stableJsonStringify({
+      kind: 'world_migration',
+      mode: 'f2_submerged_homeland_rescue',
+      worldId: current.id,
+      epoch: current.epoch ?? 1,
+      priorTerrainKey: current.terrain?.key ?? null,
+    });
+    const event: WorldEvent = {
+      eventId: `migration:${next.id}:f2-submerged-homeland-rescue:revision:${current.revision}`,
+      worldId: next.id,
+      kind: 'world.migrated',
+      source: 'system',
+      occurredAt: next.now,
+      occurredWorldMinutes: next.calendar.elapsedWorldMinutes,
+      payload: {
+        migrationMode: 'f2_submerged_homeland_rescue',
+        rescuedHomelands: rescued,
+        movedResidents: 0,
+        movedSettlements: 0,
+        preservedWorldMinutes: next.calendar.elapsedWorldMinutes,
+        preservedRngState: next.determinism.rngState,
+      },
+    };
+
+    assertWorldState(next);
+    try {
+      const result = await store.commit({
+        operationId: `${F2_SUBMERGED_HOMELAND_REPAIR_OPERATION_ID}:revision:${current.revision}`,
+        operationFingerprint,
+        worldId: current.id,
+        expectedRevision: current.revision,
+        nextState: next,
+        events: [event],
+        memories: [],
+      });
+      return result.state;
+    } catch (error) {
+      if (!(error instanceof WorldRevisionConflictError)) throw error;
+      const concurrent = await store.loadWorld(current.id);
+      if (!concurrent) throw error;
+      current = concurrent;
+    }
+  }
+  throw new Error(
+    `World ${persisted.id} changed repeatedly during submerged homeland rescue.`,
+  );
+}
+
 function goalFromInitialState(agent: Omit<AgentState, 'goal'>, now: number): AgentState['goal'] {
   const scores: Array<{ kind: AgentGoalKind; strength: number }> = [
     { kind: 'recover', strength: (1 - agent.energy) * 0.75 + agent.stress * 0.55 },
@@ -4962,6 +5071,7 @@ export class WorldEngine {
       );
     }
     state = await repairCompatibleV19World(options.store, state);
+    state = await repairSubmergedHomelandWorld(options.store, state);
     assertWorldState(state);
     return new WorldEngine(options.store, state);
   }
