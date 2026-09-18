@@ -20,8 +20,13 @@ describe('Rulid physical harbor foundation',()=>{
       const harbor=world.places[RULID_HARBOR_ID];
       const beach=world.places[RULID_BEACH_ID];
       expect(harbor).toBeDefined();expect(beach).toBeDefined();
-      expect(harbor.settlementId).toBe('settlement_rulid');
-      expect(beach.settlementId).toBe('settlement_rulid');
+      // Coastal civic infrastructure is deliberately outside the compact
+      // settlement layout, so adding it can never re-pack Rulid.
+      expect(harbor.settlementId).toBeUndefined();
+      expect(beach.settlementId).toBeUndefined();
+      expect(world.settlements.settlement_rulid.centerPlaceId).toBe('rulid_commons');
+      expect(world.settlements.settlement_rulid.memberPlaceIds).not.toContain(RULID_HARBOR_ID);
+      expect(world.settlements.settlement_rulid.memberPlaceIds).not.toContain(RULID_BEACH_ID);
       expect(harbor.surface).toBe('shore');expect(beach.surface).toBe('shore');
       expect(waterAccess(world,{x:harbor.mapX,y:harbor.mapY})).toBeDefined();
       expect(waterAccess(world,{x:beach.mapX,y:beach.mapY})).toBeDefined();
