@@ -7,6 +7,20 @@ import {hash} from './TerrainMath';
 import type {TerrainFoundation,TerrainAnchor} from './TerrainTypes';
 
 const contexts=new WeakMap<Readonly<Record<string,WorldPlace>>,TerrainModel>();
+
+const NON_HUMAN_FOUNDING_RACES: readonly Exclude<AgentRace,'human'>[] = ['elf','dwarf','goblin','orc','ogre'];
+/**
+ * Safe mainland sectors. Assignment and small jitter are seed-specific, but
+ * every slot stays inside the persisted continental bounds. Terrain anchors
+ * then make the chosen homeland physically part of the same continent.
+ */
+const HOMELAND_MAINLAND_SLOTS: readonly WorldPoint2D[] = [
+  {x:-47_000,y:-14_000},
+  {x:-47_000,y:14_000},
+  {x:-28_000,y:-8_000},
+  {x:-28_000,y:8_000},
+  {x:-9_000,y:0},
+];
 export const terrainForPlaces=(places:Readonly<Record<string,WorldPlace>>)=>contexts.get(places);
 export function bindWorldTerrain(world:Readonly<WorldState>):TerrainModel|undefined {
   if(!world.terrain)return undefined;let model=contexts.get(world.places);
@@ -33,21 +47,71 @@ export function homelandCenterForWorld(
 
   const human = world.places.commons ?? SAPIENT_PEOPLE_FOUNDATIONS.human.homelandCenter;
   if (race === 'human') return { x: human.mapX, y: human.mapY };
-  const key = `${world.id}:epoch:${world.epoch ?? 1}:homeland-layout`;
-  const unit = (suffix: string) => hash(`${key}:${suffix}`) / 0x1_0000_0000;
-  const angle = (unit('rotation') - 0.5) * 0.44;
-  const scale = 1.02 + unit('scale') * 0.16;
-  const mirror = unit('reflection') < 0.5 ? -1 : 1;
-  const canonical = SAPIENT_PEOPLE_FOUNDATIONS[race].homelandCenter;
-  const dx = canonical.x - SAPIENT_PEOPLE_FOUNDATIONS.human.homelandCenter.x;
-  const dy = (canonical.y - SAPIENT_PEOPLE_FOUNDATIONS.human.homelandCenter.y) * mirror;
-  const cosine = Math.cos(angle);
-  const sine = Math.sin(angle);
+
+  const raceIndex = NON_HUMAN_FOUNDING_RACES.indexOf(race as Exclude<AgentRace,'human'>);
+  if (raceIndex < 0) return { ...SAPIENT_PEOPLE_FOUNDATIONS[race].homelandCenter };
+  const key = `${world.id}:epoch:${world.epoch ?? 1}:homeland-layout-v2`;
+  const rotation = hash(`${key}:slot-rotation`) % HOMELAND_MAINLAND_SLOTS.length;
+  const reverse = (hash(`${key}:slot-direction`) & 1) === 1;
+  const orderedIndex = reverse ? -raceIndex : raceIndex;
+  const slotIndex = (rotation + orderedIndex + HOMELAND_MAINLAND_SLOTS.length) % HOMELAND_MAINLAND_SLOTS.length;
+  const slot = HOMELAND_MAINLAND_SLOTS[slotIndex];
+  const unit = (suffix:string) => hash(`${key}:${race}:${suffix}`) / 0x1_0000_0000;
+  // At most ±350 map units (35 km): worlds differ, but settlements never
+  // leave their safe continental sectors.
   return {
-    x: human.mapX + (dx * cosine - dy * sine) * scale,
-    y: human.mapY + (dx * sine + dy * cosine) * scale,
+    x: slot.x + (unit('x') - 0.5) * 700,
+    y: slot.y + (unit('y') - 0.5) * 700,
   };
 }
+function rescueIslandOutline(center:WorldPoint2D,radius:number,seed:number):WorldPoint2D[] {
+  return Array.from({length:32},(_,index)=>{
+    const angle=index*Math.PI*2/32;
+    const wobble=.95+(hash(`${seed}:outline:${index}`)/0x1_0000_0000)*.04;
+    return {x:center.x+Math.cos(angle)*radius*wobble,y:center.y+Math.sin(angle)*radius*wobble};
+  });
+}
+
+/**
+ * Compatibility repair for a lived F2 world whose already-persisted homeland
+ * was left in physical ocean by the old coordinate migration. Residents,
+ * homes, settlement centres, routes' history, calendar and RNG are not moved.
+ * We correct the geography underneath those saved coordinates instead.
+ */
+export function repairSubmergedSapientHomelands(world:WorldState):number {
+  if(!world.terrain)return 0;
+  const model=bindWorldTerrain(world);if(!model)return 0;
+  const additions:NonNullable<TerrainFoundation['offshore']>=[];
+  const existingIds=new Set((world.terrain.offshore??[]).map(land=>land.id));
+
+  for(const race of NON_HUMAN_FOUNDING_RACES) {
+    const settlementId=`settlement_${race}_homeland`;
+    const center=world.places[settlementId];if(!center)continue;
+    const members=Object.values(world.places).filter(place=>place.settlementId===settlementId);
+    if(!members.some(place=>model.sample(place.mapX,place.mapY).water))continue;
+    const id=`homeland-rescue:${race}`;if(existingIds.has(id))continue;
+
+    const maxMemberDistance=Math.max(0,...members.map(place=>Math.hypot(place.mapX-center.mapX,place.mapY-center.mapY)));
+    const radius=Math.min(400,Math.max(20,maxMemberDistance+8));
+    const seed=hash(`${world.id}:epoch:${world.epoch??1}:${id}`);
+    additions.push({
+      id,kind:'island',seed,
+      center:{x:center.mapX,y:center.mapY},
+      radius,
+      outline:rescueIslandOutline({x:center.mapX,y:center.mapY},radius,seed),
+    });
+    existingIds.add(id);
+  }
+
+  if(!additions.length)return 0;
+  world.terrain.offshore=[...(world.terrain.offshore??[]),...additions];
+  world.terrain.key='terrain-v1:'+hash(JSON.stringify({...world.terrain,key:''}));
+  assertTerrainFoundation(world.terrain);
+  bindWorldTerrain(world);
+  if(world.geography)world.geography.revision++;
+  return additions.length;
+}
+
 /** Freeze the physical foundation once. Exploring or moving the observer
  * never regenerates previously existing rivers, heights or coastlines. */
 export function repairWorldTerrain(world:WorldState):boolean {
