@@ -39,10 +39,14 @@ replace('src/world/CompactSettlementLayout.ts',
 replace('src/world/WorldEngine.ts',
     "import { repairCompactSettlementLayout } from './CompactSettlementLayout';",
     "import { repairCompactSettlementLayout } from './CompactSettlementLayout';\nimport {ensureInhabitedLandRescue} from './geography/InhabitedLandRescue';")
+# A freshly reset founder already knows their own home and local public square.
+# Commit that initial condition now, rather than adding it only on a reload.
+replace('src/world/WorldEngine.ts',
+    "            homeId, locationId: homeId, position: { x: places[homeId].mapX, y: places[homeId].mapY, layerId: 'surface' as const },",
+    "            knownPlaceIds: [homeId, `${settlementSpec.prefix}commons`],\n            homeId, locationId: homeId, position: { x: places[homeId].mapX, y: places[homeId].mapY, layerId: 'surface' as const },")
 engine = Path('src/world/WorldEngine.ts')
 text = engine.read_text()
-# The legacy helper is still available for explicitly requested legacy repairs,
-# but must never run automatically when opening an already-lived saved world.
+# Keep legacy coordinate rewriting out of every automatic loading path.
 text = text.replace('  repairSapientHomelandGeography,\n', '')
 text = text.replace('repairSapientHomelandGeography(next)', '0 /* saved homeland coordinates are authoritative */')
 text = text.replace('migration:v22-family-lifecycle-cartography-perf-2026-09-15', 'migration:v22-inhabited-land-rescue-2026-09-18')
@@ -70,4 +74,4 @@ if 'userAuthorizedGeographyRescue:' not in part:
 ''')
 text = text[:start] + part + text[end:]
 engine.write_text(text)
-print('Integrated mainland reservations and additive rescue; no main/ref changes performed by this script.')
+print('Integrated mainland reservations, additive rescue and canonical reset knowledge. No main/ref writes.')
