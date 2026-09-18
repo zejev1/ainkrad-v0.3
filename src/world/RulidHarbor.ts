@@ -1,6 +1,8 @@
 import type { WorldPoint2D, WorldState } from './types';
 import { bindWorldTerrain } from './geography/WorldTerrain';
 import { waterAccess } from '../v21/SailingRoutes';
+import { finishWorldGeography } from './WorldGeography';
+import { routeIdBetween } from './WorldNavigation';
 
 export const RULID_HARBOR_ID='rulid_harbor';
 export const RULID_BEACH_ID='rulid_beach';
@@ -13,6 +15,26 @@ function drySegment(world:Readonly<WorldState>,a:WorldPoint2D,b:WorldPoint2D):bo
     if(terrain.sample(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t).water)return false;
   }
   return true;
+}
+
+function installDryRoute(world:WorldState,fromId:string,toId:string):void {
+  const from=world.places[fromId],to=world.places[toId];
+  if(!from||!to)return;
+  const a={x:from.mapX,y:from.mapY},b={x:to.mapX,y:to.mapY};
+  if(!drySegment(world,a,b))return;
+  const id=routeIdBetween(fromId,toId);
+  world.routes[id]={
+    id,
+    fromPlaceId:fromId,
+    toPlaceId:toId,
+    traversal:'walk',
+    waypoints:[a,b],
+    distance:Math.hypot(b.x-a.x,b.y-a.y),
+    widthMetres:3,
+    geometryVersion:3,
+    terrainKey:world.terrain?.key,
+    completedTraversals:world.routes[id]?.completedTraversals??0,
+  };
 }
 
 function coastalNeighbour(
@@ -62,10 +84,6 @@ export function ensureRulidHarbor(world:WorldState):boolean {
   if((needHarbor&&!harborPoint)||(needBeach&&!beachPoint))return false;
 
   if(needHarbor&&harborPoint){
-    const commons=world.places.rulid_commons;
-    const civicLink=commons&&drySegment(world,{x:commons.mapX,y:commons.mapY},harborPoint)
-      ? ['rulid_shore','rulid_commons']
-      : ['rulid_shore'];
     world.places[RULID_HARBOR_ID]={
       id:RULID_HARBOR_ID,
       name:'Верфь и причал Рулида',
@@ -73,16 +91,15 @@ export function ensureRulidHarbor(world:WorldState):boolean {
       capacity:24,
       biome:'coast',
       mapX:harborPoint.x,mapY:harborPoint.y,
-      connectedPlaceIds:civicLink,
+      connectedPlaceIds:['rulid_shore'],
       fertility:.16,danger:.08,surface:'shore',
       settlementId:'settlement_rulid',
       discoveredAt:world.epochStartedAt??world.now,
       geographyVersion:1,
     };
     if(!shore.connectedPlaceIds.includes(RULID_HARBOR_ID))shore.connectedPlaceIds.push(RULID_HARBOR_ID);
-    if(commons&&civicLink.includes('rulid_commons')&&!commons.connectedPlaceIds.includes(RULID_HARBOR_ID))
-      commons.connectedPlaceIds.push(RULID_HARBOR_ID);
     if(!town.memberPlaceIds.includes(RULID_HARBOR_ID))town.memberPlaceIds.push(RULID_HARBOR_ID);
+    installDryRoute(world,'rulid_shore',RULID_HARBOR_ID);
   }
   if(needBeach&&beachPoint){
     world.places[RULID_BEACH_ID]={
@@ -100,6 +117,7 @@ export function ensureRulidHarbor(world:WorldState):boolean {
     };
     if(!shore.connectedPlaceIds.includes(RULID_BEACH_ID))shore.connectedPlaceIds.push(RULID_BEACH_ID);
     if(!town.memberPlaceIds.includes(RULID_BEACH_ID))town.memberPlaceIds.push(RULID_BEACH_ID);
+    installDryRoute(world,'rulid_shore',RULID_BEACH_ID);
   }
   // Harbor/beach are fixed coastal infrastructure, not a reason to regenerate
   // the already-lived street/field plan. Keep the existing layout geometry and
@@ -111,5 +129,8 @@ export function ensureRulidHarbor(world:WorldState):boolean {
       .sort()
       .join('|');
   }
+  // Commit the new places/connections into the geography signature now. A
+  // later reopen must be a pure read, not a second "repair" revision.
+  finishWorldGeography(world);
   return true;
 }
