@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { WeatherSystemAgent } from '../src/world/systems/WeatherSystemAgent';
+import { WeatherSystemAgent, WEATHER_CACHE_LIMIT, weatherRuntimeFor } from '../src/world/systems/WeatherSystemAgent';
+import { calculateWeatherV21 } from '../src/v21/WeatherModelV21';
 import { worldWeatherV21 } from '../src/v21/WeatherV21';
 import { WorldEngine } from '../src/world/WorldEngine';
 import { InMemoryWorldStore } from '../src/world/InMemoryWorldStore';
@@ -8,6 +9,44 @@ import { InMemoryWorldStore } from '../src/world/InMemoryWorldStore';
 const input = { id: 'weather-regression', epoch: 1, volatility: 0.2 };
 
 describe('first autonomous weather system', () => {
+  it('calculates repeated and alternating queries once per exact input, with bounded immutable results', () => {
+    let calls = 0;
+    const agent = new WeatherSystemAgent(undefined, (data, minute) => { calls++; return calculateWeatherV21(data, minute); });
+    const first = agent.sample(input, 8760);
+    for (let i=0;i<1_000_000;i++) agent.sample(input, 8760 + i % 2);
+    expect(calls).toBe(2);
+    expect(agent.sample(input, 8760)).toBe(first);
+    expect(Object.isFrozen(first)).toBe(true);
+    expect(() => { (first as any).severity = 99; }).toThrow();
+    expect(agent.snapshot().lastHeartbeatWorldMinute).toBe(8760);
+    const detached = agent.snapshot(); detached.current!.severity = 99;
+    expect(agent.sample(input, 8760).severity).not.toBe(99);
+    for (let i=0;i<WEATHER_CACHE_LIMIT+1;i++) agent.sample(input, i);
+    const before = calls;
+    agent.sample(input, 8760);
+    expect(calls).toBe(before+1); // Older entries were evicted, not retained forever.
+    for (const changed of [{ ...input, volatility: 0.8 }, { ...input, epoch: 2 }, { ...input, id: 'other' }]) {
+      expect(agent.sample(changed, 8760)).toEqual(calculateWeatherV21(changed, 8760));
+    }
+    expect(calls).toBe(before+4);
+    agent.applyCardinalCommand({ kind: 'restore', reason: 'invalidate after lifecycle change' });
+    agent.sample({ ...input, id: 'other' }, 8760);
+    expect(calls).toBe(before+5);
+  });
+
+  it('reuses results across world consumers and ignores unrelated world changes', () => {
+    const world = { id: input.id, epoch: 1, calendar: { elapsedWorldMinutes: 100 },
+      governance: { laws: { weather_volatility: { value: 0.2 } } }, revision: 0 } as any;
+    const first = worldWeatherV21(world);
+    world.revision++;
+    expect(worldWeatherV21(world)).toBe(first);
+    world.governance.laws.weather_volatility.value = 0.7;
+    expect(worldWeatherV21(world)).not.toBe(first);
+    expect(worldWeatherV21(world)).toEqual(calculateWeatherV21({ ...input, volatility: 0.7 }, 100));
+    expect(weatherRuntimeFor(world).weather.health().healthy).toBe(true);
+    expect(world.weatherSystem).toBeUndefined(); // Render reads do not dirty persisted state.
+  });
+
   it('exactly preserves 42 weather samples captured from the accepted F2 implementation', () => {
     const samples = JSON.parse(readFileSync(new URL('./weather-v1-baseline.json', import.meta.url), 'utf8'));
     const agent = new WeatherSystemAgent();

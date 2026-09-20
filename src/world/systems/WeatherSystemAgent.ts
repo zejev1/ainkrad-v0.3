@@ -1,7 +1,7 @@
 import type { WorldState } from '../types';
 import type { CardinalSystemAgent, CardinalSystemCommand, SystemAgentLifecycle, SystemAgentManifest } from '../../cardinal/SystemAgentContracts';
 import { SystemAgentOrchestrator } from '../../cardinal/SystemAgentOrchestrator';
-import { calculateWeatherV21, type WeatherModelInput, type WorldWeatherV21 } from '../../v21/WeatherModelV21';
+import { createCachedWeatherModelV21, type WeatherModelInput, type WorldWeatherV21 } from '../../v21/WeatherModelV21';
 
 export interface WeatherSystemState {
   version: 1;
@@ -25,10 +25,12 @@ export const WEATHER_AGENT_MANIFEST: SystemAgentManifest = Object.freeze({
 
 type WeatherModel = (input: Readonly<WeatherModelInput>, minute: number) => WorldWeatherV21;
 const lifecycles: readonly string[] = ['running', 'registered', 'restricted', 'stopped', 'faulted', 'retired'];
+const weatherKinds = ['clear', 'cloudy', 'fog', 'rain', 'storm', 'snow'];
+const unitKeys = ['precipitation', 'wind', 'severity', 'comfort', 'outdoorDecisionPenalty', 'walkingScale'] as const;
+export const WEATHER_CACHE_LIMIT = 16;
 
 function validWeather(value: WorldWeatherV21): boolean {
-  if (!value || !['clear', 'cloudy', 'fog', 'rain', 'storm', 'snow'].includes(value.kind)) return false;
-  const unitKeys = ['precipitation', 'wind', 'severity', 'comfort', 'outdoorDecisionPenalty', 'walkingScale'] as const;
+  if (!value || !weatherKinds.includes(value.kind)) return false;
   return unitKeys.every(key => Number.isFinite(value[key]) && value[key] >= 0 && value[key] <= 1)
     && Number.isFinite(value.temperatureC) && Math.abs(value.temperatureC) <= 80
     && Number.isFinite(value.safetyModifier) && Math.abs(value.safetyModifier) <= 1
@@ -40,10 +42,13 @@ function validWeather(value: WorldWeatherV21): boolean {
 export class WeatherSystemAgent implements CardinalSystemAgent {
   readonly manifest = WEATHER_AGENT_MANIFEST;
   private state: WeatherSystemState;
-  private cacheKey?: string;
+  private cachedInput?: Readonly<WeatherModelInput>;
+  private cachedMinute?: number;
   private cached?: Readonly<WorldWeatherV21>;
+  private readonly samples = new Map<number, Readonly<WorldWeatherV21>>();
+  private readonly originalModel = createCachedWeatherModelV21();
 
-  constructor(saved?: WeatherSystemState, private readonly model: WeatherModel = calculateWeatherV21) {
+  constructor(saved?: WeatherSystemState, private readonly model?: WeatherModel) {
     this.state = saved?.version === 1 && lifecycles.includes(saved.lifecycle)
       ? { ...structuredClone(saved), allowed: saved.allowed === true }
       : { version: 1, lifecycle: 'running', allowed: true, fallback: false };
@@ -61,30 +66,44 @@ export class WeatherSystemAgent implements CardinalSystemAgent {
 
   snapshot(): WeatherSystemState { return structuredClone(this.state); }
 
-  sample(input: Readonly<WeatherModelInput>, minute: number): WorldWeatherV21 {
+  sample(input: Readonly<WeatherModelInput>, minute: number): Readonly<WorldWeatherV21> {
     if (!input.id || !Number.isFinite(input.epoch) || !Number.isFinite(input.volatility)
       || !Number.isFinite(minute) || minute < 0) throw new Error('Invalid weather inputs');
-    const key = JSON.stringify([input.id, input.epoch, input.volatility, minute]);
-    if (key === this.cacheKey && this.cached) return { ...this.cached };
+    if (input.id !== this.cachedInput?.id || input.epoch !== this.cachedInput.epoch
+      || input.volatility !== this.cachedInput.volatility) {
+      this.cachedInput = Object.freeze({ ...input });
+      this.samples.clear(); this.cached = undefined; this.cachedMinute = undefined;
+    }
+    if (minute === this.cachedMinute && this.cached) return this.cached;
+    const existing = this.samples.get(minute);
+    if (existing) {
+      this.cachedMinute = minute; this.cached = existing;
+      this.state.current = existing; this.state.lastHeartbeatWorldMinute = minute;
+      return existing;
+    }
     const canRun = this.state.allowed && ['running', 'registered', 'restricted'].includes(this.state.lifecycle);
     let current: WorldWeatherV21;
     this.state.fallback = !canRun;
-    if (canRun) {
+    if (canRun && this.model) {
       try {
-        current = this.model(Object.freeze({ ...input }), minute);
+        current = this.model(this.cachedInput, minute);
         if (!validWeather(current)) throw new Error('Weather model returned invalid physical values');
       } catch (error) {
         this.state.lifecycle = 'faulted';
         this.state.lastFault = (error instanceof Error ? error.message : 'Weather model failed').slice(0, 240);
         this.state.fallback = true;
-        current = calculateWeatherV21(input, minute);
+        this.samples.clear();
+        current = this.originalModel(input, minute);
       }
-    } else current = calculateWeatherV21(input, minute);
-    this.cached = Object.freeze({ ...current });
-    this.cacheKey = key;
-    this.state.current = { ...current };
+    } else current = this.originalModel(input, minute);
+    // The built-in model owns this fresh object; injected models retain theirs.
+    this.cached = Object.freeze(this.model && canRun && !this.state.fallback ? { ...current } : current);
+    this.cachedMinute = minute;
+    if (this.samples.size >= WEATHER_CACHE_LIMIT) this.samples.delete(this.samples.keys().next().value!);
+    this.samples.set(minute, this.cached);
+    this.state.current = this.cached;
     this.state.lastHeartbeatWorldMinute = minute;
-    return { ...current };
+    return this.cached;
   }
 
   applyCardinalCommand(command: CardinalSystemCommand): void {
@@ -103,8 +122,9 @@ export class WeatherSystemAgent implements CardinalSystemAgent {
         this.state.lifecycle = 'restricted'; this.state.fallback = !this.state.allowed; break;
       default: throw new Error('Unknown weather lifecycle command');
     }
-    this.cacheKey = undefined;
+    this.cachedMinute = undefined;
     this.cached = undefined;
+    this.samples.clear();
   }
 }
 
