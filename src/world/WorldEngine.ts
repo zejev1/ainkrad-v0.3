@@ -1,3 +1,5 @@
+import { commitWeatherSystem, commandWeatherSystem } from './systems/WeatherSystemAgent';
+import type { CardinalSystemCommand } from '../cardinal/SystemAgentContracts';
 import { residentKnownPath, invalidateResidentNavigation } from './ResidentNavigation';
 import { consultSettlementMap, residentSurveyedPlaceIds, recordResidentSurvey, recordResidentRouteArrival, assertResidentCartography } from './ResidentCartography';
 import {applyOceanDecision} from './geography/OceanGeographyPolicy';
@@ -4942,6 +4944,7 @@ export class WorldEngine {
 
     for (const resident of Object.values(state.agents)) observeLocalPlacesV20(state, resident);
     assertWorldState(state);
+    commitWeatherSystem(state);
     await options.store.initializeWorld(state);
     return new WorldEngine(options.store, state);
   }
@@ -4991,6 +4994,13 @@ export class WorldEngine {
    */
   runtimeStateView(): Readonly<WorldState> {
     return this.committedState;
+  }
+
+  /** Host-side lifecycle boundary: no weather parameters or resident writers are exposed. */
+  async controlWeatherSystem(command: CardinalSystemCommand, requestId: string, expectedRevision: number): Promise<boolean> {
+    if (!requestId.trim() || !Number.isInteger(expectedRevision)) throw new Error('Invalid weather command identity');
+    return this.mutate(`weather-command:${this.committedState.epoch ?? 1}:${requestId}`,
+      stableJsonStringify({ command }), async () => { commandWeatherSystem(this.state, command); }, expectedRevision);
   }
 
   async reload(): Promise<void> {
@@ -5083,6 +5093,7 @@ export class WorldEngine {
         this.state.rulesVersion = WORLD_RULES_VERSION;
         this.state.environment = { resourcePool: 1, resourceRegenerationRate: 0.012, socialOpportunity: 0.62, safetySupport: 0.64, habitatSupport: 0.5 };
         this.state.calendar = { elapsedWorldMinutes: 0 };
+        delete this.state.weatherSystem;
         this.state.growth = {
           stage: 0,
           explorationProgress: 0,
@@ -6628,6 +6639,7 @@ export class WorldEngine {
 
       try {
         await apply();
+        commitWeatherSystem(this.state);
         this.syncDeterminismState();
         this.state.revision = before.revision + 1;
         assertWorldState(this.state);

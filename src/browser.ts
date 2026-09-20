@@ -388,6 +388,7 @@ app.innerHTML = `
       <span>Монстры <strong id="monster-value">0</strong></span>
       <span>Ресурсы <strong id="resource-value">—</strong></span>
       <span class="save-state">Состояние <strong id="save-value">Загрузка…</strong></span>
+      <details><summary>Системы мира</summary><p id="weather-agent-status">Агент погоды: запуск…</p></details>
       <details><summary>Данные сохранения</summary><pre id="world-storage-details" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre></details>
     </div>
 
@@ -2415,6 +2416,14 @@ function updateWorldTime(frame: Readonly<LiveWorldFrame>): void {
   const elapsedWorldMinutes = frame.world.calendar.elapsedWorldMinutes;
   const calendar = worldCalendarAtMinutes(elapsedWorldMinutes);
   const weather = worldWeatherV21(frame.world, elapsedWorldMinutes);
+  const weatherAgentStatus = document.getElementById('weather-agent-status');
+  if (weatherAgentStatus) {
+    const agent = frame.world.weatherSystem;
+    weatherAgentStatus.textContent = agent?.fallback
+      ? 'Агент погоды: резервная модель · мир продолжает жить'
+      : 'Агент погоды: работает автономно';
+    weatherAgentStatus.title = agent?.lastFault ?? 'Погода продолжает работать без Кардинала';
+  }
   worldMap.dataset.phase = calendar.phase;
   worldMap.dataset.weather = weather.kind;
   const clock = `${String(calendar.hour).padStart(2, '0')}:${String(calendar.minute).padStart(2, '0')}`;

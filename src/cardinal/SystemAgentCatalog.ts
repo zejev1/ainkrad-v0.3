@@ -1,24 +1,13 @@
+import { WEATHER_AGENT_MANIFEST } from '../world/systems/WeatherSystemAgent';
 import type { SystemAgentManifest } from './SystemAgentContracts';
 
 /**
- * Architectural placeholders only. Nothing in this catalog is wired into
- * WorldEngine yet. Each manifest defines a natural subsystem boundary that can
+ * Weather is connected to WorldEngine. Remaining entries are architectural
+ * placeholders only. Each manifest defines a natural subsystem boundary that can
  * be implemented gradually without granting cross-domain authority.
  */
 export const SYSTEM_AGENT_CATALOG: readonly SystemAgentManifest[] = [
-  {
-    id: 'weather-system',
-    version: 'draft-1',
-    domain: 'weather',
-    description: 'Atmosphere, temperature, wind, precipitation and local weather state.',
-    infrastructureOnly: true,
-    capabilities: [{
-      id: 'weather.state.write',
-      domain: 'weather',
-      readScopes: ['weather.inputs', 'weather.current'],
-      writeScopes: ['weather.current'],
-    }],
-  },
+  WEATHER_AGENT_MANIFEST,
   {
     id: 'resource-system',
     version: 'draft-1',
