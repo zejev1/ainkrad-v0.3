@@ -1,6 +1,6 @@
 import type { WorldState } from '../types';
 import type { CardinalSystemAgent, CardinalSystemCommand, SystemAgentLifecycle, SystemAgentManifest } from '../../cardinal/SystemAgentContracts';
-import { SystemAgentOrchestrator } from '../../cardinal/SystemAgentOrchestrator';
+import { SystemAgentOrchestrator } from './SystemAgentRegistry';
 import { createCachedWeatherModelV21, type WeatherModelInput, type WorldWeatherV21 } from '../../v21/WeatherModelV21';
 
 export interface WeatherSystemState {

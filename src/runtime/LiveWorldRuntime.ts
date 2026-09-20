@@ -1,4 +1,5 @@
 import {CardinalOceanArchitect} from '../cardinal/CardinalOceanArchitect';
+import { CardinalSystemControl, type CardinalControlSnapshot } from './CardinalSystemControl';
 import {IndependentOceanFrontierGateway,oceanDecisionAllowed} from '../boundary/OceanFrontierGateway';
 import type { WorldTimeExecution } from '../world/WorldTimeExecution';
 import { LiveAccelerationBudget, MAX_LIVE_PENDING_MINUTES } from './LiveAccelerationBudget';
@@ -152,6 +153,7 @@ export interface LiveWorldContinuity {
 }
 
 export interface LiveWorldFrame {
+  cardinalControl?: CardinalControlSnapshot;
   liveTiming?: { pendingWorldMinutes: number; actualWorldMinutesPerRealMinute?: number; capacityLimited?: boolean };
   tick: number;
   world: WorldState;
@@ -495,6 +497,7 @@ function buildWorldHealthForConsole(
  * observations; only the independent gateway owns the intervention target.
  */
 export class LiveWorldRuntime {
+  private systems!: CardinalSystemControl;
   private currentTechnicalTick: number;
   private displayedEvaluation?: CardinalEvaluation;
   private responsiveQuanta = 4;
@@ -619,6 +622,18 @@ export class LiveWorldRuntime {
       },
       options.boundedLiveAcceleration,
     );
+    runtime.systems = new CardinalSystemControl(worldId, options.mode !== 'off', controlLog, {
+      observe: () => {
+        const state = world.runtimeStateView();
+        return { epoch: state.epoch ?? 1, revision: state.revision,
+          minute: state.calendar.elapsedWorldMinutes, weather: state.weatherSystem };
+      },
+      restore: (command, requestId, revision) => {
+        if (!runtime.systems.online || command.kind !== 'restore') throw new Error('Weather recovery is not authorized');
+        return world.controlWeatherSystem(command, requestId, revision);
+      },
+    });
+    await runtime.systems.initialize();
     runtime.displayedEvaluation = [...allEvaluations].sort((a,b) =>
       (b.experience?.totalExperience ?? 0) - (a.experience?.totalExperience ?? 0))[0];
     return runtime;
@@ -626,6 +641,7 @@ export class LiveWorldRuntime {
 
   async synchronize(): Promise<void> {
     await this.world.reload();
+    await this.systems.initialize();
     this.currentTechnicalTick = Math.max(
       this.currentTechnicalTick,
       this.world.snapshot().now,
@@ -663,6 +679,17 @@ export class LiveWorldRuntime {
     this.liveMeasuredMilliseconds = 0;
     this.liveMeasuredWorldMinutes = 0;
     return clock;
+  }
+
+  async setCardinalEnabled(enabled: boolean): Promise<void> {
+    await this.systems.setEnabled(enabled);
+    if (this.systems.online) await this.systems.service();
+  }
+
+  disconnectCardinal(reason?: string): void { this.systems.disconnect(reason); }
+
+  private get cardinalMode(): CardinalMode {
+    return this.systems.online ? (this.mode === 'observer' ? 'observer' : 'intervene') : 'off';
   }
 
   storageDiagnostics(origin: string): string {
@@ -935,6 +962,8 @@ export class LiveWorldRuntime {
   }
 
   private async runTick(overrideWorldMinutes: number | undefined, emitFrame: boolean): Promise<LiveWorldFrame | undefined> {
+    const weatherRecovery = this.systems.service();
+    if (weatherRecovery) await weatherRecovery;
     const budgetToken = this.liveBudget.token;
     const tick = Math.max(
       this.currentTechnicalTick + 1,
@@ -1132,6 +1161,7 @@ export class LiveWorldRuntime {
       evaluationCount: this.evaluationCount,
       executedInterventionCount: this.executedInterventionCount,
       cardinalActivity: this.cardinalActivity,
+      cardinalControl: this.systems.snapshot(),
       clock,
       recentEvents,
       continuity: this.continuity,
@@ -1264,14 +1294,26 @@ export class LiveWorldRuntime {
 
   private async processCardinalOpportunity(
     semanticWorld: Readonly<WorldState>,
+  ): Promise<{ evaluation?: CardinalEvaluation; intervention?: InterventionRecord; worldAuthority?: WorldAuthorityRecord }> {
+    try { return await this.processConnectedCardinalOpportunity(semanticWorld); }
+    catch (error) { this.systems.disconnect(error); return {}; }
+  }
+
+  private async processConnectedCardinalOpportunity(
+    semanticWorld: Readonly<WorldState>,
   ): Promise<{
     evaluation?: CardinalEvaluation;
     intervention?: InterventionRecord;
     worldAuthority?: WorldAuthorityRecord;
   }> {
+    const weatherRecovery = this.systems.service();
+    if (weatherRecovery) await weatherRecovery;
+    semanticWorld = this.world.runtimeStateView();
+    const mode = this.cardinalMode;
+    if (mode === 'off') return {};
     // Geographic extension is separately authorized on a real voyage. It
     // neither waits for a population crisis nor writes a resident decision.
-    if(this.mode==='intervene'&&semanticWorld.oceanExploration?.pending&&!semanticWorld.oceanExploration.sealed){
+    if(mode==='intervene'&&semanticWorld.calendar.elapsedWorldMinutes >= 200 * WORLD_MINUTES_PER_YEAR&&semanticWorld.oceanExploration?.pending&&!semanticWorld.oceanExploration.sealed){
       const proposed=new CardinalOceanArchitect().consider(semanticWorld.oceanExploration.pending);
       const decision=oceanDecisionAllowed(semanticWorld,proposed)?proposed:{requestId:proposed.requestId};
       await new IndependentOceanFrontierGateway(this.world).execute(decision,semanticWorld.revision);
@@ -1283,7 +1325,6 @@ export class LiveWorldRuntime {
         agent.life.alive && (agent.race ?? 'human') === 'human',
     ).length;
     const cardinalDue =
-      this.mode !== 'off' &&
       (worldMinutes <= CARDINAL_INITIAL_OPPORTUNITY_WORLD_MINUTES ||
         worldMinutes <= this.cardinalBurstUntilWorldMinutes ||
         this.isWorldIntervalBoundary(
@@ -1312,7 +1353,7 @@ export class LiveWorldRuntime {
         ),
       ]);
     const evaluation = await this.cardinal.cycle(
-      this.mode,
+      mode,
       semanticWorld,
       semanticWorld.now,
     );
@@ -1324,7 +1365,7 @@ export class LiveWorldRuntime {
     let intervention: InterventionRecord | undefined;
     let worldAuthority: WorldAuthorityRecord | undefined;
 
-    const interventionAllowed = this.mode === 'intervene' && worldMinutes >= 200 * WORLD_MINUTES_PER_YEAR;
+    const interventionAllowed = mode === 'intervene' && worldMinutes >= 200 * WORLD_MINUTES_PER_YEAR;
     if (interventionAllowed && evaluation.proposal) {
       const interventionWorld = this.world.snapshot();
       intervention = await this.gateway.execute(
@@ -1482,6 +1523,16 @@ export class LiveWorldRuntime {
     tick: number,
     currentWorldMinutes: number,
   ): Promise<void> {
+    if (this.cardinalMode === 'off') return;
+    try { await this.observeConnectedOutcomes(tick, currentWorldMinutes); }
+    catch (error) { this.systems.disconnect(error); }
+  }
+
+  private async observeConnectedOutcomes(
+    tick: number,
+    currentWorldMinutes: number,
+  ): Promise<void> {
+    if (this.cardinalMode === 'off') return;
     const unresolved = await this.unresolvedExecutedInterventions();
 
     for (const pending of unresolved) {

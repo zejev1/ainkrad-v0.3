@@ -144,6 +144,7 @@ interface PrivateDivineAudienceCommand {
 }
 
 type LiveWorldWorkerCommand =
+  | { type: 'set_cardinal_enabled'; enabled: boolean }
   | LiveWorldClockMessage
   | OfflineClockCatchUpMessage
   | CardinalConsoleRequest
@@ -162,6 +163,11 @@ const workerScope = self as unknown as {
 const frameChannel = new BroadcastChannel(WORLD_CHANNEL_NAME);
 const clockChannel = new BroadcastChannel(CLOCK_CHANNEL_NAME);
 const consoleChannel = new BroadcastChannel(CONSOLE_CHANNEL_NAME);
+const cardinalControlChannel = new BroadcastChannel('ainkrad-v0-3-cardinal-control');
+let pendingCardinalEnabled: boolean | undefined;
+cardinalControlChannel.addEventListener('message', (event: MessageEvent) => {
+  if (activeRuntime && typeof event.data?.enabled === 'boolean') pendingCardinalEnabled = event.data.enabled;
+});
 const resetChannel = new BroadcastChannel(RESET_CHANNEL_NAME);
 const offlineClockChannel = new BroadcastChannel(OFFLINE_CLOCK_CHANNEL_NAME);
 const divineAudienceChannel = new BroadcastChannel(DIVINE_AUDIENCE_CHANNEL_NAME);
@@ -319,6 +325,11 @@ async function grantPrivateDivineAudience(
 self.addEventListener(
   'message',
   (event: MessageEvent<Partial<LiveWorldWorkerCommand>>) => {
+    if (event.data.type === 'set_cardinal_enabled' && typeof event.data.enabled === 'boolean') {
+      if (activeRuntime) pendingCardinalEnabled = event.data.enabled;
+      else cardinalControlChannel.postMessage(event.data);
+      return;
+    }
     if (event.data.type === 'reset_world') {
       if (activeRuntime) pendingWorldReset = true;
       else resetChannel.postMessage({ type: 'reset_world' });
@@ -501,7 +512,7 @@ async function runForever(): Promise<void> {
   });
   activeRuntime = runtime;
   runtime.setCooperativeExecution(cooperativeWorldTimeExecution(
-    () => clockCommands.revision !== appliedClockRevision || pendingWorldReset || divineAudiencePaused,
+    () => clockCommands.revision !== appliedClockRevision || pendingWorldReset || divineAudiencePaused || pendingCardinalEnabled !== undefined,
     () => pendingOfflineCatchUp || isMaximumAccelerationSpeed(appliedSpeedId) ? 48 : 12,
   ));
   liveWallClock.reset(performance.now());
@@ -511,6 +522,15 @@ async function runForever(): Promise<void> {
   while (true) {
     const loopStartedAt = performance.now();
     try {
+      if (pendingCardinalEnabled !== undefined) {
+        const enabled = pendingCardinalEnabled;
+        pendingCardinalEnabled = undefined;
+        await runtime.setCardinalEnabled(enabled);
+        const update = { type: 'frame', protocolVersion: FRAME_PROTOCOL_VERSION,
+          clockRevision: appliedClockRevision, frame: await runtime.tick(0) } as const;
+        workerScope.postMessage(update);
+        frameChannel.postMessage(update);
+      }
       const command = clockCommands.take();
       if (command) {
         if (!command.discardPending && !divineAudiencePaused && !pendingOfflineCatchUp) {

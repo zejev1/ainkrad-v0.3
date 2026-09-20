@@ -1,0 +1,73 @@
+{
+  "baselineCommit": "bddb5e73ae1cd7565c06753467149e0c5bee7eea",
+  "worldMinutes": 525600,
+  "environment": "Node v24.19.0; in-memory persistence; local container, not physical Android",
+  "exactWorldEventsMemoriesAndReloadEquality": true,
+  "measurements": [
+    {
+      "name": "accepted_weather_agent",
+      "medianMs": 983.3796459999994,
+      "medianCpuMs": 1115.137,
+      "runs": [
+        {
+          "ms": 1046.3172290000002,
+          "cpuMs": 1304.802,
+          "heapDelta": 30660312
+        },
+        {
+          "ms": 992.7904600000002,
+          "cpuMs": 1184.095,
+          "heapDelta": -35295352
+        },
+        {
+          "ms": 949.8000750000001,
+          "cpuMs": 1115.137,
+          "heapDelta": 11736952
+        },
+        {
+          "ms": 983.3796459999994,
+          "cpuMs": 1114.347,
+          "heapDelta": 6981176
+        },
+        {
+          "ms": 932.5790620000007,
+          "cpuMs": 1051.264,
+          "heapDelta": 65246768
+        }
+      ]
+    },
+    {
+      "name": "cardinal_weather_control",
+      "medianMs": 961.3593510000001,
+      "medianCpuMs": 1105.276,
+      "runs": [
+        {
+          "ms": 1041.028942,
+          "cpuMs": 1316.52,
+          "heapDelta": -27435312
+        },
+        {
+          "ms": 961.3593510000001,
+          "cpuMs": 1105.276,
+          "heapDelta": 13450288
+        },
+        {
+          "ms": 966.4168709999994,
+          "cpuMs": 1140.785,
+          "heapDelta": 5911400
+        },
+        {
+          "ms": 924.6626130000004,
+          "cpuMs": 1047.419,
+          "heapDelta": 4962080
+        },
+        {
+          "ms": 909.9920660000007,
+          "cpuMs": 1010.017,
+          "heapDelta": -2464208
+        }
+      ]
+    }
+  ],
+  "memoryNote": "Heap deltas contain garbage-collector noise. Hot journal view is bounded to 8; healthy checks write no history."
+}

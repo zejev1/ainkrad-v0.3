@@ -1,3 +1,4 @@
+import { renderCardinalControl } from './presentation/CardinalControlPanel';
 import {TERRAIN_BOUNDS} from './world/geography/TerrainTypes';
 import { MapInteraction } from './presentation/MapInteraction';
 import { installWorldMapGestures } from './presentation/WorldMapGestures';
@@ -583,10 +584,14 @@ app.innerHTML = `
 
         <section class="cardinal-panel">
           <div class="panel-heading-row">
-            <p class="panel-label">Cardinal наблюдает</p>
+            <p class="panel-label">Управление Кардиналом</p>
             <span class="gateway-mark">GATEWAY</span>
           </div>
 
+          <button class="cardinal-open" id="cardinal-toggle" type="button" aria-pressed="false" disabled>Подключение Кардинала…</button>
+          <p id="cardinal-control-status" aria-live="polite">Чтение сохранённого режима…</p>
+          <p id="cardinal-control-summary"></p>
+          <details><summary>Журнал системных агентов</summary><ol id="cardinal-system-log"></ol></details>
           <div class="cardinal-numbers">
             <button type="button" data-cardinal-tab="evaluations"><strong id="evaluation-value">0</strong>оценок</button>
             <button type="button" data-cardinal-tab="proposals"><strong id="proposal-value">0</strong>предложений</button>
@@ -2649,6 +2654,7 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
       .join(' · ');
   }
   updateWorldTime(frame);
+  renderCardinalControl(frame.cardinalControl, frame.world.calendar.elapsedWorldMinutes);
   settlementPicker.update(frame.world);
   if (frame.clock) {
     preferredSpeedId = frame.clock.speedId;
@@ -2686,7 +2692,9 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
   liveIndicator.classList.add('is-live');
 
   const unlocked = frame.evaluation?.experience.newlyUnlockedCapabilities ?? [];
-  if (frame.worldAuthority?.authorized) {
+  if (frame.cardinalControl && frame.cardinalControl.status !== 'ONLINE') {
+    cardinalMessage.textContent = 'Кардинал отключён. Накопленные наблюдения и опыт сохранены.';
+  } else if (frame.worldAuthority?.authorized) {
     cardinalMessage.textContent =
       'Cardinal доказал необходимость изменения правила. Независимый gateway разрешил ограниченную поправку.';
   } else if (unlocked.length > 0) {
@@ -2701,7 +2709,9 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
       'Gateway отклонил предложение Cardinal: условия безопасности не выполнены.';
   } else if (frame.evaluation?.proposal) {
     cardinalMessage.textContent =
-      'Cardinal обнаружил риск и передал предложение независимому gateway.';
+      frame.world.calendar.elapsedWorldMinutes < 200 * WORLD_MINUTES_PER_YEAR
+        ? 'Кардинал записал наблюдение. До 200 лет вмешательство запрещено; разрешено восстановление погодного агента.'
+        : 'Cardinal обнаружил риск и передал предложение независимому gateway.';
   } else if (frame.evaluation?.deferReason) {
     cardinalMessage.textContent =
       cardinalDeferLabels[frame.evaluation.deferReason];
@@ -3309,6 +3319,11 @@ installWorldMapGestures(worldMapViewport,mapCamera,phase=>{
 new ResizeObserver(scheduleMapPaint).observe(worldMapViewport);
 
 cardinalOpen.addEventListener('click', () => requestCardinalConsole('laws'));
+requiredElement<HTMLButtonElement>('cardinal-toggle').addEventListener('click', (event) => {
+  const button = event.currentTarget as HTMLButtonElement;
+  button.disabled = true;
+  liveWorldWorker.postMessage({ type: 'set_cardinal_enabled', enabled: button.dataset.enabled !== 'true' });
+});
 document.querySelectorAll<HTMLButtonElement>('[data-cardinal-tab]').forEach((button) => {
   button.addEventListener('click', () => {
     const tab = button.dataset.cardinalTab as CardinalConsoleTab | undefined;
