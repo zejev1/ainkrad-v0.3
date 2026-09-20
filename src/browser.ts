@@ -1,4 +1,6 @@
 import { vegetationSections, renderVegetationStatus, appendPlantSources } from './presentation/VegetationPanel';
+import { WeatherMapPanel } from './presentation/WeatherMapPanel';
+import { coastalLandmark } from './presentation/CoastalLandmark';
 import { RELEASE, RELEASE_LABEL } from './release';
 import { renderCardinalControl } from './presentation/CardinalControlPanel';
 import {TERRAIN_BOUNDS} from './world/geography/TerrainTypes';
@@ -82,7 +84,7 @@ import {
 import { formatAinkradWorldTime } from './v15/CardinalReadableReport';
 import { worldDurationDescription } from './v15/WorldTimeContract';
 import { residentDecisionReflection } from './world/ResidentDecisionReflection';
-import { worldWeatherV21 } from './v21/WeatherV21';
+import { worldWeatherAtPointV21 } from './v21/WeatherV21';
 import type {
   V18LivelihoodKind,
   V18LivelihoodStage,
@@ -435,7 +437,8 @@ app.innerHTML = `
         <div class="map-toolbar">
           <strong id="map-scale-value">Уровень мира 1 · 11 локаций</strong>
           <div class="map-toolbar__controls">
-            <span id="map-time-value">Рассвет · Весна</span>
+            <button id="map-time-value" type="button" aria-label="Открыть погодную карту" aria-haspopup="dialog" disabled>Рассвет · Весна</button>
+            <small id="weather-map-hint">Карта погоды доступна при 1м = 1м</small>
             <button id="map-zoom-out" type="button" aria-label="Уменьшить карту">−</button>
             <button id="map-zoom-fit" type="button" aria-label="Показать всю карту">100%</button>
             <span id="settlement-picker"></span>
@@ -1566,8 +1569,10 @@ function renderPlaces(world: Readonly<WorldState>): void {
   atlas.index.update(world);
   const close=atlasLevel(mapCamera.pixelsPerUnit)==='building';
   const visiblePlaces=atlas.index.visiblePlaces(world,mapCamera,highlightedPlaceIds);
+  const coast=coastalLandmark(world);
+  const labelPlaces=coast?visiblePlaces.map(p=>p.id==='rulid_shore'?{...p,mapX:coast.origin.x,mapY:coast.origin.y}:p):visiblePlaces;
   const townNames=new Map(Object.values(world.settlements).map(t=>[t.centerPlaceId,localizedPlaceName(t.name)]));
-  const labelIds=visibleMapLabels(visiblePlaces,mapCamera,highlightedPlaceIds,townNames);
+  const labelIds=visibleMapLabels(labelPlaces,mapCamera,highlightedPlaceIds,townNames);
   const liveIds = new Set(visiblePlaces.map(p=>p.id));
   for (const [placeId, element] of placeElements) {
     if (liveIds.has(placeId)) continue;
@@ -1582,6 +1587,9 @@ function renderPlaces(world: Readonly<WorldState>): void {
   for (const place of visiblePlaces) {
     const placeId=place.id;
     const point = pointForPlace(placeId, 0, world);
+    const waterfront=placeId==='rulid_shore'?coast:undefined;
+    if(waterfront)Object.assign(point,mapCamera.point(waterfront.origin.x,waterfront.origin.y));
+    const artKind=place.kind+':'+close+(waterfront?':'+world.terrain?.key+':'+place.mapX+':'+place.mapY:'');
     let placeElement = placeElements.get(placeId);
     if (!placeElement) {
       placeElement = document.createElement('button');
@@ -1589,7 +1597,7 @@ function renderPlaces(world: Readonly<WorldState>): void {
       placeElement.className = `map-place map-place--${place.kind}`;
       placeElement.innerHTML = `
         <span class="place-building" aria-hidden="true">
-          ${physicalPlaceDrawing(place,close)}
+          ${physicalPlaceDrawing(place,close,waterfront)}
         </span>
         <span class="place-label"></span>
         <span class="place-count">0</span>
@@ -1599,15 +1607,15 @@ function renderPlaces(world: Readonly<WorldState>): void {
       });
       placesLayer.append(placeElement);
       placeElements.set(placeId, placeElement);
-      placeElement.dataset.artKind = place.kind+':'+close;
+      placeElement.dataset.artKind = artKind;
     }
-    if (placeElement.dataset.artKind !== place.kind+':'+close) {
-      placeElement.querySelector('.place-building')!.innerHTML = physicalPlaceDrawing(place,close);
-      placeElement.dataset.artKind = place.kind+':'+close;
+    if (placeElement.dataset.artKind !== artKind) {
+      placeElement.querySelector('.place-building')!.innerHTML = physicalPlaceDrawing(place,close,waterfront);
+      placeElement.dataset.artKind = artKind;
     }
     placeElement.className = `map-place map-place--${place.kind} map-place--surface-${place.surface}`;
     placeElement.classList.toggle('is-persistent-landmark', isPersistentMapLandmark(place));
-    applyPhysicalPlaceStyle(placeElement,place,mapCamera);
+    applyPhysicalPlaceStyle(placeElement,place,mapCamera,waterfront);
     const mapLabel=labelIds.get(placeId);
     placeElement.classList.toggle('has-map-label',Boolean(mapLabel));
     if(mapLabel) {
@@ -2427,7 +2435,7 @@ function announceDisturbance(frame: Readonly<LiveWorldFrame>): void {
 function updateWorldTime(frame: Readonly<LiveWorldFrame>): void {
   const elapsedWorldMinutes = frame.world.calendar.elapsedWorldMinutes;
   const calendar = worldCalendarAtMinutes(elapsedWorldMinutes);
-  const weather = worldWeatherV21(frame.world, elapsedWorldMinutes);
+  const weather = worldWeatherAtPointV21(frame.world, mapCamera.x, mapCamera.y, elapsedWorldMinutes);
   renderVegetationStatus(frame.world);
   const weatherAgentStatus = document.getElementById('weather-agent-status');
   if (weatherAgentStatus) {
@@ -2588,6 +2596,12 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
   if(mapInteraction.defer(()=>updateWorld(frame)))return;
   observerChrome.clear();
   lastFrame = frame;
+  preferredSpeedId = frame.clock.speedId; preferredSpeedMultiplier = frame.clock.multiplier;
+  maximumSpeedPresentation = !frame.clock.paused && isMaximumAccelerationSpeed(frame.clock.speedId);
+  if (frame.clock.paused) catchUpPresentation = false;
+  applyHeadlessAccelerationPresentation();
+  updateOfflineClockContinuity(frame);
+  weatherMapPanel?.sync();
   if (headlessAccelerationActive) {
     const worldLevel = frame.world.growth.stage + 1;
     worldTitle.textContent = `Мир · уровень ${worldLevel}`;
@@ -2606,7 +2620,6 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
       liveClockThroughput.textContent = `Фактически за минуту: ${tempo}` +
         (timing.capacityLimited ? ' · предел расчёта устройства' : '');
     }
-    updateOfflineClockContinuity(frame);
     liveLabel.textContent = 'МИР УСКОРЕН';
     liveIndicator.classList.add('is-live');
     return;
@@ -2679,7 +2692,7 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
       (timing.pendingWorldMinutes > frame.clock.worldMinutesPerTick * 2
         ? ` · осталось рассчитать ${worldDurationDescription(timing.pendingWorldMinutes)}` : '');
   }
-  updateOfflineClockContinuity(frame);
+  if (frame.clock.paused) liveClockThroughput.textContent = 'Время остановлено';
 
   requiredElement<HTMLElement>('world-storage-details').textContent = worldStorageDiagnostics(frame.world, location.origin);
   if (frame.continuity.durable) {
@@ -2695,9 +2708,10 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
     liveLabel.textContent = 'МИР ПРОДОЛЖЕН';
     continuityAnnounced = true;
   } else {
-    liveLabel.textContent = 'МИР ЖИВЁТ';
+    liveLabel.textContent = frame.clock.paused ? 'ПАУЗА' : 'МИР ЖИВЁТ';
   }
-  liveIndicator.classList.add('is-live');
+  if (frame.clock.paused) liveLabel.textContent = 'ПАУЗА';
+  liveIndicator.classList.toggle('is-live', !frame.clock.paused);
 
   const unlocked = frame.evaluation?.experience.newlyUnlockedCapabilities ?? [];
   if (frame.cardinalControl && frame.cardinalControl.status !== 'ONLINE') {
@@ -3251,7 +3265,7 @@ type LiveWorldWorkerPayload =
     }
   | {
       type: 'clock_applied'; protocolVersion: string; worldEpoch: number; currentWorldMinutes: number;
-      speedId: WorldSpeedId; multiplier: WorldSpeedMultiplier; discarded: boolean;
+      speedId: WorldSpeedId; multiplier: WorldSpeedMultiplier; discarded: boolean; paused?: boolean;
     }
   | {
       type: 'fatal';
@@ -3296,6 +3310,7 @@ const liveWorldWorker = new Worker(
   new URL('./runtime/liveWorld.worker.ts', import.meta.url),
   { type: 'module' },
 );
+let weatherMapPanel: WeatherMapPanel | undefined;
 const clockPanel = new WorldClockPanel({
   root: requiredElement<HTMLElement>('world-speed-select').closest<HTMLElement>('.external-clock')!,
   overlay: catchUpOverlay, status: offlineClockStatus, title: catchUpTitle, percent: catchUpPercent,
@@ -3303,13 +3318,21 @@ const clockPanel = new WorldClockPanel({
   storageAvailable: offlineClockStorageAvailable, anchorKey: OFFLINE_CLOCK_ANCHOR_KEY,
   preferenceKey: CLOCK_PREFERENCE_KEY, speedId: preferredSpeedId, multiplier: preferredSpeedMultiplier,
   post: message => liveWorldWorker.postMessage(message),
-  onPreference: (speedId, multiplier) => {
+  onPreference: (speedId, multiplier, paused) => {
     preferredSpeedId = speedId; preferredSpeedMultiplier = multiplier;
-    maximumSpeedPresentation = isMaximumAccelerationSpeed(speedId);
+    maximumSpeedPresentation = !paused && isMaximumAccelerationSpeed(speedId);
     applyHeadlessAccelerationPresentation();
     showClockControl(speedId, multiplier);
+    weatherMapPanel?.sync();
   },
 });
+
+weatherMapPanel = new WeatherMapPanel(requiredElement<HTMLButtonElement>('map-time-value'),
+  requiredElement<HTMLElement>('weather-map-hint'), () => lastFrame ? {
+    world: lastFrame.world, clock: { ...lastFrame.clock, speedId: preferredSpeedId, multiplier: preferredSpeedMultiplier },
+    busy: clockPanel.continuity.cancelling || clockPanel.continuity.targetWorldMinutes !== undefined
+      || lastFrame.clock.speedId !== preferredSpeedId || lastFrame.clock.multiplier !== preferredSpeedMultiplier,
+  } : undefined);
 
 
 mapZoomOut.addEventListener('click', () => setMapZoom(mapZoom / 1.22));

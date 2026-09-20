@@ -10,6 +10,7 @@ import {
 } from '../world/WorldClock';
 
 export interface WorldClockControl {
+  paused?: boolean;
   speedId: WorldSpeedId;
   multiplier: WorldSpeedMultiplier;
   worldMinutesPerTick: number;
@@ -34,7 +35,16 @@ export class IndependentWorldClockGateway {
   }
 
   set(speedId: unknown, multiplier: unknown): WorldClockControl {
+    const paused = this.control.paused;
     this.control = this.validate(speedId, multiplier);
+    if (paused) this.setPaused(true);
+    return this.current();
+  }
+
+  setPaused(paused: boolean): WorldClockControl {
+    if (typeof paused !== 'boolean') throw new Error('Invalid external pause control.');
+    this.control = this.validate(this.control.speedId, this.control.multiplier);
+    if (paused) this.control = { ...this.control, paused: true, worldMinutesPerTick: 0 };
     return this.current();
   }
 

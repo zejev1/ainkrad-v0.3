@@ -3,6 +3,7 @@ import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { performance } from 'node:perf_hooks';
+import { execFileSync } from 'node:child_process';
 
 const [baseline, output] = process.argv.slice(2);
 assert(baseline && output);
@@ -45,11 +46,11 @@ for (const mode of ['observer', 'off']) {
 }
 assert.deepEqual(runs[0], runs[1], 'Cardinal changed autonomous life');
 const median = (values: number[]) => values.sort((a,b) => a-b)[Math.floor(values.length / 2)];
-const result = { baselineCommit: 'b175f5b86032308b9de7498cb062d52be80fccaf', worldMinutes: 525600,
+const result = { baselineCommit: execFileSync('git', ['-C', baseline, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), worldMinutes: 525600,
   environment: `Node ${process.version}; local in-memory store; not physical Android`,
   exactCardinalOnOffWorldEventsMemoriesEquality: true, exactSaveReloadEquality: true,
-  physicsNote: 'Species ecology is a user-authorized simulation change. Equality to old ecology is not claimed; the canonical opportunity schedule and Spark implementations are unchanged.',
-  measurements: samples.map((runs, i) => ({ name: i ? 'source_backed_vegetation' : 'accepted_weather_control',
+  physicsNote: 'Regional climate is a user-authorized simulation change. Equality to old ecology is not claimed; the canonical opportunity schedule and Spark implementations are unchanged.',
+  measurements: samples.map((runs, i) => ({ name: i ? 'regional_weather_and_pause' : 'accepted_vegetation_f12',
     medianMs: median(runs.map(r => r.ms)), medianCpuMs: median(runs.map(r => r.cpuMs)), runs, outcomes: outcomes[i] })),
   memoryNote: 'Heap deltas include GC noise. Persistent vegetation is bounded by physical sites × catalog species; no per-render history or full per-tree population.',
 };

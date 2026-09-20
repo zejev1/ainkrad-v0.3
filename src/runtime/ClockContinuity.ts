@@ -8,6 +8,7 @@ export class ClockContinuity {
   revision: number;
   targetWorldMinutes?: number;
   backgroundMode: 'real_time' | 'selected';
+  paused: boolean;
   private position?: ClockPosition;
   private livePending = 0;
   private cancellationPending: boolean;
@@ -18,6 +19,7 @@ export class ClockContinuity {
     this.revision = anchor?.clockRevision ?? 0;
     this.cancellationPending = anchor?.cancelPending ?? false;
     this.backgroundMode = anchor?.backgroundMode ?? 'real_time';
+    this.paused = anchor?.paused === true;
   }
 
   get cancelling(): boolean { return this.cancellationPending; }
@@ -39,7 +41,7 @@ export class ClockContinuity {
   }
 
   restore(anchor: Readonly<OfflineWorldClockAnchor> | undefined, now: number): number | undefined {
-    if (!anchor || !this.position || this.cancellationPending || (anchor.clockRevision ?? 0) < this.revision) return;
+    if (!anchor || !this.position || this.paused || this.cancellationPending || (anchor.clockRevision ?? 0) < this.revision) return;
     const target = offlineWorldMinuteTarget({ anchor, currentWorldEpoch: this.position.worldEpoch,
       currentWorldMinutes: this.position.currentWorldMinutes, nowWallClockMs: now });
     if (target !== undefined && target > this.position.currentWorldMinutes + 1e-7) {
@@ -48,11 +50,12 @@ export class ClockContinuity {
     }
   }
 
-  command(speedId: WorldSpeedId, multiplier: WorldSpeedMultiplier, now: number, initial = false) {
+  command(speedId: WorldSpeedId, multiplier: WorldSpeedMultiplier, now: number, initial = false, paused = this.paused) {
     const normalized = normalizeWorldSpeedControl(speedId, multiplier);
     const lower = this.speed && worldMinutesPerTick(normalized.speedId, normalized.multiplier) <
       worldMinutesPerTick(this.speed.speedId, this.speed.multiplier);
-    const discardPending = this.cancellationPending || (!initial && (Boolean(lower) || speedId === 'real_time'));
+    const discardPending = paused || this.paused || this.cancellationPending || (!initial && (Boolean(lower) || speedId === 'real_time'));
+    this.paused = paused;
     if (!initial || this.cancellationPending) this.revision = Math.max(Math.ceil(now), this.revision + 1);
     this.speed = normalized;
     if (discardPending) {
@@ -60,7 +63,7 @@ export class ClockContinuity {
       this.livePending = 0;
       this.cancellationPending = true;
     }
-    return { type: 'set_speed' as const, ...normalized, clockRevision: this.revision, discardPending };
+    return { type: 'set_speed' as const, ...normalized, paused, clockRevision: this.revision, discardPending };
   }
 
   acknowledge(revision: number, position: ClockPosition, discarded: boolean): boolean {
@@ -80,7 +83,7 @@ export class ClockContinuity {
       if (!this.cancellationPending) return;
       return makeOfflineWorldClockAnchor({ worldEpoch: this.initialAnchor?.worldEpoch ?? 1,
         worldMinutes: 0, wallClockMs: now, ...normalized, clockRevision: this.revision,
-        cancelPending: true, backgroundMode: this.backgroundMode });
+        cancelPending: true, paused: this.paused, backgroundMode: this.backgroundMode });
     }
     const target = this.cancellationPending ? undefined : Math.max(
       this.position.currentWorldMinutes + this.livePending, this.targetWorldMinutes ?? 0);
@@ -88,6 +91,7 @@ export class ClockContinuity {
       worldMinutes: this.position.currentWorldMinutes, wallClockMs: now, ...normalized,
       clockRevision: this.revision, backgroundMode: this.backgroundMode,
       cancelPending: this.cancellationPending,
+      paused: this.paused,
       catchingUp: !this.cancellationPending && this.targetWorldMinutes !== undefined,
       ...(target !== undefined && target > this.position.currentWorldMinutes ? { targetWorldMinutes: target } : {}) });
   }

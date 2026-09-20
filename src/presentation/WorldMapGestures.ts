@@ -11,6 +11,7 @@ export function installWorldMapGestures(
   const pointers=new Map<number,{x:number;y:number}>();
   let start:{x:number;y:number}|undefined;
   let dragged=false;
+  let tapTarget:HTMLButtonElement|null=null;
   let pinch:{distance:number;scale:number;anchor:{x:number;y:number}}|undefined;
   let bounds=element.getBoundingClientRect();
 
@@ -40,13 +41,16 @@ export function installWorldMapGestures(
       bounds=element.getBoundingClientRect();
       start={x:event.clientX,y:event.clientY};
       dragged=false;
+      const target=event.target as Element|null;
+      tapTarget=typeof target?.closest==='function'?target.closest<HTMLButtonElement>('button'):null;
+      if(tapTarget&&!element.contains(tapTarget))tapTarget=null;
       changed('start');
     }
     pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
     // Capture immediately, as in the user's main fix, so Android keeps
     // delivering the gesture when it starts on a building or label.
     if(!element.hasPointerCapture(event.pointerId))element.setPointerCapture(event.pointerId);
-    if(pointers.size===2){beginPinch();dragged=true;}
+    if(pointers.size===2){beginPinch();dragged=true;tapTarget=null;}
   });
 
   element.addEventListener('pointermove',event=>{
@@ -80,6 +84,7 @@ export function installWorldMapGestures(
     // bubbled loss on the child. It must not terminate the live gesture.
     if(type==='lostpointercapture'&&(event.target!==element||element.hasPointerCapture(event.pointerId)))return;
     if(!pointers.delete(event.pointerId))return;
+    if(type==='pointercancel')tapTarget=null;
     pinch=undefined;
     if(pointers.size>=2)beginPinch();
     if(pointers.size===1)start=[...pointers.values()][0];
@@ -90,8 +95,16 @@ export function installWorldMapGestures(
   }
 
   element.addEventListener('click',event=>{
-    if(!dragged)return;
-    event.preventDefault();event.stopPropagation();dragged=false;
+    // Keyboard activation does not belong to the previous pointer gesture.
+    if(event.detail===0)return;
+    const target=tapTarget;tapTarget=null;
+    if(dragged){event.preventDefault();event.stopPropagation();dragged=false;return;}
+    // Pointer capture retargets Chrome/Android's native click to the viewport.
+    // Forward a real tap once to its original button, keeping immediate capture
+    // for dragging from buildings and labels.
+    if(event.target===element&&target&&target.isConnected){
+      event.preventDefault();event.stopPropagation();target.click();
+    }
   },true);
   element.addEventListener('wheel',event=>{
     event.preventDefault();bounds=element.getBoundingClientRect();

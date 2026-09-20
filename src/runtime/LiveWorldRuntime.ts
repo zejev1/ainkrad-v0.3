@@ -700,6 +700,13 @@ export class LiveWorldRuntime {
     return clock;
   }
 
+  setWorldPaused(paused: boolean): WorldClockControl {
+    const previous = this.clockGateway.current().paused === true;
+    const clock = this.clockGateway.setPaused(paused);
+    if (previous !== paused) this.discardPendingLiveTime();
+    return clock;
+  }
+
   async setCardinalEnabled(enabled: boolean): Promise<void> {
     await this.systems.setEnabled(enabled);
     await this.vegetationControl.setEnabled(this.systems.online);
@@ -932,6 +939,7 @@ export class LiveWorldRuntime {
     if (!Number.isFinite(realMilliseconds) || realMilliseconds < 0) {
       throw new Error('Live elapsed milliseconds must be finite and non-negative.');
     }
+    if (this.clockGateway.current().paused) return;
     this.liveBudget.enqueue(this.clockGateway.current().worldMinutesPerTick * realMilliseconds / 1000);
     if (this.liveMeasuredMilliseconds >= 10_000) {
       this.liveMeasuredMilliseconds = 0;
@@ -954,6 +962,7 @@ export class LiveWorldRuntime {
   }
 
   async advanceResponsive(realMilliseconds: number, emitFrame = false): Promise<LiveWorldFrame | undefined> {
+    if (this.clockGateway.current().paused) return emitFrame ? this.presentFrame(this.clockGateway.current()) : undefined;
     this.enqueueLiveElapsed(realMilliseconds);
     const minutes = Math.min(this.liveBudget.pending, this.responsiveQuanta * CANONICAL_WORLD_QUANTUM_MINUTES);
     const before = this.world.runtimeStateView().calendar.elapsedWorldMinutes;
@@ -983,6 +992,7 @@ export class LiveWorldRuntime {
   }
 
   private async runTick(overrideWorldMinutes: number | undefined, emitFrame: boolean): Promise<LiveWorldFrame | undefined> {
+    if (this.clockGateway.current().paused) return emitFrame ? this.presentFrame(this.clockGateway.current()) : undefined;
     const weatherRecovery = this.systems.service();
     if (weatherRecovery) await weatherRecovery;
     const vegetationRecovery = this.systems.online ? this.vegetationControl.service() : undefined;
@@ -1147,6 +1157,14 @@ export class LiveWorldRuntime {
     if (evaluation) this.displayedEvaluation = evaluation;
     if (!emitFrame) return undefined;
 
+    return this.presentFrame(clock, tick, dueDisturbances, evaluation, intervention, worldAuthority);
+  }
+
+  /** Read-only presentation is available on pause; no tick, recovery or life runs. */
+  private async presentFrame(clock: WorldClockControl, tick = this.currentTechnicalTick,
+    dueDisturbances: LiveWorldDisturbance[] = [], evaluation?: CardinalEvaluation,
+    intervention?: InterventionRecord, worldAuthority?: WorldAuthorityRecord): Promise<LiveWorldFrame> {
+
     const observation = await this.sensors.observe(
       this.world.runtimeStateView(),
       this.world.runtimeStateView().now,
@@ -1225,7 +1243,7 @@ export class LiveWorldRuntime {
     const fromWorldMinutes = before.calendar.elapsedWorldMinutes;
     const targetWorldMinutes = Math.max(
       fromWorldMinutes,
-      requestedTargetWorldMinutes,
+      this.clockGateway.current().paused ? fromWorldMinutes : requestedTargetWorldMinutes,
     );
     if (targetWorldMinutes <= fromWorldMinutes + WORLD_TIME_EPSILON) {
       return {

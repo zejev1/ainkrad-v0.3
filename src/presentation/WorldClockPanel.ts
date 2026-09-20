@@ -15,7 +15,7 @@ interface PanelOptions {
   initialAnchor?: OfflineWorldClockAnchor; storageAvailable: boolean; anchorKey: string; preferenceKey: string;
   speedId: WorldSpeedId; multiplier: WorldSpeedMultiplier;
   post(message: unknown): void;
-  onPreference(speedId: WorldSpeedId, multiplier: WorldSpeedMultiplier): void;
+  onPreference(speedId: WorldSpeedId, multiplier: WorldSpeedMultiplier, paused: boolean): void;
 }
 
 /** Clock UI owns only external timing metadata. It never writes world state. */
@@ -27,6 +27,7 @@ export class WorldClockPanel {
   private speedId: WorldSpeedId;
   private multiplier: WorldSpeedMultiplier;
   private readonly stop: HTMLButtonElement;
+  private readonly pause: HTMLButtonElement;
 
   constructor(private readonly options: PanelOptions) {
     this.initialAnchor = options.initialAnchor;
@@ -40,6 +41,11 @@ export class WorldClockPanel {
     this.stop.title = 'Продолжить с уже прожитого момента в обычном времени';
     this.stop.addEventListener('click', () => this.publish('real_time', 1));
     options.root.append(this.stop);
+    this.pause = document.createElement('button');
+    this.pause.type = 'button'; this.pause.className = 'map-control';
+    this.pause.addEventListener('click', () => this.publish(this.speedId, this.multiplier, false, !this.continuity.paused));
+    options.root.append(this.pause);
+    this.showPause();
     const label = document.createElement('label');
     label.style.cssText = 'grid-column:1/-1;display:flex;gap:8px;align-items:center;font-size:0.85rem';
     const checkbox = document.createElement('input');
@@ -60,13 +66,14 @@ export class WorldClockPanel {
     return true;
   }
 
-  publish(speedId: WorldSpeedId, multiplier: WorldSpeedMultiplier, initial = false): void {
-    const command = this.continuity.command(speedId, multiplier, Date.now(), initial);
+  publish(speedId: WorldSpeedId, multiplier: WorldSpeedMultiplier, initial = false, paused = this.continuity.paused): void {
+    const command = this.continuity.command(speedId, multiplier, Date.now(), initial, paused);
     this.speedId = speedId; this.multiplier = multiplier;
-    this.options.onPreference(speedId, multiplier);
+    this.options.onPreference(speedId, multiplier, paused);
     try { localStorage.setItem(this.options.preferenceKey, JSON.stringify({ speedId, multiplier })); } catch { /* session still works */ }
     // Persist intent BEFORE posting: an immediate refresh cannot resurrect the queue.
     this.writeAnchor();
+    this.showPause();
     if (command.discardPending) {
       this.options.overlay.hidden = true;
       this.options.status.textContent = 'Завершаем текущий шаг и сохраняем прожитую историю…';
@@ -76,15 +83,17 @@ export class WorldClockPanel {
   }
 
   acknowledge(message: { clockRevision?: number; worldEpoch: number; currentWorldMinutes: number;
-    speedId: WorldSpeedId; multiplier: WorldSpeedMultiplier; discarded: boolean }): void {
+    speedId: WorldSpeedId; multiplier: WorldSpeedMultiplier; discarded: boolean; paused?: boolean }): void {
     if (!this.continuity.acknowledge(message.clockRevision ?? 0, message, message.discarded)) return;
     this.speedId = message.speedId; this.multiplier = message.multiplier;
     this.continuity.observeSpeed(message.speedId, message.multiplier);
-    this.options.onPreference(message.speedId, message.multiplier);
+    this.continuity.paused = message.paused === true;
+    this.options.onPreference(message.speedId, message.multiplier, this.continuity.paused);
     this.stop.disabled = false;
     if (message.discarded) this.options.overlay.hidden = true;
     if (this.checked || message.discarded) this.writeAnchor();
     this.showStatus();
+    this.showPause();
   }
 
   persist(_frame?: Readonly<LiveWorldFrame>, now = Date.now(),
@@ -112,6 +121,7 @@ export class WorldClockPanel {
   }
 
   update(frame: Readonly<LiveWorldFrame>): void {
+    this.continuity.paused = frame.clock.paused === true;
     this.speedId = frame.clock.speedId; this.multiplier = frame.clock.multiplier;
     this.continuity.observeSpeed(frame.clock.speedId, frame.clock.multiplier);
     this.continuity.observe({ worldEpoch: frame.world.epoch ?? 1,
@@ -127,6 +137,7 @@ export class WorldClockPanel {
       this.options.overlay.hidden = true;
     }
     this.showStatus();
+    this.showPause();
     this.writeAnchor();
   }
 
@@ -162,12 +173,22 @@ export class WorldClockPanel {
   private showStatus(): void {
     if (this.continuity.cancelling) return;
     this.options.status.classList.toggle('is-catching-up', this.continuity.targetWorldMinutes !== undefined);
-    this.options.status.textContent = this.continuity.targetWorldMinutes !== undefined
+    this.options.status.textContent = this.continuity.paused ? (this.storageAvailable
+      ? 'Пауза · время мира остановлено, включая закрытую вкладку' : 'Пауза текущего сеанса · сохранение в браузере недоступно')
+      : this.continuity.targetWorldMinutes !== undefined
       ? 'Догон продолжается · можно остановить с сохранением прожитого'
       : !this.storageAvailable ? 'Фоновое время недоступно: браузер запретил сохранение'
       : this.continuity.backgroundMode === 'selected'
         ? 'Закрытая вкладка: выбранное ускорение · при возвращении потребуется расчёт'
         : 'Закрытая вкладка: обычное время · ускорение действует при открытом мире';
+  }
+
+  private showPause(): void {
+    this.pause.disabled = this.continuity.cancelling;
+    this.pause.textContent = this.continuity.cancelling
+      ? (this.continuity.paused ? 'Ставим на паузу…' : 'Применяем время…')
+      : this.continuity.paused ? 'Продолжить' : 'Пауза';
+    this.pause.setAttribute('aria-pressed', String(this.continuity.paused));
   }
 
   private writeAnchor(now = Date.now(), speedId = this.speedId, multiplier = this.multiplier): void {

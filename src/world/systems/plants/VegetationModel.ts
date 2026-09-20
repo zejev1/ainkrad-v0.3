@@ -22,6 +22,7 @@ export interface VegetationPatch {
 export interface PlantWeather {
   minute: number; duration: number; temperatureC: number; precipitation: number;
   rain: boolean; snow: boolean; wind: number;
+  local?: Readonly<Record<string, { temperatureC: number; precipitation: number; rain: boolean; snow: boolean; wind: number }>>;
 }
 export interface VegetationEvent {
   minute: number; siteId: string; speciesId?: string;
@@ -97,17 +98,19 @@ export function initializePatch(habitat: PlantHabitat, minute: number, seed: str
 /** One conservative daily-or-shorter integration step. No residents, RNG or I/O. */
 export function evolvePatch(patch: VegetationPatch, weather: PlantWeather): void {
   const days = weather.duration / DAY, years = weather.duration / YEAR;
-  const temperature = weather.temperatureC - patch.habitat.elevationM * 0.0065;
+  const local = weather.local?.[patch.habitat.id];
+  const conditions = local ?? weather;
+  const temperature = local ? local.temperatureC : weather.temperatureC - patch.habitat.elevationM * 0.0065;
   const wet = patch.habitat.kind === 'wetland';
   // Weather precipitation is an index, NOT millimetres. Snow is retained until thaw.
-  const precipitation = weather.rain || weather.snow ? weather.precipitation * 0.09 * days : 0;
-  if (weather.snow || temperature < 0) patch.snow = unit(patch.snow + precipitation);
+  const precipitation = conditions.rain || conditions.snow ? conditions.precipitation * 0.09 * days : 0;
+  if (conditions.snow || temperature < 0) patch.snow = unit(patch.snow + precipitation);
   const melt = Math.min(patch.snow, Math.max(0, temperature) * 0.007 * days);
   patch.snow -= melt;
-  const infiltration = weather.snow || temperature < 0 ? 0 : precipitation;
+  const infiltration = conditions.snow || temperature < 0 ? 0 : precipitation;
   const drainage = Math.max(0, patch.water - patch.habitat.moisture) * (1 - Math.exp(-0.12 * days));
   const groundwater = Math.max(0, patch.habitat.moisture - patch.water) * (1 - Math.exp(-(wet ? 0.2 : 0.02) * days));
-  const evaporation = Math.max(0, temperature + 3) * 0.00055 * days * (0.6 + weather.wind * 0.4);
+  const evaporation = Math.max(0, temperature + 3) * 0.00055 * days * (0.6 + conditions.wind * 0.4);
   patch.water = unit(patch.water + infiltration + melt + groundwater - drainage - evaporation);
   const canopy = canopyCover(patch), cover = plantCover(patch), space = Math.max(0, 1 - cover);
   let grown = 0, lost = 0, nitrogen = 0;
@@ -121,8 +124,8 @@ export function evolvePatch(patch: VegetationPatch, weather: PlantWeather): void
     const coldStress = Math.max(0, s.model.coldLimitC - temperature) / 15 * (1 - patch.snow * 0.75);
     const heatStress = Math.max(0, temperature - 34) / 14;
     const senescence = Math.pow(c.adultAge / Math.max(1, s.model.lifespanYears), 3) / s.model.lifespanYears;
-    const windDamage = s.facts.layer === 'canopy' && weather.rain
-      ? Math.max(0, weather.wind - 0.7) * (s.id === 'picea_abies' ? 0.7 : 0.25) : 0;
+    const windDamage = s.facts.layer === 'canopy' && conditions.rain
+      ? Math.max(0, conditions.wind - 0.7) * (s.id === 'picea_abies' ? 0.7 : 0.25) : 0;
     const mortality = 1 - Math.exp(-(waterStress * 0.65 + coldStress * 2 + heatStress * 1.2 + windDamage + senescence + 0.004) * years);
     const died = c.adult * mortality + c.juvenile * Math.min(1, mortality * 1.8);
     c.adult *= 1 - mortality; c.juvenile *= 1 - Math.min(1, mortality * 1.8);
@@ -201,9 +204,10 @@ export function disperseSeeds(patches: Record<string, VegetationPatch>, edges: r
       const s = PLANT_BY_ID.get(c.speciesId);
       if (!s || c.adult < 0.00001 || c.seeds < 0.00001 || edge.meters > s.model.dispersalMeters) continue;
       const vectors = s.facts.dispersal;
-      const wind = vectors.includes('wind') ? weather.wind : 0;
+      const conditions = weather.local?.[from.habitat.id] ?? weather;
+      const wind = vectors.includes('wind') ? conditions.wind : 0;
       const animal = vectors.includes('animal') && from.habitat.seedCarriers ? 0.4 : 0;
-      const water = vectors.includes('water') && edge.waterConnected && weather.rain ? 0.6 : 0;
+      const water = vectors.includes('water') && edge.waterConnected && conditions.rain ? 0.6 : 0;
       const local = vectors.includes('local') && edge.meters <= 3 ? 0.3 : 0;
       const amount = c.seeds * Math.max(wind, animal, water, local) * Math.exp(-3 * edge.meters / s.model.dispersalMeters) * years * 0.2;
       if (amount > 0) {

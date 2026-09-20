@@ -81,6 +81,13 @@ function weatherFromRolls(world: Readonly<WeatherModelInput>, atWorldMinute: num
   const precipitation = clamp01(wet * (0.9 + volatility * 0.35));
   const wind = clamp01(windRoll * (0.78 + volatility * 0.5));
 
+  return weatherFromConditions(volatility, temperatureC, precipitation, wind);
+}
+
+/** Shared physical effects for the legacy reference and every local forecast. */
+export function weatherFromConditions(volatility: number, temperatureC: number,
+  precipitation: number, wind: number): WorldWeatherV21 {
+
   let kind: WorldWeatherKindV21;
   if (precipitation > 0.79 - volatility * 0.12 && wind > 0.62) {
     kind = temperatureC <= 1 ? 'snow' : 'storm';

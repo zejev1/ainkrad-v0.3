@@ -2,6 +2,7 @@ import { buildingPolygon, buildingSize } from '../world/BuildingFootprints';
 import type { WorldPlace,WorldPoint2D,WorldState } from '../world/types';
 import { MapSpatialIndex,MapTileCache,boundsOf,type SpatialItem } from './MapSpatialIndex';
 import type { WorldMapCamera } from './WorldMapCamera';
+import { coastalLandmark } from './CoastalLandmark';
 
 export type AtlasLevel='world'|'region'|'settlement'|'street'|'building';
 export const atlasLevel=(scale:number):AtlasLevel=>scale<.04?'world':scale<6?'region':scale<90?'settlement':scale<650?'street':'building';
@@ -17,10 +18,10 @@ export class WorldAtlasIndex {
   update(world:Readonly<WorldState>):void {
     const key=world.id+':'+(world.epoch??1)+':'+(world.geography?.revision??JSON.stringify(Object.values(world.places).map(p=>[p.id,p.mapX,p.mapY])));
     if(key===this.key)return;this.key=key;this.revision++;this.tiles.clear();
-    const areas:AtlasArea[]=[],places:AtlasPlace[]=[];
+    const areas:AtlasArea[]=[],places:AtlasPlace[]=[],coast=coastalLandmark(world);
     for(const p of Object.values(world.places)) {
       const polygon=buildingSize(p).width?buildingPolygon(p):[{x:p.mapX,y:p.mapY}];
-      places.push({id:p.id,placeId:p.id,...boundsOf(polygon)});
+      places.push({id:p.id,placeId:p.id,...(p.id==='rulid_shore'&&coast?coast.bounds:boundsOf(polygon))});
       if(p.boundaryPolygon?.length)areas.push({id:p.id+':land',kind:p.surface==='water'?'water':p.kind,polygon:p.boundaryPolygon,...boundsOf(p.boundaryPolygon)});
       if(p.waterPolygon?.length)areas.push({id:p.id+':water',kind:'water',polygon:p.waterPolygon,...boundsOf(p.waterPolygon)});
     }

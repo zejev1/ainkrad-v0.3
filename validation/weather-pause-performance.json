@@ -1,0 +1,97 @@
+{
+  "baselineCommit": "360ae7101e69cd39529e3af409f1b47d160ad197",
+  "worldMinutes": 525600,
+  "environment": "Node v24.19.0; local in-memory store; not physical Android",
+  "exactCardinalOnOffWorldEventsMemoriesEquality": true,
+  "exactSaveReloadEquality": true,
+  "physicsNote": "Regional climate is a user-authorized simulation change. Equality to old ecology is not claimed; the canonical opportunity schedule and Spark implementations are unchanged.",
+  "measurements": [
+    {
+      "name": "accepted_vegetation_f12",
+      "medianMs": 803.5394429999997,
+      "medianCpuMs": 930.958,
+      "runs": [
+        {
+          "ms": 861.9841659999997,
+          "cpuMs": 1279.109,
+          "heapDelta": -43124448
+        },
+        {
+          "ms": 843.1965449999998,
+          "cpuMs": 1064.075,
+          "heapDelta": -478760
+        },
+        {
+          "ms": 776.2353080000003,
+          "cpuMs": 930.958,
+          "heapDelta": 52373656
+        },
+        {
+          "ms": 776.5365180000008,
+          "cpuMs": 870.582,
+          "heapDelta": 45433608
+        },
+        {
+          "ms": 803.5394429999997,
+          "cpuMs": 926.001,
+          "heapDelta": 42499520
+        }
+      ],
+      "outcomes": {
+        "living": 30,
+        "residents": 30,
+        "births": 0,
+        "deaths": 0,
+        "actionEvents": 1849,
+        "explorationEvents": 65,
+        "memories": 195,
+        "stateBytes": 982757,
+        "vegetationBytes": 27803
+      }
+    },
+    {
+      "name": "regional_weather_and_pause",
+      "medianMs": 785.4256029999997,
+      "medianCpuMs": 928.992,
+      "runs": [
+        {
+          "ms": 1033.9185619999998,
+          "cpuMs": 1352.617,
+          "heapDelta": 30804024
+        },
+        {
+          "ms": 952.014752,
+          "cpuMs": 1145.25,
+          "heapDelta": 67018840
+        },
+        {
+          "ms": 772.6194620000006,
+          "cpuMs": 928.992,
+          "heapDelta": -4595944
+        },
+        {
+          "ms": 785.4256029999997,
+          "cpuMs": 918.517,
+          "heapDelta": -7335096
+        },
+        {
+          "ms": 775.8622790000009,
+          "cpuMs": 877.445,
+          "heapDelta": 48731376
+        }
+      ],
+      "outcomes": {
+        "living": 30,
+        "residents": 30,
+        "births": 0,
+        "deaths": 0,
+        "actionEvents": 1849,
+        "explorationEvents": 65,
+        "memories": 195,
+        "stateBytes": 981904,
+        "vegetationBytes": 26946
+      }
+    }
+  ],
+  "memoryNote": "Heap deltas include GC noise. Persistent vegetation is bounded by physical sites × catalog species; no per-render history or full per-tree population."
+}

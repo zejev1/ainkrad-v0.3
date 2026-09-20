@@ -2,6 +2,7 @@ import type { WorldState } from '../types';
 import type { CardinalSystemAgent, CardinalSystemCommand, SystemAgentLifecycle, SystemAgentManifest } from '../../cardinal/SystemAgentContracts';
 import { SystemAgentOrchestrator } from './SystemAgentRegistry';
 import { createCachedWeatherModelV21, type WeatherModelInput, type WorldWeatherV21 } from '../../v21/WeatherModelV21';
+import { createRegionalWeatherProjector, type WeatherSite } from '../../v21/RegionalWeatherV21';
 
 export interface WeatherSystemState {
   version: 1;
@@ -15,7 +16,7 @@ export interface WeatherSystemState {
 
 export const WEATHER_AGENT_MANIFEST: SystemAgentManifest = Object.freeze({
   id: 'weather-system', version: '1', domain: 'weather', infrastructureOnly: true,
-  description: 'Autonomous weather using the preserved F2 model, with local fallback.',
+  description: 'Autonomous regional weather, preserved global reference and local fallback.',
   capabilities: Object.freeze([Object.freeze({
     id: 'weather.state.write', domain: 'weather' as const,
     readScopes: Object.freeze(['weather.inputs']),
@@ -47,6 +48,8 @@ export class WeatherSystemAgent implements CardinalSystemAgent {
   private cached?: Readonly<WorldWeatherV21>;
   private readonly samples = new Map<number, Readonly<WorldWeatherV21>>();
   private readonly originalModel = createCachedWeatherModelV21();
+  private readonly regional = createRegionalWeatherProjector();
+  private readonly localSamples = new Map<string, { input: Readonly<WeatherModelInput>; minute: number; site: Readonly<WeatherSite>; weather: Readonly<WorldWeatherV21> }>();
 
   constructor(saved?: WeatherSystemState, private readonly model?: WeatherModel) {
     this.state = saved?.version === 1 && lifecycles.includes(saved.lifecycle)
@@ -65,6 +68,19 @@ export class WeatherSystemAgent implements CardinalSystemAgent {
   }
 
   snapshot(): WeatherSystemState { return structuredClone(this.state); }
+
+  sampleAt(input: Readonly<WeatherModelInput>, minute: number, site: Readonly<WeatherSite>): Readonly<WorldWeatherV21> {
+    const key = `${site.x}:${site.y}`;
+    const previous = this.localSamples.get(key);
+    if (previous && previous.minute === minute && previous.input.id === input.id && previous.input.epoch === input.epoch
+      && previous.input.volatility === input.volatility && previous.site.elevationM === site.elevationM
+      && previous.site.moisture === site.moisture && previous.site.maritime === site.maritime
+      && previous.site.upwindElevationM === site.upwindElevationM) return previous.weather;
+    const weather = this.regional(input, minute, site, this.sample(input, minute));
+    if (this.localSamples.size >= 256) this.localSamples.delete(this.localSamples.keys().next().value!);
+    this.localSamples.set(key, { input: { ...input }, minute, site: { ...site }, weather });
+    return weather;
+  }
 
   sample(input: Readonly<WeatherModelInput>, minute: number): Readonly<WorldWeatherV21> {
     if (!input.id || !Number.isFinite(input.epoch) || !Number.isFinite(input.volatility)
@@ -125,6 +141,7 @@ export class WeatherSystemAgent implements CardinalSystemAgent {
     this.cachedMinute = undefined;
     this.cached = undefined;
     this.samples.clear();
+    this.localSamples.clear();
   }
 }
 

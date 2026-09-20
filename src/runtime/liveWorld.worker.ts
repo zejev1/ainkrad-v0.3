@@ -40,7 +40,7 @@ const DIVINE_AUDIENCE_CHANNEL_NAME = 'ainkrad-v0-3-divine-audience';
 const STORAGE_CHECK_INTERVAL_TICKS = 300;
 const AINKRAD_STORAGE_SOFT_BUDGET_BYTES = 2 * 1024 * 1024 * 1024;
 const AINKRAD_STORAGE_CRITICAL_BUDGET_BYTES = 4 * 1024 * 1024 * 1024;
-const FRAME_PROTOCOL_VERSION = 'ainkrad-live-frame-0.3.21-hotfix.10.4';
+const FRAME_PROTOCOL_VERSION = 'ainkrad-live-frame-0.3.22-f13';
 const COMPATIBLE_FRAME_PROTOCOLS = new Set([FRAME_PROTOCOL_VERSION]);
 
 // Test disturbances never run automatically in the persistent live world.
@@ -87,6 +87,7 @@ type LiveWorldWorkerPayload =
       worldEpoch: number;
       currentWorldMinutes: number;
       discarded: boolean;
+      paused?: boolean;
     }
   | {
       type: 'fatal';
@@ -178,6 +179,7 @@ let appliedClockRevision = 0;
 let pendingWorldReset = false;
 let pendingOfflineCatchUp: OfflineClockCatchUpMessage | undefined;
 let divineAudiencePaused = false;
+let worldPaused = false;
 let catchUpBatchQuanta = INITIAL_RAPID_CATCH_UP_BATCH_QUANTA;
 let catchUpBatchCeiling = MAX_RAPID_CATCH_UP_BATCH_QUANTA;
 let appliedSpeedId: WorldSpeedId = DEFAULT_WORLD_SPEED_ID;
@@ -247,7 +249,7 @@ function publishCatchUpRecovery(
 }
 
 function applyDivineAudiencePause(message: DivineAudiencePauseCommand): void {
-  if (!divineAudiencePaused && activeRuntime && !pendingOfflineCatchUp) {
+  if (!divineAudiencePaused && !worldPaused && activeRuntime && !pendingOfflineCatchUp) {
     activeRuntime.enqueueLiveElapsed(liveWallClock.sample(performance.now()));
   }
   liveWallClock.reset(performance.now());
@@ -533,10 +535,12 @@ async function runForever(): Promise<void> {
       }
       const command = clockCommands.take();
       if (command) {
-        if (!command.discardPending && !divineAudiencePaused && !pendingOfflineCatchUp) {
+        if (!command.discardPending && !worldPaused && !divineAudiencePaused && !pendingOfflineCatchUp) {
           runtime.enqueueLiveElapsed(liveWallClock.sample(performance.now()));
         }
         runtime.setWorldSpeed(command.speedId, command.multiplier);
+        worldPaused = command.paused === true;
+        runtime.setWorldPaused(worldPaused);
         appliedSpeedId = command.speedId;
         if (command.discardPending) {
           pendingOfflineCatchUp = undefined;
@@ -551,15 +555,15 @@ async function runForever(): Promise<void> {
         const position = runtime.worldContinuityPosition();
         const acknowledgement = { type: 'clock_applied', protocolVersion: FRAME_PROTOCOL_VERSION, clockRevision: appliedClockRevision, speedId: command.speedId, multiplier: command.multiplier,
           worldEpoch: position.worldEpoch, currentWorldMinutes: position.elapsedWorldMinutes,
-          discarded: command.discardPending ?? false } as const;
+          discarded: command.discardPending ?? false, paused: worldPaused } as const;
         workerScope.postMessage(acknowledgement);
         frameChannel.postMessage(acknowledgement);
+        if (worldPaused) {
+          const frozen = { type: 'frame', protocolVersion: FRAME_PROTOCOL_VERSION,
+            clockRevision: appliedClockRevision, frame: await runtime.tick(0) } as const;
+          workerScope.postMessage(frozen); frameChannel.postMessage(frozen);
+        }
         lastFramePostedAt = -Infinity;
-      }
-      if (divineAudiencePaused) {
-        liveWallClock.reset(performance.now());
-        await sleep(100);
-        continue;
       }
       if (pendingWorldReset) {
         pendingWorldReset = false;
@@ -570,6 +574,16 @@ async function runForever(): Promise<void> {
         catchUpFailureCount = 0;
         await runtime.resetWorld();
         liveWallClock.reset(performance.now());
+        if (worldPaused) {
+          const resetFrame = { type: 'frame', protocolVersion: FRAME_PROTOCOL_VERSION,
+            clockRevision: appliedClockRevision, frame: await runtime.tick(0) } as const;
+          workerScope.postMessage(resetFrame); frameChannel.postMessage(resetFrame);
+        }
+      }
+      if (divineAudiencePaused || worldPaused) {
+        liveWallClock.reset(performance.now());
+        await sleep(100);
+        continue;
       }
       const beforeFrame = runtime.worldContinuityPosition();
       let completedCatchUpThisLoop = false;

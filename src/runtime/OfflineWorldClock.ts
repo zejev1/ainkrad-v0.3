@@ -21,6 +21,7 @@ export interface OfflineWorldClockAnchor {
   targetWorldMinutes?: number;
   catchingUp?: boolean;
   cancelPending?: boolean;
+  paused?: boolean;
   backgroundMode?: 'real_time' | 'selected';
 }
 
@@ -68,6 +69,7 @@ export function makeOfflineWorldClockAnchor(input: {
   targetWorldMinutes?: number;
   catchingUp?: boolean;
   cancelPending?: boolean;
+  paused?: boolean;
   backgroundMode?: 'real_time' | 'selected';
 }): OfflineWorldClockAnchor {
   if (
@@ -110,7 +112,7 @@ export function offlineWorldMinuteTarget(input: {
     return undefined;
   }
   // A cancellation intent survives a reload before the worker acknowledgement.
-  if (anchor.cancelPending) return input.currentWorldMinutes;
+  if (anchor.cancelPending || anchor.paused) return input.currentWorldMinutes;
   const base = Math.max(anchor.worldMinutes, anchor.targetWorldMinutes ?? 0);
   // Never add time spent calculating the same offline interval to its target.
   if (anchor.catchingUp) return Math.max(input.currentWorldMinutes, base);
@@ -133,5 +135,6 @@ function validAnchorExtras(value: Partial<OfflineWorldClockAnchor>): boolean {
     (value.targetWorldMinutes === undefined || (Number.isFinite(value.targetWorldMinutes) && value.targetWorldMinutes >= 0)) &&
     (value.catchingUp === undefined || typeof value.catchingUp === 'boolean') &&
     (value.cancelPending === undefined || typeof value.cancelPending === 'boolean') &&
+    (value.paused === undefined || typeof value.paused === 'boolean') &&
     (value.backgroundMode === undefined || value.backgroundMode === 'real_time' || value.backgroundMode === 'selected');
 }

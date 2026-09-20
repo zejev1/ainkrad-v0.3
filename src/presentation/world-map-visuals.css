@@ -32,38 +32,19 @@
 .map-distance b { display: block; margin-top: 4px; font-weight: 500; }
 
 
-/* Rulid's persisted shore is a civic landmark, not generic map clutter.
-   In town/street view it must remain visible even when normal place labels
-   are hidden for performance/decluttering. */
+/* The waterfront is measured in world metres and aligned to the real coast.
+   Its saved inland access point is connected by the short approach. */
 .world-map:not([data-detail="region"]) .map-place.is-persistent-landmark {
   z-index: 1850 !important;
 }
-.world-map:not([data-detail="region"]) .map-place.is-persistent-landmark .place-building {
-  width: 38px;
-  height: 32px;
-  cursor: pointer;
-  pointer-events: auto;
+.world-map .map-place.is-coastal-geometry .place-building {
+  transform: translate(calc(-50% + var(--coastal-shift-x)), calc(-50% + var(--coastal-shift-y)));
 }
-.world-map:not([data-detail="region"]) .map-place.is-persistent-landmark .place-label {
-  display: block !important;
-  position: absolute;
-  top: 50%;
-  right: 28px;
-  left: auto;
-  width: max-content;
-  max-width: 150px;
-  margin: 0;
-  padding: 4px 7px;
-  transform: translateY(-50%);
+.world-map .map-place.is-persistent-landmark .place-label {
   border: 1px solid rgba(203, 239, 235, 0.38);
   border-radius: 7px;
   background: rgba(12, 48, 54, 0.92);
   color: #effffc;
-  font-size: 0.62rem;
-  font-weight: 850;
-  line-height: 1.1;
-  white-space: nowrap;
-  pointer-events: auto;
 }
 .world-map:not([data-detail="region"]) .map-place.is-persistent-landmark .place-art {
   overflow: visible;

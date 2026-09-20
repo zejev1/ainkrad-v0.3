@@ -23,11 +23,15 @@ export function checkRelease(base) {
 }
 export function releaseMetadata() {
   const pkg = checkRelease();
-  let commit = process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || '', dirty = false;
-  try { commit ||= git(['rev-parse', 'HEAD']); dirty = Boolean(git(['status', '--porcelain', '--untracked-files=normal'])); } catch {}
+  let commit = process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || '', dirty = false, dirtyFiles = [];
+  try {
+    commit ||= git(['rev-parse', 'HEAD']);
+    dirtyFiles = git(['status', '--porcelain', '--untracked-files=all']).split('\n').filter(Boolean);
+    dirty = dirtyFiles.length > 0;
+  } catch {}
   if (commit && !/^[a-f0-9]{40}$/.test(commit)) throw new Error('Invalid release commit');
   return { version: pkg.version.replace('-f', '.f'), build: pkg.ainkrad.build,
-    commit: commit || 'unversioned', dirty, builtAt: new Date().toISOString() };
+    commit: commit || 'unversioned', dirty, dirtyFiles, builtAt: new Date().toISOString() };
 }
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const command = process.argv[2];

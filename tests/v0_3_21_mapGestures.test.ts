@@ -8,6 +8,7 @@ class TouchSurface {
   listeners=new Map<string,((event:any)=>void)[]>();
   getBoundingClientRect(){this.reads++;return {left:0,top:0,width:390,height:600};}
   setAttribute(){}
+  contains(){return true;}
   addEventListener(type:string,fn:(event:any)=>void){this.listeners.set(type,[...(this.listeners.get(type)??[]),fn]);}
   hasPointerCapture(id:number){return this.captures.has(id);}
   setPointerCapture(id:number){this.captures.add(id);this.event('lostpointercapture',id,0,0,this.child);}
@@ -16,6 +17,17 @@ class TouchSurface {
   }
 }
 describe('mobile camera input',()=>{
+  it('forwards a captured tap once to the original button, but never a drag or cancelled touch',()=>{
+    const surface=new TouchSurface(),camera=new WorldMapCamera();let activated=0;
+    const button={isConnected:true,click(){activated++;}},label={closest:()=>button};
+    installWorldMapGestures(surface as unknown as HTMLElement,camera,()=>{});
+    surface.event('pointerdown',1,100,200,label);surface.event('pointerup',1,100,200);
+    surface.event('click',1,100,200);surface.event('click',1,100,200);expect(activated).toBe(1);
+    surface.event('pointerdown',2,100,200,label);surface.event('pointermove',2,160,200);
+    surface.event('pointerup',2,160,200);surface.event('click',2,160,200);expect(activated).toBe(1);
+    surface.event('pointerdown',3,100,200,label);surface.event('pointercancel',3,100,200);
+    surface.event('click',3,100,200);expect(activated).toBe(1);
+  });
   it('keeps dragging after Android implicit child capture is transferred to the map',()=>{
     const surface=new TouchSurface(),camera=new WorldMapCamera(),phases:string[]=[];
     installWorldMapGestures(surface as unknown as HTMLElement,camera,p=>phases.push(p));

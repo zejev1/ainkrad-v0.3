@@ -2,6 +2,8 @@ import type { WorldState, WorldPlace } from '../types';
 import type { CardinalSystemCommand } from '../../cardinal/SystemAgentContracts';
 import { bindWorldTerrain } from '../geography/WorldTerrain';
 import { weatherRuntimeFor } from './WeatherSystemAgent';
+import { weatherSiteAt } from '../../v21/WeatherV21';
+import type { WeatherSite } from '../../v21/RegionalWeatherV21';
 import { nearestRiverPoint } from '../geography/RiverCourses';
 import { VegetationSystemAgent, type LandResourceInput } from './VegetationSystemAgent';
 import { DAY, unit, buildSeedEdges, type SeedEdge, type PlantHabitat, type PlantWeather } from './plants/VegetationModel';
@@ -17,6 +19,7 @@ export class VegetationWorldAdapter {
   private agent?: VegetationSystemAgent;
   private terrainKey?: string;
   private habitats: PlantHabitat[] = [];
+  private weatherSites = new Map<string, Readonly<WeatherSite>>();
   private edges: SeedEdge[] = [];
   private signatures = new Map<string, { x: number; y: number; kind: string; biome: string; surface: string; region?: string; carriers: boolean }>();
 
@@ -55,6 +58,7 @@ export class VegetationWorldAdapter {
           soilPh: kind === 'woodland' ? 5.6 : kind === 'rock' ? 5.2 : kind === 'wetland' ? 6.2 : 6.6,
           kind, marine: sample?.biome === 'ocean', seedCarriers: carriers.has(p.id), watercourse: reach?.id };
       });
+      this.weatherSites = new Map(this.habitats.map(h => [h.id, weatherSiteAt(world, h.x, h.y)]));
     }
     const landPassage = (a: PlantHabitat, b: PlantHabitat) => {
       if (!terrain) return true;
@@ -74,8 +78,14 @@ export class VegetationWorldAdapter {
     for (let minute = state.lastMinute; minute < to;) {
       const end = Math.min(to, (Math.floor(minute / DAY) + 1) * DAY);
       const weather = weatherAgent.sample(input, minute + (end - minute) / 2);
+      const local: Record<string, NonNullable<PlantWeather['local']>[string]> = {};
+      for (const habitat of this.habitats) {
+        const w = weatherAgent.sampleAt(input, minute + (end - minute) / 2, this.weatherSites.get(habitat.id)!);
+        local[habitat.id] = { temperatureC: w.temperatureC, precipitation: w.precipitation,
+          rain: w.kind === 'rain' || w.kind === 'storm', snow: w.kind === 'snow', wind: w.wind };
+      }
       slices.push({ minute, duration: end - minute, temperatureC: weather.temperatureC, precipitation: weather.precipitation,
-        rain: weather.kind === 'rain' || weather.kind === 'storm', snow: weather.kind === 'snow', wind: weather.wind });
+        rain: weather.kind === 'rain' || weather.kind === 'storm', snow: weather.kind === 'snow', wind: weather.wind, local });
       minute = end;
     }
     const result = agent.advance(slices, resources, to);

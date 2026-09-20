@@ -7,6 +7,7 @@ export interface ExternalClockCommand {
   multiplier: WorldSpeedMultiplier;
   clockRevision: number;
   discardPending?: boolean;
+  paused?: boolean;
 }
 
 /** Only the external worker console owns this mailbox. Commands are applied
@@ -15,13 +16,15 @@ export class ExternalClockCommands {
   private pending?: ExternalClockCommand;
   private latestRevision = -1;
   private appliedRate?: number;
+  private appliedPaused = false;
 
   get revision(): number { return Math.max(0, this.latestRevision); }
 
   enqueue(command: ExternalClockCommand): boolean {
     if (!isWorldSpeedId(command.speedId) || !isWorldSpeedMultiplier(command.multiplier) ||
         !Number.isSafeInteger(command.clockRevision) || command.clockRevision < 0 ||
-        (command.discardPending !== undefined && typeof command.discardPending !== 'boolean')) {
+        (command.discardPending !== undefined && typeof command.discardPending !== 'boolean') ||
+        (command.paused !== undefined && typeof command.paused !== 'boolean')) {
       throw new Error('Rejected malformed external clock control.');
     }
     if (command.clockRevision <= this.latestRevision) return false;
@@ -29,7 +32,8 @@ export class ExternalClockCommands {
     const rate = worldMinutesPerTick(normalized.speedId, normalized.multiplier);
     const priorRate = this.pending
       ? worldMinutesPerTick(this.pending.speedId, this.pending.multiplier) : this.appliedRate;
-    this.pending = { ...command, ...normalized, discardPending: Boolean(command.discardPending ||
+    const paused = command.paused ?? this.pending?.paused ?? this.appliedPaused;
+    this.pending = { ...command, ...normalized, paused, discardPending: Boolean(paused || this.appliedPaused || command.discardPending ||
       this.pending?.discardPending || (priorRate !== undefined && rate < priorRate)) };
     this.latestRevision = command.clockRevision;
     return true;
@@ -39,10 +43,11 @@ export class ExternalClockCommands {
     const command = this.pending;
     this.pending = undefined;
     if (command) this.appliedRate = worldMinutesPerTick(command.speedId, command.multiplier);
+    if (command) this.appliedPaused = command.paused === true;
     return command;
   }
 
   acceptsTarget(revision: number): boolean {
-    return Number.isSafeInteger(revision) && revision === this.revision && !this.pending?.discardPending;
+    return Number.isSafeInteger(revision) && revision === this.revision && !this.pending?.discardPending && !this.appliedPaused && !this.pending?.paused;
   }
 }
