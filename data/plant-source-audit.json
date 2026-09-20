@@ -1,0 +1,130 @@
+{
+  "catalogVersion": "temperate-eurasia-2026-09-20",
+  "note": "Sources substantiate ecological facts; model calibration is not measured field data. Raw documents are not redistributed.",
+  "sources": [
+    {
+      "speciesId": "pinus_sylvestris",
+      "url": "https://www.euforgen.org/species/pinus-sylvestris",
+      "reviewed": "2026-09-20",
+      "status": "verified",
+      "sha256": "213f25d9a4ef4ecf976d4a9d1c23b0795e677ec60fe6b72cdeb219f310b06c69",
+      "changedSincePreviousFetch": false,
+      "checkedAt": "2026-09-20T23:03:46.533540+00:00",
+      "bytes": 73872
+    },
+    {
+      "speciesId": "betula_pendula",
+      "url": "https://www.euforgen.org/species/betula-pendula",
+      "reviewed": "2026-09-20",
+      "status": "verified",
+      "sha256": "c923c9bab446bbe1e0006acf3a9df62e35ff0b2b9de6ab1c1605771bec11f4d7",
+      "changedSincePreviousFetch": false,
+      "checkedAt": "2026-09-20T23:03:46.167762+00:00",
+      "bytes": 69022
+    },
+    {
+      "speciesId": "quercus_robur",
+      "url": "https://www.euforgen.org/species/quercus-robur",
+      "reviewed": "2026-09-20",
+      "status": "verified",
+      "sha256": "a14c98ee73a5d49a0abb6ed09b4f5800d1d08d4fee9fd46da1c87bb502efa147",
+      "changedSincePreviousFetch": false,
+      "checkedAt": "2026-09-20T23:03:46.505387+00:00",
+      "bytes": 71223
+    },
+    {
+      "speciesId": "picea_abies",
+      "url": "https://www.euforgen.org/species/picea-abies",
+      "reviewed": "2026-09-20",
+      "status": "verified",
+      "sha256": "72109b85914524bee9db0125e8a9e89d5f3261352893867050583afe6c84131d",
+      "changedSincePreviousFetch": false,
+      "checkedAt": "2026-09-20T23:03:46.344158+00:00",
+      "bytes": 75182
+    },
+    {
+      "speciesId": "alnus_glutinosa",
+      "url": "https://www.euforgen.org/species/alnus-glutinosa",
+      "reviewed": "2026-09-20",
+      "status": "verified",
+      "sha256": "8d769c9e7ae920a959cc3ce0db82ab8467513e2f066ed3660b3d0aee2c00c236",
+      "changedSincePreviousFetch": false,
+      "checkedAt": "2026-09-20T23:03:53.677901+00:00",
+      "bytes": 66824
+    },
+    {
+      "speciesId": "fagus_sylvatica",
+      "url": "https://www.euforgen.org/species/fagus-sylvatica",
+      "reviewed": "2026-09-20",
+      "status": "verified",
+      "sha256": "86633152fb3c6aa7d2d634d1020b9081da47a0873dbb72ecd47c29b887bdae7c",
+      "changedSincePreviousFetch": false,
+      "checkedAt": "2026-09-20T23:03:53.975291+00:00",
+      "bytes": 70883
+    },
+    {
+      "speciesId": "salix_alba",
+      "url": "https://www.euforgen.org/species/salix-alba",
+      "reviewed": "2026-09-20",
+      "status": "verified",
+      "sha256": "a9c18c3d536dfdf9a704e1ffb911cfb640ba859b5093e6fcc1eac77db0562a39",
+      "changedSincePreviousFetch": false,
+      "checkedAt": "2026-09-20T23:03:54.106352+00:00",
+      "bytes": 59339
+    },
+    {
+      "speciesId": "poa_pratensis",
+      "url": "https://plants.usda.gov/DocumentLibrary/plantguide/pdf/pg_popr.pdf",
+      "reviewed": "2026-09-20",
+      "status": "verified",
+      "sha256": "cc76ebae8c78e7dc89d2378f163e4f6e83c562c721111df59ab29474919f7f56",
+      "changedSincePreviousFetch": false,
+      "checkedAt": "2026-09-20T23:04:01.424402+00:00",
+      "bytes": 134746
+    },
+    {
+      "speciesId": "trifolium_repens",
+      "url": "https://plants.usda.gov/DocumentLibrary/plantguide/pdf/pg_trre3.pdf",
+      "reviewed": "2026-09-20",
+      "status": "verified",
+      "sha256": "c2af95e7611cbec304fae7b27bca1d4df7ba2f04f496411f66ac0f0f879a4f86",
+      "changedSincePreviousFetch": false,
+      "checkedAt": "2026-09-20T23:04:07.894891+00:00",
+      "bytes": 319185
+    },
+    {
+      "speciesId": "phragmites_australis",
+      "url": "https://plants.usda.gov/DocumentLibrary/plantguide/pdf/pg_phau7.pdf",
+      "reviewed": "2026-09-20",
+      "status": "verified",
+      "sha256": "43252871febe6f72ae0518c18335e953176a7bc1c134ac839f08fe74cae60c29",
+      "changedSincePreviousFetch": false,
+      "checkedAt": "2026-09-20T23:04:07.945376+00:00",
+      "bytes": 321616
+    },
+    {
+      "speciesId": "typha_latifolia",
+      "url": "https://plants.usda.gov/DocumentLibrary/plantguide/pdf/pg_tyla.pdf",
+      "reviewed": "2026-09-20",
+      "status": "verified",
+      "sha256": "66c2ba8b8a721e1a34c6e745bfb200171712cb7f6851c7e9b4a82b95fd48bf04",
+      "changedSincePreviousFetch": false,
+      "checkedAt": "2026-09-20T23:04:07.875937+00:00",
+      "bytes": 170912
+    },
+    {
+      "speciesId": "fragaria_vesca",
+      "url": "https://www.woodlandtrust.org.uk/trees-woods-and-wildlife/plants/wild-flowers/wild-strawberry/",
+      "reviewed": "2026-09-20",
+      "status": "unavailable",
+      "error": "HTTP Error 403: Forbidden"
+    },
+    {
+      "speciesId": "pteridium_aquilinum",
+      "url": "https://www.woodlandtrust.org.uk/trees-woods-and-wildlife/plants/ferns/bracken/",
+      "reviewed": "2026-09-20",
+      "status": "unavailable",
+      "error": "HTTP Error 403: Forbidden"
+    }
+  ]
+}

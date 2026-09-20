@@ -1,3 +1,4 @@
+import { cloneWorldState } from '../world/cloneWorldState';
 import {CardinalOceanArchitect} from '../cardinal/CardinalOceanArchitect';
 import { CardinalSystemControl, type CardinalControlSnapshot } from './CardinalSystemControl';
 import {IndependentOceanFrontierGateway,oceanDecisionAllowed} from '../boundary/OceanFrontierGateway';
@@ -498,6 +499,7 @@ function buildWorldHealthForConsole(
  */
 export class LiveWorldRuntime {
   private systems!: CardinalSystemControl;
+  private vegetationControl!: CardinalSystemControl;
   private currentTechnicalTick: number;
   private displayedEvaluation?: CardinalEvaluation;
   private responsiveQuanta = 4;
@@ -634,6 +636,22 @@ export class LiveWorldRuntime {
       },
     });
     await runtime.systems.initialize();
+    runtime.vegetationControl = new CardinalSystemControl(worldId, runtime.systems.online, controlLog, {
+      observe: () => {
+        const state = world.runtimeStateView();
+        return { epoch: state.epoch ?? 1, revision: state.revision,
+          minute: state.calendar.elapsedWorldMinutes, weather: state.vegetationSystem };
+      },
+      restore: (command, requestId, revision) => {
+        if (!runtime.systems.online || !runtime.vegetationControl.online || command.kind !== 'restore'
+          || world.runtimeStateView().calendar.elapsedWorldMinutes < 200 * WORLD_MINUTES_PER_YEAR) {
+          throw new Error('Vegetation recovery is not authorized before year 200 or while Cardinal is detached');
+        }
+        return world.controlVegetationSystem(command, requestId, revision);
+      },
+    }, { id: 'vegetation', minimumMinute: 200 * WORLD_MINUTES_PER_YEAR });
+    await runtime.vegetationControl.initialize();
+    if (runtime.vegetationControl.online !== runtime.systems.online) await runtime.vegetationControl.setEnabled(runtime.systems.online);
     runtime.displayedEvaluation = [...allEvaluations].sort((a,b) =>
       (b.experience?.totalExperience ?? 0) - (a.experience?.totalExperience ?? 0))[0];
     return runtime;
@@ -642,6 +660,7 @@ export class LiveWorldRuntime {
   async synchronize(): Promise<void> {
     await this.world.reload();
     await this.systems.initialize();
+    await this.vegetationControl.initialize();
     this.currentTechnicalTick = Math.max(
       this.currentTechnicalTick,
       this.world.snapshot().now,
@@ -683,10 +702,12 @@ export class LiveWorldRuntime {
 
   async setCardinalEnabled(enabled: boolean): Promise<void> {
     await this.systems.setEnabled(enabled);
+    await this.vegetationControl.setEnabled(this.systems.online);
     if (this.systems.online) await this.systems.service();
+    if (this.systems.online) await this.vegetationControl.service();
   }
 
-  disconnectCardinal(reason?: string): void { this.systems.disconnect(reason); }
+  disconnectCardinal(reason?: string): void { this.systems.disconnect(reason); this.vegetationControl.disconnect(reason); }
 
   private get cardinalMode(): CardinalMode {
     return this.systems.online ? (this.mode === 'observer' ? 'observer' : 'intervene') : 'off';
@@ -964,6 +985,8 @@ export class LiveWorldRuntime {
   private async runTick(overrideWorldMinutes: number | undefined, emitFrame: boolean): Promise<LiveWorldFrame | undefined> {
     const weatherRecovery = this.systems.service();
     if (weatherRecovery) await weatherRecovery;
+    const vegetationRecovery = this.systems.online ? this.vegetationControl.service() : undefined;
+    if (vegetationRecovery) await vegetationRecovery;
     const budgetToken = this.liveBudget.token;
     const tick = Math.max(
       this.currentTechnicalTick + 1,
@@ -1150,9 +1173,9 @@ export class LiveWorldRuntime {
       );
     }
 
-    return structuredClone({
+    return {
+      ...structuredClone({
       tick,
-      world: this.world.runtimeStateView(),
       metrics: observation.metrics,
       disturbances: dueDisturbances,
       evaluation: evaluation ?? this.displayedEvaluation,
@@ -1161,11 +1184,13 @@ export class LiveWorldRuntime {
       evaluationCount: this.evaluationCount,
       executedInterventionCount: this.executedInterventionCount,
       cardinalActivity: this.cardinalActivity,
-      cardinalControl: this.systems.snapshot(),
+      cardinalControl: { ...this.systems.snapshot(), vegetation: this.vegetationControl.snapshot() },
       clock,
       recentEvents,
       continuity: this.continuity,
-    });
+      }),
+      world: cloneWorldState(this.world.runtimeStateView()),
+    };
   }
 
   /**
@@ -1308,6 +1333,8 @@ export class LiveWorldRuntime {
   }> {
     const weatherRecovery = this.systems.service();
     if (weatherRecovery) await weatherRecovery;
+    const vegetationRecovery = this.systems.online ? this.vegetationControl.service() : undefined;
+    if (vegetationRecovery) await vegetationRecovery;
     semanticWorld = this.world.runtimeStateView();
     const mode = this.cardinalMode;
     if (mode === 'off') return {};

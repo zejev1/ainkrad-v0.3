@@ -1,18 +1,20 @@
 {
   "name": "ainkrad-v0-3",
-  "version": "0.3.22-f2",
+  "version": "0.3.22-f12",
   "private": true,
   "description": "Experimental autonomous world for developing and testing Cardinal.",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "npm run release:check && vite build",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run --minWorkers=1 --maxWorkers=1 --testTimeout=60000",
     "check": "npm run typecheck && npm run test",
     "audit:v16-demography": "tsx src/v16/runDemographicAcceptanceV16.ts",
     "audit:v18-offline": "tsx src/v18/runOfflineCatchUpBenchmarkV18.ts",
-    "demo": "tsx src/demo.ts"
+    "demo": "tsx src/demo.ts",
+    "release:fix": "node scripts/release.mjs fix",
+    "release:check": "node scripts/release.mjs check"
   },
   "engines": {
     "node": ">=22"
@@ -23,5 +25,8 @@
     "typescript": "5.8.3",
     "vitest": "3.1.1",
     "fake-indexeddb": "6.2.2"
+  },
+  "ainkrad": {
+    "build": 12
   }
 }

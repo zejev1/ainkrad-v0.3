@@ -1,3 +1,5 @@
+import { vegetationSections, renderVegetationStatus, appendPlantSources } from './presentation/VegetationPanel';
+import { RELEASE, RELEASE_LABEL } from './release';
 import { renderCardinalControl } from './presentation/CardinalControlPanel';
 import {TERRAIN_BOUNDS} from './world/geography/TerrainTypes';
 import { MapInteraction } from './presentation/MapInteraction';
@@ -368,7 +370,7 @@ app.innerHTML = `
   <div class="ainkrad-app">
     <header class="world-header">
       <div>
-        <p class="eyebrow">v0.3.22.f1</p>
+        <p class="eyebrow" id="release-version"></p>
         <h1 id="world-title">Мир · уровень 1</h1>
       </div>
 
@@ -389,7 +391,7 @@ app.innerHTML = `
       <span>Монстры <strong id="monster-value">0</strong></span>
       <span>Ресурсы <strong id="resource-value">—</strong></span>
       <span class="save-state">Состояние <strong id="save-value">Загрузка…</strong></span>
-      <details><summary>Системы мира</summary><p id="weather-agent-status">Агент погоды: запуск…</p></details>
+      <details><summary>Системы мира</summary><p id="weather-agent-status">Агент погоды: запуск…</p><p id="vegetation-agent-status">Агент почвы и растительности: запуск…</p></details>
       <details><summary>Данные сохранения</summary><pre id="world-storage-details" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre></details>
     </div>
 
@@ -856,6 +858,9 @@ const cardinalConsoleClose = requiredElement<HTMLButtonElement>(
 const cardinalConsoleContent = requiredElement<HTMLElement>(
   'cardinal-console-content',
 );
+const releaseLabel = requiredElement<HTMLElement>('release-version');
+releaseLabel.textContent = RELEASE_LABEL;
+releaseLabel.title = `Коммит ${RELEASE.commit}; ${RELEASE.builtAt}${RELEASE.dirty ? '; локальные изменения' : ''}`;
 const worldInspector = requiredElement<HTMLElement>('world-inspector');
 const worldInspectorClose = requiredElement<HTMLButtonElement>('world-inspector-close');
 const worldInspectorBadge = requiredElement<HTMLElement>('world-inspector-badge');
@@ -1206,7 +1211,8 @@ function inspectorReportForEntity(
 ): TruthfulInspectorReportV16 | undefined {
   if (entity.kind === 'resident') return inspectResidentV16(world, entity.id);
   if (entity.kind === 'wildlife') return inspectWildlifeV16(world, entity.id);
-  return inspectPlaceV16(world, entity.id);
+  const report = inspectPlaceV16(world, entity.id);
+  return report ? { ...report, sections: [...report.sections, ...vegetationSections(world, entity.id)] } : undefined;
 }
 
 function renderInspectorReport(report: TruthfulInspectorReportV16): void {
@@ -1235,6 +1241,7 @@ function renderInspectorReport(report: TruthfulInspectorReportV16): void {
     sectionElement.append(heading, rows);
     worldInspectorContent.append(sectionElement);
   }
+  if (inspectedEntity?.kind === 'place' && lastFrame) appendPlantSources(worldInspectorContent, lastFrame.world, inspectedEntity.id);
 }
 
 function openWorldInspector(
@@ -2421,6 +2428,7 @@ function updateWorldTime(frame: Readonly<LiveWorldFrame>): void {
   const elapsedWorldMinutes = frame.world.calendar.elapsedWorldMinutes;
   const calendar = worldCalendarAtMinutes(elapsedWorldMinutes);
   const weather = worldWeatherV21(frame.world, elapsedWorldMinutes);
+  renderVegetationStatus(frame.world);
   const weatherAgentStatus = document.getElementById('weather-agent-status');
   if (weatherAgentStatus) {
     const agent = frame.world.weatherSystem;

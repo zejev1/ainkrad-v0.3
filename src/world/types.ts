@@ -1128,6 +1128,8 @@ export interface WorldV21State {
 export interface WorldState {
   /** Additive world-owned weather state. Legacy saves initialize without resetting life. */
   weatherSystem?: import('./systems/WeatherSystemAgent').WeatherSystemState;
+  /** Additive autonomous ecological state; no existing life/history is replaced. */
+  vegetationSystem?: import('./systems/VegetationSystemAgent').VegetationSystemState;
   cartography?: import('./ResidentCartography').WorldCartography;
   terrain?: TerrainFoundation;
   oceanExploration?: import('./geography/OceanExploration').OceanExplorationState;

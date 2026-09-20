@@ -31,6 +31,7 @@ export interface CardinalControlSnapshot {
   attempts: number;
   error?: string;
   recent: readonly CardinalSystemRecord[];
+  vegetation?: CardinalControlSnapshot;
 }
 
 /** Host boundary. Cardinal receives narrow weather diagnostics, never the host. */
@@ -51,8 +52,9 @@ export class CardinalSystemControl {
   private checkedEpoch = -1;
 
   constructor(worldId: string, enabled: boolean, private readonly log: AppendOnlyLog,
-    private readonly port: WeatherControlPort) {
-    this.stream = `cardinal-system-control:${worldId}:v1`;
+    private readonly port: WeatherControlPort,
+    private readonly domain: { id: 'weather' | 'vegetation'; minimumMinute: number } = { id: 'weather', minimumMinute: 0 }) {
+    this.stream = `${domain.id === 'weather' ? 'cardinal-system-control' : 'cardinal-vegetation-control'}:${worldId}:v1`;
     this.enabled = enabled;
   }
 
@@ -120,6 +122,7 @@ export class CardinalSystemControl {
   service(): Promise<void> | undefined {
     if (!this.online || this.busy) return;
     const observation = this.port.observe();
+    if (observation.minute < this.domain.minimumMinute) return;
     if (observation.revision === this.checkedRevision && observation.epoch === this.checkedEpoch) return;
     if (observation.epoch !== this.epoch) {
       this.epoch = observation.epoch; this.attempts = 0; this.retryAfter = 0;
@@ -139,16 +142,17 @@ export class CardinalSystemControl {
     try {
       this.attempts++;
       this.retryAfter = observation.minute + 1440 * this.attempts;
-      await this.record('repair_requested', observation, observation.weather?.lastFault ?? 'Weather executor fault');
+      await this.record('repair_requested', observation, observation.weather?.lastFault ?? `${this.domain.id} executor fault`);
       if (!this.online || generation !== this.generation) return;
       // This boundary permits only recovery of the weather implementation.
       if (command.kind !== 'restore') throw new Error('Weather control command denied');
-      await this.port.restore(command, `cardinal-weather:${observation.epoch}:${this.sequence}`, observation.revision);
+      await this.port.restore({ ...command, reason: `Cardinal: restore ${this.domain.id} executor; retain physical history` },
+        `cardinal-${this.domain.id}:${observation.epoch}:${this.sequence}`, observation.revision);
       const result = this.port.observe();
       const healthy = result.epoch === observation.epoch && result.weather?.lifecycle === 'running' && !result.weather.fallback;
       if (healthy) { this.recoveries++; this.attempts = 0; this.retryAfter = 0; }
       await this.record(healthy ? 'recovered' : 'repair_failed', result,
-        healthy ? 'Weather executor restored; physical weather and world history preserved' : 'Executor remains on autonomous fallback');
+        healthy ? `${this.domain.id} executor restored; physical state and world history preserved` : 'Executor remains on autonomous fallback');
     } catch (error) {
       // A failed conductor/storage connection must not abort world progression.
       this.disconnect(error);

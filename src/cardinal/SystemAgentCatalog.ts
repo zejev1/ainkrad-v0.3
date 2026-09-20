@@ -1,13 +1,15 @@
+import { VEGETATION_AGENT_MANIFEST } from '../world/systems/VegetationSystemAgent';
 import { WEATHER_AGENT_MANIFEST } from '../world/systems/WeatherSystemAgent';
 import type { SystemAgentManifest } from './SystemAgentContracts';
 
 /**
- * Weather is connected to WorldEngine. Remaining entries are architectural
+ * Weather and vegetation are connected to WorldEngine. Remaining entries are architectural
  * placeholders only. Each manifest defines a natural subsystem boundary that can
  * be implemented gradually without granting cross-domain authority.
  */
 export const SYSTEM_AGENT_CATALOG: readonly SystemAgentManifest[] = [
   WEATHER_AGENT_MANIFEST,
+  VEGETATION_AGENT_MANIFEST,
   {
     id: 'resource-system',
     version: 'draft-1',

@@ -229,12 +229,13 @@ function dungeonFromPlace(
 function syncIntoState(
   world: Readonly<WorldState>,
   state: V19AdventureEconomyState,
+  advancePhysicalTime = true,
 ): void {
   for (const settlement of Object.values(world.settlements)) {
     state.settlementMarketsById[settlement.id] ??= emptyMarket(settlement.id);
   }
   for (const dungeon of Object.values(state.dungeonsById)) {
-    renewDungeon(dungeon, world.calendar.elapsedWorldMinutes);
+    if (advancePhysicalTime) renewDungeon(dungeon, world.calendar.elapsedWorldMinutes);
   }
   const existingCount = Object.keys(state.dungeonsById).length;
   if (existingCount >= MAX_DUNGEONS_V19) return;
@@ -400,7 +401,9 @@ export function repairAdventureEconomyV19(
     dungeon.active = dungeon.formationProgress >= 0.2;
   }
   repairEmergentSocietyV21(world, state);
-  syncIntoState(world, state);
+  // Opening/repairing a save is not an extra ecological time step. Fractional
+  // pending minutes will be processed by the ordinary next world quantum.
+  syncIntoState(world, state, false);
   return state;
 }
 

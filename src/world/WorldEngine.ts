@@ -1,4 +1,7 @@
 import { commitWeatherSystem, commandWeatherSystem } from './systems/WeatherSystemAgent';
+import { VegetationWorldAdapter } from './systems/VegetationWorldAdapter';
+import { cloneWorldState } from './cloneWorldState';
+import type { LandResourceInput } from './systems/VegetationSystemAgent';
 import type { CardinalSystemCommand } from '../cardinal/SystemAgentContracts';
 import { residentKnownPath, invalidateResidentNavigation } from './ResidentNavigation';
 import { consultSettlementMap, residentSurveyedPlaceIds, recordResidentSurvey, recordResidentRouteArrival, assertResidentCartography } from './ResidentCartography';
@@ -4651,6 +4654,7 @@ export interface WorldMutationResult {
  * operation tombstone.
  */
 export class WorldEngine {
+  private readonly vegetationHost = new VegetationWorldAdapter();
   private activeSimulationQuantumIndex?: number;
   private readonly rng: SeededRng;
   private committedState: WorldState;
@@ -4685,7 +4689,7 @@ export class WorldEngine {
     state: WorldState,
   ) {
     assertWorldState(state);
-    this.committedState = structuredClone(state);
+    this.committedState = cloneWorldState(state);
     bindWorldTerrain(this.committedState);
     this.rng = new SeededRng('restored-world', state.determinism.rngState);
   }
@@ -4945,6 +4949,7 @@ export class WorldEngine {
     for (const resident of Object.values(state.agents)) observeLocalPlacesV20(state, resident);
     assertWorldState(state);
     commitWeatherSystem(state);
+    new VegetationWorldAdapter().attach(state);
     await options.store.initializeWorld(state);
     return new WorldEngine(options.store, state);
   }
@@ -4984,7 +4989,7 @@ export class WorldEngine {
   snapshot(): WorldState {
     // Never expose an operation's uncommitted working copy. Sensors and other
     // readers see only the last atomically committed world projection.
-    return structuredClone(this.committedState);
+    return cloneWorldState(this.committedState);
   }
 
   /**
@@ -5001,6 +5006,13 @@ export class WorldEngine {
     if (!requestId.trim() || !Number.isInteger(expectedRevision)) throw new Error('Invalid weather command identity');
     return this.mutate(`weather-command:${this.committedState.epoch ?? 1}:${requestId}`,
       stableJsonStringify({ command }), async () => { commandWeatherSystem(this.state, command); }, expectedRevision);
+  }
+
+  /** Only lifecycle control; it cannot set a plant, resource stock or resident. */
+  async controlVegetationSystem(command: CardinalSystemCommand, requestId: string, expectedRevision: number): Promise<boolean> {
+    if (!requestId.trim() || !Number.isInteger(expectedRevision)) throw new Error('Invalid vegetation command identity');
+    return this.mutate(`vegetation-command:${this.committedState.epoch ?? 1}:${requestId}`,
+      stableJsonStringify({ command }), async () => { this.vegetationHost.command(this.state, command); }, expectedRevision);
   }
 
   async reload(): Promise<void> {
@@ -5094,6 +5106,7 @@ export class WorldEngine {
         this.state.environment = { resourcePool: 1, resourceRegenerationRate: 0.012, socialOpportunity: 0.62, safetySupport: 0.64, habitatSupport: 0.5 };
         this.state.calendar = { elapsedWorldMinutes: 0 };
         delete this.state.weatherSystem;
+        delete this.state.vegetationSystem;
         this.state.growth = {
           stage: 0,
           explorationProgress: 0,
@@ -6629,7 +6642,7 @@ export class WorldEngine {
       // after every catch-up batch only multiplied serialization cost.
       const before = this.committedState;
       const beforeRng = this.rng.snapshot();
-      this.workingState = structuredClone(before);
+      this.workingState = cloneWorldState(before);
       bindWorldTerrain(this.workingState);
       this.rng.restore(before.determinism.rngState);
       this.stagedEvents = [];
@@ -6638,8 +6651,10 @@ export class WorldEngine {
       this.routePathCache = new Map();
 
       try {
+        this.vegetationHost.attach(this.state);
         await apply();
         commitWeatherSystem(this.state);
+        this.vegetationHost.attach(this.state);
         this.syncDeterminismState();
         this.state.revision = before.revision + 1;
         assertWorldState(this.state);
@@ -6854,80 +6869,47 @@ export class WorldEngine {
       : undefined;
   }
 
-  private advanceV15RenewableResources(elapsedWorldMinutes: number): void {
+  private advanceV15RenewableResources(_elapsedWorldMinutes: number): void {
     const v15 = this.v15World();
     const currentWorldMinutes = this.state.calendar.elapsedWorldMinutes;
     const localResources = this.state.v16?.settlementResourcesById;
-    if (localResources && Object.keys(localResources).length > 0) {
-      const resourceRegenerationLaw = this.lawValue('resource_regeneration', 1);
-      for (const [settlementId, resources] of Object.entries(localResources)) {
-        const elapsedSinceRecovery = Math.max(
-          0,
-          currentWorldMinutes - resources.lastRecoveredWorldMinute,
-        );
-        const cachedKnowledge =
-          this.agricultureKnowledgeByHomeSettlement?.get(settlementId);
-        const meanAgricultureKnowledge = cachedKnowledge
-          ? cachedKnowledge.sum / Math.max(1, cachedKnowledge.count)
-          : 0;
-        const priorRenewableBase = resources.renewableBase;
-        const priorFertility = resources.fertility;
-        const recovered = recoverRenewableBase(
-          resources,
-          elapsedSinceRecovery,
-          meanAgricultureKnowledge,
-        );
-        resources.renewableBase = clamp01(
-          priorRenewableBase +
-            Math.max(0, recovered.renewableBase - priorRenewableBase) *
-              resourceRegenerationLaw,
-        );
-        resources.fertility = clamp01(
-          priorFertility +
-            Math.max(0, recovered.fertility - priorFertility) *
-              resourceRegenerationLaw,
-        );
-        resources.lastRecoveredWorldMinute = currentWorldMinutes;
-      }
-      this.refreshV15StoredResourceProjection();
-      return;
-    }
-    const resources = v15.renewableResources;
-    const elapsedSinceRecovery = Math.max(
-      0,
-      currentWorldMinutes - resources.lastRecoveredWorldMinute,
-    );
-    const livingKnowledge = Object.values(this.state.agents)
-      .filter((agent) => agent.life.alive)
-      .map((agent) => {
-        ensureAgentV15State(this.state, agent);
-        return v15.knowledgeByAgentId[agent.id].agriculture;
-      });
-    const meanAgricultureKnowledge =
-      livingKnowledge.length > 0
-        ? livingKnowledge.reduce((sum, value) => sum + value, 0) /
-          livingKnowledge.length
-        : 0;
-
-    const priorRenewableBase = resources.renewableBase;
-    const priorFertility = resources.fertility;
-    const recovered = recoverRenewableBase(
-      resources,
-      elapsedSinceRecovery,
-      meanAgricultureKnowledge,
-    );
+    const local = localResources && Object.keys(localResources).length > 0;
+    const targets = local ? Object.entries(localResources) : [['world', v15.renewableResources] as const];
     const resourceRegenerationLaw = this.lawValue('resource_regeneration', 1);
-    resources.renewableBase = clamp01(
-      priorRenewableBase +
-        Math.max(0, recovered.renewableBase - priorRenewableBase) *
-          resourceRegenerationLaw,
-    );
-    resources.fertility = clamp01(
-      priorFertility +
-        Math.max(0, recovered.fertility - priorFertility) *
-          resourceRegenerationLaw,
-    );
-    resources.lastRecoveredWorldMinute = currentWorldMinutes;
+    const inputs: LandResourceInput[] = [];
+    for (const [id, resources] of targets) {
+      let meanAgricultureKnowledge = 0;
+      if (local) {
+        const knowledge = this.agricultureKnowledgeByHomeSettlement?.get(id);
+        meanAgricultureKnowledge = knowledge ? knowledge.sum / Math.max(1, knowledge.count) : 0;
+      } else {
+        const livingKnowledge = Object.values(this.state.agents).filter(agent => agent.life.alive).map(agent => {
+          ensureAgentV15State(this.state, agent);
+          return v15.knowledgeByAgentId[agent.id].agriculture;
+        });
+        meanAgricultureKnowledge = livingKnowledge.length ? livingKnowledge.reduce((sum, value) => sum + value, 0) / livingKnowledge.length : 0;
+      }
+      // Existing stewardship stays host-side. Only its physical recovery
+      // potential crosses into ecology, never a resident or knowledge profile.
+      const recovered = recoverRenewableBase(resources,
+        Math.max(0, currentWorldMinutes - resources.lastRecoveredWorldMinute), meanAgricultureKnowledge);
+      inputs.push({ id, base: resources.renewableBase, fertility: resources.fertility,
+        baseRecovery: Math.max(0, recovered.renewableBase - resources.renewableBase) * resourceRegenerationLaw,
+        soilRecovery: Math.max(0, recovered.fertility - resources.fertility) * resourceRegenerationLaw });
+    }
+    const result = this.vegetationHost.advance(this.state, inputs);
+    for (const output of result.resources) {
+      const target = local ? localResources[output.id] : v15.renewableResources;
+      if (!target) continue;
+      target.renewableBase = output.base; target.fertility = output.fertility;
+      target.lastRecoveredWorldMinute = currentWorldMinutes;
+    }
+    for (let i = 0; i < result.events.length; i++) {
+      const event = result.events[i];
+      this.stageEvent({ eventId: `${this.state.id}:vegetation:${this.state.epoch ?? 1}:${this.state.vegetationSystem!.updates}:${i}`,
+        worldId: this.state.id, kind: `world.vegetation.${event.kind}`, source: 'world', occurredAt: this.state.now,
+        occurredWorldMinutes: event.minute, payload: { siteId: event.siteId, speciesId: event.speciesId ?? '', detail: event.detail } });
+    }
     this.refreshV15StoredResourceProjection();
   }
 
