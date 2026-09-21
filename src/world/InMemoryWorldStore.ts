@@ -1,4 +1,5 @@
 import { stableJsonStringify } from '../core/stableJson';
+import { cloneWorldState, clonePersistedData } from './cloneWorldState';
 import type { WorldEvent } from './events';
 import type { MemoryRecord, WorldState } from './types';
 import type {
@@ -42,7 +43,7 @@ export class InMemoryWorldStore implements WorldStore {
     if(!state)throw new Error('Cannot checkpoint missing world.');
     if(state.revision!==expectedRevision)throw new WorldRevisionConflictError(worldId,expectedRevision,state.revision);
     if(this.migrationBackups.some(s=>s.id===worldId&&s.revision===expectedRevision))return;
-    this.migrationBackups.push(structuredClone(state));
+    this.migrationBackups.push(clonePersistedData(state));
     while(this.migrationBackups.filter(s=>s.id===worldId).length>3) this.migrationBackups.splice(this.migrationBackups.findIndex(s=>s.id===worldId),1);
   }
   private readonly worlds = new Map<string, WorldState>();
@@ -67,12 +68,12 @@ export class InMemoryWorldStore implements WorldStore {
       throw new Error('A newly initialized world must start at revision 0.');
     }
 
-    this.worlds.set(state.id, structuredClone(state));
+    this.worlds.set(state.id, clonePersistedData(state));
   }
 
   async loadWorld(worldId: string): Promise<WorldState | undefined> {
     const state = this.worlds.get(worldId);
-    return state ? structuredClone(state) : undefined;
+    return state ? clonePersistedData(state) : undefined;
   }
 
   async committedOperation(
@@ -80,7 +81,7 @@ export class InMemoryWorldStore implements WorldStore {
     operationId: string,
   ): Promise<CommittedWorldOperation | undefined> {
     const record = this.operations.get(operationKey(worldId, operationId));
-    return record ? structuredClone(record) : undefined;
+    return record ? clonePersistedData(record) : undefined;
   }
 
   async commit(batch: WorldCommitBatch): Promise<WorldCommitResult> {
@@ -111,8 +112,8 @@ export class InMemoryWorldStore implements WorldStore {
       return {
         committed: false,
         duplicate: true,
-        state: structuredClone(current),
-        operation: structuredClone(priorOperation),
+        state: clonePersistedData(current),
+        operation: clonePersistedData(priorOperation),
       };
     }
 
@@ -149,7 +150,7 @@ export class InMemoryWorldStore implements WorldStore {
           `Event ID ${event.eventId} already belongs to a different committed operation.`,
         );
       }
-      batchEvents.set(key, structuredClone(event));
+      batchEvents.set(key, clonePersistedData(event));
     }
 
     const batchMemories = new Map<string, MemoryRecord>();
@@ -168,7 +169,7 @@ export class InMemoryWorldStore implements WorldStore {
           `Memory ID ${memory.memoryId} already belongs to a different committed operation.`,
         );
       }
-      batchMemories.set(key, structuredClone(memory));
+      batchMemories.set(key, clonePersistedData(memory));
     }
 
     // No await points below: current state + evidence + operation tombstone are
@@ -210,7 +211,7 @@ export class InMemoryWorldStore implements WorldStore {
       }
     }
 
-    const nextState = structuredClone(batch.nextState);
+    const nextState = cloneWorldState(batch.nextState);
     this.worlds.set(batch.worldId, nextState);
 
     const operation: CommittedWorldOperation = {
@@ -227,18 +228,18 @@ export class InMemoryWorldStore implements WorldStore {
       // batch.nextState remains owned by the caller; the store keeps the
       // separate clone above as its durable projection.
       state: batch.nextState,
-      operation: structuredClone(operation),
+      operation: clonePersistedData(operation),
     };
   }
 
   async get(worldId: string, eventId: string): Promise<WorldEvent | undefined> {
     const event = this.eventsById.get(eventKey(worldId, eventId));
-    return event ? structuredClone(event) : undefined;
+    return event ? clonePersistedData(event) : undefined;
   }
 
   async history(worldId: string): Promise<WorldEvent[]> {
     return (this.eventsByWorld.get(worldId) ?? []).map((event) =>
-      structuredClone(event),
+      clonePersistedData(event),
     );
   }
 
@@ -254,12 +255,10 @@ export class InMemoryWorldStore implements WorldStore {
       throw new Error('WorldStore recent time bound must be finite.');
     }
 
-    const eligible = (this.eventsByWorld.get(worldId) ?? []).filter(
-      (event) => atOrBefore === undefined || event.occurredAt <= atOrBefore,
-    );
-    return eligible
-      .slice(Math.max(0, eligible.length - limit))
-      .map((event) => structuredClone(event));
+    const history=this.eventsByWorld.get(worldId)??[],tail:WorldEvent[]=[];
+    for(let i=history.length-1;i>=0&&tail.length<limit;i--)
+      if(atOrBefore===undefined||history[i].occurredAt<=atOrBefore)tail.push(history[i]);
+    return tail.reverse().map(event=>clonePersistedData(event));
   }
 
   async activeSignals(
@@ -299,7 +298,7 @@ export class InMemoryWorldStore implements WorldStore {
           );
         },
       )
-      .map((event) => structuredClone(event));
+      .map((event) => clonePersistedData(event));
   }
 
   async recentForAgent(
@@ -324,7 +323,7 @@ export class InMemoryWorldStore implements WorldStore {
 
   async historyForAgent(worldId: string, agentId: string): Promise<MemoryRecord[]> {
     return (this.memoriesByAgent.get(agentKey(worldId, agentId)) ?? []).map(
-      (memory) => structuredClone(memory),
+      (memory) => clonePersistedData(memory),
     );
   }
 
@@ -334,6 +333,6 @@ export class InMemoryWorldStore implements WorldStore {
     }
     return values
       .slice(Math.max(0, values.length - limit))
-      .map((memory) => structuredClone(memory));
+      .map((memory) => clonePersistedData(memory));
   }
 }

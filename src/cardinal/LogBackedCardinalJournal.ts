@@ -1,4 +1,5 @@
 import { stableJsonStringify } from '../core/stableJson';
+import { clonePersistedData } from '../world/cloneWorldState';
 import {
   AppendOnlyLogConflictError,
   type AppendOnlyLog,
@@ -475,17 +476,17 @@ export class LogBackedCardinalJournal implements CardinalJournal {
       throw new Error('Cardinal recent-evidence limit must be non-negative.');
     }
     if (limit === 0) return [];
-    const values = await this.valueReferences(worldId, kind);
+    const cache = await this.cache(streamId(worldId, kind), kind, worldId);
     const recent: EvidenceValue[] = [];
-    for (let index = values.length - 1; index >= 0; index -= 1) {
-      const value = values[index];
+    for (let index = cache.order.length - 1; index >= 0; index -= 1) {
+      const value = cache.byId.get(cache.order[index])!.value;
       if (
         beforeExclusive !== undefined &&
         evidenceTime(kind, value) >= beforeExclusive
       ) {
         continue;
       }
-      recent.push(structuredClone(value));
+      recent.push(clonePersistedData(value));
       if (recent.length >= limit) break;
     }
     return recent.reverse();

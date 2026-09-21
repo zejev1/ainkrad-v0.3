@@ -25,9 +25,9 @@ In v0.3.10 Cardinal gains experience from journaled observation cycles, ecosyste
 
 Later evidence thresholds unlock world-rule design, demographic stewardship and finally catastrophe modeling. These are proposal capabilities only. Aggregate architecture observations exclude resident minds, and the independent world-authority gateway remains the only holder of the matching world mutation capability.
 
-The initial capabilities are read-only world observation and autonomy protection. Trend reasoning, ecosystem observation and outcome learning unlock only after explicit evidence counts. Temporary habitat-support planning requires both level 2 and eight ecosystem observations.
+The initial capabilities are read-only world observation and autonomy protection. Trend reasoning, ecosystem observation and outcome learning unlock only after explicit evidence counts. As of f14, resource/habitat subsidy planning is removed regardless of experience; historic capability names remain readable only.
 
-Capability growth expands what Cardinal may analyze or propose. It never grants a writer for resident actions, goals, memories, relationships, personality or skills. A newly unlocked habitat proposal still passes through independent audit and gateway authorization.
+Capability growth expands what Cardinal may analyze or propose. It never grants a writer for resident actions, goals, memories, relationships, personality or skills. Since f14, there is no 200-year age gate; every legal proposal still passes independent audit and gateway authorization.
 
 ## Compatible history only
 

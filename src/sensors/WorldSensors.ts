@@ -155,7 +155,19 @@ export function derivePopulationPressureEvidenceV18(
 }
 
 export class WorldSensors {
-  constructor(private readonly events: EventReader) {}
+  private eventView?: { id: string; epoch: number; revision: number; now: number; minute: number; value: Promise<[WorldEvent[],WorldEvent[]]> };
+  /** Enable reuse only for a WorldStore: it commits evidence and increments the
+   * world revision atomically. General append-only readers need fresh reads.
+   * Each sensor instance (including the independent Auditor) owns its cache. */
+  constructor(private readonly events: EventReader, private readonly atomicWorldStore=false) {}
+
+  private async readEvidence(world:Readonly<WorldState>,now:number):Promise<[WorldEvent[],WorldEvent[]]> {
+    const epoch=world.epoch??1,minute=world.calendar.elapsedWorldMinutes,prior=this.eventView;
+    if(this.atomicWorldStore&&prior&&prior.id===world.id&&prior.epoch===epoch&&prior.revision===world.revision&&prior.now===now&&prior.minute===minute)return prior.value;
+    const value=Promise.all([this.events.activeSignals(world.id,now,minute),this.events.recent(world.id,SENSOR_EVENT_READ_LIMIT,now)]);
+    if(this.atomicWorldStore)this.eventView={id:world.id,epoch,revision:world.revision,now,minute,value};
+    try{return await value;}catch(error){if(this.eventView?.value===value)this.eventView=undefined;throw error;}
+  }
 
   async observe(world: Readonly<WorldState>, now: number): Promise<SensorSnapshot> {
     if (!Number.isFinite(now) || now !== world.now) {
@@ -185,14 +197,9 @@ export class WorldSensors {
       event.worldEpoch !== undefined
         ? event.worldEpoch === worldEpoch
         : event.occurredAt >= epochFloor;
-    const activeSignals = (
-      await this.events.activeSignals(world.id, now, observedWorldMinutes)
-    ).filter(
-      belongsToCurrentEpoch,
-    );
-    const recent = (
-      await this.events.recent(world.id, SENSOR_EVENT_READ_LIMIT, now)
-    ).filter(belongsToCurrentEpoch);
+    const [signals,tail]=await this.readEvidence(world,now);
+    const activeSignals=signals.filter(belongsToCurrentEpoch);
+    const recent=tail.filter(belongsToCurrentEpoch);
 
     const recentDeaths = recent.filter((event) => event.kind === 'agent.died');
     const recentBirths = recent.filter((event) => event.kind === 'agent.born');

@@ -27,12 +27,12 @@ describe('Independent intervention gateway', () => {
       proposalId: 'proposal_1',
       worldId: 'world_1',
       hypothesisId: 'hypothesis_test',
-      kind: 'resource_relief' as const,
+      kind: 'safety_support' as const,
       magnitude: 0.1,
       reason: 'test',
       expectedOutcome: 'test',
       prediction: {
-        metric: 'resourcePressure' as const,
+        metric: 'safetyPressure' as const,
         direction: 'decrease' as const,
         minimumImprovement: 0.01,
         horizonWorldMinutes: 35_040,
@@ -58,12 +58,12 @@ describe('Independent intervention gateway', () => {
       proposalId: 'proposal_retry',
       worldId: 'world_1',
       hypothesisId: 'hypothesis_test',
-      kind: 'resource_relief' as const,
+      kind: 'safety_support' as const,
       magnitude: 0.1,
       reason: 'test',
       expectedOutcome: 'test',
       prediction: {
-        metric: 'resourcePressure' as const,
+        metric: 'safetyPressure' as const,
         direction: 'decrease' as const,
         minimumImprovement: 0.01,
         horizonWorldMinutes: 35_040,
@@ -77,8 +77,9 @@ describe('Independent intervention gateway', () => {
     const retry = await gateway.execute('evaluation_retry', proposal, world.snapshot(), 10);
     const afterRetry = world.snapshot().environment.resourcePool;
 
+    expect(first.executed).toBe(true);
     expect(first.interventionId).toBe(retry.interventionId);
-    expect(afterFirst).toBeGreaterThanOrEqual(before);
+    expect(afterFirst).toBe(before);
     expect(afterRetry).toBe(afterFirst);
   });
 
@@ -108,7 +109,7 @@ describe('Independent intervention gateway', () => {
     expect(result.executed).toBe(false);
   });
 
-  it('can authorize bounded habitat support without rewriting a resident', async () => {
+  it('denies habitat subsidies while preserving every resident and the physical world', async () => {
     const store = new InMemoryWorldStore();
     const world = await WorldEngine.create({
       worldId: 'habitat_world',
@@ -145,14 +146,16 @@ describe('Independent intervention gateway', () => {
     );
     const after = world.snapshot();
 
-    expect(result.executed).toBe(true);
+    expect(result.executed).toBe(false);
+    expect(result.authorized).toBe(false);
+    expect(after).toEqual(before);
     expect(after.agents).toEqual(before.agents);
     expect(after.environment).toEqual(before.environment);
     expect(
       (await store.history('habitat_world')).some(
         (event) => event.kind === 'cardinal.effect.habitat_support',
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it('cannot be configured above the absolute intervention cap', async () => {

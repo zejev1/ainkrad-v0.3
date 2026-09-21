@@ -1130,6 +1130,7 @@ export interface WorldState {
   weatherSystem?: import('./systems/WeatherSystemAgent').WeatherSystemState;
   /** Additive autonomous ecological state; no existing life/history is replaced. */
   vegetationSystem?: import('./systems/VegetationSystemAgent').VegetationSystemState;
+  hydrologySystem?: import('./systems/HydrologySystemAgent').HydrologyState;
   cartography?: import('./ResidentCartography').WorldCartography;
   terrain?: TerrainFoundation;
   oceanExploration?: import('./geography/OceanExploration').OceanExplorationState;

@@ -1,6 +1,6 @@
 {
   "name": "ainkrad-v0-3",
-  "version": "0.3.22-f13",
+  "version": "0.3.22-f14",
   "private": true,
   "description": "Experimental autonomous world for developing and testing Cardinal.",
   "type": "module",
@@ -27,6 +27,6 @@
     "fake-indexeddb": "6.2.2"
   },
   "ainkrad": {
-    "build": 13
+    "build": 14
   }
 }

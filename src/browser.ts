@@ -1,3 +1,4 @@
+import { hydrologySections, renderHydrologyStatus, appendWaterSources } from './presentation/HydrologyPanel';
 import { vegetationSections, renderVegetationStatus, appendPlantSources } from './presentation/VegetationPanel';
 import { WeatherMapPanel } from './presentation/WeatherMapPanel';
 import { coastalLandmark } from './presentation/CoastalLandmark';
@@ -393,7 +394,7 @@ app.innerHTML = `
       <span>Монстры <strong id="monster-value">0</strong></span>
       <span>Ресурсы <strong id="resource-value">—</strong></span>
       <span class="save-state">Состояние <strong id="save-value">Загрузка…</strong></span>
-      <details><summary>Системы мира</summary><p id="weather-agent-status">Агент погоды: запуск…</p><p id="vegetation-agent-status">Агент почвы и растительности: запуск…</p></details>
+      <details><summary>Системы мира</summary><p id="weather-agent-status">Агент погоды: запуск…</p><p id="vegetation-agent-status">Агент почвы и растительности: запуск…</p><p id="hydrology-agent-status">Агент воды: запуск…</p></details>
       <details><summary>Данные сохранения</summary><pre id="world-storage-details" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre></details>
     </div>
 
@@ -1215,7 +1216,7 @@ function inspectorReportForEntity(
   if (entity.kind === 'resident') return inspectResidentV16(world, entity.id);
   if (entity.kind === 'wildlife') return inspectWildlifeV16(world, entity.id);
   const report = inspectPlaceV16(world, entity.id);
-  return report ? { ...report, sections: [...report.sections, ...vegetationSections(world, entity.id)] } : undefined;
+  return report ? { ...report, sections: [...report.sections, ...vegetationSections(world, entity.id), ...hydrologySections(world, entity.id)] } : undefined;
 }
 
 function renderInspectorReport(report: TruthfulInspectorReportV16): void {
@@ -1244,7 +1245,7 @@ function renderInspectorReport(report: TruthfulInspectorReportV16): void {
     sectionElement.append(heading, rows);
     worldInspectorContent.append(sectionElement);
   }
-  if (inspectedEntity?.kind === 'place' && lastFrame) appendPlantSources(worldInspectorContent, lastFrame.world, inspectedEntity.id);
+  if (inspectedEntity?.kind === 'place' && lastFrame) { appendPlantSources(worldInspectorContent, lastFrame.world, inspectedEntity.id); appendWaterSources(worldInspectorContent); }
 }
 
 function openWorldInspector(
@@ -2437,6 +2438,7 @@ function updateWorldTime(frame: Readonly<LiveWorldFrame>): void {
   const calendar = worldCalendarAtMinutes(elapsedWorldMinutes);
   const weather = worldWeatherAtPointV21(frame.world, mapCamera.x, mapCamera.y, elapsedWorldMinutes);
   renderVegetationStatus(frame.world);
+  renderHydrologyStatus(frame.world);
   const weatherAgentStatus = document.getElementById('weather-agent-status');
   if (weatherAgentStatus) {
     const agent = frame.world.weatherSystem;
@@ -2731,9 +2733,7 @@ function updateWorld(frame: Readonly<LiveWorldFrame>): void {
       'Gateway отклонил предложение Cardinal: условия безопасности не выполнены.';
   } else if (frame.evaluation?.proposal) {
     cardinalMessage.textContent =
-      frame.world.calendar.elapsedWorldMinutes < 200 * WORLD_MINUTES_PER_YEAR
-        ? 'Кардинал записал наблюдение. До 200 лет вмешательство запрещено; разрешено восстановление погодного агента.'
-        : 'Cardinal обнаружил риск и передал предложение независимому gateway.';
+      'Кардинал обнаружил риск; предложение требует проверки независимого gateway. Ресурсная помощь запрещена.';
   } else if (frame.evaluation?.deferReason) {
     cardinalMessage.textContent =
       cardinalDeferLabels[frame.evaluation.deferReason];

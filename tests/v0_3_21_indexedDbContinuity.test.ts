@@ -111,4 +111,81 @@ describe('durable continuity, migration backup and failure atomicity',()=>{
     const b=worldStorageDiagnostics(old,'https://ainkrad-v0-3-preview.vercel.app');
     expect(a).not.toEqual(b);expect(a).toContain(old.id);expect(a).toContain('ревизия');
   });
+
+  it('rejects duplicate durable evidence atomically without a key pre-read, retaining the first history and head',async()=>{
+    const dbName=name(),bundle=createIndexedDbPersistence(dbName);
+    const engine=await WorldEngine.create({worldId:'duplicates',seed:'duplicates',store:bundle.worldStore}),first=engine.snapshot();
+    const event={eventId:'old-event',worldId:first.id,kind:'world.migrated',source:'system' as const,occurredAt:0,payload:{}};
+    const memory={memoryId:'old-memory',worldId:first.id,agentId:'agent_1',createdAt:0,kind:'reflection' as const,
+      summary:'original memory',importance:0.5,valence:0,relatedAgentIds:[]};
+    const saved={...first,revision:first.revision+1};
+    await bundle.worldStore.commit({worldId:first.id,operationId:'original',operationFingerprint:'original',expectedRevision:first.revision,
+      nextState:saved,events:[event],memories:[memory]});
+    const keyRead=vi.spyOn(IDBObjectStore.prototype,'getKey');
+    for(const kind of ['event','memory']){
+      await expect(bundle.worldStore.commit({worldId:first.id,operationId:`duplicate-${kind}`,operationFingerprint:kind,
+        expectedRevision:saved.revision,nextState:{...saved,revision:saved.revision+1},
+        events:[{...event,eventId:kind==='event'?event.eventId:'new-event'}],
+        memories:[{...memory,memoryId:kind==='memory'?memory.memoryId:'new-memory',summary:'must never replace history'}]})).rejects.toThrow('ID owned by another operation');
+      expect(await bundle.worldStore.loadWorld(first.id)).toEqual(saved);
+      expect(await bundle.worldStore.committedOperation(first.id,`duplicate-${kind}`)).toBeUndefined();
+    }
+    // Only the world-key existence check is necessary for a commit head.
+    expect(keyRead.mock.contexts.filter((s:any)=>s.name==='memories'||s.name==='events')).toHaveLength(0);
+    expect(await bundle.worldStore.history(first.id)).toEqual([event]);
+    expect(await bundle.worldStore.historyForAgent(first.id,'agent_1')).toEqual([memory]);
+    expect((await raw(dbName,IDENTITY_STORE))[0].revision).toBe(saved.revision);
+  });
+
+  it('reuses bounded journal tails only under a current durable head and invalidates another writer at the same time',async()=>{
+    const dbName=name(),a=createIndexedDbPersistence(dbName),b=createIndexedDbPersistence(dbName);
+    const world=await WorldEngine.create({worldId:'tail-cache',seed:'tail-cache',store:a.worldStore});
+    await world.advanceCanonicalTimeTo(8760);
+    const state=world.snapshot(),cursor=vi.spyOn(IDBIndex.prototype,'openCursor');
+    const tail=await a.worldStore.recent(state.id,256,state.now),expected=structuredClone(tail);
+    tail[tail.length-1].kind='forged';
+    expect(await a.worldStore.recent(state.id,10,state.now)).toEqual(expected.slice(-10));
+    expect(cursor).toHaveBeenCalledTimes(1);
+    const event={worldId:state.id,eventId:'zz-other-writer',kind:'world.migrated',source:'system' as const,occurredAt:state.now,payload:{}};
+    await b.worldStore.commit({worldId:state.id,operationId:'other-store',operationFingerprint:'other-store',expectedRevision:state.revision,
+      nextState:{...state,revision:state.revision+1},events:[event],memories:[]});
+    expect((await a.worldStore.recent(state.id,256,state.now)).some(e=>e.eventId===event.eventId)).toBe(true);
+    expect(cursor).toHaveBeenCalledTimes(2);
+    const historical=await a.worldStore.recent(state.id,1,state.now-1);
+    expect(historical).toEqual((await a.worldStore.history(state.id)).filter(e=>e.occurredAt<=state.now-1).slice(-1));
+    expect(cursor).toHaveBeenCalledTimes(2); // The complete small tail also covers this time bound.
+  });
+
+  it('incrementally maintains a bounded tail after atomic commits without losing old, future or equal-time events',async()=>{
+    const bundle=createIndexedDbPersistence(name()),store=bundle.worldStore;
+    const world=await WorldEngine.create({worldId:'incremental-tail',seed:'incremental-tail',store});
+    let state=world.snapshot();
+    const cursor=vi.spyOn(IDBIndex.prototype,'openCursor');
+    expect(await store.recent(state.id,256)).toEqual([]);expect(cursor).toHaveBeenCalledTimes(1);
+    const events=Array.from({length:300},(_,i)=>({worldId:state.id,eventId:`event-${i}`,kind:'world.migrated',
+      source:'system' as const,occurredAt:i,payload:{original:i}}));
+    const commit=async(id:string,e:typeof events)=>{
+      const next={...state,revision:state.revision+1};
+      await store.commit({worldId:state.id,operationId:id,operationFingerprint:id,expectedRevision:state.revision,nextState:next,events:e,memories:[]});
+      state=next;
+    };
+    await commit('first',events.reverse());
+    let history=await store.history(state.id);
+    for(let i=0;i<100;i++)expect(await store.recent(state.id,256,299)).toEqual(history.slice(-256));
+    expect(cursor).toHaveBeenCalledTimes(1);
+    await commit('mixed',[
+      {...events[0],eventId:'backdated',occurredAt:-5},
+      {...events[0],eventId:'future',occurredAt:999},
+      ...['z','A','а','00'].map(eventId=>({...events[0],eventId,occurredAt:299})),
+    ]);
+    history=await store.history(state.id);
+    expect(await store.recent(state.id,10,299)).toEqual(history.filter(e=>e.occurredAt<=299).slice(-10));
+    expect(await store.recent(state.id,10,999)).toEqual(history.slice(-10));
+    expect(cursor).toHaveBeenCalledTimes(1);
+    expect(await store.recent(state.id,10,3)).toEqual(history.filter(e=>e.occurredAt<=3).slice(-10));
+    expect(cursor).toHaveBeenCalledTimes(2);
+    expect(await store.recent(state.id,500)).toEqual(history);expect(cursor).toHaveBeenCalledTimes(3);
+    await expect(commit('duplicate',[events[0]])).rejects.toThrow('ID owned by another operation');
+    expect(await store.recent(state.id,10)).toEqual(history.slice(-10));expect(cursor).toHaveBeenCalledTimes(3);
+  });
 });

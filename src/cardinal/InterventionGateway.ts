@@ -1,3 +1,5 @@
+import { isResourceSubsidy, RESOURCE_SUBSIDY_DENIAL } from '../core/CardinalResourcePolicy';
+import type { CommittedWorldOperation } from '../world/persistence';
 import { stableJsonStringify } from '../core/stableJson';
 import { createStableId } from '../core/stableId';
 import {
@@ -28,17 +30,16 @@ export const ABSOLUTE_MAX_INTERVENTION_MAGNITUDE = 0.25;
 export const ABSOLUTE_MAX_INTERVENTION_DURATION_WORLD_MINUTES =
   MAX_GATEWAY_EFFECT_DURATION_WORLD_MINUTES;
 export const INTERVENTION_GATEWAY_POLICY_VERSION =
-  'ainkrad-intervention-gateway-0.3.15';
+  'ainkrad-intervention-gateway-0.3.22-f14';
 
 const ALLOWED_INTERVENTION_KINDS = new Set<string>([
-  'resource_relief',
   'open_shared_space',
   'safety_support',
-  'habitat_support',
 ]);
 
 export interface SimulationInterventionTarget {
   snapshot(): WorldState;
+  committedIntervention?(proposalId: string): Promise<CommittedWorldOperation | undefined>;
   applyAuthorizedIntervention(
     worldId: string,
     kind: InterventionKind,
@@ -277,6 +278,22 @@ export class IndependentInterventionGateway {
       );
     }
 
+    if (isResourceSubsidy(proposal.kind)) {
+      // A pre-f14 intent may already have committed. Read its receipt without
+      // invoking any writer; never execute an old pending subsidy on restart.
+      const receipt = await this.target.committedIntervention?.(proposal.proposalId);
+      const fingerprint = stableJsonStringify({ kind: 'intervention', worldId: entry.worldId,
+        interventionKind: proposal.kind, magnitude: Math.max(0, Math.min(0.25, proposal.magnitude)),
+        now: entry.record.requestedAt, durationWorldMinutes: entry.effectDurationWorldMinutes,
+        expectedWorldRevision: entry.expectedWorldRevision });
+      if (receipt && receipt.operationFingerprint !== fingerprint) throw new Error('Historical intervention receipt does not match its intent');
+      const final: GatewayLedgerEntry = { ...entry, phase: 'final', record: { ...entry.record,
+        authorized: Boolean(receipt), executed: Boolean(receipt), executionStatus: receipt ? 'executed' : 'denied',
+        ...(receipt ? { committedWorldRevision: receipt.committedRevision } : {}),
+        authorizationReason: receipt ? 'Pre-f14 committed effect retained as history; no effect replayed.' : RESOURCE_SUBSIDY_DENIAL } };
+      return structuredClone((await this.ledger.finalize(final)).record);
+    }
+
     try {
       // The target performs a second, commit-bound revision check. If a crash
       // occurred after the world commit, the same stable proposal ID is treated
@@ -332,6 +349,7 @@ export class IndependentInterventionGateway {
     expectedWorld: Readonly<WorldState>,
     now: number,
   ): Promise<AuthorizationDecision> {
+    if (isResourceSubsidy(proposal.kind)) return { authorized: false, reason: RESOURCE_SUBSIDY_DENIAL };
     if (!ALLOWED_INTERVENTION_KINDS.has(proposal.kind as string)) {
       return {
         authorized: false,
@@ -410,36 +428,6 @@ export class IndependentInterventionGateway {
         authorized: false,
         reason: `Proposal magnitude exceeds gateway limit ${this.maxMagnitude}.`,
       };
-    }
-
-    if (proposal.kind === 'resource_relief') {
-      const livingHumans = Object.values(expectedWorld.agents).filter(
-        (agent) => agent.life.alive && (agent.race ?? 'human') === 'human',
-      );
-      const byHomeSettlement = new Map<string, number>();
-      for (const agent of livingHumans) {
-        const settlementId = expectedWorld.places[agent.homeId]?.settlementId;
-        if (!settlementId) continue;
-        byHomeSettlement.set(
-          settlementId,
-          (byHomeSettlement.get(settlementId) ?? 0) + 1,
-        );
-      }
-      const largestStationaryPopulation = Math.max(
-        0,
-        ...byHomeSettlement.values(),
-      );
-      const stationaryShare =
-        livingHumans.length === 0
-          ? 0
-          : largestStationaryPopulation / livingHumans.length;
-      if (livingHumans.length > 10 && stationaryShare >= 0.78) {
-        return {
-          authorized: false,
-          reason:
-            'Resource relief is denied while more than ten humans remain concentrated in one settlement. Depleted land must recover through fallow years, stewardship, trade or voluntary expansion.',
-        };
-      }
     }
 
     const requestedWorldMinutes = expectedWorld.calendar.elapsedWorldMinutes;

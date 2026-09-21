@@ -9,6 +9,7 @@ import {
 import type {
   WorldState,
 } from '../world/types';
+import { cloneWorldState } from '../world/cloneWorldState';
 
 export class CardinalObserver {
   constructor(
@@ -26,7 +27,7 @@ export class CardinalObserver {
     // and therefore cannot mutate the world.
     return await this.sensors
       .observe(
-        structuredClone(
+        cloneWorldState(
           world,
         ),
         now,

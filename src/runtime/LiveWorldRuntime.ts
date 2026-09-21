@@ -1,4 +1,4 @@
-import { cloneWorldState } from '../world/cloneWorldState';
+import { cloneWorldState, clonePersistedData } from '../world/cloneWorldState';
 import {CardinalOceanArchitect} from '../cardinal/CardinalOceanArchitect';
 import { CardinalSystemControl, type CardinalControlSnapshot } from './CardinalSystemControl';
 import {IndependentOceanFrontierGateway,oceanDecisionAllowed} from '../boundary/OceanFrontierGateway';
@@ -500,6 +500,7 @@ function buildWorldHealthForConsole(
 export class LiveWorldRuntime {
   private systems!: CardinalSystemControl;
   private vegetationControl!: CardinalSystemControl;
+  private hydrologyControl!: CardinalSystemControl;
   private currentTechnicalTick: number;
   private displayedEvaluation?: CardinalEvaluation;
   private responsiveQuanta = 4;
@@ -554,8 +555,8 @@ export class LiveWorldRuntime {
           agentNames: [...DEFAULT_LIVE_FOUNDER_NAMES],
           startTime: 0,
         });
-    const sensors = new WorldSensors(store);
-    const auditorSensors = new WorldSensors(store);
+    const sensors = new WorldSensors(store, true);
+    const auditorSensors = new WorldSensors(store, true);
     const observer = new CardinalObserver(sensors);
     const controlLog = options.controlLog ?? new InMemoryAppendOnlyLog();
     const journal = new LogBackedCardinalJournal(controlLog);
@@ -643,15 +644,27 @@ export class LiveWorldRuntime {
           minute: state.calendar.elapsedWorldMinutes, weather: state.vegetationSystem };
       },
       restore: (command, requestId, revision) => {
-        if (!runtime.systems.online || !runtime.vegetationControl.online || command.kind !== 'restore'
-          || world.runtimeStateView().calendar.elapsedWorldMinutes < 200 * WORLD_MINUTES_PER_YEAR) {
-          throw new Error('Vegetation recovery is not authorized before year 200 or while Cardinal is detached');
+        if (!runtime.systems.online || !runtime.vegetationControl.online || command.kind !== 'restore') {
+          throw new Error('Vegetation recovery is not authorized while Cardinal is detached');
         }
         return world.controlVegetationSystem(command, requestId, revision);
       },
-    }, { id: 'vegetation', minimumMinute: 200 * WORLD_MINUTES_PER_YEAR });
+    }, { id: 'vegetation', minimumMinute: 0 });
     await runtime.vegetationControl.initialize();
     if (runtime.vegetationControl.online !== runtime.systems.online) await runtime.vegetationControl.setEnabled(runtime.systems.online);
+    runtime.hydrologyControl = new CardinalSystemControl(worldId, runtime.systems.online, controlLog, {
+      observe: () => {
+        const state = world.runtimeStateView();
+        return { epoch: state.epoch ?? 1, revision: state.revision,
+          minute: state.calendar.elapsedWorldMinutes, weather: state.hydrologySystem };
+      },
+      restore: (command, requestId, revision) => {
+        if (!runtime.systems.online || !runtime.hydrologyControl.online || command.kind !== 'restore') throw new Error('Hydrology recovery is not authorized while Cardinal is detached');
+        return world.controlHydrologySystem(command, requestId, revision);
+      },
+    }, { id: 'hydrology', minimumMinute: 0 });
+    await runtime.hydrologyControl.initialize();
+    if (runtime.hydrologyControl.online !== runtime.systems.online) await runtime.hydrologyControl.setEnabled(runtime.systems.online);
     runtime.displayedEvaluation = [...allEvaluations].sort((a,b) =>
       (b.experience?.totalExperience ?? 0) - (a.experience?.totalExperience ?? 0))[0];
     return runtime;
@@ -661,6 +674,7 @@ export class LiveWorldRuntime {
     await this.world.reload();
     await this.systems.initialize();
     await this.vegetationControl.initialize();
+    await this.hydrologyControl.initialize();
     this.currentTechnicalTick = Math.max(
       this.currentTechnicalTick,
       this.world.snapshot().now,
@@ -710,11 +724,13 @@ export class LiveWorldRuntime {
   async setCardinalEnabled(enabled: boolean): Promise<void> {
     await this.systems.setEnabled(enabled);
     await this.vegetationControl.setEnabled(this.systems.online);
+    await this.hydrologyControl.setEnabled(this.systems.online);
     if (this.systems.online) await this.systems.service();
     if (this.systems.online) await this.vegetationControl.service();
+    if (this.systems.online) await this.hydrologyControl.service();
   }
 
-  disconnectCardinal(reason?: string): void { this.systems.disconnect(reason); this.vegetationControl.disconnect(reason); }
+  disconnectCardinal(reason?: string): void { this.systems.disconnect(reason); this.vegetationControl.disconnect(reason); this.hydrologyControl.disconnect(reason); }
 
   private get cardinalMode(): CardinalMode {
     return this.systems.online ? (this.mode === 'observer' ? 'observer' : 'intervene') : 'off';
@@ -997,6 +1013,8 @@ export class LiveWorldRuntime {
     if (weatherRecovery) await weatherRecovery;
     const vegetationRecovery = this.systems.online ? this.vegetationControl.service() : undefined;
     if (vegetationRecovery) await vegetationRecovery;
+    const waterRecovery = this.systems.online ? this.hydrologyControl.service() : undefined;
+    if (waterRecovery) await waterRecovery;
     const budgetToken = this.liveBudget.token;
     const tick = Math.max(
       this.currentTechnicalTick + 1,
@@ -1192,7 +1210,7 @@ export class LiveWorldRuntime {
     }
 
     return {
-      ...structuredClone({
+      ...clonePersistedData({
       tick,
       metrics: observation.metrics,
       disturbances: dueDisturbances,
@@ -1202,7 +1220,7 @@ export class LiveWorldRuntime {
       evaluationCount: this.evaluationCount,
       executedInterventionCount: this.executedInterventionCount,
       cardinalActivity: this.cardinalActivity,
-      cardinalControl: { ...this.systems.snapshot(), vegetation: this.vegetationControl.snapshot() },
+      cardinalControl: { ...this.systems.snapshot(), vegetation: this.vegetationControl.snapshot(), hydrology: this.hydrologyControl.snapshot() },
       clock,
       recentEvents,
       continuity: this.continuity,
@@ -1339,7 +1357,7 @@ export class LiveWorldRuntime {
     semanticWorld: Readonly<WorldState>,
   ): Promise<{ evaluation?: CardinalEvaluation; intervention?: InterventionRecord; worldAuthority?: WorldAuthorityRecord }> {
     try { return await this.processConnectedCardinalOpportunity(semanticWorld); }
-    catch (error) { this.systems.disconnect(error); return {}; }
+    catch (error) { this.disconnectCardinal(error instanceof Error ? error.message : String(error)); return {}; }
   }
 
   private async processConnectedCardinalOpportunity(
@@ -1353,12 +1371,14 @@ export class LiveWorldRuntime {
     if (weatherRecovery) await weatherRecovery;
     const vegetationRecovery = this.systems.online ? this.vegetationControl.service() : undefined;
     if (vegetationRecovery) await vegetationRecovery;
+    const waterRecovery = this.systems.online ? this.hydrologyControl.service() : undefined;
+    if (waterRecovery) await waterRecovery;
     semanticWorld = this.world.runtimeStateView();
     const mode = this.cardinalMode;
     if (mode === 'off') return {};
     // Geographic extension is separately authorized on a real voyage. It
     // neither waits for a population crisis nor writes a resident decision.
-    if(mode==='intervene'&&semanticWorld.calendar.elapsedWorldMinutes >= 200 * WORLD_MINUTES_PER_YEAR&&semanticWorld.oceanExploration?.pending&&!semanticWorld.oceanExploration.sealed){
+    if(mode==='intervene'&&semanticWorld.oceanExploration?.pending&&!semanticWorld.oceanExploration.sealed){
       const proposed=new CardinalOceanArchitect().consider(semanticWorld.oceanExploration.pending);
       const decision=oceanDecisionAllowed(semanticWorld,proposed)?proposed:{requestId:proposed.requestId};
       await new IndependentOceanFrontierGateway(this.world).execute(decision,semanticWorld.revision);
@@ -1410,7 +1430,7 @@ export class LiveWorldRuntime {
     let intervention: InterventionRecord | undefined;
     let worldAuthority: WorldAuthorityRecord | undefined;
 
-    const interventionAllowed = mode === 'intervene' && worldMinutes >= 200 * WORLD_MINUTES_PER_YEAR;
+    const interventionAllowed = mode === 'intervene';
     if (interventionAllowed && evaluation.proposal) {
       const interventionWorld = this.world.snapshot();
       intervention = await this.gateway.execute(

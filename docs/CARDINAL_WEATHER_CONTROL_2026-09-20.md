@@ -1,5 +1,7 @@
 # Cardinal: weather supervision and ON/OFF
 
+Исторический документ выпуска. Возрастные ограничения Кардинала отменены в f14; текущая политика — AGENTS.md §35 и HYDROLOGY_AGENT_F14.md.
+
 Base: `bddb5e73ae1cd7565c06753467149e0c5bee7eea` (the user's pushed weather-agent release).
 
 ## Behavior

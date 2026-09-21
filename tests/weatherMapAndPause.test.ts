@@ -68,11 +68,11 @@ describe('Regional weather and an on-demand continental snapshot', () => {
   });
 
   it('feeds actual site weather into soil and plants, with no double altitude correction', async () => {
-    const runtime = await create(), calls = vi.spyOn(WeatherSystemAgent.prototype, 'sampleAt');
+    const runtime = await create(), calls = vi.spyOn(WeatherSystemAgent.prototype, 'samplePhysicalSites');
     await runtime.tick(Q); const world = runtime.worldSnapshot();
     expect(calls.mock.calls.length).toBeGreaterThan(1);
     const habitats = Object.values(world.vegetationSystem!.sites).filter(p => p.active);
-    for (const patch of habitats) expect(calls.mock.calls.some(([, , s]) => s.x === patch.habitat.x && s.y === patch.habitat.y)).toBe(true);
+    for (const patch of habitats) expect(calls.mock.calls.some(([, , sites]) => sites.some(s => s.x === patch.habitat.x && s.y === patch.habitat.y))).toBe(true);
     calls.mockRestore();
     const h = { ...habitats[0].habitat, id: 'high', elevationM: 3000, moisture: 0.3 };
     const wet = initializePatch(h, 0, 'weather-test'), dry = structuredClone(wet);
@@ -82,6 +82,22 @@ describe('Regional weather and an on-demand continental snapshot', () => {
     expect(wet.water).toBeGreaterThan(dry.water);
     expect(wet.snow).toBe(0);
     expect(weatherSiteAt(world, h.x, h.y)).toBe(weatherSiteAt(world, h.x, h.y));
+  });
+
+  it('gives batched physical systems exactly the same weather as individual local observations', () => {
+    const agent = new WeatherSystemAgent();
+    const sites = Array.from({length:320},(_,i)=>({...site,x:i*430-50000,y:(i%29)*3000-40000,elevationM:i*13,maritime:(i%10)/10}));
+    for (const source of [input,{...input,epoch:3},{...input,id:'a different prefix',volatility:0.95}]) {
+      for (const minute of [0,1234,87600,365000]) {
+        const batch = agent.samplePhysicalSites(source,minute,sites);
+        for (let i=0;i<sites.length;i++) {
+          const local=agent.sampleAt(source,minute,sites[i]);
+          expect(batch[i]).toEqual({temperatureC:local.temperatureC,precipitation:local.precipitation,wind:local.wind,
+            rain:local.kind==='rain'||local.kind==='storm',snow:local.kind==='snow'});
+        }
+      }
+      agent.applyCardinalCommand({kind:'stop'});
+    }
   });
 });
 

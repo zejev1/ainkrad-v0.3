@@ -124,16 +124,8 @@ export class CardinalAuditor {
       concerns.push('Cardinal attached a defer reason to a non-defer decision.');
     }
 
-    if (
-      evaluation.proposal?.kind === 'habitat_support' &&
-      !evaluation.experience.capabilities.includes(
-        'habitat_support_planning',
-      )
-    ) {
-      concerns.push(
-        'Cardinal proposed habitat support before earning the required ecosystem capability.',
-      );
-    }
+    if (evaluation.proposal && ['resource_relief', 'habitat_support'].includes(evaluation.proposal.kind))
+      concerns.push('Cardinal resource subsidies are prohibited regardless of experience.');
 
     if (evaluation.detectedProblem) {
       const independentlyCritical = this.independentlyCritical(

@@ -1,3 +1,5 @@
+import { evolveWater, initializeWater, waterForPlants, type WaterUnit } from '../water/HydrologyModel';
+import { WATER_CALIBRATION as WATER } from '../water/HydrologyKnowledge';
 import { PLANT_BY_ID, PLANT_SPECIES, type PlantSpecies } from './PlantKnowledge';
 
 export const DAY = 1440, YEAR = 525600;
@@ -17,11 +19,13 @@ export type PlantLimitation = 'water' | 'flooding' | 'temperature' | 'shade' | '
 export interface VegetationPatch {
   habitat: PlantHabitat; active: boolean; water: number; snow: number;
   fertility: number; litter: number; plants: PlantCohort[];
+  localHydrology?: WaterUnit;
   lastMinute: number; lastGrowth: number; lastMortality: number;
 }
 export interface PlantWeather {
   minute: number; duration: number; temperatureC: number; precipitation: number;
   rain: boolean; snow: boolean; wind: number;
+  water?: Record<string, { water: number; snow: number; floodDepthM: number }>;
   local?: Readonly<Record<string, { temperatureC: number; precipitation: number; rain: boolean; snow: boolean; wind: number }>>;
 }
 export interface VegetationEvent {
@@ -101,17 +105,20 @@ export function evolvePatch(patch: VegetationPatch, weather: PlantWeather): void
   const local = weather.local?.[patch.habitat.id];
   const conditions = local ?? weather;
   const temperature = local ? local.temperatureC : weather.temperatureC - patch.habitat.elevationM * 0.0065;
-  const wet = patch.habitat.kind === 'wetland';
-  // Weather precipitation is an index, NOT millimetres. Snow is retained until thaw.
   const precipitation = conditions.rain || conditions.snow ? conditions.precipitation * 0.09 * days : 0;
-  if (conditions.snow || temperature < 0) patch.snow = unit(patch.snow + precipitation);
-  const melt = Math.min(patch.snow, Math.max(0, temperature) * 0.007 * days);
-  patch.snow -= melt;
-  const infiltration = conditions.snow || temperature < 0 ? 0 : precipitation;
-  const drainage = Math.max(0, patch.water - patch.habitat.moisture) * (1 - Math.exp(-0.12 * days));
-  const groundwater = Math.max(0, patch.habitat.moisture - patch.water) * (1 - Math.exp(-(wet ? 0.2 : 0.02) * days));
-  const evaporation = Math.max(0, temperature + 3) * 0.00055 * days * (0.6 + conditions.wind * 0.4);
-  patch.water = unit(patch.water + infiltration + melt + groundwater - drainage - evaporation);
+  const supplied = weather.water?.[patch.habitat.id];
+  if (supplied) { patch.water = supplied.water; patch.snow = supplied.snow; }
+  else if (!weather.water) {
+    // Standalone ecological experiments use the same finite-water physics.
+    // Production always supplies the world-owned reservoir projection.
+    const h = patch.habitat;
+    patch.localHydrology ??= initializeWater({ id: h.id, x: h.x, y: h.y, elevationM: h.elevationM,
+      kind: 'plot', areaM2: WATER.plotAreaM2, moisture: h.moisture, slope: h.slope,
+      soilCapacityMm: WATER.soilCapacityMm, surfaceAreaM2: WATER.plotAreaM2,
+      bankfullM3: WATER.plotAreaM2 * 0.005, residenceDays: 0.7 }, weather.minute, patch.water, patch.snow);
+    evolveWater(patch.localHydrology, { ...conditions, temperatureC: temperature }, weather.duration, plantCover(patch));
+    const actual = waterForPlants(patch.localHydrology); patch.water = actual.water; patch.snow = actual.snow;
+  }
   const canopy = canopyCover(patch), cover = plantCover(patch), space = Math.max(0, 1 - cover);
   let grown = 0, lost = 0, nitrogen = 0;
   for (const c of patch.plants) {

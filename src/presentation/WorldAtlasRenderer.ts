@@ -6,6 +6,7 @@ import { clipMapPolygon,clipMapSegment,type WorldMapCamera } from './WorldMapCam
 import { WorldAtlasIndex,atlasLevel } from './WorldAtlasIndex';
 import { shouldPaintAtlasAreaOverlay } from './WorldAtlasOverlayPolicy';
 import type { WorldState } from '../world/types';
+import { paintHydrologyOverlay } from './HydrologyOverlay';
 
 const SVG='http://www.w3.org/2000/svg';
 const palette:Record<string,string>={water:'#5b96a2',forest:'#678465',quiet_space:'#809b70',mountains:'#aaa58e',
@@ -15,12 +16,14 @@ export class WorldAtlasRenderer {
   readonly index=new WorldAtlasIndex();
   readonly raster=new TerrainRaster();
   readonly details=new TerrainDetails();
-  private terrainKey='';private roadKey='';
+  private terrainKey='';private roadKey='';private waterKey='';
+  private waterShapes:SVGGElement;
   private svg:SVGSVGElement;private shapes:SVGGElement;
   constructor(private ground:HTMLElement,private roads:SVGSVGElement,private towns:HTMLElement) {
     this.svg=document.createElementNS(SVG,'svg');this.svg.setAttribute('viewBox','0 0 100 100');this.svg.setAttribute('preserveAspectRatio','none');this.svg.classList.add('atlas-terrain');
     this.svg.innerHTML='<defs><pattern id="atlas-field-rows" patternUnits="userSpaceOnUse" width="9" height="9" patternTransform="rotate(22)"><path d="M2 0V9M6 0V9" stroke="#8c874e" stroke-width="1.3"/></pattern><pattern id="atlas-forest" patternUnits="userSpaceOnUse" width="16" height="16"><circle cx="5" cy="5" r="3" fill="#436b50"/><circle cx="12" cy="12" r="3" fill="#527658"/></pattern><pattern id="atlas-relief" patternUnits="userSpaceOnUse" width="24" height="24"><path d="M-2 15Q5 2 13 12T27 12M-2 20Q5 7 13 17T27 17" fill="none" stroke="#827f6c" stroke-width=".8"/></pattern></defs>';
     this.shapes=document.createElementNS(SVG,'g');this.svg.append(this.shapes);ground.replaceChildren(this.raster.canvas,this.svg,this.details.canvas);towns.replaceChildren();
+    this.waterShapes=document.createElementNS(SVG,'g');this.waterShapes.style.pointerEvents='none';this.svg.append(this.waterShapes);
   }
   render(world:Readonly<WorldState>,camera:Readonly<WorldMapCamera>):void {
     const vessels=document.createDocumentFragment();
@@ -37,6 +40,8 @@ export class WorldAtlasRenderer {
     this.index.update(world);
     const cameraKey=[this.index.revision,camera.x,camera.y,camera.pixelsPerUnit,camera.width,camera.height].join(':');
     if(cameraKey!==this.terrainKey) {this.paintTerrain(camera,world);this.terrainKey=cameraKey;}
+    const waterKey=cameraKey+':'+(world.hydrologySystem?.updates??0);
+    if(waterKey!==this.waterKey){paintHydrologyOverlay(world,camera,this.waterShapes);this.waterKey=waterKey;}
     const routes=this.index.visibleRoads(world,camera),roadKey=cameraKey+':'+routes.map(r=>r.id).join('|');
     if(roadKey!==this.roadKey) {
       const seen=new Set<string>(),parts:string[]=[];

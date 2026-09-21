@@ -31,7 +31,7 @@ import type {
   InterventionProposal,
 } from './types';
 
-export const CARDINAL_POLICY_VERSION = 'ainkrad-cardinal-policy-0.3.15';
+export const CARDINAL_POLICY_VERSION = 'ainkrad-cardinal-policy-0.3.22-f14';
 export const DEFAULT_CARDINAL_PREDICTION_HORIZON_WORLD_MINUTES =
   LEGACY_CARDINAL_PREDICTION_WINDOW_WORLD_MINUTES;
 export const MAX_CARDINAL_PREDICTION_HORIZON_WORLD_MINUTES =
@@ -88,25 +88,7 @@ const CANDIDATES: readonly CandidateDefinition[] = [
     falsifier:
       'The hypothesis weakens if population stabilizes, death pressure falls and civilization criticality declines without Cardinal assistance.',
   },
-  {
-    problemKind: 'resource_fragility',
-    interventionKind: 'resource_relief',
-    severity: (metrics) => metrics.resourcePressure - 0.65,
-    qualifies: (metrics) =>
-      metrics.resourcePressure > 0.62 && metrics.recoveryCapacity < 0.7,
-    critical: (metrics) =>
-      metrics.resourcePressure > 0.88 && metrics.recoveryCapacity < 0.3,
-    trendMetric: 'resourcePressure',
-    predictionMetric: 'resourcePressure',
-    reason:
-      'Food, housing, known territory or renewable land is under pressure while recovery capacity is weak.',
-    expectedOutcome:
-      'Restore enough resource slack for agents to recover through their own decisions.',
-    claim:
-      'Population needs are persistently outrunning food, housing, known territory or renewable land, and endogenous recovery is not resolving the imbalance quickly enough.',
-    falsifier:
-      'The hypothesis weakens if resource pressure falls or recovery capacity rises without Cardinal assistance.',
-  },
+
   {
     problemKind: 'social_fragmentation',
     interventionKind: 'open_shared_space',
@@ -162,26 +144,7 @@ const CANDIDATES: readonly CandidateDefinition[] = [
     falsifier:
       'The hypothesis weakens if stress or conflict pressure recedes through autonomous adaptation.',
   },
-  {
-    problemKind: 'ecosystem_fragility',
-    interventionKind: 'habitat_support',
-    severity: (metrics) => metrics.wildlifePressure - 0.58,
-    qualifies: (metrics) =>
-      metrics.exploredWorldRatio > 0 && metrics.wildlifePressure > 0.7,
-    critical: (metrics) =>
-      metrics.exploredWorldRatio > 0 && metrics.wildlifePressure > 0.94,
-    trendMetric: 'wildlifePressure',
-    predictionMetric: 'wildlifePressure',
-    reason:
-      'Wildlife populations are depleted across discovered habitats.',
-    expectedOutcome:
-      'Temporarily improve habitat recovery while residents remain free to hunt, abstain or adapt.',
-    claim:
-      'The discovered ecosystem is losing wildlife faster than its own recovery cycle restores it.',
-    falsifier:
-      'The hypothesis weakens if wildlife pressure falls through natural recovery or changed resident behavior.',
-    requiredCapability: 'habitat_support_planning',
-  },
+
 ];
 
 function trendFromDelta(delta: number): 'rising' | 'stable' | 'falling' {
@@ -241,6 +204,20 @@ export class CardinalCore {
       'observer_scope=read_only_no_resident_mind_or_action_writes',
     ];
 
+    if (observation.metrics.housingPressure !== undefined) {
+      reasoningFactors.push(
+        `housing_capacity=${observation.metrics.sapientHousingCapacity ?? 'unknown'}`,
+        `unhoused_residents=${observation.metrics.unhousedResidentCount ?? 'unknown'}`,
+        `housing_pressure=${observation.metrics.housingPressure.toFixed(3)}`,
+        `food_pressure=${(observation.metrics.foodPressure ?? 0).toFixed(3)}`,
+        `food_reserve_per_resident=${(observation.metrics.foodReservePerResident ?? 0).toFixed(3)}`,
+        `land_depletion_pressure=${(observation.metrics.landDepletionPressure ?? 0).toFixed(3)}`,
+        `territory_pressure=${(observation.metrics.territoryPressure ?? 0).toFixed(3)}`,
+        `known_unclaimed_habitable_places=${observation.metrics.unclaimedHabitablePlaceCount ?? 'unknown'}`,
+        `deprivation_death_share=${(observation.metrics.deprivationDeathShare ?? 0).toFixed(3)}`,
+      );
+    }
+
     if (selected) {
       const isCritical = selected.candidate.critical(observation.metrics);
       detectedProblem = this.assessProblem(
@@ -276,19 +253,7 @@ export class CardinalCore {
         `reproductive_pairs=${observation.metrics.reproductivePairPotential ?? 'legacy_unknown'}`,
         `reproductive_continuity=${(observation.metrics.reproductiveContinuity ?? 1).toFixed(3)}`,
       );
-      if (observation.metrics.housingPressure !== undefined) {
-        reasoningFactors.push(
-          `housing_capacity=${observation.metrics.sapientHousingCapacity ?? 'unknown'}`,
-          `unhoused_residents=${observation.metrics.unhousedResidentCount ?? 'unknown'}`,
-          `housing_pressure=${observation.metrics.housingPressure.toFixed(3)}`,
-          `food_pressure=${(observation.metrics.foodPressure ?? 0).toFixed(3)}`,
-          `food_reserve_per_resident=${(observation.metrics.foodReservePerResident ?? 0).toFixed(3)}`,
-          `land_depletion_pressure=${(observation.metrics.landDepletionPressure ?? 0).toFixed(3)}`,
-          `territory_pressure=${(observation.metrics.territoryPressure ?? 0).toFixed(3)}`,
-          `known_unclaimed_habitable_places=${observation.metrics.unclaimedHabitablePlaceCount ?? 'unknown'}`,
-          `deprivation_death_share=${(observation.metrics.deprivationDeathShare ?? 0).toFixed(3)}`,
-        );
-      }
+
 
       const capabilityReady =
         !selected.candidate.requiredCapability ||

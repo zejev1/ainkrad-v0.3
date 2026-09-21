@@ -134,11 +134,11 @@ NPCs remain free to respond through their ordinary action model. This is essenti
 
 Read-only sensors derive frontier maturity, wildlife pressure and ecological diversity from committed world state. Because the frontier is unbounded, `exploredWorldRatio` is an asymptotic maturity curve rather than a false claim that the infinite world is 100% explored. Sensors do not spawn animals or write habitat state.
 
-Cardinal experience is reconstructed from append-only evaluations and outcomes. Repeated observations unlock analysis capabilities; they never unlock assignment of resident goals, actions, relationships, memories or skills. Temporary `habitat_support` still requires learned capability, independent Auditor approval and execution by the independent simulation gateway.
+Cardinal experience is reconstructed from append-only evaluations and outcomes. Repeated observations unlock analysis capabilities; they never unlock assignment of resident goals, actions, relationships, memories or skills. Since f14, `habitat_support` and `resource_relief` are prohibited regardless of experience. Historical records remain intact.
 
 At higher experience levels Cardinal may propose a registered world-law mechanism. The separate world-authority gateway validates the proposal and constitution. Cardinal's architecture observation includes aggregate frontier and population data, not resident minds. See `WORLD_AUTHORITY.md`.
 
-That proposal changes environmental recovery conditions only. Residents remain free to hunt, abstain, explore, work or rest. Natural population recovery remains available in OFF and OBSERVER modes.
+Permitted laws remain bounded by independent gateways; laws that subsidize resource recovery are rejected. Residents remain free to hunt, abstain, explore, work or rest. Natural finite recovery operates identically in OFF and OBSERVER modes. Cardinal can conduct world agents from year zero.
 
 ## Sensors must measure current society
 

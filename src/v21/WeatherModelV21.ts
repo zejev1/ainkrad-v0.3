@@ -84,10 +84,8 @@ function weatherFromRolls(world: Readonly<WeatherModelInput>, atWorldMinute: num
   return weatherFromConditions(volatility, temperatureC, precipitation, wind);
 }
 
-/** Shared physical effects for the legacy reference and every local forecast. */
-export function weatherFromConditions(volatility: number, temperatureC: number,
-  precipitation: number, wind: number): WorldWeatherV21 {
-
+export function weatherKindFromConditions(volatility: number, temperatureC: number,
+  precipitation: number, wind: number): WorldWeatherKindV21 {
   let kind: WorldWeatherKindV21;
   if (precipitation > 0.79 - volatility * 0.12 && wind > 0.62) {
     kind = temperatureC <= 1 ? 'snow' : 'storm';
@@ -100,6 +98,13 @@ export function weatherFromConditions(volatility: number, temperatureC: number,
   } else {
     kind = 'clear';
   }
+  return kind;
+}
+
+/** Shared physical effects for the legacy reference and every local forecast. */
+export function weatherFromConditions(volatility: number, temperatureC: number,
+  precipitation: number, wind: number): WorldWeatherV21 {
+  const kind = weatherKindFromConditions(volatility, temperatureC, precipitation, wind);
 
   const baseSeverity =
     kind === 'storm' ? 0.74 :

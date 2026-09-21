@@ -2,7 +2,8 @@ import type { WorldState } from '../types';
 import type { CardinalSystemAgent, CardinalSystemCommand, SystemAgentLifecycle, SystemAgentManifest } from '../../cardinal/SystemAgentContracts';
 import { SystemAgentOrchestrator } from './SystemAgentRegistry';
 import { createCachedWeatherModelV21, type WeatherModelInput, type WorldWeatherV21 } from '../../v21/WeatherModelV21';
-import { createRegionalWeatherProjector, type WeatherSite } from '../../v21/RegionalWeatherV21';
+import { createRegionalWeatherProjector, createRegionalWeatherSampler, type WeatherSite } from '../../v21/RegionalWeatherV21';
+import { weatherKindFromConditions } from '../../v21/WeatherModelV21';
 
 export interface WeatherSystemState {
   version: 1;
@@ -49,6 +50,10 @@ export class WeatherSystemAgent implements CardinalSystemAgent {
   private readonly samples = new Map<number, Readonly<WorldWeatherV21>>();
   private readonly originalModel = createCachedWeatherModelV21();
   private readonly regional = createRegionalWeatherProjector();
+  private readonly physical = createRegionalWeatherSampler((v,temperatureC,precipitation,wind) => {
+    const kind=weatherKindFromConditions(v,temperatureC,precipitation,wind);
+    return {temperatureC,precipitation,wind,rain:kind==='rain'||kind==='storm',snow:kind==='snow'};
+  });
   private readonly localSamples = new Map<string, { input: Readonly<WeatherModelInput>; minute: number; site: Readonly<WeatherSite>; weather: Readonly<WorldWeatherV21> }>();
 
   constructor(saved?: WeatherSystemState, private readonly model?: WeatherModel) {
@@ -68,6 +73,13 @@ export class WeatherSystemAgent implements CardinalSystemAgent {
   }
 
   snapshot(): WeatherSystemState { return structuredClone(this.state); }
+
+  /** Domain integration visits each prepared site once per physical slice.
+   * Reuse the common forcing and avoid caching/copying one-use observations. */
+  samplePhysicalSites(input: Readonly<WeatherModelInput>, minute: number, sites: readonly Readonly<WeatherSite>[]) {
+    const base = this.sample(input, minute);
+    return sites.map(site => this.physical(input, minute, site, base));
+  }
 
   sampleAt(input: Readonly<WeatherModelInput>, minute: number, site: Readonly<WeatherSite>): Readonly<WorldWeatherV21> {
     const key = `${site.x}:${site.y}`;

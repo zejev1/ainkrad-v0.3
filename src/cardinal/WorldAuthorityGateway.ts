@@ -1,3 +1,4 @@
+import { isResourceSubsidyLaw, RESOURCE_SUBSIDY_DENIAL } from '../core/CardinalResourcePolicy';
 import { createStableId } from '../core/stableId';
 import { stableJsonStringify } from '../core/stableJson';
 import type { WorldEvent } from '../world/events';
@@ -21,7 +22,7 @@ import {
 } from '../v15/WorldTimeContract';
 
 export const WORLD_AUTHORITY_GATEWAY_POLICY_VERSION =
-  'ainkrad-world-authority-gateway-0.3.15';
+  'ainkrad-world-authority-gateway-0.3.22-f14';
 
 export const WORLD_AUTHORITY_COOLDOWN_WORLD_MINUTES =
   48 * CANONICAL_WORLD_QUANTUM_MINUTES;
@@ -398,6 +399,7 @@ export class IndependentWorldAuthorityGateway {
     }
 
     if (proposal.kind === 'world_law') {
+      if (isResourceSubsidyLaw(proposal.mechanism)) return RESOURCE_SUBSIDY_DENIAL;
       const current = expectedWorld.governance.laws[proposal.lawId];
       const emergencyDemographicAmendment = emergencyDemographicAuthority;
       if (

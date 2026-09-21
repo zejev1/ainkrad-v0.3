@@ -254,7 +254,7 @@ describe('Independent world authority', () => {
       (candidate) => candidate.kind === 'cardinal.catastrophe.earthquake',
     );
     expect(event?.payload.recoveryPlan).toBeTruthy();
-    expect(event?.payload.recoveryMagnitude).toBeGreaterThan(0);
+    expect(event?.payload.recoveryMagnitude).toBe(0);
     expect(event?.activeUntil).toBe(72);
     expect(event?.activeUntilWorldMinutes).toBe(
       72 * CANONICAL_WORLD_QUANTUM_MINUTES,

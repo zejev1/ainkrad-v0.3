@@ -38,9 +38,6 @@ function capabilitiesFor(
   if (counters.evaluatedOutcomes >= 2) {
     capabilities.push('outcome_learning');
   }
-  if (level >= 2 && counters.ecologyObservationCycles >= 8) {
-    capabilities.push('habitat_support_planning');
-  }
   if (level >= 3 && counters.observationCycles >= 64) {
     capabilities.push('world_rule_design');
   }

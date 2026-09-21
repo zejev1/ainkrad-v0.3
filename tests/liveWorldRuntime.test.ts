@@ -75,7 +75,7 @@ describe('Live world continuity', () => {
     expect(resumed.recentEvents.length).toBeGreaterThan(0);
   });
 
-  it('lets a fresh Cardinal study pressure without intervening during the first 200 years', async () => {
+  it('permits bounded Cardinal decisions from the first launch without resource subsidies', async () => {
     const runtime = await LiveWorldRuntime.create({
       mode: 'intervene',
       seed: 'ainkrad-browser-world',
@@ -93,10 +93,13 @@ describe('Live world continuity', () => {
     }
 
     expect(frame.cardinalActivity.proposalCount).toBeGreaterThan(0);
-    expect(frame.cardinalActivity.authorizationDecisionCount).toBe(0);
-    expect(frame.executedInterventionCount).toBe(0);
+    expect(frame.world.calendar.elapsedWorldMinutes).toBeLessThan(200 * 525600);
+    expect(frame.cardinalActivity.authorizationDecisionCount).toBeGreaterThan(0);
+    expect(frame.executedInterventionCount).toBeGreaterThan(0);
 
     const consoleSnapshot = await runtime.cardinalConsole();
+    expect(consoleSnapshot.interventions.every(record =>
+      !['resource_relief', 'habitat_support'].includes(record.proposal.kind))).toBe(true);
     expect(consoleSnapshot.laws.length).toBeGreaterThan(0);
     expect(consoleSnapshot.readableLawReports).toHaveLength(
       consoleSnapshot.laws.length,
@@ -110,7 +113,7 @@ describe('Live world continuity', () => {
     )).toBe(true);
     expect(Array.isArray(consoleSnapshot.deathDiagnostics)).toBe(true);
     expect(consoleSnapshot.evaluations.length).toBeLessThanOrEqual(160);
-    expect(consoleSnapshot.interventions).toEqual([]);
+    expect(consoleSnapshot.interventions.filter(record=>record.executed)).toHaveLength(frame.executedInterventionCount);
     expect(
       consoleSnapshot.audits.some(
         (audit) =>

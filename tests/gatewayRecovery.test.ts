@@ -49,12 +49,12 @@ function proposal(id: string) {
     proposalId: id,
     worldId: 'world_gateway_recovery',
     hypothesisId: 'hypothesis_test',
-    kind: 'resource_relief' as const,
+    kind: 'safety_support' as const,
     magnitude: 0.1,
     reason: 'test',
     expectedOutcome: 'test',
     prediction: {
-      metric: 'resourcePressure' as const,
+      metric: 'safetyPressure' as const,
       direction: 'decrease' as const,
       minimumImprovement: 0.01,
       horizonWorldMinutes: 35_040,
@@ -128,7 +128,7 @@ describe('Gateway restart recovery', () => {
 
     const historyAfterCommit = await store.history(world.snapshot().id);
     expect(
-      historyAfterCommit.filter((event) => event.kind === 'cardinal.intervention.resource_relief'),
+      historyAfterCommit.filter((event) => event.kind === 'cardinal.effect.safety_support'),
     ).toHaveLength(1);
 
     const restartedGateway = new IndependentInterventionGateway(world, {
@@ -143,7 +143,7 @@ describe('Gateway restart recovery', () => {
 
     const historyAfterRecovery = await store.history(world.snapshot().id);
     expect(
-      historyAfterRecovery.filter((event) => event.kind === 'cardinal.intervention.resource_relief'),
+      historyAfterRecovery.filter((event) => event.kind === 'cardinal.effect.safety_support'),
     ).toHaveLength(1);
   });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CardinalCore } from '../src/cardinal/CardinalCore';
+import { CardinalCore, CARDINAL_POLICY_VERSION } from '../src/cardinal/CardinalCore';
 import { deriveCardinalExperience } from '../src/cardinal/CardinalExperience';
 import {
   CARDINAL_RESEARCH_VERSION,
@@ -70,7 +70,7 @@ describe('Cardinal Core', () => {
       }),
     );
 
-    expect(evaluation.detectedProblem?.kind).toBe('resource_fragility');
+    expect(evaluation.proposal).toBeUndefined();
     expect(evaluation.reasoningFactors).toContain('unhoused_residents=50');
     expect(evaluation.reasoningFactors).toContain('food_pressure=0.910');
     expect(evaluation.reasoningFactors).toContain('territory_pressure=0.760');
@@ -106,11 +106,11 @@ describe('Cardinal Core', () => {
   it('defers a non-critical single observation instead of reflexively intervening', () => {
     const evaluation = new CardinalCore().evaluate(
       'intervene',
-      observation({ resourcePressure: 0.82, recoveryCapacity: 0.3 }),
+      observation({ socialIsolation: 0.82, relationshipDiversity: 0.3 }),
       emptyCardinalResearchContext(),
     );
 
-    expect(evaluation.detectedProblem?.kind).toBe('resource_fragility');
+    expect(evaluation.detectedProblem?.kind).toBe('social_fragmentation');
     expect(evaluation.detectedProblem?.persistence).toBe(1);
     expect(evaluation.decision).toBe('defer');
     expect(evaluation.proposal).toBeUndefined();
@@ -118,7 +118,7 @@ describe('Cardinal Core', () => {
 
   it('turns persistent compatible evidence into a falsifiable minimal proposal', () => {
     const core = new CardinalCore();
-    const metrics = { resourcePressure: 0.82, recoveryCapacity: 0.3 };
+    const metrics = { socialIsolation: 0.82, relationshipDiversity: 0.3 };
 
     const first = core.evaluate('intervene', observation(metrics, 8), research([]));
     const second = core.evaluate('intervene', observation(metrics, 9), research([first]));
@@ -135,7 +135,7 @@ describe('Cardinal Core', () => {
     expect(third.detectedProblem?.hypothesisId).toBe(
       first.detectedProblem?.hypothesisId,
     );
-    expect(third.proposal?.prediction.metric).toBe('resourcePressure');
+    expect(third.proposal?.prediction.metric).toBe('socialIsolation');
     expect(third.proposal?.prediction.minimumImprovement).toBeGreaterThan(0);
   });
 });
@@ -150,7 +150,7 @@ function syntheticExecutedIntervention(
     evaluationId: `evaluation_${id}`,
     worldId: 'world_1',
     worldEpoch: 1,
-    policyVersion: 'ainkrad-cardinal-policy-0.3.15',
+    policyVersion: CARDINAL_POLICY_VERSION,
     sensorVersion: 'ainkrad-world-sensors-0.3.3',
     researchVersion: CARDINAL_RESEARCH_VERSION,
     requestedAt,
@@ -162,12 +162,12 @@ function syntheticExecutedIntervention(
       proposalId: `proposal_${id}`,
       worldId: 'world_1',
       hypothesisId: 'hypothesis_test',
-      kind: 'resource_relief',
+      kind: 'open_shared_space',
       magnitude: 0.1,
       reason: 'test',
       expectedOutcome: 'test',
       prediction: {
-        metric: 'resourcePressure',
+        metric: 'socialIsolation',
         direction: 'decrease',
         minimumImprovement: 0.01,
         horizonWorldMinutes: 35_040,
@@ -209,7 +209,7 @@ function syntheticOutcome(
     conflictPressureDelta: 0,
     resourcePressureDelta: 0,
     wildlifePressureDelta: 0,
-    predictionMetric: 'resourcePressure',
+    predictionMetric: 'socialIsolation',
     predictedMinimumImprovement: 0.01,
     observedPredictionDelta: 0,
     expectedDirectionObserved: false,
@@ -220,7 +220,7 @@ function syntheticOutcome(
 describe('Cardinal experimental discipline', () => {
   it('does not overlap a same-kind intervention whose effect or outcome is still in progress', () => {
     const core = new CardinalCore();
-    const metrics = { resourcePressure: 0.82, recoveryCapacity: 0.3 };
+    const metrics = { socialIsolation: 0.82, relationshipDiversity: 0.3 };
     const first = core.evaluate('intervene', observation(metrics, 8), research([]));
     const second = core.evaluate('intervene', observation(metrics, 9), research([first]));
     const inFlight = syntheticExecutedIntervention('active_relief', 8, 8);
@@ -245,7 +245,7 @@ describe('Cardinal experimental discipline', () => {
 
   it('uses an autonomy budget to force a non-critical washout period after dense interventions', () => {
     const core = new CardinalCore();
-    const metrics = { resourcePressure: 0.82, recoveryCapacity: 0.3 };
+    const metrics = { socialIsolation: 0.82, relationshipDiversity: 0.3 };
     const first = core.evaluate('intervene', observation(metrics, 14), research([]));
     const second = core.evaluate('intervene', observation(metrics, 15), research([first]));
     const interventions = [
@@ -275,7 +275,7 @@ describe('Cardinal experimental discipline', () => {
 
   it('allows an explicit critical override of the autonomy budget only when no same-kind test is active', () => {
     const core = new CardinalCore();
-    const criticalMetrics = { resourcePressure: 0.96, recoveryCapacity: 0.2 };
+    const criticalMetrics = { socialIsolation: 0.96, relationshipDiversity: 0.2 };
     const interventions = [
       syntheticExecutedIntervention('old_1', 2, 1),
       syntheticExecutedIntervention('old_2', 6, 1),

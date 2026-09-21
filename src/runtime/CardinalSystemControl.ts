@@ -32,6 +32,7 @@ export interface CardinalControlSnapshot {
   error?: string;
   recent: readonly CardinalSystemRecord[];
   vegetation?: CardinalControlSnapshot;
+  hydrology?: CardinalControlSnapshot;
 }
 
 /** Host boundary. Cardinal receives narrow weather diagnostics, never the host. */
@@ -53,8 +54,8 @@ export class CardinalSystemControl {
 
   constructor(worldId: string, enabled: boolean, private readonly log: AppendOnlyLog,
     private readonly port: WeatherControlPort,
-    private readonly domain: { id: 'weather' | 'vegetation'; minimumMinute: number } = { id: 'weather', minimumMinute: 0 }) {
-    this.stream = `${domain.id === 'weather' ? 'cardinal-system-control' : 'cardinal-vegetation-control'}:${worldId}:v1`;
+    private readonly domain: { id: 'weather' | 'vegetation' | 'hydrology'; minimumMinute: number } = { id: 'weather', minimumMinute: 0 }) {
+    this.stream = `${domain.id === 'weather' ? 'cardinal-system-control' : `cardinal-${domain.id}-control`}:${worldId}:v1`;
     this.enabled = enabled;
   }
 
@@ -114,7 +115,7 @@ export class CardinalSystemControl {
     this.retryAfter = 0;
     try {
       await this.record(enabled ? 'on' : 'off', this.port.observe(),
-        enabled ? 'Connected to current world; 200-year restriction retained' : 'Observation and orchestration detached; world remains autonomous');
+        enabled ? 'Connected to current world; system-agent recovery available from startup; resource subsidies prohibited' : 'Observation and orchestration detached; world remains autonomous');
     } catch (error) { this.disconnect(error); }
   }
 

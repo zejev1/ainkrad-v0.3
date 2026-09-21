@@ -69,11 +69,11 @@ describe('Cardinal weather control in the live world', () => {
     expect(on.executedInterventionCount).toBe(0);
   });
 
-  it('keeps the same physical world with Cardinal OFF/ON while weather is healthy', async () => {
+  it('keeps identical autonomous physics with observation and conductor ON/OFF while weather is healthy', async () => {
     const options = await fixture(false);
     const initial = await options.store.loadWorld(options.worldId);
     const otherStore = new InMemoryWorldStore(); await otherStore.initializeWorld(initial!);
-    const on = await LiveWorldRuntime.create({ ...options, mode: 'intervene' });
+    const on = await LiveWorldRuntime.create({ ...options, mode: 'observer' });
     const off = await LiveWorldRuntime.create({ ...options, store: otherStore, controlLog: new InMemoryAppendOnlyLog(), mode: 'off' });
     const a = await on.tick(2 * QUANTUM), b = await off.tick(2 * QUANTUM);
     expect(a.world).toEqual(b.world);

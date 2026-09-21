@@ -6,10 +6,12 @@ import {terrainModel,type TerrainModel} from './TerrainModel';
 import {hash} from './TerrainMath';
 import {plannedMainlandHomeland} from './MainlandHomelands';
 import type {TerrainFoundation,TerrainAnchor} from './TerrainTypes';
+import { bindPhysicalWater, localFloodDepth } from './HydrologySurface';
 
 const contexts=new WeakMap<Readonly<Record<string,WorldPlace>>,TerrainModel>();
 export const terrainForPlaces=(places:Readonly<Record<string,WorldPlace>>)=>contexts.get(places);
 export function bindWorldTerrain(world:Readonly<WorldState>):TerrainModel|undefined {
+  bindPhysicalWater(world);
   if(!world.terrain)return undefined;let model=contexts.get(world.places);
   if(!model||model.foundation.key!==world.terrain.key){model=terrainModel(world.terrain);contexts.set(world.places,model);}return model;
 }
@@ -83,9 +85,11 @@ export function terrainParcelIsDry(places:Readonly<Record<string,WorldPlace>>,po
 }
 export function terrainWalkingScale(places:Readonly<Record<string,WorldPlace>>,a:WorldPoint2D,b:WorldPoint2D):number {
   const model=terrainForPlaces(places);if(!model)return 1;
-  const distance=Math.hypot(b.x-a.x,b.y-a.y);if(distance<2)return 1; // surveyed streets/local lanes
+  const flood=localFloodDepth(places,(a.x+b.x)/2,(a.y+b.y)/2);
+  const wetScale=1/(1+Math.min(3,flood*4));
+  const distance=Math.hypot(b.x-a.x,b.y-a.y);if(distance<2)return wetScale; // surveyed streets/local lanes
   const mid=model.sample((a.x+b.x)/2,(a.y+b.y)/2),rise=Math.max(0,model.elevation(b.x,b.y)-model.elevation(a.x,a.y));
-  return 1/(1+rise/Math.max(1,distance*100)*8+(mid.biome==='swamp'?.7:mid.biome==='forest'?.2:mid.biome==='mountains'?.35:0));
+  return wetScale/(1+rise/Math.max(1,distance*100)*8+(mid.biome==='swamp'?.7:mid.biome==='forest'?.2:mid.biome==='mountains'?.35:0));
 }
 export function assertTerrainFoundation(value:unknown):void {
   if(value===undefined)return;

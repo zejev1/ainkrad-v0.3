@@ -178,8 +178,8 @@ describe('Complete world integration and detachable Cardinal', () => {
     expect(runs[1]).toEqual(runs[0]); expect(runs[2]).toEqual(runs[0]);
   });
 
-  it('observes a vegetation fault before year 200 and repairs only the executor from year 200', async () => {
-    for (const minute of [YEAR * 199, YEAR * 200]) {
+  it('repairs vegetation from year zero and preserves all physical state', async () => {
+    for (const minute of [0, YEAR * 199, YEAR * 200]) {
       const f = await worldFixture(), checkpoint = f.engine.snapshot();
       checkpoint.calendar.elapsedWorldMinutes = minute;
       Object.assign(checkpoint.v15!.simulationClock, { simulatedWorldMinutes: minute, pendingWorldMinutes: 0, quantumIndex: minute / 8760 });
@@ -190,8 +190,8 @@ describe('Complete world integration and detachable Cardinal', () => {
       const runtime = await LiveWorldRuntime.create({ ...f, store, mode: 'observer' });
       const before = runtime.worldSnapshot();
       const frame = await runtime.tick(0);
-      expect(frame.world.vegetationSystem!.fallback).toBe(minute < YEAR * 200);
-      expect(frame.cardinalControl!.vegetation!.recoveries).toBe(minute < YEAR * 200 ? 0 : 1);
+      expect(frame.world.vegetationSystem!.fallback).toBe(false);
+      expect(frame.cardinalControl!.vegetation!.recoveries).toBe(1);
       expect(frame.world.vegetationSystem!.sites).toEqual(before.vegetationSystem!.sites);
       expect(frame.world.agents).toEqual(before.agents);
       expect(frame.world.calendar).toEqual(before.calendar);

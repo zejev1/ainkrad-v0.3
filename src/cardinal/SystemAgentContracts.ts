@@ -1,5 +1,6 @@
 export type SystemAgentDomain =
   | 'weather'
+  | 'hydrology'
   | 'resources'
   | 'ecology'
   | 'wildlife'

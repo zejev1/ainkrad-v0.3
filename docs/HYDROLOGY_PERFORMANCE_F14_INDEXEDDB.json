@@ -1,0 +1,128 @@
+{
+  "baselineCommit": "0dd588fc57bb1d9da6fd95422d52d17fa4f11dce",
+  "worldMinutes": 525600,
+  "environment": "Node v24.19.0; real IndexedDb adapter with fake-indexeddb; not physical Android",
+  "exactAcceptedRegionalWeatherEquality": true,
+  "gcBeforeEachMeasurement": false,
+  "warmupRounds": 5,
+  "exactCardinalOnOffWorldEventsMemoriesEquality": true,
+  "exactSaveReloadEquality": true,
+  "physicsNote": "Finite hydrology is a user-authorized simulation change. Equality to old ecology is not claimed; the canonical opportunity schedule and Spark implementations are unchanged.",
+  "measurements": [
+    {
+      "name": "accepted_f13",
+      "medianMs": 3577.7674970000007,
+      "medianCpuMs": 4169.387,
+      "runs": [
+        {
+          "ms": 3638.787714000002,
+          "cpuMs": 4169.387,
+          "heapDelta": 132445304
+        },
+        {
+          "ms": 3396.0451010000033,
+          "cpuMs": 3762.977,
+          "heapDelta": 109204448
+        },
+        {
+          "ms": 3369.807259000001,
+          "cpuMs": 3706.353,
+          "heapDelta": 128554792
+        },
+        {
+          "ms": 3577.7674970000007,
+          "cpuMs": 4170.809,
+          "heapDelta": 136732416
+        },
+        {
+          "ms": 3743.7791209999996,
+          "cpuMs": 4362.335,
+          "heapDelta": 122603272
+        }
+      ],
+      "outcomes": {
+        "living": 30,
+        "residents": 30,
+        "births": 0,
+        "deaths": 0,
+        "actionEvents": 1849,
+        "explorationEvents": 65,
+        "memories": 195,
+        "ageYears": 809.9999999999989,
+        "activeJourneys": 7,
+        "evaluatedLearningAttempts": 498,
+        "retainedMethods": 180,
+        "knownPlaces": 332,
+        "learningSequence": 924,
+        "knowledgeDigest": "6ee8e485a5ef6fe2575fb9a69531db45dc32a09791c6d667944c59bbfe65affa",
+        "mapDigest": "d3bc1bafeedabf257efde7cdcfdfa71374b1f948736f0f5b55747ff30ab419db",
+        "familyPairs": 4,
+        "pregnancies": 0,
+        "familyDigest": "0df87560e10836f0a43832c5f6dffb7bb3678ed45efde04eb16d364c1e7e7259",
+        "learningDigest": "f6ebd027989bb48d782658098ee3d02d9b45318f844102f6b42b8881505cbfad",
+        "stateBytes": 981904,
+        "hydrologyBytes": 0,
+        "waterReservoirs": 0,
+        "vegetationBytes": 26946
+      }
+    },
+    {
+      "name": "hydrology_f14",
+      "medianMs": 1012.2761810000011,
+      "medianCpuMs": 1465.057,
+      "runs": [
+        {
+          "ms": 1012.2761810000011,
+          "cpuMs": 1465.057,
+          "heapDelta": 127104696
+        },
+        {
+          "ms": 1121.4768190000032,
+          "cpuMs": 1940.435,
+          "heapDelta": -536040736
+        },
+        {
+          "ms": 967.8347370000047,
+          "cpuMs": 1257.26,
+          "heapDelta": 127385016
+        },
+        {
+          "ms": 982.9137059999994,
+          "cpuMs": 1277.064,
+          "heapDelta": 135442040
+        },
+        {
+          "ms": 1081.0479609999966,
+          "cpuMs": 1479.339,
+          "heapDelta": 129698888
+        }
+      ],
+      "outcomes": {
+        "living": 30,
+        "residents": 30,
+        "births": 0,
+        "deaths": 0,
+        "actionEvents": 1849,
+        "explorationEvents": 65,
+        "memories": 195,
+        "ageYears": 809.9999999999989,
+        "activeJourneys": 7,
+        "evaluatedLearningAttempts": 498,
+        "retainedMethods": 180,
+        "knownPlaces": 332,
+        "learningSequence": 924,
+        "knowledgeDigest": "6ee8e485a5ef6fe2575fb9a69531db45dc32a09791c6d667944c59bbfe65affa",
+        "mapDigest": "d3bc1bafeedabf257efde7cdcfdfa71374b1f948736f0f5b55747ff30ab419db",
+        "familyPairs": 4,
+        "pregnancies": 0,
+        "familyDigest": "0df87560e10836f0a43832c5f6dffb7bb3678ed45efde04eb16d364c1e7e7259",
+        "learningDigest": "5e7660f6bf44b7cbeb548e4c37f14f01de390ab62e4fbee262534067bf241fc8",
+        "stateBytes": 1071756,
+        "hydrologyBytes": 89728,
+        "waterReservoirs": 113,
+        "vegetationBytes": 27054
+      }
+    }
+  ],
+  "memoryNote": "Heap deltas include GC noise. Hydrology adds finite records per physical basin/site, latest fluxes and cumulative budgets. Condition transitions remain committed history; no per-frame hydrology history."
+}

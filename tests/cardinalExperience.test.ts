@@ -48,7 +48,7 @@ function research(
 }
 
 describe('Cardinal experience', () => {
-  it('learns ecosystem support from repeated observations without gaining control over residents', () => {
+  it('learns ecosystem observation without unlocking subsidies or control over residents', () => {
     const core = new CardinalCore();
     const evaluations: CardinalEvaluation[] = [];
 
@@ -62,8 +62,8 @@ describe('Cardinal experience', () => {
       );
     }
 
-    expect(evaluations[0].decision).toBe('defer');
-    expect(evaluations[0].deferReason).toBe('capability_not_ready');
+    expect(evaluations[0].decision).toBe('no_action');
+    expect(evaluations[0].deferReason).toBeUndefined();
     expect(evaluations[6].experience.capabilities).not.toContain(
       'habitat_support_planning',
     );
@@ -75,14 +75,14 @@ describe('Cardinal experience', () => {
     );
 
     expect(learned.experience.level).toBeGreaterThanOrEqual(2);
-    expect(learned.experience.capabilities).toContain(
+    expect(learned.experience.capabilities).not.toContain(
       'habitat_support_planning',
     );
-    expect(learned.experience.newlyUnlockedCapabilities).toContain(
+    expect(learned.experience.newlyUnlockedCapabilities).not.toContain(
       'habitat_support_planning',
     );
-    expect(learned.decision).toBe('propose');
-    expect(learned.proposal?.kind).toBe('habitat_support');
+    expect(learned.decision).toBe('no_action');
+    expect(learned.proposal).toBeUndefined();
 
     const allowedCapabilities = new Set([
       'world_observation',

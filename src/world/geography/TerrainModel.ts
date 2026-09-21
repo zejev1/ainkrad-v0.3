@@ -19,6 +19,7 @@ export function riverPolygon(r:RiverReach):WorldPoint2D[] {
 export class TerrainModel {
   readonly outline:WorldPoint2D[];readonly ocean:WorldPoint2D[];readonly landOutlines:WorldPoint2D[][];readonly ranges;
   readonly heights:Float64Array;readonly land:Uint8Array;readonly reaches:RiverReach[];
+  readonly drainageParent:Int32Array;
   readonly rivers:FeatureIndex<RiverReach>;readonly anchors:FeatureIndex<TerrainFoundation['anchors'][number]>;
   readonly riverPolygons:WorldPoint2D[][];
   readonly polygons:FeatureIndex<WorldPoint2D[]>;
@@ -34,7 +35,7 @@ export class TerrainModel {
     this.ocean=[...outer,outer[0],...this.landOutlines.flatMap(poly=>[poly[0],...poly.slice(1),poly[0],outer[0]])];
     const raw=new Float64Array(N*N);this.land=new Uint8Array(N*N);
     for(let i=0;i<N*N;i++){const p=terrainGridPoint(i);this.land[i]=Number(this.landQueries[0].contains(p));raw[i]=this.land[i]?reliefHeight(p.x,p.y,foundation,this.ranges):0;}
-    const drainage=drainTerrain(raw,this.land,foundation);this.heights=drainage.heights;this.reaches=drainage.reaches;
+    const drainage=drainTerrain(raw,this.land,foundation);this.heights=drainage.heights;this.reaches=drainage.reaches;this.drainageParent=drainage.parent;
     connectLocalWaters(foundation,drainage.parent,this.heights,this.land,this.reaches);
     for(const reach of this.reaches)reach.points=naturalRiverCourse(reach,foundation);
     this.rivers=new FeatureIndex(this.reaches,r=>featureBounds(r.points!,r.width+1));

@@ -6,7 +6,7 @@ Ainkrad v0.3.10 gives Cardinal meaningful authority over the **world substrate**
 
 `CardinalWorldArchitect` receives only aggregate architecture observations. It can prepare a proposal but cannot mutate the world. `IndependentWorldAuthorityGateway` owns the narrow mutation capability and re-reads the current world before execution. `WorldEngine` enforces the constitution again at the commit boundary.
 
-The ordinary intervention gateway remains separate. A resource or habitat experiment is not silently upgraded into law-making power.
+The ordinary intervention gateway remains separate. Since f14, resource and habitat subsidies are prohibited at both boundaries and the final world writer, including resource-regeneration, wildlife-recovery, habitat-integrity and catastrophe-recovery laws from Cardinal. Historic records remain readable but no longer subsidize physical recovery. The 200-year age delay is removed; evidence and constitutional checks remain mandatory.
 
 ## Learned authority
 
@@ -53,7 +53,7 @@ The gateway requires:
 - duration no greater than 840,960 canonical world minutes (96 semantic quanta);
 - an explicit recovery plan.
 
-The engine applies exposure by place danger and individual resilience rather than selecting victims. Actual deaths cannot exceed the authorized ceiling. The event retains a destructive phase and a longer recovery phase governed by the catastrophe-recovery law. Survivors remember the event; wildlife, resources, fear, awe and later recovery can produce new history.
+The engine applies exposure by place danger and individual resilience rather than selecting victims. Actual deaths cannot exceed the authorized ceiling. Survivors remember the event. Since f14, the recovery phase grants no resource/habitat bonus: recovery follows ordinary autonomous physics and voluntary work. Saved recovery plans remain historical evidence, not permission to create resources.
 
 The mechanism is implemented and tested, but v0.3.10 does not fabricate an automatic catastrophe merely to entertain the observer or accelerate Cardinal experience. A future automatic proposal must demonstrate the exceptional evidence above.
 

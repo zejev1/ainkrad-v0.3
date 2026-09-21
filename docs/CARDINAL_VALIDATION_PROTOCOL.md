@@ -72,6 +72,8 @@ A canonical test campaign should include at least these phases:
 
 The central scientific comparison must use the same accepted checkpoint/seed and, where technically possible, the same deterministic fault-injection schedule.
 
+For f14, weather, vegetation and hydrology recovery are available from year zero. Use OBSERVER with the conductor versus OFF for exact healthy physical-state equality; a full INTERVENE trial can now perform legal world actions from startup and must instead compare measured outcomes. Neither trial may receive Cardinal resource subsidies. Include finite water balance, partial reservoir isolation, and recovery without replenishing stocks. Removing the age gate does not remove any independent authorization check.
+
 The comparison must not be produced from decorative or hand-authored numbers. Metrics must come from actual audit/event evidence.
 
 At minimum capture:

@@ -32,6 +32,8 @@ Cardinal is connected and may:
 
 Its presence must not grant direct resident-mind control or bypass the independent gateway/boundary rules.
 
+Since f14, the owner permits orchestration and otherwise authorized proposals from the first launch; there is no 200-year delay. Cardinal may not subsidize resources through direct relief, habitat support, resource-recovery laws or catastrophe-recovery bonuses. Technical restore preserves finite physical stores. Past records stay intact; unexecuted legacy subsidy intents are denied.
+
 ### CARDINAL OFF
 
 Turning Cardinal OFF means **remove orchestration**, not stop the world.

@@ -3,6 +3,7 @@ import { readWorldCommitHead } from './IndexedDbCommitHead';
 import { validateWorldSave, missingWorldRecord } from './WorldSaveSafety';
 import { checkpointWorld, putWorldIdentity, RECOVERY_STORE, IDENTITY_STORE, type WorldIdentity } from './IndexedDbRecovery';
 import { stableJsonStringify } from '../core/stableJson';
+import { clonePersistedData } from '../world/cloneWorldState';
 import type { WorldEvent } from '../world/events';
 import type { MemoryRecord, WorldState } from '../world/types';
 import type {
@@ -16,6 +17,7 @@ import type { AppendOnlyLog } from './AppendOnlyLog';
 import { AppendOnlyLogConflictError } from './AppendOnlyLog';
 
 const DATABASE_VERSION = 2;
+const RECENT_VIEW_LIMIT = 256;
 
 const STORES = {
   worlds: 'worlds',
@@ -293,6 +295,9 @@ function cursorValues<T>(
 
 export class IndexedDbWorldStore implements WorldStore {
   private readonly lastRetentionBucket=new Map<string,number>();
+  // Latest unbounded-by-time tail, in IndexedDB index/primary-key order.
+  // This is a disposable projection; durable history is never trimmed.
+  private recentView?: {worldId:string;epoch:number;revision:number;complete:boolean;events:WorldEvent[]};
   constructor(private readonly database: Promise<IDBDatabase>) {}
 
   async initializeWorld(state: WorldState): Promise<void> {
@@ -418,26 +423,15 @@ export class IndexedDbWorldStore implements WorldStore {
     const events = transaction.objectStore(STORES.events);
     const memories = transaction.objectStore(STORES.memories);
     const opKey = operationKey(batch.worldId, batch.operationId);
+    let evidenceConflict: 'event' | 'memory' | undefined;
 
     try {
-      const [prior, head, existingEvents, existingMemories] =
+      const [prior, head] =
         await Promise.all([
           requestResult(operations.get(opKey)) as Promise<
             StoredOperation | undefined
           >,
           readWorldCommitHead(transaction, batch.worldId),
-          Promise.all(
-            batch.events.map((event) =>
-              requestResult(events.getKey(eventKey(event.worldId, event.eventId))),
-            ),
-          ),
-          Promise.all(
-            batch.memories.map((memory) =>
-              requestResult(
-                memories.getKey(memoryKey(memory.worldId, memory.memoryId)),
-              ),
-            ),
-          ),
         ]);
 
       const { current, identity } = head;
@@ -478,22 +472,16 @@ export class IndexedDbWorldStore implements WorldStore {
       if (batch.nextState.revision !== batch.expectedRevision + 1) {
         throw new Error('World commit must advance revision by exactly one.');
       }
-      if (existingEvents.some((event) => event !== undefined)) {
-        throw new Error(
-          'World commit contains an event ID owned by another operation.',
-        );
-      }
-      if (existingMemories.some((memory) => memory !== undefined)) {
-        throw new Error(
-          'World commit contains a memory ID owned by another operation.',
-        );
-      }
-
+      // add(), never put(), enforces the primary-key boundary atomically.
+      // A duplicate aborts this entire transaction (world/head/history included).
+      // Pre-reading every key only doubled IndexedDB requests for the same check.
       for (const event of batch.events) {
-        events.add(toStoredEvent(event));
+        const request=events.add(toStoredEvent(event));
+        request.addEventListener('error',()=>{if(request.error?.name==='ConstraintError')evidenceConflict='event';},{once:true});
       }
       for (const memory of batch.memories) {
-        memories.add(toStoredMemory(memory));
+        const request=memories.add(toStoredMemory(memory));
+        request.addEventListener('error',()=>{if(request.error?.name==='ConstraintError')evidenceConflict='memory';},{once:true});
       }
 
       const nextState = batch.nextState;
@@ -509,6 +497,15 @@ export class IndexedDbWorldStore implements WorldStore {
       putWorldIdentity(transaction, nextState, identity);
       operations.add({ ...operation, key: opKey } satisfies StoredOperation);
       await completion;
+
+      const tail=this.recentView;
+      if(tail?.worldId===batch.worldId&&tail.epoch===(nextState.epoch??1)&&tail.revision===batch.expectedRevision){
+        const merged=[...tail.events,...clonePersistedData(batch.events).filter(e=>e.occurredAt>=Number.MIN_SAFE_INTEGER&&e.occurredAt<=Number.MAX_SAFE_INTEGER)];
+        // Equal index keys are ordered by the string primary key, not locale.
+        merged.sort((a,b)=>a.occurredAt-b.occurredAt||(a.eventId<b.eventId?-1:a.eventId>b.eventId?1:0));
+        this.recentView={worldId:batch.worldId,epoch:tail.epoch,revision:nextState.revision,
+          complete:tail.complete&&merged.length<=RECENT_VIEW_LIMIT,events:merged.slice(-RECENT_VIEW_LIMIT)};
+      }
 
       const retentionBucket=Math.floor(nextState.revision/WORLD_TIME_RETENTION_INTERVAL);
       if(nextState.revision>WORLD_TIME_OPERATION_RETENTION&&retentionBucket>(this.lastRetentionBucket.get(batch.worldId)??-1)) {
@@ -528,6 +525,7 @@ export class IndexedDbWorldStore implements WorldStore {
       };
     } catch (error) {
       await abortTransaction(transaction, completion);
+      if(evidenceConflict)throw new Error(`World commit contains ${evidenceConflict==='event'?'an event':'a memory'} ID owned by another operation.`);
       throw error;
     }
   }
@@ -575,13 +573,28 @@ export class IndexedDbWorldStore implements WorldStore {
     if (limit === 0) return [];
 
     const database = await this.database;
-    const transaction = database.transaction(STORES.events, 'readonly');
+    const transaction = database.transaction([STORES.events,IDENTITY_STORE], 'readonly');
     const completion = transactionComplete(transaction);
-    const request = transaction
-      .objectStore(STORES.events)
-      .index(INDEXES.eventWorldTime)
-      .openCursor(worldTimeRange(worldId, atOrBefore), 'prev');
-    const stored = await cursorValues<StoredWorldEvent>(request, limit);
+    // Read the durable head in the SAME transaction. This also invalidates
+    // after another tab/store instance commits, not only our own writes.
+    const head=await requestResult(transaction.objectStore(IDENTITY_STORE).get(worldId)) as WorldIdentity|undefined;
+    let tail=this.recentView;
+    const index=transaction.objectStore(STORES.events).index(INDEXES.eventWorldTime);
+    if(!head||tail?.worldId!==worldId||tail.epoch!==head.epoch||tail.revision!==head.revision){
+      tail=undefined;
+      if(head&&Number.isInteger(head.revision)&&Number.isInteger(head.epoch)&&limit<=RECENT_VIEW_LIMIT){
+        const stored=await cursorValues<StoredWorldEvent>(index.openCursor(worldTimeRange(worldId),'prev'),RECENT_VIEW_LIMIT);
+        tail={worldId,epoch:head.epoch,revision:head.revision,complete:stored.length<RECENT_VIEW_LIMIT,events:stored.reverse().map(fromStoredEvent)};
+        this.recentView=tail;
+      }
+    }
+    if(tail){
+      const eligible=atOrBefore===undefined?tail.events:tail.events.filter(e=>e.occurredAt<=atOrBefore);
+      if(eligible.length>=limit||tail.complete){await completion;return clonePersistedData(eligible.slice(-limit));}
+    }
+    // An older time bound or a larger request can extend before the cached
+    // tail. Read its exact index range instead of treating a cache as history.
+    const stored=await cursorValues<StoredWorldEvent>(index.openCursor(worldTimeRange(worldId,atOrBefore),'prev'),limit);
     await completion;
     return stored.reverse().map(fromStoredEvent);
   }

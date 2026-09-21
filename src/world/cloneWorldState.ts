@@ -4,7 +4,7 @@ const nativeRequired = Symbol('native snapshot required');
 /** Clone plain persisted data without the transport serializer. Preserve
  * undefined, sparse arrays, NaN/-0, aliases and cycles. Unexpected native
  * values use structuredClone for the entire graph to retain its semantics. */
-export function cloneWorldState(world: Readonly<WorldState>): WorldState {
+export function clonePersistedData<T>(world: T): T {
   const seen = new Map<object, unknown>();
   function copy(value: any): any {
     if (value === null || typeof value !== 'object') {
@@ -17,7 +17,11 @@ export function cloneWorldState(world: Readonly<WorldState>): WorldState {
     const result: any = array ? new Array(value.length) : {};
     seen.set(value, result);
     for (const key of Object.keys(value)) {
-      const child = copy(value[key]);
+      // Most saved fields are primitive numbers/strings. Avoid recursive calls
+      // for those leaves while retaining native rejection of functions/symbols.
+      const raw = value[key], kind = typeof raw;
+      if (kind === 'function' || kind === 'symbol') throw nativeRequired;
+      const child = raw !== null && kind === 'object' ? copy(raw) : raw;
       if (key === '__proto__') Object.defineProperty(result, key, { value: child, enumerable: true, writable: true, configurable: true });
       else result[key] = child;
     }
@@ -25,4 +29,8 @@ export function cloneWorldState(world: Readonly<WorldState>): WorldState {
   }
   try { return copy(world); }
   catch (error) { if (error !== nativeRequired) throw error; return structuredClone(world); }
+}
+
+export function cloneWorldState(world: Readonly<WorldState>): WorldState {
+  return clonePersistedData(world);
 }

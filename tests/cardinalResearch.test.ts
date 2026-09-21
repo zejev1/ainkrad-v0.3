@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CardinalCore } from '../src/cardinal/CardinalCore';
+import { CardinalCore, CARDINAL_POLICY_VERSION } from '../src/cardinal/CardinalCore';
 import {
   buildCardinalResearchContext,
   emptyCardinalResearchContext,
@@ -20,7 +20,7 @@ function observation(observedAt: number): SensorSnapshot {
     metrics: {
       populationActivity: 0.5,
       averageStress: 0.3,
-      socialIsolation: 0.2,
+      socialIsolation: 0.82,
       conflictPressure: 0.1,
       resourcePressure: 0.82,
       relationshipDiversity: 0.3,
@@ -108,7 +108,7 @@ function researchIntervention(
     evaluationId: `research_evaluation_${index}`,
     worldId: 'world_research',
     worldEpoch: 1,
-    policyVersion: 'ainkrad-cardinal-policy-0.3.15',
+    policyVersion: CARDINAL_POLICY_VERSION,
     sensorVersion: 'ainkrad-world-sensors-0.3.3',
     researchVersion: 'ainkrad-cardinal-research-0.3.15',
     requestedAt: index + 1,

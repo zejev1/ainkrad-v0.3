@@ -1,3 +1,4 @@
+import { isResourceSubsidy, isResourceSubsidyLaw, RESOURCE_SUBSIDY_DENIAL } from '../core/CardinalResourcePolicy';
 import { commitWeatherSystem, commandWeatherSystem } from './systems/WeatherSystemAgent';
 import { VegetationWorldAdapter } from './systems/VegetationWorldAdapter';
 import { cloneWorldState } from './cloneWorldState';
@@ -5015,6 +5016,13 @@ export class WorldEngine {
       stableJsonStringify({ command }), async () => { this.vegetationHost.command(this.state, command); }, expectedRevision);
   }
 
+  /** Lifecycle only. No command may set a water stock, rainfall or resident. */
+  async controlHydrologySystem(command: CardinalSystemCommand, requestId: string, expectedRevision: number): Promise<boolean> {
+    if (!requestId.trim() || !Number.isInteger(expectedRevision)) throw new Error('Invalid hydrology command identity');
+    return this.mutate(`hydrology-command:${this.committedState.epoch ?? 1}:${requestId}`,
+      stableJsonStringify({ command }), async () => { this.vegetationHost.commandWater(this.state, command); }, expectedRevision);
+  }
+
   async reload(): Promise<void> {
     await this.runExclusive(async () => {
       await this.reloadFromStore();
@@ -5107,6 +5115,7 @@ export class WorldEngine {
         this.state.calendar = { elapsedWorldMinutes: 0 };
         delete this.state.weatherSystem;
         delete this.state.vegetationSystem;
+        delete this.state.hydrologySystem;
         this.state.growth = {
           stage: 0,
           explorationProgress: 0,
@@ -5755,6 +5764,10 @@ export class WorldEngine {
     });
   }
 
+  async committedIntervention(proposalId: string) {
+    return this.store.committedOperation(this.committedState.id, `intervention:${proposalId}`);
+  }
+
   // CardinalCore never receives this capability. Only the independent
   // simulation gateway owns it.
   async applyAuthorizedIntervention(
@@ -5814,6 +5827,7 @@ export class WorldEngine {
       `intervention:${operationId}`,
       fingerprint,
       async () => {
+        if (isResourceSubsidy(kind)) throw new Error(RESOURCE_SUBSIDY_DENIAL);
         if (now < this.state.now) {
           throw new Error('Intervention cannot be applied retroactively to a progressed world.');
         }
@@ -5821,37 +5835,7 @@ export class WorldEngine {
         const requestedWorldMinutes =
           this.state.calendar.elapsedWorldMinutes;
 
-        const eventKind =
-          kind === 'resource_relief'
-            ? 'cardinal.intervention.resource_relief'
-            : kind === 'open_shared_space'
-              ? 'cardinal.effect.open_shared_space'
-              : kind === 'safety_support'
-                ? 'cardinal.effect.safety_support'
-                : 'cardinal.effect.habitat_support';
-
-        if (kind === 'resource_relief') {
-          // Cardinal may support damaged soil/ecology, but it cannot conjure a
-          // filled granary. Residents still have to farm, forage, hunt and
-          // carry every usable unit into their own settlement.
-          this.supportV15RenewableBase(amount);
-
-          this.stageEvent({
-            eventId: this.stableOperationEventId('intervention', operationId),
-            worldId: this.state.id,
-            kind: eventKind,
-            source: 'cardinal',
-            occurredAt: now,
-            occurredWorldMinutes: requestedWorldMinutes,
-            payload: {
-              magnitude: amount,
-              durationWorldMinutes,
-              mechanism: 'renewable_base_support_only',
-              fabricatedStoredResources: 0,
-            },
-          });
-          return;
-        }
+        const eventKind = kind === 'open_shared_space' ? 'cardinal.effect.open_shared_space' : 'cardinal.effect.safety_support';
 
         this.stageEvent({
           eventId: this.stableOperationEventId('intervention', operationId),
@@ -5947,6 +5931,7 @@ export class WorldEngine {
       `world-authority:${operationId}`,
       fingerprint,
       async () => {
+        if (isResourceSubsidyLaw(mechanism)) throw new Error(RESOURCE_SUBSIDY_DENIAL);
         let current = this.state.governance.laws[lawId];
         const worldMinutes = this.state.calendar.elapsedWorldMinutes;
         if (!current) {
@@ -6133,9 +6118,7 @@ export class WorldEngine {
           this.state.calendar.elapsedWorldMinutes;
         this.state.governance.lastCardinalAuthorityWorldMinutes =
           requestedWorldMinutes;
-        const recoveryMagnitude = clamp01(
-          magnitude * this.lawValue('catastrophe_recovery', 0.75),
-        );
+        const recoveryMagnitude = 0; // Natural recovery only, no Cardinal subsidy.
         this.stageEvent({
           eventId: this.stableOperationEventId('catastrophe', operationId),
           worldId: this.state.id,
@@ -6833,28 +6816,6 @@ export class WorldEngine {
     this.refreshV15StoredResourceProjection();
   }
 
-  private supportV15RenewableBase(amount: number, settlementId?: string): void {
-    if (!Number.isFinite(amount) || amount <= 0) return;
-    const localResources = this.state.v16?.settlementResourcesById;
-    if (localResources && Object.keys(localResources).length > 0) {
-      const targets = settlementId
-        ? [localResources[settlementId]].filter(
-            (value): value is NonNullable<typeof value> => value !== undefined,
-          )
-        : Object.values(localResources);
-      for (const local of targets) {
-        local.renewableBase = clamp01(local.renewableBase + amount);
-        local.fertility = clamp01(local.fertility + amount * 0.28);
-      }
-      this.refreshV15StoredResourceProjection();
-      return;
-    }
-    const resources = this.v15World().renewableResources;
-    resources.renewableBase = clamp01(resources.renewableBase + amount);
-    resources.fertility = clamp01(resources.fertility + amount * 0.28);
-    this.refreshV15StoredResourceProjection();
-  }
-
   private settlementResourcesForAgent(agent: Readonly<AgentState>) {
     const settlementId = this.homeSettlementId(agent);
     return settlementId
@@ -6909,6 +6870,12 @@ export class WorldEngine {
       this.stageEvent({ eventId: `${this.state.id}:vegetation:${this.state.epoch ?? 1}:${this.state.vegetationSystem!.updates}:${i}`,
         worldId: this.state.id, kind: `world.vegetation.${event.kind}`, source: 'world', occurredAt: this.state.now,
         occurredWorldMinutes: event.minute, payload: { siteId: event.siteId, speciesId: event.speciesId ?? '', detail: event.detail } });
+    }
+    for (let i = 0; i < result.waterEvents.length; i++) {
+      const e = result.waterEvents[i];
+      this.stageEvent({ eventId: `${this.state.id}:water:${this.state.epoch ?? 1}:${this.state.hydrologySystem!.updates}:${i}`,
+        worldId: this.state.id, kind: `world.water.${e.to}`, source: 'world', occurredAt: this.state.now,
+        occurredWorldMinutes: e.minute, payload: { unitId: e.unitId, previous: e.from } });
     }
     this.refreshV15StoredResourceProjection();
   }
@@ -16876,7 +16843,7 @@ export class WorldEngine {
     fallback: number,
   ): number {
     const active = Object.values(this.state.governance.laws)
-      .filter((worldLaw) => worldLaw.mechanism === mechanism)
+      .filter((worldLaw) => worldLaw.mechanism === mechanism && !(worldLaw.createdBy === 'cardinal' && isResourceSubsidyLaw(mechanism)))
       .sort(
         (a, b) =>
           b.updatedAt - a.updatedAt ||
@@ -16999,7 +16966,7 @@ export class WorldEngine {
         safetyModifier -= magnitude;
         habitatModifier -= magnitude * 0.25;
       } else if (signal.kind === 'cardinal.effect.habitat_support') {
-        habitatModifier += magnitude;
+        // Retained historical signal; the retired subsidy no longer alters physics.
       } else if (signal.kind.startsWith('cardinal.catastrophe.')) {
         const destructiveUntil =
           typeof signal.payload.destructiveUntil === 'number'
@@ -17009,12 +16976,8 @@ export class WorldEngine {
           safetyModifier -= magnitude * 0.32;
           habitatModifier -= magnitude * 0.18;
         } else {
-          const recoveryMagnitude =
-            typeof signal.payload.recoveryMagnitude === 'number'
-              ? signal.payload.recoveryMagnitude
-              : 0;
-          habitatModifier += recoveryMagnitude;
-          safetyModifier += recoveryMagnitude * 0.35;
+          // Ending a hazard restores ordinary physics; no post-disaster gift.
+
         }
       }
     }

@@ -23,4 +23,15 @@ export class FeatureIndex<T> {
     const ids=new Set(this.broad);for(let x=x0;x<=x1;x++)for(let y=y0;y<=y1;y++)for(const id of this.buckets.get(x+':'+y)??[])ids.add(id);
     return [...ids].filter(id=>overlap(b,this.itemBounds[id])).map(id=>this.items[id]);
   }
+  /** A point belongs to one bucket. Broad and bucket entries are disjoint,
+   * so this path needs neither a de-duplication Set nor intermediate arrays. */
+  queryPoint(x:number,y:number):T[] {
+    const result:T[]=[];
+    const append=(id:number)=>{const b=this.itemBounds[id];
+      if(x>=b.minX&&x<=b.maxX&&y>=b.minY&&y<=b.maxY)result.push(this.items[id]);};
+    for(const id of this.broad)append(id);
+    const bucket=this.buckets.get(Math.floor(x/this.size)+':'+Math.floor(y/this.size));
+    if(bucket)for(const id of bucket)append(id);
+    return result;
+  }
 }
